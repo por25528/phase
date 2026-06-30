@@ -1,9 +1,58 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, initStore } from './state/store';
+import type { Goal } from './db/types';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { IconSun, IconTarget, IconBars } from './components/Icons';
+import { GoalTree } from './components/GoalTree';
+import { ProgressBar } from './components/ProgressBar';
+import { goalPct } from './lib/pct';
+import { fmtD } from './lib/dates';
+
+function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
+  const addRootRef = useRef<HTMLInputElement>(null);
+  const pct = Math.round(goalPct(g));
+  return (
+    <>
+      <div
+        className="font-disp text-[1.3rem] font-semibold tracking-[-0.01em] cursor-default"
+        onDoubleClick={() => {
+          const v = prompt('Rename goal:', g.title);
+          if (v && v.trim()) actions.renameGoal(g.id, v.trim());
+        }}
+      >
+        {g.title}
+      </div>
+      <div className="text-[.78rem] text-muted mt-[4px] mb-[14px]">
+        {fmtD(g.start)} → {fmtD(g.deadline)}
+      </div>
+      <div className="flex items-center gap-[11px]">
+        <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">{pct}%</span>
+        <ProgressBar pct={pct} />
+      </div>
+      <div className="mt-[14px]">
+        <GoalTree nodes={g.nodes} />
+      </div>
+      <div className="px-[6px] py-[2px]">
+        <input
+          ref={addRootRef}
+          className="ghost-in w-full text-[.85rem]"
+          placeholder="+ add sub-goal…"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && addRootRef.current) {
+              const v = addRootRef.current.value.trim();
+              if (v) {
+                actions.addRootNode(g.id, v);
+                addRootRef.current.value = '';
+              }
+            }
+          }}
+        />
+      </div>
+    </>
+  );
+}
 
 export function App() {
   const { view, openGoalId, toast, goals, actions } = useAppStore();
@@ -110,16 +159,7 @@ export function App() {
           ✕
         </button>
         <div id="drawerBody">
-          {openGoal && (
-            <>
-              <div className="font-disp text-[1.3rem] font-semibold tracking-[-0.01em]">
-                {openGoal.title}
-              </div>
-              <div className="text-[.78rem] text-muted mt-[4px] mb-[14px]">
-                Goal details coming in Timeline round.
-              </div>
-            </>
-          )}
+          {openGoal && <DrawerBody goal={openGoal} actions={actions} />}
         </div>
       </aside>
 
