@@ -1,5 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
-import type { GoalNode } from '../db/types';
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import type { Goal, GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
 import { ProgressBar } from '../components/ProgressBar';
 import { GoalTree } from '../components/GoalTree';
@@ -83,7 +99,7 @@ function NewGoalForm({
   onCancel,
 }: {
   onAdd: (title: string, deadline: string) => void;
-  onCancel: () => void;
+  onCancel?: () => void;
 }) {
   const [title, setTitle] = useState('');
   const [deadline, setDeadline] = useState('2026-12-31');
@@ -109,7 +125,7 @@ function NewGoalForm({
         className="w-full bg-transparent border-none outline-none text-[.9rem] text-ink placeholder:text-faint"
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); submit(); }
-          if (e.key === 'Escape') onCancel();
+          if (e.key === 'Escape' && onCancel) onCancel();
         }}
       />
       <input
@@ -119,7 +135,7 @@ function NewGoalForm({
         className="w-full rounded-[6px] border border-line-2 px-[8px] py-[4px] text-[.78rem] text-ink bg-transparent outline-none"
         onKeyDown={(e) => {
           if (e.key === 'Enter') { e.preventDefault(); submit(); }
-          if (e.key === 'Escape') onCancel();
+          if (e.key === 'Escape' && onCancel) onCancel();
         }}
       />
       <div className="flex items-center gap-[8px]">
@@ -129,13 +145,123 @@ function NewGoalForm({
         >
           Add
         </button>
+        {onCancel && (
+          <button
+            className="text-[.82rem] text-muted px-[9px] py-[5px] rounded-[6px] hover:bg-hover"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SortableGoalCard({
+  goal,
+  editingGoalId,
+  setEditingGoalId,
+  onDelete,
+  onRename,
+  onAddRoot,
+  reducedMotion,
+}: {
+  goal: Goal;
+  editingGoalId: string | null;
+  setEditingGoalId: (id: string | null) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
+  onAddRoot: (goalId: string, title: string) => void;
+  reducedMotion: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: goal.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition: reducedMotion ? undefined : transition,
+    opacity: isDragging ? 0.45 : undefined,
+    position: 'relative',
+    zIndex: isDragging ? 1 : undefined,
+  };
+
+  const pct = Math.round(goalPct(goal));
+  const leaves = leafCount(goal.nodes);
+  const days = daysLeft(goal.deadline);
+
+  return (
+    <div ref={setNodeRef} style={style} className="py-[18px] pb-[8px] border-b border-line group">
+      {/* Header row */}
+      <div className="flex items-center gap-[8px]">
+        {/* Drag handle — only handle is draggable, rest stays clickable */}
         <button
-          className="text-[.82rem] text-muted px-[9px] py-[5px] rounded-[6px] hover:bg-hover"
-          onClick={onCancel}
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag to reorder goal"
+          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-faint text-[13px] cursor-grab active:cursor-grabbing select-none px-[2px] touch-none transition-opacity flex-shrink-0"
         >
-          Cancel
+          ⠿
+        </button>
+
+        {/* Title — click to rename */}
+        <div className="flex-1 min-w-0">
+          {editingGoalId === goal.id ? (
+            <InlineEdit
+              value={goal.title}
+              className="font-disp text-[1.18rem] font-semibold tracking-[-0.01em] w-full"
+              onCommit={(v) => { onRename(goal.id, v); setEditingGoalId(null); }}
+              onCancel={() => setEditingGoalId(null)}
+            />
+          ) : (
+            <span
+              className="font-disp text-[1.18rem] font-semibold tracking-[-0.01em] cursor-default"
+              onClick={() => setEditingGoalId(goal.id)}
+            >
+              {goal.title}
+            </span>
+          )}
+        </div>
+
+        {/* Dates + days left */}
+        <div className="flex items-center gap-[5px] text-[.76rem] text-muted whitespace-nowrap flex-shrink-0">
+          <span>{fmtD(goal.start)} → {fmtD(goal.deadline)}</span>
+          <span className="text-[.72rem] opacity-70">
+            · {days < 0 ? 'overdue' : `${days}d left`}
+          </span>
+        </div>
+
+        {/* Delete — single click, undo via App shell toast */}
+        <button
+          type="button"
+          aria-label={`Delete goal: ${goal.title}`}
+          className="text-faint text-[.8rem] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-500 transition-opacity ml-[4px] flex-shrink-0"
+          onClick={() => onDelete(goal.id)}
+        >
+          ✕
         </button>
       </div>
+
+      {/* Progress row */}
+      <div className="flex items-center gap-[11px] mt-[10px] mb-[6px]">
+        <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">
+          {pct}%
+        </span>
+        <span className="text-[.76rem] text-muted tabular-nums whitespace-nowrap">
+          {leaves.done}/{leaves.total} done
+        </span>
+        <ProgressBar pct={pct} />
+      </div>
+
+      <GoalTree nodes={goal.nodes} />
+      <AddRootInput onAdd={(title) => onAddRoot(goal.id, title)} />
     </div>
   );
 }
@@ -143,17 +269,26 @@ function NewGoalForm({
 export function Goals() {
   const { goals, actions } = useAppStore();
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showNewGoal, setShowNewGoal] = useState(false);
 
-  useEffect(() => {
-    if (!deleteConfirmId) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setDeleteConfirmId(null);
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const goalIds = goals.map((g) => g.id);
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    if (over && active.id !== over.id) {
+      actions.reorderGoals(String(active.id), String(over.id));
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [deleteConfirmId]);
+  }
+
+  const isEmpty = goals.length === 0;
 
   return (
     <div>
@@ -162,98 +297,40 @@ export function Goals() {
         Each goal is a tree. Tick the leaves; the percentage rolls up on its own.
       </p>
 
-      {goals.length === 0 && (
-        <p className="text-muted text-[.84rem] mb-[22px]">
-          No goals yet. Add your first one below.
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={goalIds} strategy={verticalListSortingStrategy}>
+          {goals.map((g) => (
+            <SortableGoalCard
+              key={g.id}
+              goal={g}
+              editingGoalId={editingGoalId}
+              setEditingGoalId={setEditingGoalId}
+              onDelete={actions.removeGoal}
+              onRename={actions.renameGoal}
+              onAddRoot={actions.addRootNode}
+              reducedMotion={reducedMotion}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+
+      {isEmpty && (
+        <p className="text-muted text-[.84rem] mb-[4px]">
+          No goals yet — name your first one and pick a deadline.
         </p>
       )}
 
-      {goals.map((g) => {
-        const pct = Math.round(goalPct(g));
-        const leaves = leafCount(g.nodes);
-        const days = daysLeft(g.deadline);
-
-        return (
-          <div key={g.id} className="py-[18px] pb-[8px] border-b border-line group">
-            {/* Header row */}
-            <div className="flex items-center gap-[8px]">
-              <div className="flex-1 min-w-0">
-                {editingGoalId === g.id ? (
-                  <InlineEdit
-                    value={g.title}
-                    className="font-disp text-[1.18rem] font-semibold tracking-[-0.01em] w-full"
-                    onCommit={(v) => { actions.renameGoal(g.id, v); setEditingGoalId(null); }}
-                    onCancel={() => setEditingGoalId(null)}
-                  />
-                ) : (
-                  <span
-                    className="font-disp text-[1.18rem] font-semibold tracking-[-0.01em] cursor-default"
-                    onClick={() => setEditingGoalId(g.id)}
-                  >
-                    {g.title}
-                  </span>
-                )}
-              </div>
-
-              {/* Dates + days left */}
-              <div className="flex items-center gap-[5px] text-[.76rem] text-muted whitespace-nowrap flex-shrink-0">
-                <span>{fmtD(g.start)} → {fmtD(g.deadline)}</span>
-                <span className="text-[.72rem] opacity-70">
-                  · {days < 0 ? 'overdue' : `${days}d left`}
-                </span>
-              </div>
-
-              {/* Delete button or two-step confirm */}
-              {deleteConfirmId === g.id ? (
-                <div className="flex items-center gap-[6px] text-[.78rem] text-muted flex-shrink-0 ml-[4px]">
-                  <span>Delete goal?</span>
-                  <button
-                    className="text-ink font-medium hover:text-muted"
-                    onClick={() => { actions.removeGoal(g.id); setDeleteConfirmId(null); }}
-                  >
-                    Delete
-                  </button>
-                  <span className="text-faint">·</span>
-                  <button className="hover:text-ink" onClick={() => setDeleteConfirmId(null)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  aria-label={`Delete goal: ${g.title}`}
-                  className="text-faint text-[.8rem] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity ml-[4px] flex-shrink-0"
-                  onClick={() => setDeleteConfirmId(g.id)}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Progress row */}
-            <div className="flex items-center gap-[11px] mt-[10px] mb-[6px]">
-              <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">
-                {pct}%
-              </span>
-              <span className="text-[.76rem] text-muted tabular-nums whitespace-nowrap">
-                {leaves.done}/{leaves.total} done
-              </span>
-              <ProgressBar pct={pct} />
-            </div>
-
-            <GoalTree nodes={g.nodes} />
-            <AddRootInput onAdd={(title) => actions.addRootNode(g.id, title)} />
-          </div>
-        );
-      })}
-
-      {showNewGoal ? (
+      {showNewGoal || isEmpty ? (
         <NewGoalForm
           onAdd={(title, deadline) => {
             actions.addGoal(title, deadline);
             setShowNewGoal(false);
           }}
-          onCancel={() => setShowNewGoal(false)}
+          onCancel={isEmpty ? undefined : () => setShowNewGoal(false)}
         />
       ) : (
         <button
