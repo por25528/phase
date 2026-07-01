@@ -2,42 +2,144 @@ import { useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { useAppStore } from '../state/store';
 import { SectionLabel } from '../components/SectionLabel';
-import { Checkbox } from '../components/Checkbox';
 import { Tag } from '../components/Tag';
+import { TodayHeatmap } from '../components/TodayHeatmap';
 import { todayStr, addDays, fmtD, parseD, weekDates, streak } from '../lib/dates';
-import type { Habit } from '../db/types';
+import type { Cadence } from '../db/types';
 
-function p2(n: number) { return String(n).padStart(2, '0'); }
+// Local accessible checkbox — real <button> with role + aria-checked
+function TodayCheckbox({
+  checked,
+  onToggle,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onToggle}
+      className={`w-[17px] h-[17px] border-[1.5px] rounded-[5px] flex-shrink-0 grid place-items-center transition-colors duration-100 ${
+        checked ? 'bg-fill border-fill' : 'border-line-2 hover:border-muted'
+      }`}
+    >
+      <svg
+        viewBox="0 0 12 12"
+        className={`w-[11px] h-[11px] stroke-white fill-none transition-opacity duration-100 ${
+          checked ? 'opacity-100' : 'opacity-0'
+        }`}
+        strokeWidth={2.4}
+      >
+        <path d="M2 6.2 4.6 9 10 3" />
+      </svg>
+    </button>
+  );
+}
 
-function Heatmap({ hb }: { hb: Habit }) {
-  const WK = 15;
-  const today = parseD(todayStr());
-  const dow = today.getDay();
-  const cols: React.ReactElement[] = [];
-  for (let w = WK - 1; w >= 0; w--) {
-    const cells: React.ReactElement[] = [];
-    for (let d = 0; d < 7; d++) {
-      const off = -(w * 7) + (d - dow);
-      const date = new Date(today);
-      date.setDate(today.getDate() + off);
-      const s = `${date.getFullYear()}-${p2(date.getMonth() + 1)}-${p2(date.getDate())}`;
-      const fut = date > today;
-      const hit = hb.checkins.includes(s);
-      cells.push(
-        <div
-          key={d}
-          className={`heat-d${hit ? ' h' : ''}${fut ? ' fut' : ''}`}
-          title={s}
-        />
-      );
-    }
-    cols.push(
-      <div key={w} className="flex flex-col gap-[2px]">
-        {cells}
-      </div>
-    );
+// Segmented cadence toggle + weekly target stepper, shown inline when adding a habit
+function AddHabitForm({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (name: string, cadence: Cadence, target: number) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [cadence, setCadence] = useState<Cadence>('daily');
+  const [target, setTarget] = useState(4);
+
+  function submit() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onAdd(trimmed, cadence, target);
   }
-  return <div className="flex gap-[2px] mt-[8px] ml-[28px]">{cols}</div>;
+
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') submit();
+    if (e.key === 'Escape') onCancel();
+  }
+
+  return (
+    <div className="border border-line rounded-[7px] p-[12px] mt-[8px] flex flex-col gap-[10px] bg-panel">
+      <input
+        autoFocus
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Habit name"
+        className="ghost-in text-[.9rem]"
+        aria-label="New habit name"
+      />
+      <div className="flex items-center gap-[8px] flex-wrap">
+        {/* Segmented daily / weekly toggle */}
+        <div className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium">
+          {(['daily', 'weekly'] as Cadence[]).map(c => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCadence(c)}
+              aria-pressed={cadence === c}
+              className={`px-[12px] py-[4px] transition-colors duration-100 ${
+                cadence === c
+                  ? 'bg-accent-tint text-ink'
+                  : 'text-ink-soft hover:bg-hover'
+              }`}
+            >
+              {c === 'daily' ? 'Daily' : 'Weekly'}
+            </button>
+          ))}
+        </div>
+
+        {/* Weekly target stepper — only shown for weekly cadence */}
+        {cadence === 'weekly' && (
+          <div className="flex items-center gap-[6px]">
+            <button
+              type="button"
+              onClick={() => setTarget(t => Math.max(1, t - 1))}
+              aria-label="Decrease weekly target"
+              className="w-[22px] h-[22px] rounded-[4px] border border-line-2 text-[.9rem] text-ink-soft hover:bg-hover grid place-items-center"
+            >
+              −
+            </button>
+            <span className="text-[.82rem] tabular-nums w-[14px] text-center font-medium text-ink">
+              {target}
+            </span>
+            <button
+              type="button"
+              onClick={() => setTarget(t => Math.min(7, t + 1))}
+              aria-label="Increase weekly target"
+              className="w-[22px] h-[22px] rounded-[4px] border border-line-2 text-[.9rem] text-ink-soft hover:bg-hover grid place-items-center"
+            >
+              +
+            </button>
+            <span className="text-[.76rem] text-muted">× per week</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-[8px]">
+        <button
+          type="button"
+          onClick={submit}
+          className="px-[12px] py-[5px] rounded-[6px] bg-fill text-bg text-[.8rem] font-medium hover:opacity-90 transition-opacity"
+        >
+          Add
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-[12px] py-[5px] rounded-[6px] border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function Today() {
@@ -46,22 +148,22 @@ export function Today() {
   const isToday = selDate === today;
   const wd = parseD(selDate).toLocaleDateString('en-US', { weekday: 'long' });
   const rel =
-    selDate === today ? 'Today'
-    : selDate === addDays(today, 1) ? 'Tomorrow'
-    : selDate === addDays(today, -1) ? 'Yesterday'
-    : wd;
+    selDate === today
+      ? 'Today'
+      : selDate === addDays(today, 1)
+      ? 'Tomorrow'
+      : selDate === addDays(today, -1)
+      ? 'Yesterday'
+      : wd;
 
+  const [addingHabit, setAddingHabit] = useState(false);
   const [taskGoalId, setTaskGoalId] = useState('');
 
   const dayTasks = tasks.filter(t => t.date === selDate);
 
-  function handleAddHabit() {
-    const t = prompt('Habit name:');
-    if (!t) return;
-    const wk = confirm('Weekly habit? (OK = X times/week, Cancel = daily)');
-    let tgt = 4;
-    if (wk) tgt = parseInt(prompt('Times per week:', '4') || '4') || 4;
-    actions.addHabit(t.trim(), wk ? 'weekly' : 'daily', tgt);
+  function handleAddHabit(name: string, cadence: Cadence, target: number) {
+    actions.addHabit(name, cadence, target);
+    setAddingHabit(false);
   }
 
   function handleTaskKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -77,34 +179,45 @@ export function Today() {
 
   return (
     <div>
-      <h1 className="font-disp text-[1.74rem] font-semibold tracking-[-0.015em] mb-[3px]">Today</h1>
+      <h1 className="font-disp text-[1.74rem] font-semibold tracking-[-0.015em] mb-[3px]">
+        Today
+      </h1>
       <p className="text-muted text-[.86rem] mb-[30px]">
-        {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} — check your floors, plan ahead.
+        {new Date().toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+        })}{' '}
+        — check your floors, plan ahead.
       </p>
 
+      {/* ── Habits ──────────────────────────────────────── */}
       <SectionLabel first>Habits — today</SectionLabel>
-      {habits.length === 0 && (
-        <div className="text-faint text-[.85rem] italic py-[6px]">No habits yet. Add one below.</div>
+
+      {habits.length === 0 && !addingHabit && (
+        <div className="text-faint text-[.85rem] italic py-[6px]">
+          No habits yet. Add one to start a streak.
+        </div>
       )}
+
       {habits.map(hb => {
         const done = hb.checkins.includes(today);
         const goal = hb.goalId ? goals.find(g => g.id === hb.goalId) : null;
 
-        let stat: React.ReactElement;
-        if (hb.cadence === 'weekly') {
-          const c = weekDates(today).filter(d => hb.checkins.includes(d)).length;
-          stat = (
+        const stat =
+          hb.cadence === 'weekly' ? (
             <span className="text-[.74rem] text-muted tabular-nums">
-              this week <b className="text-accent font-semibold">{c}/{hb.weeklyTarget}</b>
+              this week{' '}
+              <b className="text-accent font-semibold">
+                {weekDates(today).filter(d => hb.checkins.includes(d)).length}/
+                {hb.weeklyTarget}
+              </b>
             </span>
-          );
-        } else {
-          stat = (
+          ) : (
             <span className="text-[.74rem] text-muted tabular-nums">
               streak <b className="text-accent font-semibold">{streak(hb)}</b>
             </span>
           );
-        }
 
         const y = addDays(today, -1);
         const y2 = addDays(today, -2);
@@ -116,85 +229,146 @@ export function Today() {
         return (
           <div key={hb.id} className="py-[11px] border-b border-line group">
             <div className="flex items-center gap-[11px]">
-              <Checkbox checked={done} onClick={() => actions.toggleHabit(hb.id)} />
+              <TodayCheckbox
+                checked={done}
+                onToggle={() => actions.toggleHabit(hb.id)}
+                ariaLabel={`Mark "${hb.title}" done today`}
+              />
               <span className="text-[.92rem] font-[450] flex-1">{hb.title}</span>
               {goal && <Tag label={goal.title} />}
               {stat}
               <button
+                type="button"
                 className="text-faint text-[.8rem] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={() => actions.removeHabit(hb.id)}
-              >✕</button>
+                aria-label={`Remove habit "${hb.title}"`}
+              >
+                ✕
+              </button>
             </div>
+
             {showNudge && (
-              <div className="text-[.74rem] text-[#b06a4f] mt-[5px] ml-[28px]">
+              <div
+                className="text-[.74rem] mt-[5px] ml-[28px]"
+                style={{ color: '#b06a4f' }}
+              >
                 Two days missed — don't let it become three.
               </div>
             )}
-            <Heatmap hb={hb} />
+
+            <TodayHeatmap hb={hb} />
           </div>
         );
       })}
-      <div className="mt-[8px]">
-        <button
-          className="text-[.82rem] text-muted px-[9px] py-[5px] rounded-[6px] border border-line-2 hover:bg-hover"
-          onClick={handleAddHabit}
-        >+ habit</button>
-      </div>
 
-      <SectionLabel>Tasks</SectionLabel>
-      <div className="flex items-center gap-[8px] mb-[4px]">
-        <button
-          className="px-[9px] py-[4px] rounded-[6px] border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
-          onClick={() => actions.shiftDay(-1)}
-        >‹</button>
-        <span className="font-disp text-[1.04rem] font-medium">{rel}</span>
-        <span className="text-[.76rem] text-muted">{fmtD(selDate)}</span>
-        <button
-          className="px-[9px] py-[4px] rounded-[6px] border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
-          onClick={() => actions.shiftDay(1)}
-        >›</button>
-        {!isToday && (
+      <div className="mt-[8px]">
+        {addingHabit ? (
+          <AddHabitForm
+            onAdd={handleAddHabit}
+            onCancel={() => setAddingHabit(false)}
+          />
+        ) : (
           <button
-            className="px-[9px] py-[4px] rounded-[6px] border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
-            onClick={() => actions.goToToday()}
-          >Today</button>
+            type="button"
+            className="text-[.82rem] text-muted px-[9px] py-[5px] rounded-[6px] border border-line-2 hover:bg-hover"
+            onClick={() => setAddingHabit(true)}
+          >
+            + habit
+          </button>
         )}
       </div>
+
+      {/* ── Tasks ───────────────────────────────────────── */}
+      <SectionLabel>Tasks</SectionLabel>
+
+      {/* Day navigator */}
+      <div className="flex items-center gap-[8px] mb-[10px]">
+        <button
+          type="button"
+          className="px-[9px] py-[4px] rounded-[6px] border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
+          onClick={() => actions.shiftDay(-1)}
+          aria-label="Previous day"
+        >
+          ‹
+        </button>
+        <span className="font-disp text-[1.04rem] font-medium">{rel}</span>
+        <span className="text-[.76rem] text-muted tabular-nums">{fmtD(selDate)}</span>
+        <button
+          type="button"
+          className="px-[9px] py-[4px] rounded-[6px] border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
+          onClick={() => actions.shiftDay(1)}
+          aria-label="Next day"
+        >
+          ›
+        </button>
+        {!isToday && (
+          <button
+            type="button"
+            className="px-[9px] py-[4px] rounded-[6px] border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
+            onClick={() => actions.goToToday()}
+          >
+            Today
+          </button>
+        )}
+      </div>
+
       {dayTasks.length === 0 && (
         <div className="text-faint text-[.85rem] italic py-[6px]">
-          Nothing planned {rel.toLowerCase()}. Add a task to plan it.
+          Nothing planned for {rel.toLowerCase()}. Add a task to fill it in.
         </div>
       )}
+
       {dayTasks.map(t => {
         const goal = t.goalId ? goals.find(g => g.id === t.goalId) : null;
         return (
-          <div key={t.id} className="flex items-center gap-[10px] p-[6px] rounded-[6px] hover:bg-hover group">
-            <Checkbox checked={t.done} onClick={() => actions.toggleTask(t.id)} />
-            <span className={`flex-1 text-[.9rem] text-ink-soft${t.done ? ' line-through text-faint' : ''}`}>
+          <div
+            key={t.id}
+            className="flex items-center gap-[10px] p-[6px] rounded-[6px] hover:bg-hover group"
+          >
+            <TodayCheckbox
+              checked={t.done}
+              onToggle={() => actions.toggleTask(t.id)}
+              ariaLabel={`Mark "${t.title}" done`}
+            />
+            <span
+              className={`flex-1 text-[.9rem] transition-colors duration-150 ${
+                t.done ? 'line-through text-faint' : 'text-ink-soft'
+              }`}
+            >
               {t.title}
             </span>
             {goal && <Tag label={goal.title} />}
             <button
+              type="button"
               className="text-faint text-[.8rem] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={() => actions.removeTask(t.id)}
-            >✕</button>
+              aria-label={`Remove task "${t.title}"`}
+            >
+              ✕
+            </button>
           </div>
         );
       })}
+
+      {/* Add-task ghost input + goal select */}
       <div className="flex items-center gap-[8px] mt-[8px]">
         <input
           className="ghost-in"
           placeholder={`Plan a task for ${rel.toLowerCase()}…`}
           onKeyDown={handleTaskKeyDown}
+          aria-label={`Add a task for ${rel.toLowerCase()}`}
         />
         <select
           className="border border-line-2 rounded-[6px] px-[6px] py-[4px] text-[.78rem] bg-panel text-ink-soft"
           value={taskGoalId}
           onChange={e => setTaskGoalId(e.target.value)}
+          aria-label="Tag new task to a goal"
         >
           <option value="">no goal</option>
           {goals.map(g => (
-            <option key={g.id} value={g.id}>{g.title}</option>
+            <option key={g.id} value={g.id}>
+              {g.title}
+            </option>
           ))}
         </select>
       </div>
