@@ -61,6 +61,114 @@ function InlineEdit({
   );
 }
 
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function MilestonesSection({
+  goal: g,
+  actions,
+}: {
+  goal: Goal;
+  actions: ReturnType<typeof useAppStore>['actions'];
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDate, setNewDate] = useState(g.start || todayISO());
+  const newTitleRef = useRef<HTMLInputElement>(null);
+
+  const sorted = [...(g.milestones ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+
+  function submitNew() {
+    const t = newTitle.trim();
+    if (!t) return;
+    actions.addMilestone(g.id, t, newDate || todayISO());
+    setNewTitle('');
+    setNewDate(g.start || todayISO());
+    newTitleRef.current?.focus();
+  }
+
+  return (
+    <div className="mt-[22px]">
+      <div className="text-[.72rem] font-[550] uppercase tracking-[0.07em] text-muted mb-[8px]">
+        Milestones
+      </div>
+
+      {sorted.length === 0 && (
+        <div className="text-[.78rem] text-faint mb-[6px] px-[2px]">No milestones yet — add one below.</div>
+      )}
+
+      {sorted.map((m) => (
+        <div
+          key={m.id}
+          className="group flex items-center gap-[6px] py-[4px] px-[2px] rounded-[5px] hover:bg-hover"
+        >
+          <span className="text-[.72rem] text-accent mt-[1px]">◆</span>
+          <div className="flex-1 min-w-0 text-[.85rem]">
+            {editingId === m.id ? (
+              <InlineEdit
+                value={m.title}
+                className="text-[.85rem]"
+                onCommit={(v) => { actions.updateMilestone(g.id, m.id, { title: v }); setEditingId(null); }}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              <span
+                className="cursor-default"
+                onClick={() => setEditingId(m.id)}
+              >
+                {m.title}
+              </span>
+            )}
+          </div>
+          <input
+            type="date"
+            value={m.date}
+            onChange={(e) => actions.updateMilestone(g.id, m.id, { date: e.target.value })}
+            className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
+          />
+          <button
+            onClick={() => actions.removeMilestone(g.id, m.id)}
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[.8rem] text-muted hover:text-ink px-[3px] rounded transition-opacity duration-[120ms]"
+            tabIndex={0}
+            aria-label="Delete milestone"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+
+      {/* Add row */}
+      <div className="flex items-center gap-[6px] mt-[6px] px-[2px]">
+        <span className="text-[.72rem] text-faint mt-[1px]">◆</span>
+        <input
+          ref={newTitleRef}
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder="Milestone title…"
+          className="flex-1 min-w-0 bg-transparent border-none outline-none text-[.85rem] text-ink placeholder:text-faint"
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNew(); } }}
+        />
+        <input
+          type="date"
+          value={newDate}
+          onChange={(e) => setNewDate(e.target.value)}
+          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNew(); } }}
+        />
+        <button
+          onClick={submitNew}
+          className="text-[.78rem] text-ink-soft px-[7px] py-[3px] rounded-[5px] border border-line-2 hover:bg-hover disabled:opacity-40"
+          disabled={!newTitle.trim()}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -110,6 +218,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           }}
         />
       </div>
+      <MilestonesSection goal={g} actions={actions} />
     </>
   );
 }
