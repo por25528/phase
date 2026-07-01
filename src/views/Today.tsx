@@ -340,7 +340,7 @@ export function Today() {
             {goal && <Tag label={goal.title} />}
             <button
               type="button"
-              className="text-faint text-[.8rem] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={() => actions.removeTask(t.id)}
               aria-label={`Remove task "${t.title}"`}
             >

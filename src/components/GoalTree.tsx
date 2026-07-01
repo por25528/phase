@@ -214,7 +214,7 @@ function GoalTreeNode({
       <button
         type="button"
         aria-label={`Delete ${n.title}`}
-        className="text-faint text-[.8rem] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-500 transition-opacity flex-shrink-0"
+        className="text-faint text-[.8rem] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-[#b4453a] transition-opacity flex-shrink-0"
         onClick={() => actions.removeNode(n.id)}
       >
         ✕
