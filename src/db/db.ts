@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, AppState } from './types';
+import type { Goal, Habit, Task, AppState, ZoomLevel } from './types';
 import { todayStr, addDays } from '../lib/dates';
 import { uid } from '../lib/tree';
 
@@ -9,6 +9,7 @@ class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
   habits!: Table<Habit, string>;
   tasks!: Table<Task, string>;
+  settings!: Table<{ key: string; value: string }, string>;
 
   constructor() {
     super('phase');
@@ -16,6 +17,12 @@ class PhaseDB extends Dexie {
       goals: 'id',
       habits: 'id',
       tasks: 'id',
+    });
+    this.version(2).stores({
+      goals: 'id',
+      habits: 'id',
+      tasks: 'id',
+      settings: 'key',
     });
   }
 }
@@ -141,22 +148,41 @@ export async function persist(state: AppState): Promise<void> {
   ]);
 }
 
-export function exportState(state: AppState): void {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+export async function loadZoom(): Promise<ZoomLevel> {
+  const row = await db.settings.get('zoom');
+  const v = row?.value;
+  return v === 'quarter' || v === 'month' ? v : 'year';
+}
+
+export async function saveZoom(z: ZoomLevel): Promise<void> {
+  await db.settings.put({ key: 'zoom', value: z });
+}
+
+export function exportState(state: AppState, zoom: ZoomLevel): void {
+  const backup = { ...state, zoom };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `phase-goals-${todayStr()}.json`;
   a.click();
 }
 
-export async function importStateFromFile(file: File): Promise<AppState> {
+export async function importStateFromFile(file: File): Promise<AppState & { zoom: ZoomLevel }> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = async () => {
       try {
-        const parsed = JSON.parse(r.result as string) as AppState;
+        const raw = JSON.parse(r.result as string) as Partial<AppState & { zoom?: string }>;
+        const zoom: ZoomLevel =
+          raw.zoom === 'quarter' || raw.zoom === 'month' ? raw.zoom : 'year';
+        const parsed: AppState = {
+          goals: raw.goals ?? [],
+          habits: raw.habits ?? [],
+          tasks: raw.tasks ?? [],
+        };
         await persist(parsed);
-        resolve(parsed);
+        await saveZoom(zoom);
+        resolve({ ...parsed, zoom });
       } catch {
         reject(new Error('Could not read that file'));
       }
