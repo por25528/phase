@@ -126,7 +126,7 @@ function AddHabitForm({
         <button
           type="button"
           onClick={submit}
-          className="px-[12px] py-[5px] rounded-[6px] bg-fill text-bg text-[.8rem] font-medium hover:opacity-90 transition-opacity"
+          className="px-[12px] py-[5px] rounded-[6px] border border-line-2 text-ink text-[.8rem] font-medium hover:bg-hover"
         >
           Add
         </button>
@@ -239,7 +239,7 @@ export function Today() {
               {stat}
               <button
                 type="button"
-                className="text-faint text-[.8rem] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={() => actions.removeHabit(hb.id)}
                 aria-label={`Remove habit "${hb.title}"`}
               >
