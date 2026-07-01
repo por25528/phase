@@ -115,7 +115,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
 }
 
 export function App() {
-  const { view, openGoalId, toast, goals, actions } = useAppStore();
+  const { view, openGoalId, toast, pendingUndo, goals, actions } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -222,6 +222,26 @@ export function App() {
           {openGoal && <DrawerBody goal={openGoal} actions={actions} />}
         </div>
       </aside>
+
+      {/* Undo toast */}
+      <div
+        role="status"
+        aria-live="polite"
+        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-white px-[16px] py-[9px] rounded-[8px] text-[.84rem] z-[60] transition-all duration-[220ms] flex items-center gap-[12px] whitespace-nowrap ${
+          pendingUndo
+            ? 'opacity-100 translate-y-0'
+            : 'opacity-0 translate-y-[20px] pointer-events-none'
+        }`}
+      >
+        <span>{pendingUndo?.label}</span>
+        <button
+          className="font-semibold underline hover:no-underline focus-visible:outline-white focus-visible:outline-offset-2 focus-visible:rounded-[2px]"
+          onClick={() => actions.undoLastDelete()}
+          tabIndex={pendingUndo ? 0 : -1}
+        >
+          Undo
+        </button>
+      </div>
 
       {/* Toast */}
       <div

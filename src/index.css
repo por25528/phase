@@ -55,6 +55,7 @@
   /* Timeline bar fill + label — used by Timeline (round-2) */
   .tl-bar-fill {
     @apply absolute left-0 top-0 bottom-0 bg-fill opacity-90;
+    transition: width 300ms ease-out;
   }
 
   /* Ghost input style */
