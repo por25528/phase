@@ -1,5 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { KeyboardEvent } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '../state/store';
 import { SectionLabel } from '../components/SectionLabel';
 import { Tag } from '../components/Tag';
@@ -142,6 +158,199 @@ function AddHabitForm({
   );
 }
 
+// Drag handle icon
+function GripIcon() {
+  return (
+    <svg
+      viewBox="0 0 10 16"
+      width="10"
+      height="16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <circle cx="3" cy="3" r="1.2" />
+      <circle cx="7" cy="3" r="1.2" />
+      <circle cx="3" cy="8" r="1.2" />
+      <circle cx="7" cy="8" r="1.2" />
+      <circle cx="3" cy="13" r="1.2" />
+      <circle cx="7" cy="13" r="1.2" />
+    </svg>
+  );
+}
+
+type SortableHabitRowProps = {
+  hb: {
+    id: string;
+    title: string;
+    goalId: string | null;
+    cadence: 'daily' | 'weekly';
+    weeklyTarget: number;
+    checkins: string[];
+  };
+  today: string;
+  goal: { id: string; title: string } | null | undefined;
+  onToggle: () => void;
+  onRemove: () => void;
+  reducedMotion: boolean;
+};
+
+function SortableHabitRow({ hb, today, goal, onToggle, onRemove, reducedMotion }: SortableHabitRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: hb.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: reducedMotion ? undefined : transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  const done = hb.checkins.includes(today);
+
+  const stat =
+    hb.cadence === 'weekly' ? (
+      <span className="text-[.74rem] text-muted tabular-nums">
+        this week{' '}
+        <b className="text-accent font-semibold">
+          {weekDates(today).filter(d => hb.checkins.includes(d)).length}/
+          {hb.weeklyTarget}
+        </b>
+      </span>
+    ) : (
+      <span className="text-[.74rem] text-muted tabular-nums">
+        streak <b className="text-accent font-semibold">{streak(hb)}</b>
+      </span>
+    );
+
+  const y = addDays(today, -1);
+  const y2 = addDays(today, -2);
+  const showNudge =
+    hb.cadence === 'daily' &&
+    !hb.checkins.includes(y) &&
+    !hb.checkins.includes(y2);
+
+  return (
+    <div ref={setNodeRef} style={style} className="py-[11px] border-b border-line group">
+      <div className="flex items-center gap-[11px]">
+        {/* Drag handle — visible on hover, keyboard accessible */}
+        <button
+          type="button"
+          className="text-faint opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing touch-none flex-shrink-0 transition-opacity"
+          aria-label={`Drag to reorder "${hb.title}"`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripIcon />
+        </button>
+        <TodayCheckbox
+          checked={done}
+          onToggle={onToggle}
+          ariaLabel={`Mark "${hb.title}" done today`}
+        />
+        <span className="text-[.92rem] font-[450] flex-1">{hb.title}</span>
+        {goal && <Tag label={goal.title} />}
+        {stat}
+        <button
+          type="button"
+          className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={onRemove}
+          aria-label={`Remove habit "${hb.title}"`}
+        >
+          ✕
+        </button>
+      </div>
+
+      {showNudge && (
+        <div
+          className="text-[.74rem] mt-[5px] ml-[28px]"
+          style={{ color: '#b06a4f' }}
+        >
+          Two days missed — don't let it become three.
+        </div>
+      )}
+
+      <TodayHeatmap hb={hb} />
+    </div>
+  );
+}
+
+type SortableTaskRowProps = {
+  t: {
+    id: string;
+    title: string;
+    done: boolean;
+    goalId: string | null;
+  };
+  goal: { id: string; title: string } | null | undefined;
+  onToggle: () => void;
+  onRemove: () => void;
+  reducedMotion: boolean;
+};
+
+function SortableTaskRow({ t, goal, onToggle, onRemove, reducedMotion }: SortableTaskRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: t.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: reducedMotion ? undefined : transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-[10px] p-[6px] rounded-[6px] hover:bg-hover group"
+    >
+      {/* Drag handle */}
+      <button
+        type="button"
+        className="text-faint opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing touch-none flex-shrink-0 transition-opacity"
+        aria-label={`Drag to reorder "${t.title}"`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripIcon />
+      </button>
+      <TodayCheckbox
+        checked={t.done}
+        onToggle={onToggle}
+        ariaLabel={`Mark "${t.title}" done`}
+      />
+      <span
+        className={`flex-1 text-[.9rem] transition-colors duration-150 ${
+          t.done ? 'line-through text-faint' : 'text-ink-soft'
+        }`}
+      >
+        {t.title}
+      </span>
+      {goal && <Tag label={goal.title} />}
+      <button
+        type="button"
+        className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={onRemove}
+        aria-label={`Remove task "${t.title}"`}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 export function Today() {
   const { goals, habits, tasks, selDate, actions } = useAppStore();
   const today = todayStr();
@@ -158,8 +367,24 @@ export function Today() {
 
   const [addingHabit, setAddingHabit] = useState(false);
   const [taskGoalId, setTaskGoalId] = useState('');
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReducedMotion(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   const dayTasks = tasks.filter(t => t.date === selDate);
+  const habitIds = habits.map(h => h.id);
+  const taskIds = dayTasks.map(t => t.id);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   function handleAddHabit(name: string, cadence: Cadence, target: number) {
     actions.addHabit(name, cadence, target);
@@ -174,6 +399,20 @@ export function Today() {
         actions.addTask(val, selDate, taskGoalId || null);
         input.value = '';
       }
+    }
+  }
+
+  function handleHabitDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      actions.reorderHabits(String(active.id), String(over.id));
+    }
+  }
+
+  function handleTaskDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      actions.reorderTasks(String(active.id), String(over.id));
     }
   }
 
@@ -200,66 +439,28 @@ export function Today() {
         </div>
       )}
 
-      {habits.map(hb => {
-        const done = hb.checkins.includes(today);
-        const goal = hb.goalId ? goals.find(g => g.id === hb.goalId) : null;
-
-        const stat =
-          hb.cadence === 'weekly' ? (
-            <span className="text-[.74rem] text-muted tabular-nums">
-              this week{' '}
-              <b className="text-accent font-semibold">
-                {weekDates(today).filter(d => hb.checkins.includes(d)).length}/
-                {hb.weeklyTarget}
-              </b>
-            </span>
-          ) : (
-            <span className="text-[.74rem] text-muted tabular-nums">
-              streak <b className="text-accent font-semibold">{streak(hb)}</b>
-            </span>
-          );
-
-        const y = addDays(today, -1);
-        const y2 = addDays(today, -2);
-        const showNudge =
-          hb.cadence === 'daily' &&
-          !hb.checkins.includes(y) &&
-          !hb.checkins.includes(y2);
-
-        return (
-          <div key={hb.id} className="py-[11px] border-b border-line group">
-            <div className="flex items-center gap-[11px]">
-              <TodayCheckbox
-                checked={done}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleHabitDragEnd}
+      >
+        <SortableContext items={habitIds} strategy={verticalListSortingStrategy}>
+          {habits.map(hb => {
+            const goal = hb.goalId ? goals.find(g => g.id === hb.goalId) : null;
+            return (
+              <SortableHabitRow
+                key={hb.id}
+                hb={hb}
+                today={today}
+                goal={goal}
                 onToggle={() => actions.toggleHabit(hb.id)}
-                ariaLabel={`Mark "${hb.title}" done today`}
+                onRemove={() => actions.removeHabit(hb.id)}
+                reducedMotion={reducedMotion}
               />
-              <span className="text-[.92rem] font-[450] flex-1">{hb.title}</span>
-              {goal && <Tag label={goal.title} />}
-              {stat}
-              <button
-                type="button"
-                className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => actions.removeHabit(hb.id)}
-                aria-label={`Remove habit "${hb.title}"`}
-              >
-                ✕
-              </button>
-            </div>
-
-            {showNudge && (
-              <div
-                className="text-[.74rem] mt-[5px] ml-[28px]"
-                style={{ color: '#b06a4f' }}
-              >
-                Two days missed — don't let it become three.
-              </div>
-            )}
-
-            <TodayHeatmap hb={hb} />
-          </div>
-        );
-      })}
+            );
+          })}
+        </SortableContext>
+      </DndContext>
 
       <div className="mt-[8px]">
         {addingHabit ? (
@@ -318,37 +519,27 @@ export function Today() {
         </div>
       )}
 
-      {dayTasks.map(t => {
-        const goal = t.goalId ? goals.find(g => g.id === t.goalId) : null;
-        return (
-          <div
-            key={t.id}
-            className="flex items-center gap-[10px] p-[6px] rounded-[6px] hover:bg-hover group"
-          >
-            <TodayCheckbox
-              checked={t.done}
-              onToggle={() => actions.toggleTask(t.id)}
-              ariaLabel={`Mark "${t.title}" done`}
-            />
-            <span
-              className={`flex-1 text-[.9rem] transition-colors duration-150 ${
-                t.done ? 'line-through text-faint' : 'text-ink-soft'
-              }`}
-            >
-              {t.title}
-            </span>
-            {goal && <Tag label={goal.title} />}
-            <button
-              type="button"
-              className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={() => actions.removeTask(t.id)}
-              aria-label={`Remove task "${t.title}"`}
-            >
-              ✕
-            </button>
-          </div>
-        );
-      })}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleTaskDragEnd}
+      >
+        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+          {dayTasks.map(t => {
+            const goal = t.goalId ? goals.find(g => g.id === t.goalId) : null;
+            return (
+              <SortableTaskRow
+                key={t.id}
+                t={t}
+                goal={goal}
+                onToggle={() => actions.toggleTask(t.id)}
+                onRemove={() => actions.removeTask(t.id)}
+                reducedMotion={reducedMotion}
+              />
+            );
+          })}
+        </SortableContext>
+      </DndContext>
 
       {/* Add-task ghost input + goal select */}
       <div className="flex items-center gap-[8px] mt-[8px]">
