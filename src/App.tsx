@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore, initStore } from './state/store';
 import type { Goal } from './db/types';
 import { Today } from './views/Today';
@@ -10,19 +10,79 @@ import { ProgressBar } from './components/ProgressBar';
 import { goalPct } from './lib/pct';
 import { fmtD } from './lib/dates';
 
+function InlineEdit({
+  value,
+  className,
+  onCommit,
+  onCancel,
+}: {
+  value: string;
+  className: string;
+  onCommit: (v: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLInputElement>(null);
+  const escaped = useRef(false);
+
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+
+  function commit() {
+    const v = draft.trim();
+    if (v) onCommit(v);
+    else onCancel();
+  }
+
+  return (
+    <input
+      ref={ref}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      className={`${className} bg-transparent outline-none p-0 w-full min-w-0`}
+      style={{ border: 'none', borderBottom: '1px solid #5D6B82' }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          escaped.current = false;
+          commit();
+        }
+        if (e.key === 'Escape') {
+          escaped.current = true;
+          onCancel();
+        }
+      }}
+      onBlur={() => {
+        if (!escaped.current) commit();
+      }}
+    />
+  );
+}
+
 function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
   const addRootRef = useRef<HTMLInputElement>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
   const pct = Math.round(goalPct(g));
   return (
     <>
-      <div
-        className="font-disp text-[1.3rem] font-semibold tracking-[-0.01em] cursor-default"
-        onDoubleClick={() => {
-          const v = prompt('Rename goal:', g.title);
-          if (v && v.trim()) actions.renameGoal(g.id, v.trim());
-        }}
-      >
-        {g.title}
+      <div className="mb-[4px]">
+        {editingTitle ? (
+          <InlineEdit
+            value={g.title}
+            className="font-disp text-[1.3rem] font-semibold tracking-[-0.01em]"
+            onCommit={(v) => { actions.renameGoal(g.id, v); setEditingTitle(false); }}
+            onCancel={() => setEditingTitle(false)}
+          />
+        ) : (
+          <div
+            className="font-disp text-[1.3rem] font-semibold tracking-[-0.01em] cursor-default"
+            onClick={() => setEditingTitle(true)}
+          >
+            {g.title}
+          </div>
+        )}
       </div>
       <div className="text-[.78rem] text-muted mt-[4px] mb-[14px]">
         {fmtD(g.start)} → {fmtD(g.deadline)}
