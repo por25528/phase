@@ -2,7 +2,14 @@ import { useSyncExternalStore, useCallback } from 'react';
 import type { Goal, Habit, Task, AppState } from '../db/types';
 import { loadState, persist, exportState, importStateFromFile } from '../db/db';
 import { todayStr, addDays } from '../lib/dates';
-import { uid, findInAll, removeNode } from '../lib/tree';
+import {
+  uid, findInAll, removeNode,
+  findNodePath,
+  indentNode as treeIndentNode,
+  outdentNode as treeOutdentNode,
+  reorderSiblings,
+  reorderTop,
+} from '../lib/tree';
 
 export type ViewName = 'today' | 'goals' | 'timeline';
 
@@ -12,6 +19,7 @@ interface UIState {
   openGoalId: string | null;
   expanded: Set<string>;
   toast: string | null;
+  pendingUndo: { label: string } | null;
 }
 
 interface FullState extends AppState, UIState {}
@@ -25,10 +33,13 @@ let state: FullState = {
   openGoalId: null,
   expanded: new Set(),
   toast: null,
+  pendingUndo: null,
 };
 
 let initialized = false;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
+let undoTimer: ReturnType<typeof setTimeout> | null = null;
+let restoreFn: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -79,6 +90,18 @@ export function getState(): FullState {
   return state;
 }
 
+// ---- undo helper ----
+function scheduleUndo(title: string, restore: () => void): void {
+  if (undoTimer) clearTimeout(undoTimer);
+  restoreFn = restore;
+  set({ pendingUndo: { label: `Deleted "${title}" · Undo` } });
+  undoTimer = setTimeout(() => {
+    restoreFn = null;
+    undoTimer = null;
+    set({ pendingUndo: null });
+  }, 5000);
+}
+
 // ---- actions ----
 export const actions = {
   // Goals / nodes
@@ -125,6 +148,10 @@ export const actions = {
   },
 
   removeNode(nodeId: string) {
+    const node = findInAll(state.goals, nodeId);
+    const title = node?.title ?? 'item';
+    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
+    scheduleUndo(title, () => setAndPersist({ goals: snapshot }));
     const goals = state.goals.map((g) => {
       const nodes = JSON.parse(JSON.stringify(g.nodes));
       removeNode(nodes, nodeId);
@@ -144,6 +171,10 @@ export const actions = {
   },
 
   removeGoal(goalId: string) {
+    const goal = state.goals.find((g) => g.id === goalId);
+    const title = goal?.title ?? 'goal';
+    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
+    scheduleUndo(title, () => setAndPersist({ goals: snapshot }));
     const goals = state.goals.filter((g) => g.id !== goalId);
     setAndPersist({ goals });
   },
@@ -169,6 +200,10 @@ export const actions = {
   },
 
   removeHabit(habitId: string) {
+    const habit = state.habits.find((h) => h.id === habitId);
+    const title = habit?.title ?? 'habit';
+    const snapshot = JSON.parse(JSON.stringify(state.habits)) as Habit[];
+    scheduleUndo(title, () => setAndPersist({ habits: snapshot }));
     setAndPersist({ habits: state.habits.filter((h) => h.id !== habitId) });
   },
 
@@ -184,7 +219,70 @@ export const actions = {
   },
 
   removeTask(taskId: string) {
+    const task = state.tasks.find((t) => t.id === taskId);
+    const title = task?.title ?? 'task';
+    const snapshot = JSON.parse(JSON.stringify(state.tasks)) as Task[];
+    scheduleUndo(title, () => setAndPersist({ tasks: snapshot }));
     setAndPersist({ tasks: state.tasks.filter((t) => t.id !== taskId) });
+  },
+
+  // Structural reorder / indent / outdent
+  indentNode(nodeId: string): void {
+    const goals = treeIndentNode(state.goals, nodeId);
+    const nodePath = findNodePath(goals, nodeId);
+    const expanded = new Set(state.expanded);
+    if (nodePath && nodePath.length > 1) {
+      expanded.add(nodePath[nodePath.length - 2]); // new parent container
+    }
+    state = { ...state, expanded };
+    setAndPersist({ goals });
+  },
+
+  outdentNode(nodeId: string): void {
+    const oldPath = findNodePath(state.goals, nodeId);
+    const goals = treeOutdentNode(state.goals, nodeId);
+    const expanded = new Set(state.expanded);
+    if (oldPath && oldPath.length > 1) {
+      const oldParentId = oldPath[oldPath.length - 2];
+      const parentInNew = findInAll(goals, oldParentId);
+      if (parentInNew && !parentInNew.children?.length) {
+        expanded.delete(oldParentId);
+      }
+    }
+    state = { ...state, expanded };
+    setAndPersist({ goals });
+  },
+
+  reorderSiblingNodes(activeId: string, overId: string): void {
+    const goals = reorderSiblings(state.goals, activeId, overId);
+    setAndPersist({ goals });
+  },
+
+  reorderGoals(activeId: string, overId: string): void {
+    const goals = reorderTop(state.goals, activeId, overId);
+    setAndPersist({ goals });
+  },
+
+  reorderHabits(activeId: string, overId: string): void {
+    const habits = reorderTop(state.habits, activeId, overId);
+    setAndPersist({ habits });
+  },
+
+  reorderTasks(activeId: string, overId: string): void {
+    const tasks = reorderTop(state.tasks, activeId, overId);
+    setAndPersist({ tasks });
+  },
+
+  undoLastDelete(): void {
+    if (restoreFn) {
+      restoreFn();
+      restoreFn = null;
+    }
+    if (undoTimer) {
+      clearTimeout(undoTimer);
+      undoTimer = null;
+    }
+    set({ pendingUndo: null });
   },
 
   // UI

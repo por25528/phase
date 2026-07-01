@@ -8,7 +8,7 @@ import {
   findNodePath,
   cloneGoals,
 } from './tree';
-import { nodePct, goalPct } from './pct';
+import { goalPct } from './pct';
 import type { Goal, GoalNode } from '../db/types';
 
 // ---- helpers ----
