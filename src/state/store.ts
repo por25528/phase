@@ -1,7 +1,8 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, Task, AppState } from '../db/types';
-import { loadState, persist, exportState, importStateFromFile } from '../db/db';
+import type { Goal, Habit, Task, AppState, ZoomLevel } from '../db/types';
+import { loadState, persist, exportState, importStateFromFile, loadZoom, saveZoom } from '../db/db';
 import { todayStr, addDays } from '../lib/dates';
+import { clampSpan } from '../lib/timeline';
 import {
   uid, findInAll, removeNode,
   findNodePath,
@@ -20,6 +21,7 @@ interface UIState {
   expanded: Set<string>;
   toast: string | null;
   pendingUndo: { label: string } | null;
+  zoom: ZoomLevel;
 }
 
 interface FullState extends AppState, UIState {}
@@ -34,6 +36,7 @@ let state: FullState = {
   expanded: new Set(),
   toast: null,
   pendingUndo: null,
+  zoom: 'year',
 };
 
 let initialized = false;
@@ -76,10 +79,11 @@ function collectContainers(goals: Goal[]): Set<string> {
 export async function initStore(): Promise<void> {
   if (initialized) return;
   initialized = true;
-  const appState = await loadState();
+  const [appState, zoom] = await Promise.all([loadState(), loadZoom()]);
   state = {
     ...state,
     ...appState,
+    zoom,
     expanded: collectContainers(appState.goals),
   };
   notify();
@@ -91,10 +95,10 @@ export function getState(): FullState {
 }
 
 // ---- undo helper ----
-function scheduleUndo(title: string, restore: () => void): void {
+function scheduleUndo(label: string, restore: () => void): void {
   if (undoTimer) clearTimeout(undoTimer);
   restoreFn = restore;
-  set({ pendingUndo: { label: `Deleted "${title}" · Undo` } });
+  set({ pendingUndo: { label } });
   undoTimer = setTimeout(() => {
     restoreFn = null;
     undoTimer = null;
@@ -151,7 +155,7 @@ export const actions = {
     const node = findInAll(state.goals, nodeId);
     const title = node?.title ?? 'item';
     const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(title, () => setAndPersist({ goals: snapshot }));
+    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ goals: snapshot }));
     const goals = state.goals.map((g) => {
       const nodes = JSON.parse(JSON.stringify(g.nodes));
       removeNode(nodes, nodeId);
@@ -174,7 +178,7 @@ export const actions = {
     const goal = state.goals.find((g) => g.id === goalId);
     const title = goal?.title ?? 'goal';
     const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(title, () => setAndPersist({ goals: snapshot }));
+    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ goals: snapshot }));
     const goals = state.goals.filter((g) => g.id !== goalId);
     setAndPersist({ goals });
   },
@@ -203,7 +207,7 @@ export const actions = {
     const habit = state.habits.find((h) => h.id === habitId);
     const title = habit?.title ?? 'habit';
     const snapshot = JSON.parse(JSON.stringify(state.habits)) as Habit[];
-    scheduleUndo(title, () => setAndPersist({ habits: snapshot }));
+    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ habits: snapshot }));
     setAndPersist({ habits: state.habits.filter((h) => h.id !== habitId) });
   },
 
@@ -222,7 +226,7 @@ export const actions = {
     const task = state.tasks.find((t) => t.id === taskId);
     const title = task?.title ?? 'task';
     const snapshot = JSON.parse(JSON.stringify(state.tasks)) as Task[];
-    scheduleUndo(title, () => setAndPersist({ tasks: snapshot }));
+    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ tasks: snapshot }));
     setAndPersist({ tasks: state.tasks.filter((t) => t.id !== taskId) });
   },
 
@@ -273,6 +277,69 @@ export const actions = {
     setAndPersist({ tasks });
   },
 
+  // Zoom
+  setZoom(z: ZoomLevel): void {
+    set({ zoom: z });
+    saveZoom(z);
+  },
+
+  // Goal date editing
+  setGoalDates(goalId: string, start: string, deadline: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    if (!goal) return;
+    const clamped = clampSpan(start, deadline);
+    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
+    scheduleUndo(`Updated dates for "${goal.title}" · Undo`, () =>
+      setAndPersist({ goals: snapshot }),
+    );
+    const goals = state.goals.map((g) =>
+      g.id === goalId ? { ...g, start: clamped.start, deadline: clamped.deadline } : g,
+    );
+    setAndPersist({ goals });
+  },
+
+  // Milestones — markers only, never enter pct roll-up
+  addMilestone(goalId: string, title: string, date: string): void {
+    const goals = state.goals.map((g) =>
+      g.id === goalId
+        ? { ...g, milestones: [...(g.milestones ?? []), { id: uid(), title, date }] }
+        : g,
+    );
+    setAndPersist({ goals });
+  },
+
+  updateMilestone(
+    goalId: string,
+    milestoneId: string,
+    patch: { title?: string; date?: string },
+  ): void {
+    const goals = state.goals.map((g) =>
+      g.id === goalId
+        ? {
+            ...g,
+            milestones: (g.milestones ?? []).map((m) =>
+              m.id === milestoneId ? { ...m, ...patch } : m,
+            ),
+          }
+        : g,
+    );
+    setAndPersist({ goals });
+  },
+
+  removeMilestone(goalId: string, milestoneId: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    const ms = goal?.milestones?.find((m) => m.id === milestoneId);
+    const title = ms?.title ?? 'milestone';
+    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
+    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ goals: snapshot }));
+    const goals = state.goals.map((g) =>
+      g.id === goalId
+        ? { ...g, milestones: (g.milestones ?? []).filter((m) => m.id !== milestoneId) }
+        : g,
+    );
+    setAndPersist({ goals });
+  },
+
   undoLastDelete(): void {
     if (restoreFn) {
       restoreFn();
@@ -318,7 +385,7 @@ export const actions = {
 
   // IO
   exportBackup() {
-    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks });
+    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks }, state.zoom);
     actions.showToast('Backup exported');
   },
 
