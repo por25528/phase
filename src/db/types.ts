@@ -8,13 +8,23 @@ export interface GoalNode {
   // A node with children[].length > 0 is a container.
 }
 
+// Markers only — milestones are never used in pct roll-up.
+export interface Milestone {
+  id: string;
+  title: string;
+  date: string; // 'YYYY-MM-DD'
+}
+
 export interface Goal {
   id: string;
   title: string;
   start: string;    // 'YYYY-MM-DD'
   deadline: string; // 'YYYY-MM-DD'
   nodes: GoalNode[];
+  milestones?: Milestone[]; // markers only — never used in pct roll-up
 }
+
+export type ZoomLevel = 'year' | 'quarter' | 'month';
 
 export type Cadence = 'daily' | 'weekly';
 
