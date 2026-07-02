@@ -4,7 +4,8 @@ import type { Goal } from './db/types';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
-import { IconSun, IconTarget, IconBars } from './components/Icons';
+import { Calendar } from './views/Calendar';
+import { IconSun, IconTarget, IconBars, IconCalendar } from './components/Icons';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
 import { goalPct } from './lib/pct';
@@ -267,6 +268,7 @@ export function App() {
               ['today', 'Today', <IconSun key="sun" />],
               ['goals', 'Goals', <IconTarget key="target" />],
               ['timeline', 'Timeline', <IconBars key="bars" />],
+              ['calendar', 'Calendar', <IconCalendar key="cal" />],
             ] as const
           ).map(([key, label, icon]) => (
             <button
@@ -318,6 +320,7 @@ export function App() {
           {view === 'today' && <Today />}
           {view === 'goals' && <Goals />}
           {view === 'timeline' && <Timeline />}
+          {view === 'calendar' && <Calendar />}
         </div>
       </main>
 

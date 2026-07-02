@@ -12,7 +12,7 @@ import {
   reorderTop,
 } from '../lib/tree';
 
-export type ViewName = 'today' | 'goals' | 'timeline';
+export type ViewName = 'today' | 'goals' | 'timeline' | 'calendar';
 
 interface UIState {
   view: ViewName;
