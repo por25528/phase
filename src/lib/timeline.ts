@@ -81,6 +81,34 @@ export function zoomWindow(zoom: ZoomLevel, today: string): DateWindow {
   return { start: iso(new Date(y, d.getMonth(), 1)), end: iso(new Date(y, d.getMonth() + 1, 0)) };
 }
 
+export function shiftAnchor(zoom: ZoomLevel, anchor: string, n: number): string {
+  const d = parseD(anchor);
+  const months = zoom === 'year' ? 0 : zoom === 'quarter' ? 3 * n : n;
+  const years = zoom === 'year' ? n : 0;
+  const targetYear = d.getFullYear() + years + Math.floor((d.getMonth() + months) / 12);
+  const targetMonth = ((d.getMonth() + months) % 12 + 12) % 12;
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const day = Math.min(d.getDate(), lastDay);
+  return iso(new Date(targetYear, targetMonth, day));
+}
+
+export function defaultNodeSpan(
+  goal: { start: string; deadline: string },
+  today: string,
+): { start: string; deadline: string } {
+  const latest = today > goal.start ? today : goal.start; // max(today, goal.start)
+  const start = latest < goal.deadline ? latest : goal.deadline; // clamp to goal.deadline
+  const deadline = addDays(start, 6);
+  return { start, deadline: deadline < goal.deadline ? deadline : goal.deadline };
+}
+
+export function spanOutside(
+  span: { start: string; deadline: string },
+  goal: { start: string; deadline: string },
+): boolean {
+  return span.start < goal.start || span.deadline > goal.deadline;
+}
+
 export function windowDays(win: DateWindow): number {
   return daysBetween(win.start, win.end) + 1;
 }

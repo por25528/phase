@@ -29,7 +29,7 @@ export function WeekStrip() {
             onClick={() => actions.setSelDate(d)}
             aria-pressed={sel}
             aria-label={`Select ${d}`}
-            className={`text-left rounded-[12px] border px-[12px] py-[10px] min-h-[72px] flex flex-col gap-[5px] ${
+            className={`text-left rounded-[12px] border px-[12px] py-[8px] min-h-[60px] flex flex-col gap-[5px] ${
               isToday ? 'bg-panel-bright shadow-today' : 'bg-panel'
             } ${border}`}
           >

@@ -4,12 +4,13 @@ import { loadState, persist, exportState, importStateFromFile, loadZoom, saveZoo
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import {
-  uid, findInAll, removeNode,
+  uid, findInAll, findNode, removeNode,
   findNodePath,
   indentNode as treeIndentNode,
   outdentNode as treeOutdentNode,
   reorderSiblings,
   reorderTop,
+  cloneGoals,
 } from '../lib/tree';
 
 export type ViewName = 'today' | 'goals' | 'timeline' | 'calendar';
@@ -323,6 +324,38 @@ export const actions = {
     const goals = state.goals.map((g) =>
       g.id === goalId ? { ...g, start: clamped.start, deadline: clamped.deadline } : g,
     );
+    setAndPersist({ goals });
+  },
+
+  // Node scheduling — start/deadline are scheduling metadata only, never affect pct
+  setNodeDates(goalId: string, nodeId: string, start: string, deadline: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    if (!goal) return;
+    const node = findNode(goal.nodes, nodeId);
+    if (!node) return;
+    const clamped = clampSpan(start, deadline);
+    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
+    scheduleUndo(`Scheduled "${node.title}" · Undo`, () => setAndPersist({ goals: snapshot }));
+    const goals = cloneGoals(state.goals);
+    const clonedGoal = goals.find((g) => g.id === goalId)!;
+    const clonedNode = findNode(clonedGoal.nodes, nodeId)!;
+    clonedNode.start = clamped.start;
+    clonedNode.deadline = clamped.deadline;
+    setAndPersist({ goals });
+  },
+
+  clearNodeDates(goalId: string, nodeId: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    if (!goal) return;
+    const node = findNode(goal.nodes, nodeId);
+    if (!node) return;
+    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
+    scheduleUndo(`Unscheduled "${node.title}" · Undo`, () => setAndPersist({ goals: snapshot }));
+    const goals = cloneGoals(state.goals);
+    const clonedGoal = goals.find((g) => g.id === goalId)!;
+    const clonedNode = findNode(clonedGoal.nodes, nodeId)!;
+    delete clonedNode.start;
+    delete clonedNode.deadline;
     setAndPersist({ goals });
   },
 

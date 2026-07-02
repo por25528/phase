@@ -29,10 +29,7 @@ export function Calendar() {
 
   return (
     <div>
-      <h1 className="font-disp text-[1.74rem] font-semibold tracking-[-0.015em] mb-[3px]">Calendar</h1>
-      <p className="text-muted text-[.86rem] mb-[22px]">
-        Deadlines, milestones, tasks and habit hits at a glance. Click a day to plan it.
-      </p>
+      <h1 className="font-disp text-[1.4rem] font-semibold tracking-[-0.015em] mb-[16px]">Calendar</h1>
 
       {/* Month navigator */}
       <div className="flex items-center gap-[8px] mb-[10px]">

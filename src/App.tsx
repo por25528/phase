@@ -7,62 +7,12 @@ import { Timeline } from './views/Timeline';
 import { Calendar } from './views/Calendar';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
+import { InlineEdit } from './components/InlineEdit';
 import { firstOpenLeaf } from './lib/tree';
 import { goalPct } from './lib/pct';
 import { expectedPct, behindPaceBy } from './lib/timeline';
 import { todayStr, daysLeftLabel } from './lib/dates';
 import { minutesThisWeek, fmtMinutes } from './lib/sessions';
-
-function InlineEdit({
-  value,
-  className,
-  onCommit,
-  onCancel,
-}: {
-  value: string;
-  className: string;
-  onCommit: (v: string) => void;
-  onCancel: () => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const ref = useRef<HTMLInputElement>(null);
-  const escaped = useRef(false);
-
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-
-  function commit() {
-    const v = draft.trim();
-    if (v) onCommit(v);
-    else onCancel();
-  }
-
-  return (
-    <input
-      ref={ref}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      className={`${className} bg-transparent outline-none p-0 w-full min-w-0`}
-      style={{ border: 'none', borderBottom: '1px solid #C8512F' }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          escaped.current = false;
-          commit();
-        }
-        if (e.key === 'Escape') {
-          escaped.current = true;
-          onCancel();
-        }
-      }}
-      onBlur={() => {
-        if (!escaped.current) commit();
-      }}
-    />
-  );
-}
 
 function todayISO(): string {
   const d = new Date();
@@ -310,11 +260,8 @@ export function App() {
           <span className="font-disp text-[1.5rem] font-[650] tracking-[-0.01em]">
             Phase<span className="text-accent">.</span>
           </span>
-          <span className="font-mono text-[.7rem] tracking-[.09em] text-muted uppercase">
-            {new Date().getFullYear()} · plan &amp; ship
-          </span>
         </div>
-        <nav className="flex gap-[4px]">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–4 switch views · T jumps to today · Esc closes">
           {(
             [
               ['today', 'Today'],
@@ -361,10 +308,13 @@ export function App() {
           <div className="max-w-[1280px] mx-auto px-[36px] pb-[40px]">
             <Today />
           </div>
+        ) : view === 'timeline' ? (
+          <div className="max-w-[1280px] mx-auto px-[36px] py-[32px]">
+            <Timeline />
+          </div>
         ) : (
           <div className="max-w-[880px] mx-auto px-[40px] py-[42px] pb-[90px]">
             {view === 'goals' && <Goals />}
-            {view === 'timeline' && <Timeline />}
             {view === 'calendar' && <Calendar />}
           </div>
         )}

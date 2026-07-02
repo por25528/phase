@@ -148,7 +148,7 @@ function SortableHabitRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="group flex items-center gap-[12px] py-[8px] px-[8px] -mx-[8px] rounded-field hover:bg-hover"
+      className="group flex items-center gap-[12px] py-[6px] px-[8px] -mx-[8px] rounded-field hover:bg-hover"
     >
       <button
         type="button"
