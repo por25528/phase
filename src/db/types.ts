@@ -6,6 +6,8 @@ export interface GoalNode {
   // INVARIANT: a node is a leaf XOR a container.
   // Adding a child to a leaf deletes its `done`.
   // A node with children[].length > 0 is a container.
+  start?: string;    // 'YYYY-MM-DD' — scheduling metadata only, never affects pct
+  deadline?: string; // both present or both absent
 }
 
 // Markers only — milestones are never used in pct roll-up.

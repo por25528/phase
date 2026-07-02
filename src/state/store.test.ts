@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { goalPct } from '../lib/pct';
 
 vi.mock('../db/db', () => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
@@ -70,6 +71,72 @@ describe('store actions', () => {
     actions.setGoalDates(gid, '2026-10-01', '2026-02-01');
     expect(getState().goals[0].start).toBe('2026-02-01');
     expect(getState().goals[0].deadline).toBe('2026-10-01');
+  });
+
+  it('setNodeDates sets both dates, ordered via clampSpan', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G', '2026-12-31');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Step 1');
+    const nid = getState().goals[0].nodes[0].id;
+    actions.setNodeDates(gid, nid, '2026-10-01', '2026-02-01');
+    const node = getState().goals[0].nodes[0];
+    expect(node.start).toBe('2026-02-01');
+    expect(node.deadline).toBe('2026-10-01');
+  });
+
+  it('setNodeDates schedules a deeply nested node', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G', '2026-12-31');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'parent');
+    const parentId = getState().goals[0].nodes[0].id;
+    actions.addChild(parentId, 'child');
+    const childId = getState().goals[0].nodes[0].children![0].id;
+    actions.setNodeDates(gid, childId, '2026-03-01', '2026-03-15');
+    const child = getState().goals[0].nodes[0].children![0];
+    expect(child.start).toBe('2026-03-01');
+    expect(child.deadline).toBe('2026-03-15');
+  });
+
+  it('setNodeDates is a no-op when the goal or node is missing', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G', '2026-12-31');
+    const gid = getState().goals[0].id;
+    actions.setNodeDates(gid, 'nope', '2026-03-01', '2026-03-15');
+    expect(getState().goals[0].nodes).toHaveLength(0);
+    actions.setNodeDates('nope', 'nope', '2026-03-01', '2026-03-15');
+    expect(getState().goals).toHaveLength(1);
+  });
+
+  it('clearNodeDates removes both start and deadline', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G', '2026-12-31');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Step 1');
+    const nid = getState().goals[0].nodes[0].id;
+    actions.setNodeDates(gid, nid, '2026-02-01', '2026-10-01');
+    actions.clearNodeDates(gid, nid);
+    const node = getState().goals[0].nodes[0];
+    expect(node.start).toBeUndefined();
+    expect(node.deadline).toBeUndefined();
+  });
+
+  it('scheduling a node never affects pct roll-up', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G', '2026-12-31');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Step 1');
+    actions.addRootNode(gid, 'Step 2');
+    const nid = getState().goals[0].nodes[0].id;
+    actions.toggleLeaf(nid); // one of two leaves done -> 50%
+    const pctBefore = goalPct(getState().goals[0]);
+    actions.setNodeDates(gid, nid, '2026-02-01', '2026-10-01');
+    expect(goalPct(getState().goals[0])).toBe(pctBefore);
+    expect(getState().goals[0].nodes[0].done).toBe(true);
+    actions.clearNodeDates(gid, nid);
+    expect(goalPct(getState().goals[0])).toBe(pctBefore);
+    expect(getState().goals[0].nodes[0].done).toBe(true);
   });
 
   it('toggleHabit adds then removes a today check-in', async () => {
