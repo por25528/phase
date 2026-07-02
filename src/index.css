@@ -8,15 +8,12 @@
   }
   body {
     @apply bg-bg text-ink font-ui text-[14px] leading-[1.5] antialiased;
-    display: flex;
   }
-  /* The prototype made <body> the flex row with <aside>+<main> as direct
-     children. In React those live inside #root, so #root must be the flex row —
-     otherwise <main> stacks below the 100vh sidebar and renders off-screen. */
   #root {
     display: flex;
+    flex-direction: column;
+    min-height: 100vh;
     width: 100%;
-    height: 100vh;
   }
   button {
     font-family: inherit;
@@ -41,17 +38,6 @@
 }
 
 @layer components {
-  /* Heatmap cells — used by Today (round-2) */
-  .heat-d {
-    @apply w-[9px] h-[9px] rounded-[2px] bg-track;
-  }
-  .heat-d.h {
-    @apply bg-fill;
-  }
-  .heat-d.fut {
-    background: transparent;
-  }
-
   /* Timeline bar fill + label — used by Timeline (round-2) */
   .tl-bar-fill {
     @apply absolute left-0 top-0 bottom-0 bg-fill opacity-90;
@@ -65,8 +51,19 @@
   .ghost-in::placeholder {
     @apply text-faint;
   }
+
+  /* Today dashboard responsive grids */
+  .today-hero { grid-template-columns: minmax(0, 1fr) 396px; }
+  .today-main { grid-template-columns: minmax(0, 1fr) 372px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+}
+
+@media (max-width: 1160px) {
+  .today-hero, .today-main { grid-template-columns: 1fr; }
+}
+@media (max-width: 1000px) {
+  .hb-dots { display: none; }
 }

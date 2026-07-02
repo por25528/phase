@@ -5,7 +5,6 @@ import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { Calendar } from './views/Calendar';
-import { IconSun, IconTarget, IconBars, IconCalendar } from './components/Icons';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
 import { firstOpenLeaf } from './lib/tree';
@@ -46,7 +45,7 @@ function InlineEdit({
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       className={`${className} bg-transparent outline-none p-0 w-full min-w-0`}
-      style={{ border: 'none', borderBottom: '1px solid #5D6B82' }}
+      style={{ border: 'none', borderBottom: '1px solid #C8512F' }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -305,56 +304,43 @@ export function App() {
 
   return (
     <>
-      {/* Sidebar */}
-      <aside
-        className="w-[212px] flex-shrink-0 h-screen border-r border-line px-[14px] py-[22px] flex flex-col sticky top-0"
-        style={{ maxWidth: '212px' }}
-      >
-        {/* Wordmark */}
-        <div className="font-disp text-[1.32rem] font-semibold tracking-[-0.01em] px-[8px] pb-[2px]">
-          Phase<em className="not-italic text-accent italic">.</em>
+      {/* Top bar */}
+      <header className="sticky top-0 z-30 bg-bg border-b border-line flex items-center gap-[30px] px-[36px] py-[13px]">
+        <div className="flex items-baseline gap-[10px]">
+          <span className="font-disp text-[1.5rem] font-[650] tracking-[-0.01em]">
+            Phase<span className="text-accent">.</span>
+          </span>
+          <span className="font-mono text-[.7rem] tracking-[.09em] text-muted uppercase">
+            {new Date().getFullYear()} · plan &amp; ship
+          </span>
         </div>
-        <div className="text-[.72rem] text-muted px-[8px] pb-[20px]">{`${new Date().getFullYear()} · plan & ship`}</div>
-
-        {/* Nav */}
-        <nav className="flex flex-col gap-[1px]">
+        <nav className="flex gap-[4px]">
           {(
             [
-              ['today', 'Today', <IconSun key="sun" />],
-              ['goals', 'Goals', <IconTarget key="target" />],
-              ['timeline', 'Timeline', <IconBars key="bars" />],
-              ['calendar', 'Calendar', <IconCalendar key="cal" />],
+              ['today', 'Today'],
+              ['goals', 'Goals'],
+              ['timeline', 'Timeline'],
+              ['calendar', 'Calendar'],
             ] as const
-          ).map(([key, label, icon]) => (
+          ).map(([key, label]) => (
             <button
               key={key}
               onClick={() => actions.setView(key)}
-              className={`flex items-center gap-[9px] w-full text-left px-[9px] py-[7px] rounded-[6px] text-[.9rem] font-[450] ${
+              aria-current={view === key ? 'page' : undefined}
+              className={`px-[14px] py-[6px] rounded-full text-[.86rem] ${
                 view === key
-                  ? 'bg-accent-tint text-ink font-medium'
-                  : 'text-ink-soft hover:bg-hover'
+                  ? 'bg-ink text-paper font-semibold'
+                  : 'text-ink-soft font-medium hover:bg-hover-deep'
               }`}
             >
-              {icon}
-              <span>{label}</span>
+              {label}
             </button>
           ))}
         </nav>
-
-        {/* Footer IO */}
-        <div className="mt-auto flex flex-col gap-[6px] pt-[14px] border-t border-line">
-          <button
-            onClick={() => actions.exportBackup()}
-            className="text-[.78rem] text-muted px-[8px] py-[5px] rounded-[6px] text-left hover:bg-hover hover:text-ink-soft"
-          >
-            ↓ Export backup
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="text-[.78rem] text-muted px-[8px] py-[5px] rounded-[6px] text-left hover:bg-hover hover:text-ink-soft"
-          >
-            ↑ Import backup
-          </button>
+        <div className="flex-1" />
+        <div className="flex gap-[16px] font-mono text-[.72rem] tracking-[.06em] text-muted">
+          <button onClick={() => actions.exportBackup()} className="hover:text-ink">↓ EXPORT</button>
+          <button onClick={() => fileInputRef.current?.click()} className="hover:text-ink">↑ IMPORT</button>
           <input
             ref={fileInputRef}
             type="file"
@@ -366,18 +352,22 @@ export function App() {
               e.target.value = '';
             }}
           />
-          <div className="text-[.68rem] text-faint px-[8px] pt-[8px]">1–4 switch views · t today · esc closes</div>
         </div>
-      </aside>
+      </header>
 
       {/* Main */}
-      <main className="flex-1 min-w-0 h-screen overflow-y-auto">
-        <div className="max-w-[880px] mx-auto px-[40px] py-[42px] pb-[90px]">
-          {view === 'today' && <Today />}
-          {view === 'goals' && <Goals />}
-          {view === 'timeline' && <Timeline />}
-          {view === 'calendar' && <Calendar />}
-        </div>
+      <main className="flex-1 min-w-0">
+        {view === 'today' ? (
+          <div className="max-w-[1280px] mx-auto px-[36px] pb-[40px]">
+            <Today />
+          </div>
+        ) : (
+          <div className="max-w-[880px] mx-auto px-[40px] py-[42px] pb-[90px]">
+            {view === 'goals' && <Goals />}
+            {view === 'timeline' && <Timeline />}
+            {view === 'calendar' && <Calendar />}
+          </div>
+        )}
       </main>
 
       {/* Drawer scrim */}

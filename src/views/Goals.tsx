@@ -76,7 +76,7 @@ function InlineEdit({
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       className={`${className} bg-transparent outline-none p-0 min-w-0`}
-      style={{ border: 'none', borderBottom: '1px solid #5D6B82' }}
+      style={{ border: 'none', borderBottom: '1px solid #C8512F' }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
