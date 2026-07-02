@@ -4,6 +4,7 @@ import { WeekStrip } from './today/WeekStrip';
 import { HabitsCard } from './today/HabitsCard';
 import { StudyLogCard } from './today/StudyLogCard';
 import { TasksCard } from './today/TasksCard';
+import { GoalsCard } from './today/GoalsCard';
 import { QuickAdd } from './today/QuickAdd';
 import type { QuickType } from './today/QuickAdd';
 
@@ -14,7 +15,6 @@ export function Today() {
     setQuickType(t);
     quickRef.current?.focus();
   }
-  void focusQuick; // wired up in Task 10 (GoalsCard)
 
   return (
     <div className="pt-[26px]">
@@ -34,7 +34,8 @@ export function Today() {
           <TasksCard />
         </div>
         <div className="flex flex-col gap-[18px] min-w-0">
-          {/* GoalsCard (Task 10) and MiniCalendar (Task 11) mount here */}
+          <GoalsCard onAddGoal={() => focusQuick('goal')} />
+          {/* MiniCalendar mounts here in Task 11 */}
         </div>
       </div>
 
