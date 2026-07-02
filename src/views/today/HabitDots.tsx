@@ -10,7 +10,7 @@ export function HabitDots({ hb, today }: { hb: Habit; today: string }) {
         const cls = isToday
           ? hit
             ? 'bg-accent'
-            : 'bg-[#F7F2E5] shadow-[inset_0_0_0_1.5px_#CBBEA2]'
+            : 'bg-[#F5F4F0] shadow-[inset_0_0_0_1.5px_#C9C5BD]'
           : hit
             ? 'bg-dot'
             : 'bg-dot-off';
