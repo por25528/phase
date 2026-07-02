@@ -45,6 +45,14 @@ export interface Task {
   goalId: string | null; // tag FOR CONTEXT ONLY
 }
 
+export interface Session {
+  id: string;
+  goalId: string | null; // tag FOR CONTEXT ONLY — never moves a %
+  date: string;          // 'YYYY-MM-DD'
+  minutes: number;
+  note: string;
+}
+
 export interface AppState {
   goals: Goal[];
   habits: Habit[];
