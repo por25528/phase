@@ -25,6 +25,7 @@ export function Timeline() {
   const tf = windowFrac(todayStr(), win) * 100;
   const [barTip, setBarTip] = useState<TipPos | null>(null);
   const [flagTip, setFlagTip] = useState<TipPos | null>(null);
+  const [msTip, setMsTip] = useState<{ x: number; y: number; text: string } | null>(null);
 
   const barGoal = barTip ? (goals.find(g => g.id === barTip.goalId) ?? null) : null;
   const flagGoal = flagTip ? (goals.find(g => g.id === flagTip.goalId) ?? null) : null;
@@ -180,6 +181,20 @@ export function Timeline() {
                     <span className="absolute top-[-1px] left-[-2px] border-[3px] border-transparent border-t-accent pointer-events-none" />
                   </div>
                 )}
+
+                {/* Milestone markers */}
+                {(g.milestones ?? []).map((m) => {
+                  const mf = windowFrac(m.date, win) * 100;
+                  if (mf < 0 || mf > 100) return null;
+                  return (
+                    <span key={m.id}
+                      className="absolute top-[3px] -translate-x-1/2 text-accent text-[.58rem] leading-none z-[4] cursor-default select-none"
+                      style={{ left: `${mf}%` }}
+                      onMouseEnter={(e) => setMsTip({ x: e.clientX, y: e.clientY, text: `${m.title} · ${fmtD(m.date)}` })}
+                      onMouseLeave={() => setMsTip(null)}
+                    >◆</span>
+                  );
+                })}
               </div>
             </div>
           );
@@ -228,6 +243,14 @@ export function Timeline() {
           <span className="text-[.72rem] text-muted tabular-nums whitespace-nowrap">
             {fmtD(flagGoal.deadline)}
           </span>
+        </div>
+      )}
+
+      {/* Milestone tooltip */}
+      {msTip && (
+        <div className="fixed z-[50] pointer-events-none bg-panel border border-line-2 rounded-[6px] px-[8px] py-[5px] select-none"
+          style={{ left: msTip.x + 10, top: msTip.y - 38 }}>
+          <span className="text-[.72rem] text-muted whitespace-nowrap">{msTip.text}</span>
         </div>
       )}
     </div>
