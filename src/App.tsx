@@ -8,7 +8,6 @@ import { IconSun, IconTarget, IconBars } from './components/Icons';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
 import { goalPct } from './lib/pct';
-import { fmtD } from './lib/dates';
 
 function InlineEdit({
   value,
@@ -192,8 +191,14 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           </div>
         )}
       </div>
-      <div className="text-[.78rem] text-muted mt-[4px] mb-[14px]">
-        {fmtD(g.start)} → {fmtD(g.deadline)}
+      <div className="flex items-center gap-[6px] mt-[4px] mb-[14px]">
+        <input type="date" value={g.start} aria-label="Start date"
+          onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, e.target.value, g.deadline); }}
+          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
+        <span className="text-[.78rem] text-muted">→</span>
+        <input type="date" value={g.deadline} aria-label="Deadline"
+          onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, g.start, e.target.value); }}
+          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
       </div>
       <div className="flex items-center gap-[11px]">
         <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">{pct}%</span>
