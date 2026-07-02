@@ -4,12 +4,15 @@ import type { Goal } from './db/types';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
-import { IconSun, IconTarget, IconBars } from './components/Icons';
+import { Calendar } from './views/Calendar';
+import { IconSun, IconTarget, IconBars, IconCalendar } from './components/Icons';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
+import { firstOpenLeaf } from './lib/tree';
 import { goalPct } from './lib/pct';
 import { expectedPct, behindPaceBy } from './lib/timeline';
-import { todayStr } from './lib/dates';
+import { todayStr, daysLeftLabel } from './lib/dates';
+import { minutesThisWeek, fmtMinutes } from './lib/sessions';
 
 function InlineEdit({
   value,
@@ -171,11 +174,14 @@ function MilestonesSection({
 }
 
 function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
+  const { sessions } = useAppStore();
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const pct = Math.round(goalPct(g));
   const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
   const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, todayStr()));
+  const weekMins = minutesThisWeek(sessions, todayStr(), g.id);
+  const next = firstOpenLeaf(g.nodes);
   return (
     <>
       <div className="mb-[4px]">
@@ -203,6 +209,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
         <input type="date" value={g.deadline} aria-label="Deadline"
           onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, g.start, e.target.value); }}
           className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
+        <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
       </div>
       <div className="flex items-center gap-[11px]">
         <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">{pct}%</span>
@@ -213,6 +220,16 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           ? `${behind} pts behind pace · expected ${expected}% by today`
           : `on pace · expected ${expected}% by today`}
       </div>
+      {weekMins > 0 && (
+        <div className="text-[.74rem] text-muted mt-[2px] tabular-nums">
+          {fmtMinutes(weekMins)} logged this week
+        </div>
+      )}
+      {next && (
+        <div className="text-[.76rem] text-muted truncate mt-[2px]">
+          Next: <span className="text-ink-soft">{next.title}</span>
+        </div>
+      )}
       <div className="mt-[14px]">
         <GoalTree nodes={g.nodes} />
       </div>
@@ -233,6 +250,21 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
         />
       </div>
       <MilestonesSection goal={g} actions={actions} />
+
+      <div className="mt-[22px]">
+        <div className="text-[.72rem] font-[550] uppercase tracking-[0.07em] text-muted mb-[8px]">
+          Notes
+        </div>
+        <textarea
+          defaultValue={g.notes ?? ''}
+          key={g.id}
+          placeholder="Working notes — strategy, links, blockers…"
+          aria-label="Goal notes"
+          rows={5}
+          onBlur={(e) => { if (e.target.value !== (g.notes ?? '')) actions.setGoalNotes(g.id, e.target.value); }}
+          className="w-full mt-[6px] border border-line-2 rounded-[7px] bg-transparent px-[9px] py-[7px] text-[.85rem] leading-[1.5] text-ink placeholder:text-faint outline-none focus-visible:border-accent resize-y"
+        />
+      </div>
     </>
   );
 }
@@ -240,10 +272,34 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
 export function App() {
   const { view, openGoalId, toast, pendingUndo, goals, actions } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     initStore();
   }, []);
+
+  useEffect(() => {
+    function onKey(e: globalThis.KeyboardEvent) {
+      const el = e.target as HTMLElement;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) {
+        if (e.key === 'Escape') el.blur();
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'Escape') { actions.closeDrawer(); return; }
+      if (e.key === '1') actions.setView('today');
+      if (e.key === '2') actions.setView('goals');
+      if (e.key === '3') actions.setView('timeline');
+      if (e.key === '4') actions.setView('calendar');
+      if (e.key === 't') { actions.setView('today'); actions.goToToday(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [actions]);
+
+  useEffect(() => {
+    if (openGoalId) closeBtnRef.current?.focus();
+  }, [openGoalId]);
 
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
 
@@ -258,7 +314,7 @@ export function App() {
         <div className="font-disp text-[1.32rem] font-semibold tracking-[-0.01em] px-[8px] pb-[2px]">
           Phase<em className="not-italic text-accent italic">.</em>
         </div>
-        <div className="text-[.72rem] text-muted px-[8px] pb-[20px]">2026 · plan &amp; ship</div>
+        <div className="text-[.72rem] text-muted px-[8px] pb-[20px]">{`${new Date().getFullYear()} · plan & ship`}</div>
 
         {/* Nav */}
         <nav className="flex flex-col gap-[1px]">
@@ -267,6 +323,7 @@ export function App() {
               ['today', 'Today', <IconSun key="sun" />],
               ['goals', 'Goals', <IconTarget key="target" />],
               ['timeline', 'Timeline', <IconBars key="bars" />],
+              ['calendar', 'Calendar', <IconCalendar key="cal" />],
             ] as const
           ).map(([key, label, icon]) => (
             <button
@@ -309,6 +366,7 @@ export function App() {
               e.target.value = '';
             }}
           />
+          <div className="text-[.68rem] text-faint px-[8px] pt-[8px]">1–4 switch views · t today · esc closes</div>
         </div>
       </aside>
 
@@ -318,6 +376,7 @@ export function App() {
           {view === 'today' && <Today />}
           {view === 'goals' && <Goals />}
           {view === 'timeline' && <Timeline />}
+          {view === 'calendar' && <Calendar />}
         </div>
       </main>
 
@@ -336,6 +395,8 @@ export function App() {
         }`}
       >
         <button
+          ref={closeBtnRef}
+          aria-label="Close goal drawer"
           className="absolute top-[18px] right-[20px] text-muted text-[18px] px-[8px] py-[4px] rounded-[6px] hover:bg-hover"
           onClick={() => actions.closeDrawer()}
         >

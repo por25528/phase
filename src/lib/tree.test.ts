@@ -7,6 +7,7 @@ import {
   findParentList,
   findNodePath,
   cloneGoals,
+  firstOpenLeaf,
 } from './tree';
 import { goalPct } from './pct';
 import type { Goal, GoalNode } from '../db/types';
@@ -348,5 +349,22 @@ describe('equal-weight roll-up invariant across operations', () => {
     // Reorder root nodes — goalPct must still be 75, not leaf-flat 66.7
     const result = reorderSiblings(goals, 'ld', 'c');
     expect(goalPct(result[0])).toBe(75);
+  });
+});
+
+describe('firstOpenLeaf', () => {
+  it('returns the depth-first first not-done leaf', () => {
+    const nodes = [
+      container('c', [leaf('leafDone', true), leaf('leafOpenA', false)]),
+      leaf('leafOpenB', false),
+    ];
+    expect(firstOpenLeaf(nodes)?.id).toBe('leafOpenA');
+  });
+  it('returns null when every leaf is done', () => {
+    const nodes = [container('c', [leaf('a', true)]), leaf('b', true)];
+    expect(firstOpenLeaf(nodes)).toBeNull();
+  });
+  it('returns null for an empty tree', () => {
+    expect(firstOpenLeaf([])).toBeNull();
   });
 });

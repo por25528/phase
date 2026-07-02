@@ -32,6 +32,19 @@ export function removeNode(nodes: GoalNode[], id: string): boolean {
   return false;
 }
 
+/** Depth-first first not-done leaf across the given nodes; null when all done / empty. */
+export function firstOpenLeaf(nodes: GoalNode[]): GoalNode | null {
+  for (const n of nodes) {
+    if (n.children && n.children.length) {
+      const hit = firstOpenLeaf(n.children);
+      if (hit) return hit;
+    } else if (!n.done) {
+      return n;
+    }
+  }
+  return null;
+}
+
 // ---- immutable pure helpers ----
 
 /** Deep-clone a goals array via JSON round-trip (safe: no Dates or functions in the type). */

@@ -54,6 +54,15 @@ export function weekDates(s: string): string[] {
   return out;
 }
 
+export function daysLeftLabel(deadline: string): string {
+  const today = parseD(todayStr());
+  const end = parseD(deadline);
+  const diff = Math.round((end.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return 'due today';
+  if (diff > 0) return `${diff} days left`;
+  return `${Math.abs(diff)} days overdue`;
+}
+
 export function streak(habit: Habit): number {
   let n = 0;
   let d = todayStr();

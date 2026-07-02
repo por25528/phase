@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, AppState, ZoomLevel } from './types';
+import type { Goal, Habit, Task, Session, AppState, ZoomLevel } from './types';
 import { todayStr, addDays } from '../lib/dates';
 import { uid } from '../lib/tree';
 
@@ -9,6 +9,7 @@ class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
   habits!: Table<Habit, string>;
   tasks!: Table<Task, string>;
+  sessions!: Table<Session, string>;
   settings!: Table<{ key: string; value: string }, string>;
 
   constructor() {
@@ -23,6 +24,13 @@ class PhaseDB extends Dexie {
       habits: 'id',
       tasks: 'id',
       settings: 'key',
+    });
+    this.version(3).stores({
+      goals: 'id',
+      habits: 'id',
+      tasks: 'id',
+      settings: 'key',
+      sessions: 'id',
     });
   }
 }
@@ -117,27 +125,30 @@ function buildSeed(): AppState {
       { id: uid(), title: 'Read CS:APP chapter 1', date: today, done: false, goalId: 'g_cs' },
       { id: uid(), title: 'Anki review + 1 grammar point', date: addDays(today, 1), done: false, goalId: 'g_jp' },
     ],
+    sessions: [],
   };
 }
 
 export async function loadState(): Promise<AppState> {
-  const [goals, habits, tasks] = await Promise.all([
+  const [goals, habits, tasks, sessions] = await Promise.all([
     db.goals.toArray(),
     db.habits.toArray(),
     db.tasks.toArray(),
+    db.sessions.toArray(),
   ]);
 
-  if (goals.length === 0 && habits.length === 0 && tasks.length === 0) {
+  if (goals.length === 0 && habits.length === 0 && tasks.length === 0 && sessions.length === 0) {
     const seed = buildSeed();
     await Promise.all([
       db.goals.bulkPut(seed.goals),
       db.habits.bulkPut(seed.habits),
       db.tasks.bulkPut(seed.tasks),
+      db.sessions.bulkPut(seed.sessions),
     ]);
     return seed;
   }
 
-  return { goals, habits, tasks };
+  return { goals, habits, tasks, sessions };
 }
 
 export async function persist(state: AppState): Promise<void> {
@@ -145,6 +156,7 @@ export async function persist(state: AppState): Promise<void> {
     db.goals.clear().then(() => db.goals.bulkPut(state.goals)),
     db.habits.clear().then(() => db.habits.bulkPut(state.habits)),
     db.tasks.clear().then(() => db.tasks.bulkPut(state.tasks)),
+    db.sessions.clear().then(() => db.sessions.bulkPut(state.sessions)),
   ]);
 }
 
@@ -179,6 +191,7 @@ export async function importStateFromFile(file: File): Promise<AppState & { zoom
           goals: raw.goals ?? [],
           habits: raw.habits ?? [],
           tasks: raw.tasks ?? [],
+          sessions: raw.sessions ?? [],
         };
         await persist(parsed);
         await saveZoom(zoom);

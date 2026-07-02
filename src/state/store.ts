@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, Task, AppState, ZoomLevel } from '../db/types';
+import type { Goal, Habit, Task, Session, AppState, ZoomLevel } from '../db/types';
 import { loadState, persist, exportState, importStateFromFile, loadZoom, saveZoom } from '../db/db';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
@@ -12,7 +12,7 @@ import {
   reorderTop,
 } from '../lib/tree';
 
-export type ViewName = 'today' | 'goals' | 'timeline';
+export type ViewName = 'today' | 'goals' | 'timeline' | 'calendar';
 
 interface UIState {
   view: ViewName;
@@ -30,6 +30,7 @@ let state: FullState = {
   goals: [],
   habits: [],
   tasks: [],
+  sessions: [],
   view: 'today',
   selDate: todayStr(),
   openGoalId: null,
@@ -58,7 +59,7 @@ function setAndPersist(patch: Partial<AppState>) {
   const next = { ...state, ...patch };
   state = next;
   notify();
-  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks }).catch(() => {
+  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks, sessions: next.sessions }).catch(() => {
     actions.showToast('Saving failed — export a backup now');
   });
 }
@@ -176,6 +177,11 @@ export const actions = {
     setAndPersist({ goals });
   },
 
+  setGoalNotes(goalId: string, notes: string) {
+    const goals = state.goals.map((g) => (g.id === goalId ? { ...g, notes } : g));
+    setAndPersist({ goals });
+  },
+
   removeGoal(goalId: string) {
     const goal = state.goals.find((g) => g.id === goalId);
     const title = goal?.title ?? 'goal';
@@ -235,6 +241,21 @@ export const actions = {
   moveTaskToDate(taskId: string, date: string) {
     const tasks = state.tasks.map((t) => (t.id === taskId ? { ...t, date } : t));
     setAndPersist({ tasks });
+  },
+
+  // Sessions — study/work log, context only
+  addSession(goalId: string | null, date: string, minutes: number, note = '') {
+    if (minutes <= 0) return;
+    const session: Session = { id: uid(), goalId, date, minutes, note };
+    setAndPersist({ sessions: [...state.sessions, session] });
+  },
+
+  removeSession(sessionId: string) {
+    const s = state.sessions.find((x) => x.id === sessionId);
+    const label = s ? `Deleted ${s.minutes}m log · Undo` : 'Deleted log · Undo';
+    const snapshot = state.sessions.slice();
+    scheduleUndo(label, () => setAndPersist({ sessions: snapshot }));
+    setAndPersist({ sessions: state.sessions.filter((x) => x.id !== sessionId) });
   },
 
   // Structural reorder / indent / outdent
@@ -392,7 +413,7 @@ export const actions = {
 
   // IO
   exportBackup() {
-    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks }, state.zoom);
+    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions }, state.zoom);
     actions.showToast('Backup exported');
   },
 

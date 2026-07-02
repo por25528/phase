@@ -22,6 +22,7 @@ export interface Goal {
   deadline: string; // 'YYYY-MM-DD'
   nodes: GoalNode[];
   milestones?: Milestone[]; // markers only — never used in pct roll-up
+  notes?: string;           // free-form working notes — rides along in the goal object
 }
 
 export type ZoomLevel = 'year' | 'quarter' | 'month';
@@ -45,8 +46,17 @@ export interface Task {
   goalId: string | null; // tag FOR CONTEXT ONLY
 }
 
+export interface Session {
+  id: string;
+  goalId: string | null; // tag FOR CONTEXT ONLY — never moves a %
+  date: string;          // 'YYYY-MM-DD'
+  minutes: number;
+  note: string;
+}
+
 export interface AppState {
   goals: Goal[];
   habits: Habit[];
   tasks: Task[];
+  sessions: Session[];
 }
