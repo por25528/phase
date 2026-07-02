@@ -109,6 +109,12 @@ export function Calendar() {
         ))}
       </div>
 
+      {goals.length === 0 && tasks.length === 0 && (
+        <p className="text-faint text-[.85rem] italic mt-[10px]">
+          Nothing scheduled yet — add a goal in Goals › + new goal, or plan a task in Today.
+        </p>
+      )}
+
       <p className="text-[.76rem] text-muted mt-[10px]">
         ⚑ deadline · ◆ milestone · dots are habit check-ins. Click a day to open it in Today.
       </p>

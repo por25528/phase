@@ -426,12 +426,13 @@ export function Today() {
         Today
       </h1>
       <p className="text-muted text-[.86rem] mb-[30px]">
-        {new Date().toLocaleDateString('en-US', {
+        {parseD(selDate).toLocaleDateString('en-US', {
           weekday: 'long',
           month: 'long',
           day: 'numeric',
-        })}{' '}
-        — check your floors, plan ahead.
+        })}
+        {isToday ? ' — check your floors, plan ahead.' : ''}
+        {!isToday && <span className="text-faint"> · viewing another day</span>}
       </p>
 
       {/* ── Habits ──────────────────────────────────────── */}

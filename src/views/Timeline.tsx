@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useAppStore } from '../state/store';
-import { todayStr, parseD, fmtD } from '../lib/dates';
+import { todayStr, fmtD, daysLeftLabel } from '../lib/dates';
 import {
   zoomWindow, windowDays, windowFrac, windowSegments, expectedPct, behindPaceBy,
   moveSpan, resizeStart, resizeEnd, snapDelta,
@@ -15,15 +15,6 @@ type Drag = {
   goalId: string; mode: 'move' | 'start' | 'end'; originX: number; pxPerDay: number;
   orig: { start: string; deadline: string }; preview: { start: string; deadline: string }; moved: boolean;
 };
-
-function daysLeftLabel(deadline: string): string {
-  const today = parseD(todayStr());
-  const end = parseD(deadline);
-  const diff = Math.round((end.getTime() - today.getTime()) / 86_400_000);
-  if (diff === 0) return 'due today';
-  if (diff > 0) return `${diff} days left`;
-  return `${Math.abs(diff)} days overdue`;
-}
 
 export function Timeline() {
   const { goals, zoom, actions } = useAppStore();
@@ -95,8 +86,8 @@ export function Timeline() {
 
         {/* Empty state */}
         {goals.length === 0 && (
-          <div className="px-[12px] py-[32px] text-center text-muted text-[.86rem]">
-            Add a goal to see it on your year.
+          <div className="px-[12px] py-[32px] text-center text-faint text-[.85rem] italic">
+            Nothing on your year yet — add a goal in Goals › + new goal to see it here.
           </div>
         )}
 

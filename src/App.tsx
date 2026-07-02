@@ -11,7 +11,7 @@ import { ProgressBar } from './components/ProgressBar';
 import { firstOpenLeaf } from './lib/tree';
 import { goalPct } from './lib/pct';
 import { expectedPct, behindPaceBy } from './lib/timeline';
-import { todayStr } from './lib/dates';
+import { todayStr, daysLeftLabel } from './lib/dates';
 import { minutesThisWeek, fmtMinutes } from './lib/sessions';
 
 function InlineEdit({
@@ -209,6 +209,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
         <input type="date" value={g.deadline} aria-label="Deadline"
           onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, g.start, e.target.value); }}
           className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
+        <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
       </div>
       <div className="flex items-center gap-[11px]">
         <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">{pct}%</span>
@@ -271,6 +272,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
 export function App() {
   const { view, openGoalId, toast, pendingUndo, goals, actions } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     initStore();
@@ -295,6 +297,10 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [actions]);
 
+  useEffect(() => {
+    if (openGoalId) closeBtnRef.current?.focus();
+  }, [openGoalId]);
+
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
 
   return (
@@ -308,7 +314,7 @@ export function App() {
         <div className="font-disp text-[1.32rem] font-semibold tracking-[-0.01em] px-[8px] pb-[2px]">
           Phase<em className="not-italic text-accent italic">.</em>
         </div>
-        <div className="text-[.72rem] text-muted px-[8px] pb-[20px]">2026 · plan &amp; ship</div>
+        <div className="text-[.72rem] text-muted px-[8px] pb-[20px]">{`${new Date().getFullYear()} · plan & ship`}</div>
 
         {/* Nav */}
         <nav className="flex flex-col gap-[1px]">
@@ -389,6 +395,8 @@ export function App() {
         }`}
       >
         <button
+          ref={closeBtnRef}
+          aria-label="Close goal drawer"
           className="absolute top-[18px] right-[20px] text-muted text-[18px] px-[8px] py-[4px] rounded-[6px] hover:bg-hover"
           onClick={() => actions.closeDrawer()}
         >
