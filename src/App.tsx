@@ -276,6 +276,25 @@ export function App() {
     initStore();
   }, []);
 
+  useEffect(() => {
+    function onKey(e: globalThis.KeyboardEvent) {
+      const el = e.target as HTMLElement;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) {
+        if (e.key === 'Escape') el.blur();
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'Escape') { actions.closeDrawer(); return; }
+      if (e.key === '1') actions.setView('today');
+      if (e.key === '2') actions.setView('goals');
+      if (e.key === '3') actions.setView('timeline');
+      if (e.key === '4') actions.setView('calendar');
+      if (e.key === 't') { actions.setView('today'); actions.goToToday(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [actions]);
+
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
 
   return (
@@ -341,6 +360,7 @@ export function App() {
               e.target.value = '';
             }}
           />
+          <div className="text-[.68rem] text-faint px-[8px] pt-[8px]">1–4 switch views · t today · esc closes</div>
         </div>
       </aside>
 
