@@ -177,6 +177,11 @@ export const actions = {
     setAndPersist({ goals });
   },
 
+  setGoalNotes(goalId: string, notes: string) {
+    const goals = state.goals.map((g) => (g.id === goalId ? { ...g, notes } : g));
+    setAndPersist({ goals });
+  },
+
   removeGoal(goalId: string) {
     const goal = state.goals.find((g) => g.id === goalId);
     const title = goal?.title ?? 'goal';

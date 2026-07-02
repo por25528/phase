@@ -8,6 +8,7 @@ import { Calendar } from './views/Calendar';
 import { IconSun, IconTarget, IconBars, IconCalendar } from './components/Icons';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
+import { firstOpenLeaf } from './lib/tree';
 import { goalPct } from './lib/pct';
 import { expectedPct, behindPaceBy } from './lib/timeline';
 import { todayStr } from './lib/dates';
@@ -180,6 +181,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
   const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
   const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, todayStr()));
   const weekMins = minutesThisWeek(sessions, todayStr(), g.id);
+  const next = firstOpenLeaf(g.nodes);
   return (
     <>
       <div className="mb-[4px]">
@@ -222,6 +224,11 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           {fmtMinutes(weekMins)} logged this week
         </div>
       )}
+      {next && (
+        <div className="text-[.76rem] text-muted truncate mt-[2px]">
+          Next: <span className="text-ink-soft">{next.title}</span>
+        </div>
+      )}
       <div className="mt-[14px]">
         <GoalTree nodes={g.nodes} />
       </div>
@@ -242,6 +249,21 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
         />
       </div>
       <MilestonesSection goal={g} actions={actions} />
+
+      <div className="mt-[22px]">
+        <div className="text-[.72rem] font-[550] uppercase tracking-[0.07em] text-muted mb-[8px]">
+          Notes
+        </div>
+        <textarea
+          defaultValue={g.notes ?? ''}
+          key={g.id}
+          placeholder="Working notes — strategy, links, blockers…"
+          aria-label="Goal notes"
+          rows={5}
+          onBlur={(e) => { if (e.target.value !== (g.notes ?? '')) actions.setGoalNotes(g.id, e.target.value); }}
+          className="w-full mt-[6px] border border-line-2 rounded-[7px] bg-transparent px-[9px] py-[7px] text-[.85rem] leading-[1.5] text-ink placeholder:text-faint outline-none focus-visible:border-accent resize-y"
+        />
+      </div>
     </>
   );
 }

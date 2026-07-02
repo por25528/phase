@@ -20,6 +20,7 @@ import { useAppStore } from '../state/store';
 import { ProgressBar } from '../components/ProgressBar';
 import { GoalTree } from '../components/GoalTree';
 import { goalPct } from '../lib/pct';
+import { firstOpenLeaf } from '../lib/tree';
 import { fmtD, todayStr, parseD } from '../lib/dates';
 
 function leafCount(nodes: GoalNode[]): { total: number; done: number } {
@@ -195,6 +196,7 @@ function SortableGoalCard({
   const pct = Math.round(goalPct(goal));
   const leaves = leafCount(goal.nodes);
   const days = daysLeft(goal.deadline);
+  const next = firstOpenLeaf(goal.nodes);
 
   return (
     <div ref={setNodeRef} style={style} className="py-[18px] pb-[8px] border-b border-line group">
@@ -259,6 +261,12 @@ function SortableGoalCard({
         </span>
         <ProgressBar pct={pct} />
       </div>
+
+      {next && (
+        <div className="text-[.76rem] text-muted truncate mb-[6px]">
+          Next: <span className="text-ink-soft">{next.title}</span>
+        </div>
+      )}
 
       <GoalTree nodes={goal.nodes} />
       <AddRootInput onAdd={(title) => onAddRoot(goal.id, title)} />

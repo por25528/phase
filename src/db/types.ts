@@ -22,6 +22,7 @@ export interface Goal {
   deadline: string; // 'YYYY-MM-DD'
   nodes: GoalNode[];
   milestones?: Milestone[]; // markers only — never used in pct roll-up
+  notes?: string;           // free-form working notes — rides along in the goal object
 }
 
 export type ZoomLevel = 'year' | 'quarter' | 'month';
