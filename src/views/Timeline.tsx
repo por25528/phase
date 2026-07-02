@@ -1,13 +1,20 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAppStore } from '../state/store';
 import { todayStr, parseD, fmtD } from '../lib/dates';
-import { zoomWindow, windowFrac, windowSegments, expectedPct, behindPaceBy } from '../lib/timeline';
+import {
+  zoomWindow, windowDays, windowFrac, windowSegments, expectedPct, behindPaceBy,
+  moveSpan, resizeStart, resizeEnd, snapDelta,
+} from '../lib/timeline';
 import type { ZoomLevel } from '../db/types';
 import { goalPct } from '../lib/pct';
 
 const QUARTER_MONTHS = new Set([3, 6, 9]);
 
 type TipPos = { x: number; y: number; goalId: string };
+type Drag = {
+  goalId: string; mode: 'move' | 'start' | 'end'; originX: number; pxPerDay: number;
+  orig: { start: string; deadline: string }; preview: { start: string; deadline: string }; moved: boolean;
+};
 
 function daysLeftLabel(deadline: string): string {
   const today = parseD(todayStr());
@@ -26,6 +33,9 @@ export function Timeline() {
   const [barTip, setBarTip] = useState<TipPos | null>(null);
   const [flagTip, setFlagTip] = useState<TipPos | null>(null);
   const [msTip, setMsTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const suppressClick = useRef(false);
+  const total = windowDays(win);
 
   const barGoal = barTip ? (goals.find(g => g.id === barTip.goalId) ?? null) : null;
   const flagGoal = flagTip ? (goals.find(g => g.id === flagTip.goalId) ?? null) : null;
@@ -92,8 +102,9 @@ export function Timeline() {
 
         {/* Goal rows */}
         {goals.map((g, i) => {
-          const sf = windowFrac(g.start, win) * 100;
-          const ef = windowFrac(g.deadline, win) * 100;
+          const span = drag?.goalId === g.id ? drag.preview : { start: g.start, deadline: g.deadline };
+          const sf = windowFrac(span.start, win) * 100;
+          const ef = windowFrac(span.deadline, win) * 100;
           const out = ef < 0 || sf > 100;               // goal entirely outside window
           const left = Math.max(0, Math.min(100, sf));
           const right = Math.max(0, Math.min(100, ef));
@@ -148,10 +159,9 @@ export function Timeline() {
                   </span>
                 ) : (
                   <button
-                    className="absolute top-1/2 -translate-y-1/2 h-[22px] rounded-[6px] bg-track border border-line-2 cursor-pointer overflow-hidden flex items-center z-[2] transition-[border-color,box-shadow] hover:border-accent hover:ring-2 hover:ring-accent-tint focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-tint"
+                    className="absolute top-1/2 -translate-y-1/2 h-[22px] rounded-[6px] bg-track border border-line-2 cursor-grab active:cursor-grabbing touch-none overflow-hidden flex items-center z-[2] transition-[border-color,box-shadow] hover:border-accent hover:ring-2 hover:ring-accent-tint focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-tint"
                     style={{ left: `${left}%`, width: `${w}%` }}
-                    onClick={() => actions.openDrawer(g.id)}
-                    aria-label={`${g.title}: ${p}% complete, ${fmtD(g.start)}–${fmtD(g.deadline)}`}
+                    aria-label={`${g.title}: ${p}% complete, ${fmtD(g.start)}–${fmtD(g.deadline)}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
                     onMouseMove={(e) => setBarTip({ x: e.clientX, y: e.clientY, goalId: g.id })}
                     onMouseLeave={() => setBarTip(null)}
                     onFocus={(e) => {
@@ -159,7 +169,50 @@ export function Timeline() {
                       setBarTip({ x: r.left + r.width / 2, y: r.top, goalId: g.id });
                     }}
                     onBlur={() => setBarTip(null)}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const plotW = e.currentTarget.parentElement!.getBoundingClientRect().width;
+                      const off = e.clientX - rect.left;
+                      const mode = off < 8 ? 'start' : off > rect.width - 8 ? 'end' : 'move';
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      setDrag({ goalId: g.id, mode, originX: e.clientX, pxPerDay: plotW / total,
+                        orig: { start: g.start, deadline: g.deadline },
+                        preview: { start: g.start, deadline: g.deadline }, moved: false });
+                    }}
+                    onPointerMove={(e) => {
+                      if (!drag || drag.goalId !== g.id) return;
+                      const delta = snapDelta((e.clientX - drag.originX) / drag.pxPerDay, e.shiftKey ? 'week' : 'day');
+                      const preview =
+                        drag.mode === 'move' ? moveSpan(drag.orig.start, drag.orig.deadline, delta)
+                        : drag.mode === 'start' ? resizeStart(drag.orig.start, drag.orig.deadline, delta)
+                        : resizeEnd(drag.orig.start, drag.orig.deadline, delta);
+                      setDrag({ ...drag, preview, moved: drag.moved || Math.abs(e.clientX - drag.originX) > 3 });
+                    }}
+                    onPointerUp={() => {
+                      if (!drag || drag.goalId !== g.id) return;
+                      if (drag.moved) {
+                        suppressClick.current = true;
+                        if (drag.preview.start !== drag.orig.start || drag.preview.deadline !== drag.orig.deadline) {
+                          actions.setGoalDates(g.id, drag.preview.start, drag.preview.deadline);
+                        }
+                      }
+                      setDrag(null);
+                    }}
+                    onClick={() => {
+                      if (suppressClick.current) { suppressClick.current = false; return; }
+                      actions.openDrawer(g.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                      e.preventDefault();
+                      const d = (e.key === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 7 : 1);
+                      const next = e.altKey ? resizeEnd(g.start, g.deadline, d) : moveSpan(g.start, g.deadline, d);
+                      actions.setGoalDates(g.id, next.start, next.deadline);
+                    }}
                   >
+                    <span className="absolute inset-y-0 left-0 w-[8px] cursor-ew-resize" aria-hidden="true" />
+                    <span className="absolute inset-y-0 right-0 w-[8px] cursor-ew-resize" aria-hidden="true" />
                     <i className="tl-bar-fill" style={{ width: `${p}%` }} />
                     <b className="relative text-[.7rem] font-semibold text-white pl-[8px] [mix-blend-mode:difference] tabular-nums z-[2]">
                       {p}%
