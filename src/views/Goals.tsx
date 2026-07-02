@@ -19,6 +19,7 @@ import type { Goal, GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
 import { ProgressBar } from '../components/ProgressBar';
 import { GoalTree } from '../components/GoalTree';
+import { InlineEdit } from '../components/InlineEdit';
 import { goalPct } from '../lib/pct';
 import { firstOpenLeaf } from '../lib/tree';
 import { fmtD, todayStr, parseD } from '../lib/dates';
@@ -42,57 +43,6 @@ function daysLeft(deadline: string): number {
   const today = parseD(todayStr());
   const dl = parseD(deadline);
   return Math.ceil((dl.getTime() - today.getTime()) / 86_400_000);
-}
-
-function InlineEdit({
-  value,
-  className,
-  onCommit,
-  onCancel,
-}: {
-  value: string;
-  className: string;
-  onCommit: (v: string) => void;
-  onCancel: () => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const ref = useRef<HTMLInputElement>(null);
-  const escaped = useRef(false);
-
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-
-  function commit() {
-    const v = draft.trim();
-    if (v) onCommit(v);
-    else onCancel();
-  }
-
-  return (
-    <input
-      ref={ref}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      className={`${className} bg-transparent outline-none p-0 min-w-0`}
-      style={{ border: 'none', borderBottom: '1px solid #C8512F' }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          escaped.current = false;
-          commit();
-        }
-        if (e.key === 'Escape') {
-          escaped.current = true;
-          onCancel();
-        }
-      }}
-      onBlur={() => {
-        if (!escaped.current) commit();
-      }}
-    />
-  );
 }
 
 function NewGoalForm({
@@ -218,7 +168,7 @@ function SortableGoalCard({
           {editingGoalId === goal.id ? (
             <InlineEdit
               value={goal.title}
-              className="font-disp text-[1.18rem] font-semibold tracking-[-0.01em] w-full"
+              className="font-disp text-[1.18rem] font-semibold tracking-[-0.01em]"
               onCommit={(v) => { onRename(goal.id, v); setEditingGoalId(null); }}
               onCancel={() => setEditingGoalId(null)}
             />

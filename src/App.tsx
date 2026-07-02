@@ -7,62 +7,12 @@ import { Timeline } from './views/Timeline';
 import { Calendar } from './views/Calendar';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
+import { InlineEdit } from './components/InlineEdit';
 import { firstOpenLeaf } from './lib/tree';
 import { goalPct } from './lib/pct';
 import { expectedPct, behindPaceBy } from './lib/timeline';
 import { todayStr, daysLeftLabel } from './lib/dates';
 import { minutesThisWeek, fmtMinutes } from './lib/sessions';
-
-function InlineEdit({
-  value,
-  className,
-  onCommit,
-  onCancel,
-}: {
-  value: string;
-  className: string;
-  onCommit: (v: string) => void;
-  onCancel: () => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const ref = useRef<HTMLInputElement>(null);
-  const escaped = useRef(false);
-
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-
-  function commit() {
-    const v = draft.trim();
-    if (v) onCommit(v);
-    else onCancel();
-  }
-
-  return (
-    <input
-      ref={ref}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      className={`${className} bg-transparent outline-none p-0 w-full min-w-0`}
-      style={{ border: 'none', borderBottom: '1px solid #C8512F' }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          escaped.current = false;
-          commit();
-        }
-        if (e.key === 'Escape') {
-          escaped.current = true;
-          onCancel();
-        }
-      }}
-      onBlur={() => {
-        if (!escaped.current) commit();
-      }}
-    />
-  );
-}
 
 function todayISO(): string {
   const d = new Date();
