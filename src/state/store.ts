@@ -58,7 +58,9 @@ function setAndPersist(patch: Partial<AppState>) {
   const next = { ...state, ...patch };
   state = next;
   notify();
-  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks });
+  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks }).catch(() => {
+    actions.showToast('Saving failed — export a backup now');
+  });
 }
 
 // Walk all goals and collect container node ids for auto-expand on init
