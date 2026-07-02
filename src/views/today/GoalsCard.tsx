@@ -68,7 +68,7 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
             </span>
             <span className="block h-[4px] rounded-full bg-track overflow-hidden">
               <span
-                className={`block h-full rounded-full ${pct > 0 ? 'bg-fill' : 'bg-[#D5C9AE]'}`}
+                className={`block h-full rounded-full ${pct > 0 ? 'bg-fill' : 'bg-dot-off'}`}
                 style={{ width: `${Math.max(pct, 2)}%` }}
               />
             </span>
