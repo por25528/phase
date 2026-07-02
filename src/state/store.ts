@@ -230,6 +230,11 @@ export const actions = {
     setAndPersist({ tasks: state.tasks.filter((t) => t.id !== taskId) });
   },
 
+  moveTaskToDate(taskId: string, date: string) {
+    const tasks = state.tasks.map((t) => (t.id === taskId ? { ...t, date } : t));
+    setAndPersist({ tasks });
+  },
+
   // Structural reorder / indent / outdent
   indentNode(nodeId: string): void {
     const goals = treeIndentNode(state.goals, nodeId);

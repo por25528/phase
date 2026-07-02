@@ -378,6 +378,7 @@ export function Today() {
   }, []);
 
   const dayTasks = tasks.filter(t => t.date === selDate);
+  const overdue = tasks.filter(t => !t.done && t.date < today);
   const habitIds = habits.map(h => h.id);
   const taskIds = dayTasks.map(t => t.id);
 
@@ -512,6 +513,31 @@ export function Today() {
           </button>
         )}
       </div>
+
+      {isToday && overdue.length > 0 && (
+        <div className="mb-[14px] border border-line rounded-[7px] px-[10px] py-[8px] bg-panel">
+          <div className="text-[.72rem] font-[550] uppercase tracking-[.07em] text-muted mb-[4px]">Overdue</div>
+          {overdue.map(t => {
+            const goal = t.goalId ? goals.find(g => g.id === t.goalId) : null;
+            return (
+              <div key={t.id} className="flex items-center gap-[10px] py-[4px] group">
+                <TodayCheckbox checked={t.done} onToggle={() => actions.toggleTask(t.id)}
+                  ariaLabel={`Mark "${t.title}" done`} />
+                <span className="flex-1 text-[.88rem] text-ink-soft">{t.title}</span>
+                <span className="text-[.72rem] text-muted tabular-nums">{fmtD(t.date)}</span>
+                {goal && <Tag label={goal.title} />}
+                <button type="button" onClick={() => actions.moveTaskToDate(t.id, today)}
+                  className="text-[.76rem] text-ink-soft px-[7px] py-[2px] rounded-[5px] border border-line-2 hover:bg-hover">
+                  → today
+                </button>
+                <button type="button" onClick={() => actions.removeTask(t.id)}
+                  aria-label={`Remove task "${t.title}"`}
+                  className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {dayTasks.length === 0 && (
         <div className="text-faint text-[.85rem] italic py-[6px]">
