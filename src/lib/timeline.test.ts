@@ -160,3 +160,53 @@ describe('behindPaceBy', () => {
     expect(behindPaceBy(pct, '2026-01-01', '2026-04-11', '2026-02-20')).toBe(0);
   });
 });
+
+import { zoomWindow, windowDays, windowFrac, windowSegments } from './timeline';
+
+describe('zoomWindow', () => {
+  it('year spans Jan 1 – Dec 31 of today year', () => {
+    expect(zoomWindow('year', '2026-07-02')).toEqual({ start: '2026-01-01', end: '2026-12-31' });
+  });
+  it('quarter spans the current quarter', () => {
+    expect(zoomWindow('quarter', '2026-07-02')).toEqual({ start: '2026-07-01', end: '2026-09-30' });
+    expect(zoomWindow('quarter', '2026-01-15')).toEqual({ start: '2026-01-01', end: '2026-03-31' });
+    expect(zoomWindow('quarter', '2026-12-31')).toEqual({ start: '2026-10-01', end: '2026-12-31' });
+  });
+  it('month spans the current month', () => {
+    expect(zoomWindow('month', '2026-02-10')).toEqual({ start: '2026-02-01', end: '2026-02-28' });
+  });
+});
+
+describe('windowDays / windowFrac', () => {
+  const july = { start: '2026-07-01', end: '2026-07-31' };
+  it('counts inclusive days', () => {
+    expect(windowDays(july)).toBe(31);
+    expect(windowDays(zoomWindow('year', '2026-07-02'))).toBe(365);
+  });
+  it('frac is 0 at start, 1 at day after end, negative before', () => {
+    expect(windowFrac('2026-07-01', july)).toBe(0);
+    expect(windowFrac('2026-08-01', july)).toBe(1);
+    expect(windowFrac('2026-06-30', july)).toBeLessThan(0);
+    expect(windowFrac('2026-07-17', july)).toBeCloseTo(16 / 31);
+  });
+});
+
+describe('windowSegments', () => {
+  it('year → 12 month segments summing to 365', () => {
+    const segs = windowSegments('year', zoomWindow('year', '2026-07-02'));
+    expect(segs).toHaveLength(12);
+    expect(segs[0]).toEqual({ label: 'Jan', days: 31 });
+    expect(segs.reduce((s, x) => s + x.days, 0)).toBe(365);
+  });
+  it('quarter → 3 month segments', () => {
+    expect(windowSegments('quarter', zoomWindow('quarter', '2026-07-02'))).toEqual([
+      { label: 'Jul', days: 31 }, { label: 'Aug', days: 31 }, { label: 'Sep', days: 30 },
+    ]);
+  });
+  it('month → weekly segments', () => {
+    expect(windowSegments('month', zoomWindow('month', '2026-07-02'))).toEqual([
+      { label: 'W1', days: 7 }, { label: 'W2', days: 7 }, { label: 'W3', days: 7 },
+      { label: 'W4', days: 7 }, { label: 'W5', days: 3 },
+    ]);
+  });
+});

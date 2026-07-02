@@ -8,7 +8,8 @@ import { IconSun, IconTarget, IconBars } from './components/Icons';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
 import { goalPct } from './lib/pct';
-import { fmtD } from './lib/dates';
+import { expectedPct, behindPaceBy } from './lib/timeline';
+import { todayStr } from './lib/dates';
 
 function InlineEdit({
   value,
@@ -173,6 +174,8 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const pct = Math.round(goalPct(g));
+  const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
+  const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, todayStr()));
   return (
     <>
       <div className="mb-[4px]">
@@ -192,12 +195,23 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           </div>
         )}
       </div>
-      <div className="text-[.78rem] text-muted mt-[4px] mb-[14px]">
-        {fmtD(g.start)} → {fmtD(g.deadline)}
+      <div className="flex items-center gap-[6px] mt-[4px] mb-[14px]">
+        <input type="date" value={g.start} aria-label="Start date"
+          onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, e.target.value, g.deadline); }}
+          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
+        <span className="text-[.78rem] text-muted">→</span>
+        <input type="date" value={g.deadline} aria-label="Deadline"
+          onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, g.start, e.target.value); }}
+          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
       </div>
       <div className="flex items-center gap-[11px]">
         <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">{pct}%</span>
         <ProgressBar pct={pct} />
+      </div>
+      <div className="text-[.74rem] text-muted mt-[6px] tabular-nums">
+        {behind > 0
+          ? `${behind} pts behind pace · expected ${expected}% by today`
+          : `on pace · expected ${expected}% by today`}
       </div>
       <div className="mt-[14px]">
         <GoalTree nodes={g.nodes} />

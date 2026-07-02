@@ -58,7 +58,9 @@ function setAndPersist(patch: Partial<AppState>) {
   const next = { ...state, ...patch };
   state = next;
   notify();
-  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks });
+  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks }).catch(() => {
+    actions.showToast('Saving failed — export a backup now');
+  });
 }
 
 // Walk all goals and collect container node ids for auto-expand on init
@@ -228,6 +230,11 @@ export const actions = {
     const snapshot = JSON.parse(JSON.stringify(state.tasks)) as Task[];
     scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ tasks: snapshot }));
     setAndPersist({ tasks: state.tasks.filter((t) => t.id !== taskId) });
+  },
+
+  moveTaskToDate(taskId: string, date: string) {
+    const tasks = state.tasks.map((t) => (t.id === taskId ? { ...t, date } : t));
+    setAndPersist({ tasks });
   },
 
   // Structural reorder / indent / outdent
