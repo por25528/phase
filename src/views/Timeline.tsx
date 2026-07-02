@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../state/store';
 import { todayStr, parseD, fmtD } from '../lib/dates';
-import { zoomWindow, windowFrac, windowSegments } from '../lib/timeline';
+import { zoomWindow, windowFrac, windowSegments, expectedPct, behindPaceBy } from '../lib/timeline';
 import type { ZoomLevel } from '../db/types';
 import { goalPct } from '../lib/pct';
 
@@ -205,6 +205,16 @@ export function Timeline() {
           </div>
           <div className="text-[.72rem] text-muted tabular-nums">
             {daysLeftLabel(barGoal.deadline)}
+          </div>
+          <div className="text-[.72rem] text-muted tabular-nums">
+            {(() => {
+              const actual = Math.round(goalPct(barGoal));
+              const behind = Math.round(behindPaceBy(actual, barGoal.start, barGoal.deadline, todayStr()));
+              const expected = Math.round(expectedPct(barGoal.start, barGoal.deadline, todayStr()));
+              return behind > 0
+                ? `${behind} pts behind pace · expected ${expected}% by today`
+                : `on pace · expected ${expected}% by today`;
+            })()}
           </div>
         </div>
       )}

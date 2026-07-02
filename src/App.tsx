@@ -8,6 +8,8 @@ import { IconSun, IconTarget, IconBars } from './components/Icons';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
 import { goalPct } from './lib/pct';
+import { expectedPct, behindPaceBy } from './lib/timeline';
+import { todayStr } from './lib/dates';
 
 function InlineEdit({
   value,
@@ -172,6 +174,8 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const pct = Math.round(goalPct(g));
+  const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
+  const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, todayStr()));
   return (
     <>
       <div className="mb-[4px]">
@@ -203,6 +207,11 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
       <div className="flex items-center gap-[11px]">
         <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">{pct}%</span>
         <ProgressBar pct={pct} />
+      </div>
+      <div className="text-[.74rem] text-muted mt-[6px] tabular-nums">
+        {behind > 0
+          ? `${behind} pts behind pace · expected ${expected}% by today`
+          : `on pace · expected ${expected}% by today`}
       </div>
       <div className="mt-[14px]">
         <GoalTree nodes={g.nodes} />
