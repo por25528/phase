@@ -161,7 +161,15 @@ describe('behindPaceBy', () => {
   });
 });
 
-import { zoomWindow, windowDays, windowFrac, windowSegments } from './timeline';
+import {
+  zoomWindow,
+  windowDays,
+  windowFrac,
+  windowSegments,
+  shiftAnchor,
+  defaultNodeSpan,
+  spanOutside,
+} from './timeline';
 
 describe('zoomWindow', () => {
   it('year spans Jan 1 – Dec 31 of today year', () => {
@@ -174,6 +182,121 @@ describe('zoomWindow', () => {
   });
   it('month spans the current month', () => {
     expect(zoomWindow('month', '2026-02-10')).toEqual({ start: '2026-02-01', end: '2026-02-28' });
+  });
+
+  // Non-today anchor cases: zoomWindow must derive the window from the
+  // passed-in anchor date, not from "today" — proving it already works
+  // for arbitrary anchors (e.g. when the user has paged the timeline).
+  it('year spans Jan 1 – Dec 31 of a non-today anchor year', () => {
+    expect(zoomWindow('year', '2027-03-15')).toEqual({ start: '2027-01-01', end: '2027-12-31' });
+  });
+  it('quarter spans the anchor quarter for a non-today anchor', () => {
+    expect(zoomWindow('quarter', '2026-11-15')).toEqual({ start: '2026-10-01', end: '2026-12-31' });
+  });
+  it('month spans the anchor month for a non-today anchor', () => {
+    expect(zoomWindow('month', '2025-05-20')).toEqual({ start: '2025-05-01', end: '2025-05-31' });
+  });
+});
+
+describe('shiftAnchor', () => {
+  it('year: shifts by n years, same month/day', () => {
+    expect(shiftAnchor('year', '2026-07-02', 1)).toBe('2027-07-02');
+    expect(shiftAnchor('year', '2026-07-02', -1)).toBe('2025-07-02');
+    expect(shiftAnchor('year', '2026-07-02', 3)).toBe('2029-07-02');
+  });
+  it('quarter: shifts by 3n months', () => {
+    expect(shiftAnchor('quarter', '2026-07-02', 1)).toBe('2026-10-02');
+    expect(shiftAnchor('quarter', '2026-07-02', -1)).toBe('2026-04-02');
+    expect(shiftAnchor('quarter', '2026-11-15', 1)).toBe('2027-02-15');
+  });
+  it('month: shifts by n months', () => {
+    expect(shiftAnchor('month', '2026-07-02', 1)).toBe('2026-08-02');
+    expect(shiftAnchor('month', '2026-01-15', -1)).toBe('2025-12-15');
+    expect(shiftAnchor('month', '2026-07-02', 0)).toBe('2026-07-02');
+  });
+  it('clamps day into target month on overflow (Jan 31 -> Feb 28)', () => {
+    expect(shiftAnchor('month', '2026-01-31', 1)).toBe('2026-02-28');
+  });
+  it('clamps day into target month on overflow for a leap year', () => {
+    expect(shiftAnchor('month', '2028-01-31', 1)).toBe('2028-02-29');
+  });
+  it('clamps day for quarter shift landing on a shorter month', () => {
+    // Nov 30 + 3 months (quarter) -> Feb 28 (2026 is not a leap year)
+    expect(shiftAnchor('quarter', '2025-11-30', 1)).toBe('2026-02-28');
+  });
+  it('clamps day for year shift landing on Feb 29 in a non-leap year', () => {
+    expect(shiftAnchor('year', '2028-02-29', 1)).toBe('2029-02-28');
+  });
+});
+
+describe('defaultNodeSpan', () => {
+  it('today within goal span: start = today, deadline = today + 6 days', () => {
+    const goal = { start: '2026-01-01', deadline: '2026-12-31' };
+    expect(defaultNodeSpan(goal, '2026-06-01')).toEqual({
+      start: '2026-06-01',
+      deadline: '2026-06-07',
+    });
+  });
+  it('today before goal start: start = goal.start, deadline = goal.start + 6 days', () => {
+    const goal = { start: '2026-06-01', deadline: '2026-12-31' };
+    expect(defaultNodeSpan(goal, '2026-01-01')).toEqual({
+      start: '2026-06-01',
+      deadline: '2026-06-07',
+    });
+  });
+  it('today after goal deadline: start clamps to goal.deadline (0-day span)', () => {
+    const goal = { start: '2026-01-01', deadline: '2026-06-01' };
+    expect(defaultNodeSpan(goal, '2026-12-31')).toEqual({
+      start: '2026-06-01',
+      deadline: '2026-06-01',
+    });
+  });
+  it('deadline is capped at goal.deadline when the 7-day window would overrun', () => {
+    const goal = { start: '2026-01-01', deadline: '2026-06-03' };
+    expect(defaultNodeSpan(goal, '2026-06-01')).toEqual({
+      start: '2026-06-01',
+      deadline: '2026-06-03',
+    });
+  });
+  it('goal span shorter than 7 days: span is whatever fits, start = max(today, goal.start)', () => {
+    const goal = { start: '2026-06-01', deadline: '2026-06-03' };
+    expect(defaultNodeSpan(goal, '2026-01-01')).toEqual({
+      start: '2026-06-01',
+      deadline: '2026-06-03',
+    });
+  });
+  it('goal span is a single day: 0-day span at that day', () => {
+    const goal = { start: '2026-06-01', deadline: '2026-06-01' };
+    expect(defaultNodeSpan(goal, '2026-01-01')).toEqual({
+      start: '2026-06-01',
+      deadline: '2026-06-01',
+    });
+  });
+  it('today exactly on goal.deadline: 0-day span at deadline', () => {
+    const goal = { start: '2026-01-01', deadline: '2026-06-01' };
+    expect(defaultNodeSpan(goal, '2026-06-01')).toEqual({
+      start: '2026-06-01',
+      deadline: '2026-06-01',
+    });
+  });
+});
+
+describe('spanOutside', () => {
+  const goal = { start: '2026-01-01', deadline: '2026-12-31' };
+  it('false when span is fully within goal bounds', () => {
+    expect(spanOutside({ start: '2026-02-01', deadline: '2026-03-01' }, goal)).toBe(false);
+  });
+  it('false when span exactly matches goal bounds', () => {
+    expect(spanOutside({ start: '2026-01-01', deadline: '2026-12-31' }, goal)).toBe(false);
+  });
+  it('true when span starts before goal.start', () => {
+    expect(spanOutside({ start: '2025-12-31', deadline: '2026-06-01' }, goal)).toBe(true);
+  });
+  it('true when span ends after goal.deadline', () => {
+    expect(spanOutside({ start: '2026-06-01', deadline: '2027-01-01' }, goal)).toBe(true);
+  });
+  it('true when both bounds are outside', () => {
+    expect(spanOutside({ start: '2025-01-01', deadline: '2027-01-01' }, goal)).toBe(true);
   });
 });
 
