@@ -106,13 +106,13 @@ function LeafCheckbox({
       aria-checked={checked}
       aria-label={label}
       className={`w-[17px] h-[17px] flex-shrink-0 border-[1.5px] rounded-[5px] grid place-items-center transition-all duration-100 ${
-        checked ? 'bg-fill border-fill' : 'border-line-2 hover:border-muted'
+        checked ? 'bg-accent border-accent' : 'border-line-2 hover:border-muted'
       }`}
       onClick={onToggle}
     >
       <svg
         viewBox="0 0 12 12"
-        className={`w-[11px] h-[11px] stroke-white fill-none transition-opacity duration-100 ${
+        className={`w-[11px] h-[11px] stroke-accent-contrast fill-none transition-opacity duration-100 ${
           checked ? 'opacity-100' : 'opacity-0'
         }`}
         strokeWidth={2.4}
