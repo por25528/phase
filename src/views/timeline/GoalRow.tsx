@@ -38,12 +38,13 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, zoom, isExpanded, on
   const flagDeadline = preview ? preview.deadline : g.deadline;
   const ef = windowFrac(flagDeadline, win) * 100;
   const p = Math.round(goalPct(g));
+  const showToday = tf >= 0 && tf <= 100;
 
   return (
     <div className={isLast ? '' : 'border-b border-line'}>
       <div className="group flex items-stretch min-h-[52px]">
         {/* Lane label */}
-        <div className="w-[160px] flex-shrink-0 border-r border-line px-[12px] py-[8px] flex items-center gap-[7px] group-hover:bg-hover">
+        <div className="w-[200px] flex-shrink-0 border-r border-line px-[12px] py-[8px] flex items-center gap-[7px] group-hover:bg-hover">
           <button
             type="button"
             onClick={onToggle}
@@ -70,7 +71,7 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, zoom, isExpanded, on
 
         {/* Plot area */}
         <div className="flex-1 relative">
-          <PlotGrid segs={segs} tf={tf} zoom={zoom} />
+          <PlotGrid segs={segs} tf={tf} zoom={zoom} showToday={showToday} />
 
           {/* Goal bar — keyboard-accessible draggable/resizable span */}
           <SpanBar

@@ -9,10 +9,10 @@ import { SpanBar } from './SpanBar';
 
 export const QUARTER_MONTHS = new Set([3, 6, 9]);
 
-const LABEL_W = 160;
-
-/** Shared month-grid + today-line backdrop for a plot area. */
-export function PlotGrid({ segs, tf, zoom }: { segs: Segment[]; tf: number; zoom: ZoomLevel }) {
+/** Shared month-grid + today-line backdrop for a plot area. `showToday` gates the
+ * today-line — callers should only pass `true` when today falls inside the window
+ * (`tf` in `[0, 100]`), since a window that doesn't contain today has no today-line. */
+export function PlotGrid({ segs, tf, zoom, showToday }: { segs: Segment[]; tf: number; zoom: ZoomLevel; showToday: boolean }) {
   return (
     <>
       <div className="absolute inset-0 flex pointer-events-none">
@@ -30,10 +30,12 @@ export function PlotGrid({ segs, tf, zoom }: { segs: Segment[]; tf: number; zoom
           />
         ))}
       </div>
-      <div
-        className="absolute top-0 bottom-0 w-[1.5px] bg-accent opacity-55 z-[3] pointer-events-none"
-        style={{ left: `${tf}%` }}
-      />
+      {showToday && (
+        <div
+          className="absolute top-0 bottom-0 w-[1.5px] bg-accent opacity-55 z-[3] pointer-events-none"
+          style={{ left: `${tf}%` }}
+        />
+      )}
     </>
   );
 }
@@ -55,19 +57,31 @@ type NodeTip = { x: number; y: number; text: string };
  */
 export function NodeLane({ goal, win, segs, tf, zoom }: NodeLaneProps) {
   const { actions } = useAppStore();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
   const [plotW, setPlotW] = useState(0);
   const [tip, setTip] = useState<NodeTip | null>(null);
+  const showToday = tf >= 0 && tf <= 100;
 
+  // Measure the plot column's own width directly (not the whole row minus a
+  // hardcoded label width) via a zero-height ruler that mirrors the real
+  // label-column + plot-column split. Always mounted, so it tracks resizes
+  // even while no node lane happens to be rendered yet.
   useLayoutEffect(() => {
-    const el = rootRef.current;
+    const el = plotRef.current;
     if (!el) return;
-    const update = () => setPlotW(Math.max(0, el.clientWidth - LABEL_W));
+    const update = () => setPlotW(el.clientWidth);
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  const ruler = (
+    <div className="flex h-0 overflow-hidden" aria-hidden="true">
+      <div className="w-[200px] flex-shrink-0" />
+      <div ref={plotRef} className="flex-1" />
+    </div>
+  );
 
   const isScheduled = (n: GoalNode) => Boolean(n.start && n.deadline);
   const scheduled = goal.nodes.filter(isScheduled);
@@ -75,14 +89,18 @@ export function NodeLane({ goal, win, segs, tf, zoom }: NodeLaneProps) {
 
   if (goal.nodes.length === 0) {
     return (
-      <div ref={rootRef} className="pl-[28px] pr-[12px] py-[9px] text-[.78rem] text-faint italic">
-        No sub-goals yet — add them in the drawer.
+      <div>
+        {ruler}
+        <div className="pl-[28px] pr-[12px] py-[9px] text-[.78rem] text-faint italic">
+          No sub-goals yet — add them in the drawer.
+        </div>
       </div>
     );
   }
 
   return (
-    <div ref={rootRef}>
+    <div>
+      {ruler}
       {scheduled.map((node) => {
         const span = { start: node.start!, deadline: node.deadline! };
         const warn = spanOutside(span, { start: goal.start, deadline: goal.deadline });
@@ -92,7 +110,7 @@ export function NodeLane({ goal, win, segs, tf, zoom }: NodeLaneProps) {
         return (
           <div key={node.id} className="group flex items-stretch h-[34px] border-t border-line">
             {/* Lane label */}
-            <div className="w-[160px] flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center justify-between gap-[4px] group-hover:bg-hover">
+            <div className="w-[200px] flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center justify-between gap-[4px] group-hover:bg-hover">
               <span className="text-[.78rem] text-ink-soft truncate">{node.title}</span>
               <button
                 type="button"
@@ -106,7 +124,7 @@ export function NodeLane({ goal, win, segs, tf, zoom }: NodeLaneProps) {
 
             {/* Plot area */}
             <div className="flex-1 relative">
-              <PlotGrid segs={segs} tf={tf} zoom={zoom} />
+              <PlotGrid segs={segs} tf={tf} zoom={zoom} showToday={showToday} />
               <SpanBar
                 span={span}
                 win={win}
@@ -128,7 +146,7 @@ export function NodeLane({ goal, win, segs, tf, zoom }: NodeLaneProps) {
       {/* Unscheduled tray */}
       {unscheduled.length > 0 && (
         <div className="flex items-stretch min-h-[30px] border-t border-line">
-          <div className="w-[160px] flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center">
+          <div className="w-[200px] flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center">
             <span className="font-mono text-[.6rem] tracking-[.1em] uppercase text-faint">Unscheduled</span>
           </div>
           <div className="flex-1 flex items-center gap-[6px] px-[8px] py-[4px] flex-wrap">

@@ -358,10 +358,13 @@ export function App() {
           <div className="max-w-[1280px] mx-auto px-[36px] pb-[40px]">
             <Today />
           </div>
+        ) : view === 'timeline' ? (
+          <div className="max-w-[1280px] mx-auto px-[36px] py-[32px]">
+            <Timeline />
+          </div>
         ) : (
           <div className="max-w-[880px] mx-auto px-[40px] py-[42px] pb-[90px]">
             {view === 'goals' && <Goals />}
-            {view === 'timeline' && <Timeline />}
             {view === 'calendar' && <Calendar />}
           </div>
         )}
