@@ -21,6 +21,7 @@ import { SectionLabel } from '../components/SectionLabel';
 import { Tag } from '../components/Tag';
 import { TodayHeatmap } from '../components/TodayHeatmap';
 import { Hero } from './today/Hero';
+import { WeekStrip } from './today/WeekStrip';
 import { QuickAdd } from './today/QuickAdd';
 import type { QuickType } from './today/QuickAdd';
 import { TodayCheckbox } from './today/TodayCheckbox';
@@ -380,7 +381,7 @@ export function Today() {
         <QuickAdd type={quickType} onType={setQuickType} inputRef={quickRef} />
       </div>
 
-      {/* WeekStrip mounts here in Task 6 */}
+      <WeekStrip />
 
       {/* Main grid */}
       <div className="today-main grid gap-[22px] items-start mt-[20px]">
