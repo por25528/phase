@@ -62,8 +62,19 @@
   .ghost-in::placeholder {
     @apply text-faint;
   }
+
+  /* Today dashboard responsive grids */
+  .today-hero { grid-template-columns: minmax(0, 1fr) 396px; }
+  .today-main { grid-template-columns: minmax(0, 1fr) 372px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+}
+
+@media (max-width: 1160px) {
+  .today-hero, .today-main { grid-template-columns: 1fr; }
+}
+@media (max-width: 1000px) {
+  .hb-dots { display: none; }
 }

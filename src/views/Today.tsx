@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import type { KeyboardEvent } from 'react';
 import {
   DndContext,
@@ -20,43 +20,15 @@ import { useAppStore } from '../state/store';
 import { SectionLabel } from '../components/SectionLabel';
 import { Tag } from '../components/Tag';
 import { TodayHeatmap } from '../components/TodayHeatmap';
+import { Hero } from './today/Hero';
+import { QuickAdd } from './today/QuickAdd';
+import type { QuickType } from './today/QuickAdd';
+import { TodayCheckbox } from './today/TodayCheckbox';
+import { GripIcon } from './today/GripIcon';
+import { useReducedMotion } from './today/useReducedMotion';
 import { todayStr, addDays, fmtD, parseD, weekDates, streak } from '../lib/dates';
 import { minutesOn, minutesThisWeek, fmtMinutes } from '../lib/sessions';
 import type { Cadence } from '../db/types';
-
-// Local accessible checkbox — real <button> with role + aria-checked
-function TodayCheckbox({
-  checked,
-  onToggle,
-  ariaLabel,
-}: {
-  checked: boolean;
-  onToggle: () => void;
-  ariaLabel?: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={checked}
-      aria-label={ariaLabel}
-      onClick={onToggle}
-      className={`w-[17px] h-[17px] border-[1.5px] rounded-[5px] flex-shrink-0 grid place-items-center transition-colors duration-100 ${
-        checked ? 'bg-fill border-fill' : 'border-line-2 hover:border-muted'
-      }`}
-    >
-      <svg
-        viewBox="0 0 12 12"
-        className={`w-[11px] h-[11px] stroke-white fill-none transition-opacity duration-100 ${
-          checked ? 'opacity-100' : 'opacity-0'
-        }`}
-        strokeWidth={2.4}
-      >
-        <path d="M2 6.2 4.6 9 10 3" />
-      </svg>
-    </button>
-  );
-}
 
 // Segmented cadence toggle + weekly target stepper, shown inline when adding a habit
 function AddHabitForm({
@@ -156,26 +128,6 @@ function AddHabitForm({
         </button>
       </div>
     </div>
-  );
-}
-
-// Drag handle icon
-function GripIcon() {
-  return (
-    <svg
-      viewBox="0 0 10 16"
-      width="10"
-      height="16"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <circle cx="3" cy="3" r="1.2" />
-      <circle cx="7" cy="3" r="1.2" />
-      <circle cx="3" cy="8" r="1.2" />
-      <circle cx="7" cy="8" r="1.2" />
-      <circle cx="3" cy="13" r="1.2" />
-      <circle cx="7" cy="13" r="1.2" />
-    </svg>
   );
 }
 
@@ -370,15 +322,15 @@ export function Today() {
   const [taskGoalId, setTaskGoalId] = useState('');
   const [logMins, setLogMins] = useState('30');
   const [logGoalId, setLogGoalId] = useState('');
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const reducedMotion = useReducedMotion();
 
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReducedMotion(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+  const quickRef = useRef<HTMLInputElement>(null);
+  const [quickType, setQuickType] = useState<QuickType>('task');
+  function focusQuick(t: QuickType) {
+    setQuickType(t);
+    quickRef.current?.focus();
+  }
+  void focusQuick; // wired up in Task 10 (GoalsCard)
 
   const dayTasks = tasks.filter(t => t.date === selDate);
   const overdue = tasks.filter(t => !t.done && t.date < today);
@@ -421,20 +373,18 @@ export function Today() {
   }
 
   return (
-    <div>
-      <h1 className="font-disp text-[1.74rem] font-semibold tracking-[-0.015em] mb-[3px]">
-        Today
-      </h1>
-      <p className="text-muted text-[.86rem] mb-[30px]">
-        {parseD(selDate).toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-        })}
-        {isToday ? ' — check your floors, plan ahead.' : ''}
-        {!isToday && <span className="text-faint"> · viewing another day</span>}
-      </p>
+    <div className="pt-[26px]">
+      {/* Hero + quick add */}
+      <div className="today-hero grid gap-[28px] items-end mb-[20px]">
+        <Hero />
+        <QuickAdd type={quickType} onType={setQuickType} inputRef={quickRef} />
+      </div>
 
+      {/* WeekStrip mounts here in Task 6 */}
+
+      {/* Main grid */}
+      <div className="today-main grid gap-[22px] items-start mt-[20px]">
+        <div className="flex flex-col gap-[18px] min-w-0">
       {/* ── Habits ──────────────────────────────────────── */}
       <SectionLabel first>Habits — today</SectionLabel>
 
@@ -646,6 +596,13 @@ export function Today() {
           ))}
         </select>
       </div>
+        </div>
+        <div className="flex flex-col gap-[18px] min-w-0">
+          {/* GoalsCard (Task 10) and MiniCalendar (Task 11) mount here */}
+        </div>
+      </div>
+
+      {/* FooterStats mounts here in Task 12 */}
     </div>
   );
 }
