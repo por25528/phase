@@ -6,6 +6,7 @@ import { StudyLogCard } from './today/StudyLogCard';
 import { TasksCard } from './today/TasksCard';
 import { GoalsCard } from './today/GoalsCard';
 import { MiniCalendar } from './today/MiniCalendar';
+import { FooterStats } from './today/FooterStats';
 import { QuickAdd } from './today/QuickAdd';
 import type { QuickType } from './today/QuickAdd';
 
@@ -40,7 +41,7 @@ export function Today() {
         </div>
       </div>
 
-      {/* FooterStats mounts here in Task 12 */}
+      <FooterStats />
     </div>
   );
 }
