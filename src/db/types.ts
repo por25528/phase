@@ -57,4 +57,5 @@ export interface AppState {
   goals: Goal[];
   habits: Habit[];
   tasks: Task[];
+  sessions: Session[];
 }

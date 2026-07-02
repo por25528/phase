@@ -11,6 +11,7 @@ import { ProgressBar } from './components/ProgressBar';
 import { goalPct } from './lib/pct';
 import { expectedPct, behindPaceBy } from './lib/timeline';
 import { todayStr } from './lib/dates';
+import { minutesThisWeek, fmtMinutes } from './lib/sessions';
 
 function InlineEdit({
   value,
@@ -172,11 +173,13 @@ function MilestonesSection({
 }
 
 function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
+  const { sessions } = useAppStore();
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const pct = Math.round(goalPct(g));
   const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
   const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, todayStr()));
+  const weekMins = minutesThisWeek(sessions, todayStr(), g.id);
   return (
     <>
       <div className="mb-[4px]">
@@ -214,6 +217,11 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           ? `${behind} pts behind pace · expected ${expected}% by today`
           : `on pace · expected ${expected}% by today`}
       </div>
+      {weekMins > 0 && (
+        <div className="text-[.74rem] text-muted mt-[2px] tabular-nums">
+          {fmtMinutes(weekMins)} logged this week
+        </div>
+      )}
       <div className="mt-[14px]">
         <GoalTree nodes={g.nodes} />
       </div>

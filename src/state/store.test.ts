@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../db/db', () => ({
-  loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [] })),
+  loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadZoom: vi.fn(async () => 'year'),
   saveZoom: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
@@ -87,5 +87,25 @@ describe('store actions', () => {
     actions.addTask('T', '2026-01-05', null);
     actions.moveTaskToDate(getState().tasks[0].id, '2026-07-02');
     expect(getState().tasks[0].date).toBe('2026-07-02');
+  });
+
+  it('addSession logs; non-positive minutes are ignored', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addSession('g1', '2026-07-02', 30, 'Studied');
+    expect(getState().sessions).toHaveLength(1);
+    expect(getState().sessions[0].minutes).toBe(30);
+    actions.addSession('g1', '2026-07-02', 0, 'noop');
+    expect(getState().sessions).toHaveLength(1);
+  });
+
+  it('removeSession schedules undo; undoLastDelete restores the log', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addSession(null, '2026-07-02', 45);
+    const sid = getState().sessions[0].id;
+    actions.removeSession(sid);
+    expect(getState().sessions).toHaveLength(0);
+    expect(getState().pendingUndo).not.toBeNull();
+    actions.undoLastDelete();
+    expect(getState().sessions).toHaveLength(1);
   });
 });

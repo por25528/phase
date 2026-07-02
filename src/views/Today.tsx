@@ -21,6 +21,7 @@ import { SectionLabel } from '../components/SectionLabel';
 import { Tag } from '../components/Tag';
 import { TodayHeatmap } from '../components/TodayHeatmap';
 import { todayStr, addDays, fmtD, parseD, weekDates, streak } from '../lib/dates';
+import { minutesOn, minutesThisWeek, fmtMinutes } from '../lib/sessions';
 import type { Cadence } from '../db/types';
 
 // Local accessible checkbox — real <button> with role + aria-checked
@@ -352,7 +353,7 @@ function SortableTaskRow({ t, goal, onToggle, onRemove, reducedMotion }: Sortabl
 }
 
 export function Today() {
-  const { goals, habits, tasks, selDate, actions } = useAppStore();
+  const { goals, habits, tasks, sessions, selDate, actions } = useAppStore();
   const today = todayStr();
   const isToday = selDate === today;
   const wd = parseD(selDate).toLocaleDateString('en-US', { weekday: 'long' });
@@ -367,6 +368,8 @@ export function Today() {
 
   const [addingHabit, setAddingHabit] = useState(false);
   const [taskGoalId, setTaskGoalId] = useState('');
+  const [logMins, setLogMins] = useState('30');
+  const [logGoalId, setLogGoalId] = useState('');
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -479,6 +482,59 @@ export function Today() {
           </button>
         )}
       </div>
+
+      {/* ── Study log ───────────────────────────────────── */}
+      <SectionLabel>Study log</SectionLabel>
+      {(() => {
+        const daySessions = sessions.filter(s => s.date === selDate);
+        return (
+          <>
+            {daySessions.length === 0 && (
+              <div className="text-faint text-[.85rem] italic py-[6px]">
+                Nothing logged for {rel.toLowerCase()} yet.
+              </div>
+            )}
+            {daySessions.map(s => {
+              const goal = s.goalId ? goals.find(g => g.id === s.goalId) : null;
+              return (
+                <div key={s.id} className="flex items-center gap-[10px] p-[6px] rounded-[6px] hover:bg-hover group">
+                  <span className="text-[.8rem] font-semibold tabular-nums text-ink min-w-[52px]">{fmtMinutes(s.minutes)}</span>
+                  <span className="flex-1 text-[.88rem] text-ink-soft">{s.note || 'Session'}</span>
+                  {goal && <Tag label={goal.title} />}
+                  <button type="button" onClick={() => actions.removeSession(s.id)} aria-label="Remove session"
+                    className="text-faint text-[.8rem] hover:text-[#b4453a] opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                </div>
+              );
+            })}
+            {daySessions.length > 0 && (
+              <div className="text-[.74rem] text-muted mt-[4px] px-[6px] tabular-nums">
+                {fmtMinutes(minutesOn(sessions, selDate))} total · {fmtMinutes(minutesThisWeek(sessions, today))} this week
+              </div>
+            )}
+            {/* add row: minutes number input + note + goal select, Enter submits */}
+            <div className="flex items-center gap-[8px] mt-[8px]">
+              <input type="number" min={1} max={600} value={logMins} onChange={e => setLogMins(e.target.value)}
+                aria-label="Minutes" placeholder="min"
+                className="w-[64px] border border-line-2 rounded-[6px] px-[6px] py-[4px] text-[.82rem] bg-panel text-ink tabular-nums" />
+              <input className="ghost-in" placeholder="What did you work on?" aria-label="Session note"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const mins = parseInt(logMins, 10);
+                    if (mins > 0) {
+                      actions.addSession(logGoalId || null, selDate, mins, (e.target as HTMLInputElement).value.trim());
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }
+                }} />
+              <select className="border border-line-2 rounded-[6px] px-[6px] py-[4px] text-[.78rem] bg-panel text-ink-soft"
+                value={logGoalId} onChange={e => setLogGoalId(e.target.value)} aria-label="Tag session to a goal">
+                <option value="">no goal</option>
+                {goals.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+              </select>
+            </div>
+          </>
+        );
+      })()}
 
       {/* ── Tasks ───────────────────────────────────────── */}
       <SectionLabel>Tasks</SectionLabel>
