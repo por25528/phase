@@ -5,6 +5,7 @@ import { HabitsCard } from './today/HabitsCard';
 import { StudyLogCard } from './today/StudyLogCard';
 import { TasksCard } from './today/TasksCard';
 import { GoalsCard } from './today/GoalsCard';
+import { MiniCalendar } from './today/MiniCalendar';
 import { QuickAdd } from './today/QuickAdd';
 import type { QuickType } from './today/QuickAdd';
 
@@ -35,7 +36,7 @@ export function Today() {
         </div>
         <div className="flex flex-col gap-[18px] min-w-0">
           <GoalsCard onAddGoal={() => focusQuick('goal')} />
-          {/* MiniCalendar mounts here in Task 11 */}
+          <MiniCalendar />
         </div>
       </div>
 
