@@ -310,11 +310,8 @@ export function App() {
           <span className="font-disp text-[1.5rem] font-[650] tracking-[-0.01em]">
             Phase<span className="text-accent">.</span>
           </span>
-          <span className="font-mono text-[.7rem] tracking-[.09em] text-muted uppercase">
-            {new Date().getFullYear()} · plan &amp; ship
-          </span>
         </div>
-        <nav className="flex gap-[4px]">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–4 switch views · T jumps to today · Esc closes">
           {(
             [
               ['today', 'Today'],

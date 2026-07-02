@@ -300,10 +300,7 @@ export function Goals() {
 
   return (
     <div>
-      <h1 className="font-disp text-[1.74rem] font-semibold tracking-[-0.015em] mb-[3px]">Goals</h1>
-      <p className="text-muted text-[.86rem] mb-[30px]">
-        Each goal is a tree. Tick the leaves; the percentage rolls up on its own.
-      </p>
+      <h1 className="font-disp text-[1.4rem] font-semibold tracking-[-0.015em] mb-[16px]">Goals</h1>
 
       <DndContext
         sensors={sensors}

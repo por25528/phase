@@ -33,10 +33,7 @@ export function Timeline() {
 
   return (
     <div>
-      <h1 className="font-disp text-[1.74rem] font-semibold tracking-[-0.015em] mb-[3px]">Timeline</h1>
-      <p className="text-muted text-[.86rem] mb-[30px]">
-        Your year as production phases. Bar length is the time span; the fill is progress. Click a bar to open its plan.
-      </p>
+      <h1 className="font-disp text-[1.4rem] font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
 
       <div className="flex justify-end mb-[10px]">
         <div className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium">
@@ -244,10 +241,6 @@ export function Timeline() {
           );
         })}
       </div>
-
-      <p className="text-[.76rem] text-muted mt-[10px]">
-        The line marks today; flags mark deadlines. Click any bar to open its plan — ticking sub-goals fills the bar live.
-      </p>
 
       {/* Bar tooltip — fixed so it escapes the card's overflow:hidden */}
       {barGoal && barTip && (
