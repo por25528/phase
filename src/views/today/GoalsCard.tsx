@@ -5,6 +5,7 @@ import { firstOpenLeaf } from '../../lib/tree';
 import { deadlineChip } from '../../lib/today';
 import { todayStr } from '../../lib/dates';
 import { behindPaceBy } from '../../lib/timeline';
+import { BehindChip } from '../../components/BehindChip';
 
 export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
   const { goals, tasks, actions } = useAppStore();
@@ -57,11 +58,7 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
           >
             <span className="flex items-baseline gap-[10px]">
               <span className="font-disp text-[.98rem] font-semibold flex-1 min-w-0 truncate">{g.title}</span>
-              {behind >= 10 && (
-                <span className="text-[.66rem] font-semibold px-[7px] py-[1px] rounded-full bg-warn-tint text-warn whitespace-nowrap flex-none">
-                  {behind} pts behind
-                </span>
-              )}
+              {behind >= 10 && <BehindChip pts={behind} className="flex-none" />}
               <span className="font-mono text-[.62rem] tracking-[.05em] text-muted flex-none tabular-nums">
                 {deadlineChip(g.deadline, today)}
               </span>

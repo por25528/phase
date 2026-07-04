@@ -7,6 +7,7 @@ import type { Goal } from '../../db/types';
 import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
 import { NodeLane, CanvasGrid } from './NodeLane';
+import { BehindChip } from '../../components/BehindChip';
 import { useReducedMotion } from '../today/useReducedMotion';
 
 interface GoalRowProps {
@@ -43,6 +44,7 @@ export const GoalRow = memo(function GoalRow({
   const flagDeadline = preview ? preview.deadline : g.deadline;
   const flagX = dateToX(flagDeadline, rangeStart, pxPerDay);
   const p = Math.round(goalPct(g));
+  const behind = Math.round(behindPaceBy(p, g.start, g.deadline, todayStr()));
 
   return (
     <div className={isLast ? '' : 'border-b border-line'}>
@@ -70,6 +72,12 @@ export const GoalRow = memo(function GoalRow({
           <div className="flex flex-col justify-center gap-[2px] min-w-0">
             <span className="text-[.66rem] text-faint font-semibold tracking-[.06em]">#{i + 1}</span>
             <span className="text-[.84rem] font-medium text-ink leading-[1.25]">{g.title}</span>
+            <span className="flex items-center gap-[5px] min-w-0">
+              <span className="text-[.68rem] text-muted tabular-nums truncate">
+                {p}% · {daysLeftLabel(g.deadline)}
+              </span>
+              {behind >= 10 && <BehindChip pts={behind} className="flex-none" />}
+            </span>
           </div>
         </div>
 

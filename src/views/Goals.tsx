@@ -27,7 +27,8 @@ import { goalPct } from '../lib/pct';
 import { firstOpenLeaf } from '../lib/tree';
 import { todayStr } from '../lib/dates';
 import { deadlineChip } from '../lib/today';
-import { behindPaceBy } from '../lib/timeline';
+import { behindPaceBy, expectedPct } from '../lib/timeline';
+import { BehindChip } from '../components/BehindChip';
 
 // Priority columns, left → right = highest → lowest. Order IS the priority model:
 // a goal's column sets its tier, its height within the column sets rank in-tier.
@@ -140,6 +141,7 @@ function GoalCardVisual({ goal, overlay }: { goal: Goal; overlay?: boolean }) {
   const leaves = leafCount(goal.nodes);
   const next = firstOpenLeaf(goal.nodes);
   const behind = Math.round(behindPaceBy(pct, goal.start, goal.deadline, todayStr()));
+  const expected = Math.round(expectedPct(goal.start, goal.deadline, todayStr()));
 
   return (
     <div
@@ -160,11 +162,10 @@ function GoalCardVisual({ goal, overlay }: { goal: Goal; overlay?: boolean }) {
         <span className="font-mono text-[.6rem] tracking-[.04em] text-muted tabular-nums">
           {deadlineChip(goal.deadline, todayStr())}
         </span>
-        {behind >= 10 && (
-          <span className="text-[.62rem] font-semibold px-[6px] py-[1px] rounded-full bg-warn-tint text-warn whitespace-nowrap">
-            {behind} behind
-          </span>
+        {expected > 0 && expected < 100 && (
+          <span className="text-[.72rem] text-muted tabular-nums">exp {expected}%</span>
         )}
+        {behind >= 10 && <BehindChip pts={behind} />}
       </div>
       <div className="text-[.72rem] text-muted truncate">
         Next: <span className="text-ink-soft">{next ? next.title : 'Define the first step'}</span>
