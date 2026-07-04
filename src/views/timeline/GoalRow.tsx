@@ -1,32 +1,38 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, daysLeftLabel } from '../../lib/dates';
-import { windowFrac, expectedPct, behindPaceBy } from '../../lib/timeline';
-import type { DateWindow, Segment } from '../../lib/timeline';
+import { expectedPct, behindPaceBy, dateToX } from '../../lib/timeline';
+import type { CanvasSeg } from '../../lib/timeline';
 import type { Goal } from '../../db/types';
 import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
-import { NodeLane, PlotGrid } from './NodeLane';
+import { NodeLane, CanvasGrid } from './NodeLane';
 import { useReducedMotion } from '../today/useReducedMotion';
 
 interface GoalRowProps {
   goal: Goal;
   index: number;
-  win: DateWindow;
-  segs: Segment[];
-  tf: number;
+  rangeStart: string;
+  pxPerDay: number;
+  segs: CanvasSeg[];
+  todayX: number;
+  canvasW: number;
   isExpanded: boolean;
-  onToggle(): void;
+  onToggle(id: string): void;
   isLast: boolean;
 }
 
 /**
- * One goal's Timeline row: the lane-label column (chevron + `#n` kicker + title),
- * the plot area (month grid + today line + goal SpanBar + deadline flag +
- * milestones), and — when expanded — the NodeLane sub-goal section. Owns its own
- * tooltip/preview state; the fixed-position tooltips escape the card overflow.
+ * One goal's Timeline row: the sticky lane-label column (chevron + `#n` kicker +
+ * title), the canvas plot area (segment grid + today line + goal SpanBar +
+ * deadline flag + milestones), and — when expanded — the NodeLane sub-goal
+ * section. Owns its own tooltip/preview state; the fixed-position tooltips
+ * escape the card overflow. Memoized so scroll-driven header re-renders in the
+ * parent don't touch every row.
  */
-export function GoalRow({ goal: g, index: i, win, segs, tf, isExpanded, onToggle, isLast }: GoalRowProps) {
+export const GoalRow = memo(function GoalRow({
+  goal: g, index: i, rangeStart, pxPerDay, segs, todayX, canvasW, isExpanded, onToggle, isLast,
+}: GoalRowProps) {
   const { actions } = useAppStore();
   const reduced = useReducedMotion();
   const [barTip, setBarTip] = useState<{ x: number; y: number } | null>(null);
@@ -35,18 +41,17 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, isExpanded, onToggle
   const [preview, setPreview] = useState<Span | null>(null);
 
   const flagDeadline = preview ? preview.deadline : g.deadline;
-  const ef = windowFrac(flagDeadline, win) * 100;
+  const flagX = dateToX(flagDeadline, rangeStart, pxPerDay);
   const p = Math.round(goalPct(g));
-  const showToday = tf >= 0 && tf <= 100;
 
   return (
     <div className={isLast ? '' : 'border-b border-line'}>
       <div className="group flex items-stretch min-h-[52px]">
-        {/* Lane label */}
-        <div className="w-[200px] flex-shrink-0 border-r border-line px-[12px] py-[8px] flex items-center gap-[7px] group-hover:bg-hover">
+        {/* Lane label — sticky so it stays put while the canvas scrolls under it */}
+        <div className="sticky left-0 z-[10] w-[200px] flex-shrink-0 border-r border-line px-[12px] py-[8px] flex items-center gap-[7px] bg-panel group-hover:bg-hover">
           <button
             type="button"
-            onClick={onToggle}
+            onClick={() => onToggle(g.id)}
             aria-expanded={isExpanded}
             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${g.title}`}
             className="flex-shrink-0 w-[16px] h-[16px] flex items-center justify-center text-muted hover:text-ink rounded-[3px] hover:bg-hover-deep"
@@ -69,13 +74,14 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, isExpanded, onToggle
         </div>
 
         {/* Plot area */}
-        <div className="flex-1 relative">
-          <PlotGrid segs={segs} tf={tf} showToday={showToday} />
+        <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
+          <CanvasGrid segs={segs} rangeStart={rangeStart} pxPerDay={pxPerDay} todayX={todayX} />
 
           {/* Goal bar — keyboard-accessible draggable/resizable span */}
           <SpanBar
             span={{ start: g.start, deadline: g.deadline }}
-            win={win}
+            rangeStart={rangeStart}
+            pxPerDay={pxPerDay}
             pct={p}
             label={`${p}%`}
             ariaLabel={`${g.title}: ${p}% complete, ${fmtD(g.start)}–${fmtD(g.deadline)}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
@@ -87,41 +93,44 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, isExpanded, onToggle
           />
 
           {/* Deadline flag — hover reveals date tooltip */}
-          {ef >= 0 && ef <= 100 && (
-            <div
-              className="absolute top-[4px] bottom-[4px] w-[2px] bg-accent z-[4] cursor-default"
-              style={{ left: `${ef}%` }}
-              onMouseEnter={(e) => {
-                setBarTip(null);
-                setFlagTip({ x: e.clientX, y: e.clientY });
-              }}
-              onMouseLeave={() => setFlagTip(null)}
-            >
-              <span className="absolute top-[-1px] left-[-2px] border-[3px] border-transparent border-t-accent pointer-events-none" />
-            </div>
-          )}
+          <div
+            className="absolute top-[4px] bottom-[4px] w-[2px] bg-accent z-[4] cursor-default"
+            style={{ left: `${flagX}px` }}
+            onMouseEnter={(e) => {
+              setBarTip(null);
+              setFlagTip({ x: e.clientX, y: e.clientY });
+            }}
+            onMouseLeave={() => setFlagTip(null)}
+          >
+            <span className="absolute top-[-1px] left-[-2px] border-[3px] border-transparent border-t-accent pointer-events-none" />
+          </div>
 
           {/* Milestone markers */}
-          {(g.milestones ?? []).map((m) => {
-            const mf = windowFrac(m.date, win) * 100;
-            if (mf < 0 || mf > 100) return null;
-            return (
-              <span
-                key={m.id}
-                className="absolute top-[3px] -translate-x-1/2 text-accent text-[.58rem] leading-none z-[4] cursor-default select-none"
-                style={{ left: `${mf}%` }}
-                onMouseEnter={(e) => setMsTip({ x: e.clientX, y: e.clientY, text: `${m.title} · ${fmtD(m.date)}` })}
-                onMouseLeave={() => setMsTip(null)}
-              >
-                ◆
-              </span>
-            );
-          })}
+          {(g.milestones ?? []).map((m) => (
+            <span
+              key={m.id}
+              className="absolute top-[3px] -translate-x-1/2 text-accent text-[.58rem] leading-none z-[4] cursor-default select-none"
+              style={{ left: `${dateToX(m.date, rangeStart, pxPerDay)}px` }}
+              onMouseEnter={(e) => setMsTip({ x: e.clientX, y: e.clientY, text: `${m.title} · ${fmtD(m.date)}` })}
+              onMouseLeave={() => setMsTip(null)}
+            >
+              ◆
+            </span>
+          ))}
         </div>
       </div>
 
       {/* Expanded sub-goal lanes + unscheduled tray */}
-      {isExpanded && <NodeLane goal={g} win={win} segs={segs} tf={tf} />}
+      {isExpanded && (
+        <NodeLane
+          goal={g}
+          rangeStart={rangeStart}
+          pxPerDay={pxPerDay}
+          segs={segs}
+          todayX={todayX}
+          canvasW={canvasW}
+        />
+      )}
 
       {/* Bar tooltip — fixed so it escapes the card's overflow:hidden */}
       {barTip && (
@@ -169,4 +178,4 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, isExpanded, onToggle
       )}
     </div>
   );
-}
+});

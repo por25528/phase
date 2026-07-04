@@ -64,37 +64,8 @@ export function behindPaceBy(
   return Math.max(0, expectedPct(start, deadline, todayStr) - actualPct);
 }
 
-export interface DateWindow { start: string; end: string } // both inclusive
-
 function iso(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// TEMPORARY 'week' branches below keep the old windowed UI alive between the
-// ZoomLevel migration and the canvas rewrite; they die with these functions.
-export function zoomWindow(zoom: ZoomLevel, today: string): DateWindow {
-  const d = parseD(today);
-  const y = d.getFullYear();
-  if (zoom === 'week') {
-    const start = addDays(today, -d.getDay());
-    return { start, end: addDays(start, 6) };
-  }
-  if (zoom === 'quarter') {
-    const q = Math.floor(d.getMonth() / 3) * 3;
-    return { start: iso(new Date(y, q, 1)), end: iso(new Date(y, q + 3, 0)) };
-  }
-  return { start: iso(new Date(y, d.getMonth(), 1)), end: iso(new Date(y, d.getMonth() + 1, 0)) };
-}
-
-export function shiftAnchor(zoom: ZoomLevel, anchor: string, n: number): string {
-  if (zoom === 'week') return addDays(anchor, 7 * n);
-  const d = parseD(anchor);
-  const months = zoom === 'quarter' ? 3 * n : n;
-  const targetYear = d.getFullYear() + Math.floor((d.getMonth() + months) / 12);
-  const targetMonth = ((d.getMonth() + months) % 12 + 12) % 12;
-  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
-  const day = Math.min(d.getDate(), lastDay);
-  return iso(new Date(targetYear, targetMonth, day));
 }
 
 export function defaultNodeSpan(
@@ -240,40 +211,3 @@ export function daySegments(range: DateRange): CanvasSeg[] {
   return segs;
 }
 
-export function windowDays(win: DateWindow): number {
-  return daysBetween(win.start, win.end) + 1;
-}
-
-export function windowFrac(date: string, win: DateWindow): number {
-  return daysBetween(win.start, date) / windowDays(win);
-}
-
-export interface Segment { label: string; days: number }
-
-export function windowSegments(zoom: ZoomLevel, win: DateWindow): Segment[] {
-  if (zoom === 'week') {
-    const segs: Segment[] = [];
-    for (let i = 0; i < 7; i++) {
-      segs.push({ label: String(parseD(addDays(win.start, i)).getDate()), days: 1 });
-    }
-    return segs;
-  }
-  if (zoom === 'month') {
-    const total = windowDays(win);
-    const segs: Segment[] = [];
-    for (let done = 0, w = 1; done < total; w++) {
-      const days = Math.min(7, total - done);
-      segs.push({ label: `W${w}`, days });
-      done += days;
-    }
-    return segs;
-  }
-  const startD = parseD(win.start);
-  const segs: Segment[] = [];
-  for (let k = 0; k < 3; k++) {
-    const first = new Date(startD.getFullYear(), startD.getMonth() + k, 1);
-    const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
-    segs.push({ label: MO[first.getMonth()], days });
-  }
-  return segs;
-}

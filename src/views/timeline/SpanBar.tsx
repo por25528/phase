@@ -1,13 +1,11 @@
 import { useRef, useState } from 'react';
-import type { DateWindow } from '../../lib/timeline';
-import { moveSpan, resizeStart, resizeEnd, snapDelta, windowDays, windowFrac } from '../../lib/timeline';
+import { moveSpan, resizeStart, resizeEnd, snapDelta, dateToX, daysBetween } from '../../lib/timeline';
 
 export type Span = { start: string; deadline: string };
 
 type Drag = {
   mode: 'move' | 'start' | 'end';
   originX: number;
-  pxPerDay: number;
   orig: Span;
   preview: Span;
   moved: boolean;
@@ -15,7 +13,8 @@ type Drag = {
 
 export interface SpanBarProps {
   span: Span;
-  win: DateWindow;
+  rangeStart: string;
+  pxPerDay: number;
   pct: number;
   label: string;
   ariaLabel: string;
@@ -29,36 +28,21 @@ export interface SpanBarProps {
 
 /**
  * A single draggable/resizable timeline bar: pointer-capture drag (move/start/end
- * zones, 8px edges), keyboard nudge (ArrowLeft/Right, Shift=week, Alt=resize end),
- * and an out-of-window `‹ earlier` / `later ›` marker. Owns its own drag state —
- * each instance manages itself; the parent only supplies the committed span and
+ * zones, 8px edges) and keyboard nudge (ArrowLeft/Right, Shift=week, Alt=resize
+ * end). Positioned in canvas px — `dateToX` against the canvas range at a fixed
+ * px-per-day, exclusive-end (right edge sits at the start of the deadline day).
+ * Owns its own drag state; the parent only supplies the committed span and
  * receives `onCommit`/`onOpen`/`onHover` callbacks.
  */
 export function SpanBar({
-  span, win, pct, label, ariaLabel, height, warn, onCommit, onOpen, onHover, onPreview,
+  span, rangeStart, pxPerDay, pct, label, ariaLabel, height, warn, onCommit, onOpen, onHover, onPreview,
 }: SpanBarProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const suppressClick = useRef(false);
-  const total = windowDays(win);
 
   const effective = drag ? drag.preview : span;
-  const sf = windowFrac(effective.start, win) * 100;
-  const ef = windowFrac(effective.deadline, win) * 100;
-  const out = ef < 0 || sf > 100; // span entirely outside window
-  const left = Math.max(0, Math.min(100, sf));
-  const right = Math.max(0, Math.min(100, ef));
-  const w = Math.max(right - left, 2);
-
-  if (out) {
-    return (
-      <span
-        className="absolute top-1/2 -translate-y-1/2 text-[.72rem] text-faint"
-        style={{ left: ef < 0 ? '8px' : undefined, right: sf > 100 ? '8px' : undefined }}
-      >
-        {ef < 0 ? '‹ earlier' : 'later ›'}
-      </span>
-    );
-  }
+  const left = dateToX(effective.start, rangeStart, pxPerDay);
+  const w = Math.max(daysBetween(effective.start, effective.deadline) * pxPerDay, 8);
 
   return (
     <button
@@ -67,7 +51,7 @@ export function SpanBar({
           ? 'border-warn hover:border-warn hover:ring-2 hover:ring-warn-tint focus-visible:border-warn focus-visible:ring-2 focus-visible:ring-warn-tint'
           : 'border-line-2 hover:border-accent hover:ring-2 hover:ring-accent-tint focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-tint'
       }`}
-      style={{ left: `${left}%`, width: `${w}%`, height: `${height}px` }}
+      style={{ left: `${left}px`, width: `${w}px`, height: `${height}px` }}
       aria-label={ariaLabel}
       onMouseMove={(e) => onHover?.({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => onHover?.(null)}
@@ -79,15 +63,14 @@ export function SpanBar({
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         const rect = e.currentTarget.getBoundingClientRect();
-        const plotW = e.currentTarget.parentElement!.getBoundingClientRect().width;
         const off = e.clientX - rect.left;
         const mode = off < 8 ? 'start' : off > rect.width - 8 ? 'end' : 'move';
         e.currentTarget.setPointerCapture(e.pointerId);
-        setDrag({ mode, originX: e.clientX, pxPerDay: plotW / total, orig: span, preview: span, moved: false });
+        setDrag({ mode, originX: e.clientX, orig: span, preview: span, moved: false });
       }}
       onPointerMove={(e) => {
         if (!drag) return;
-        const delta = snapDelta((e.clientX - drag.originX) / drag.pxPerDay, e.shiftKey ? 'week' : 'day');
+        const delta = snapDelta((e.clientX - drag.originX) / pxPerDay, e.shiftKey ? 'week' : 'day');
         const preview =
           drag.mode === 'move' ? moveSpan(drag.orig.start, drag.orig.deadline, delta)
           : drag.mode === 'start' ? resizeStart(drag.orig.start, drag.orig.deadline, delta)

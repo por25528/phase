@@ -309,7 +309,7 @@ export function App() {
             <Today />
           </div>
         ) : view === 'timeline' ? (
-          <div className="max-w-[1280px] mx-auto px-[36px] py-[32px]">
+          <div className="w-full px-[36px] py-[32px]">
             <Timeline />
           </div>
         ) : view === 'goals' ? (

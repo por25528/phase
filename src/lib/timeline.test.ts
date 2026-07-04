@@ -162,66 +162,9 @@ describe('behindPaceBy', () => {
 });
 
 import {
-  zoomWindow,
-  windowDays,
-  windowFrac,
-  windowSegments,
-  shiftAnchor,
   defaultNodeSpan,
   spanOutside,
 } from './timeline';
-
-describe('zoomWindow', () => {
-  it('week spans Sunday–Saturday around the anchor', () => {
-    // 2026-07-02 is a Thursday; its week is Jun 28 (Sun) – Jul 4 (Sat)
-    expect(zoomWindow('week', '2026-07-02')).toEqual({ start: '2026-06-28', end: '2026-07-04' });
-  });
-  it('quarter spans the current quarter', () => {
-    expect(zoomWindow('quarter', '2026-07-02')).toEqual({ start: '2026-07-01', end: '2026-09-30' });
-    expect(zoomWindow('quarter', '2026-01-15')).toEqual({ start: '2026-01-01', end: '2026-03-31' });
-    expect(zoomWindow('quarter', '2026-12-31')).toEqual({ start: '2026-10-01', end: '2026-12-31' });
-  });
-  it('month spans the current month', () => {
-    expect(zoomWindow('month', '2026-02-10')).toEqual({ start: '2026-02-01', end: '2026-02-28' });
-  });
-
-  // Non-today anchor cases: zoomWindow must derive the window from the
-  // passed-in anchor date, not from "today" — proving it already works
-  // for arbitrary anchors (e.g. when the user has paged the timeline).
-  it('quarter spans the anchor quarter for a non-today anchor', () => {
-    expect(zoomWindow('quarter', '2026-11-15')).toEqual({ start: '2026-10-01', end: '2026-12-31' });
-  });
-  it('month spans the anchor month for a non-today anchor', () => {
-    expect(zoomWindow('month', '2025-05-20')).toEqual({ start: '2025-05-01', end: '2025-05-31' });
-  });
-});
-
-describe('shiftAnchor', () => {
-  it('week: shifts by 7n days', () => {
-    expect(shiftAnchor('week', '2026-07-02', 1)).toBe('2026-07-09');
-    expect(shiftAnchor('week', '2026-07-02', -1)).toBe('2026-06-25');
-  });
-  it('quarter: shifts by 3n months', () => {
-    expect(shiftAnchor('quarter', '2026-07-02', 1)).toBe('2026-10-02');
-    expect(shiftAnchor('quarter', '2026-07-02', -1)).toBe('2026-04-02');
-    expect(shiftAnchor('quarter', '2026-11-15', 1)).toBe('2027-02-15');
-  });
-  it('month: shifts by n months', () => {
-    expect(shiftAnchor('month', '2026-07-02', 1)).toBe('2026-08-02');
-    expect(shiftAnchor('month', '2026-01-15', -1)).toBe('2025-12-15');
-    expect(shiftAnchor('month', '2026-07-02', 0)).toBe('2026-07-02');
-  });
-  it('clamps day into target month on overflow (Jan 31 -> Feb 28)', () => {
-    expect(shiftAnchor('month', '2026-01-31', 1)).toBe('2026-02-28');
-  });
-  it('clamps day into target month on overflow for a leap year', () => {
-    expect(shiftAnchor('month', '2028-01-31', 1)).toBe('2028-02-29');
-  });
-  it('clamps day for quarter shift landing on a shorter month', () => {
-    // Nov 30 + 3 months (quarter) -> Feb 28 (2026 is not a leap year)
-    expect(shiftAnchor('quarter', '2025-11-30', 1)).toBe('2026-02-28');
-  });
-});
 
 describe('defaultNodeSpan', () => {
   it('today within goal span: start = today, deadline = today + 6 days', () => {
@@ -451,36 +394,3 @@ describe('canvas constants', () => {
   });
 });
 
-describe('windowDays / windowFrac', () => {
-  const july = { start: '2026-07-01', end: '2026-07-31' };
-  it('counts inclusive days', () => {
-    expect(windowDays(july)).toBe(31);
-    expect(windowDays(zoomWindow('week', '2026-07-02'))).toBe(7);
-  });
-  it('frac is 0 at start, 1 at day after end, negative before', () => {
-    expect(windowFrac('2026-07-01', july)).toBe(0);
-    expect(windowFrac('2026-08-01', july)).toBe(1);
-    expect(windowFrac('2026-06-30', july)).toBeLessThan(0);
-    expect(windowFrac('2026-07-17', july)).toBeCloseTo(16 / 31);
-  });
-});
-
-describe('windowSegments', () => {
-  it('week → 7 day segments', () => {
-    const segs = windowSegments('week', zoomWindow('week', '2026-07-02'));
-    expect(segs).toHaveLength(7);
-    expect(segs.every((s) => s.days === 1)).toBe(true);
-    expect(segs[0].label).toBe('28'); // Jun 28
-  });
-  it('quarter → 3 month segments', () => {
-    expect(windowSegments('quarter', zoomWindow('quarter', '2026-07-02'))).toEqual([
-      { label: 'Jul', days: 31 }, { label: 'Aug', days: 31 }, { label: 'Sep', days: 30 },
-    ]);
-  });
-  it('month → weekly segments', () => {
-    expect(windowSegments('month', zoomWindow('month', '2026-07-02'))).toEqual([
-      { label: 'W1', days: 7 }, { label: 'W2', days: 7 }, { label: 'W3', days: 7 },
-      { label: 'W4', days: 7 }, { label: 'W5', days: 3 },
-    ]);
-  });
-});
