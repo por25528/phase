@@ -1,4 +1,4 @@
-import { parseD, addDays, pad, MO } from './dates';
+import { parseD, addDays, MO } from './dates';
 import type { ZoomLevel } from '../db/types';
 
 export function daysBetween(a: string, b: string): number {
@@ -64,10 +64,6 @@ export function behindPaceBy(
   return Math.max(0, expectedPct(start, deadline, todayStr) - actualPct);
 }
 
-function iso(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
 export function defaultNodeSpan(
   goal: { start: string; deadline: string },
   today: string,
@@ -89,9 +85,19 @@ export function spanOutside(
 // The canvas replaces the fixed window: a DateRange rendered at a constant
 // px-per-day scale per zoom, scrolled horizontally and extended on demand.
 
+// Preset scales for the Week/Month/Quarter buttons; the actual scale is a
+// continuous px-per-day value driven by pinch/ctrl-wheel zoom.
 export const PX_PER_DAY: Record<ZoomLevel, number> = { week: 130, month: 40, quarter: 13 };
-export const PERIOD_DAYS: Record<ZoomLevel, number> = { week: 7, month: 30, quarter: 91 };
+export const MIN_PX_PER_DAY = 3;
+export const MAX_PX_PER_DAY = 260;
+// At and above this scale, day columns are wide enough for full day detail
+// (the DaysLane header with numbers, task counts, habit dots).
+export const DAY_DETAIL_MIN = 48;
 export const LABEL_W = 200; // sticky goal-label column width (px)
+
+export function clampScale(n: number): number {
+  return Math.min(MAX_PX_PER_DAY, Math.max(MIN_PX_PER_DAY, n));
+}
 
 // Extend the range when scroll comes within this many px of an edge…
 export const EXTEND_THRESHOLD_PX = 1000;
@@ -149,12 +155,12 @@ export function scrollLeftForCenter(
 // scroll room before the first extension kicks in. Guarantees every bar is
 // on-canvas from the start.
 export function initialRange(
-  zoom: ZoomLevel,
+  pxPerDay: number,
   today: string,
   dates: string[],
   center?: string,
 ): DateRange {
-  const pad = Math.ceil(INITIAL_PAD_PX / PX_PER_DAY[zoom]);
+  const pad = Math.ceil(INITIAL_PAD_PX / pxPerDay);
   let min = today;
   let max = today;
   for (const d of center ? [...dates, center] : dates) {
@@ -171,25 +177,45 @@ export interface CanvasSeg {
   major?: boolean; // heavier divider: year boundary (months) / week start, 1st (days)
 }
 
-// One segment per calendar month intersecting the range, first/last clipped to
-// the range edges so x positions stay exact. January carries the year.
-export function monthSegments(range: DateRange): CanvasSeg[] {
-  const segs: CanvasSeg[] = [];
-  const first = parseD(range.start);
-  let d = new Date(first.getFullYear(), first.getMonth(), 1);
-  while (iso(d) <= range.end) {
-    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const start = iso(d) < range.start ? range.start : iso(d);
-    const end = iso(monthEnd) > range.end ? range.end : iso(monthEnd);
-    segs.push({
-      start,
-      days: daysBetween(start, end) + 1,
-      label: d.getMonth() === 0 ? `Jan ${d.getFullYear()}` : MO[d.getMonth()],
-      major: d.getMonth() === 0,
-    });
-    d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+// Minimal shape the row grid needs — daySegments and rulerTicks both satisfy it.
+export interface GridTick { start: string; major?: boolean }
+
+export type RulerUnit = 'day' | 'week' | 'month' | 'year';
+export interface RulerTick { start: string; unit: RulerUnit; label?: string }
+
+// A finer graduation appears once its period is wide enough to read:
+const WEEK_TICK_MIN_PX = 24;  // Sunday ticks when a week spans ≥ this
+const WEEK_LABEL_MIN_PX = 56; // ...and get day-of-month labels at ≥ this
+const DAY_TICK_MIN_PX = 18;   // per-day graduations
+
+/**
+ * Hierarchical ruler graduations for the range at a continuous scale, like a
+ * physical ruler gaining finer tick marks as you zoom in. Every date carries
+ * its highest unit: year (Jan 1, labeled with the year) > month (the 1st,
+ * labeled) > week (Sundays, once wide enough) > day (once wide enough).
+ */
+export function rulerTicks(range: DateRange, pxPerDay: number): RulerTick[] {
+  const showDays = pxPerDay >= DAY_TICK_MIN_PX;
+  const showWeeks = pxPerDay * 7 >= WEEK_TICK_MIN_PX;
+  const labelWeeks = pxPerDay * 7 >= WEEK_LABEL_MIN_PX;
+  const ticks: RulerTick[] = [];
+  const n = rangeDays(range);
+  let day = range.start;
+  for (let i = 0; i < n; i++) {
+    const dt = parseD(day);
+    const dom = dt.getDate();
+    if (dom === 1 && dt.getMonth() === 0) {
+      ticks.push({ start: day, unit: 'year', label: String(dt.getFullYear()) });
+    } else if (dom === 1) {
+      ticks.push({ start: day, unit: 'month', label: MO[dt.getMonth()] });
+    } else if (dt.getDay() === 0 && showWeeks) {
+      ticks.push({ start: day, unit: 'week', label: labelWeeks ? String(dom) : undefined });
+    } else if (showDays) {
+      ticks.push({ start: day, unit: 'day' });
+    }
+    day = addDays(day, 1);
   }
-  return segs;
+  return ticks;
 }
 
 // One segment per day; `major` marks week starts (Sunday, matching weekDates)

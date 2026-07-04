@@ -239,7 +239,9 @@ describe('spanOutside', () => {
 
 import {
   PX_PER_DAY,
-  PERIOD_DAYS,
+  MIN_PX_PER_DAY,
+  MAX_PX_PER_DAY,
+  clampScale,
   chunkDays,
   rangeDays,
   rangeWidth,
@@ -248,7 +250,7 @@ import {
   centerDateOf,
   scrollLeftForCenter,
   initialRange,
-  monthSegments,
+  rulerTicks,
   daySegments,
 } from './timeline';
 
@@ -307,57 +309,75 @@ describe('centerDateOf / scrollLeftForCenter', () => {
 
 describe('initialRange', () => {
   it('contains today and all supplied dates', () => {
-    const r = initialRange('month', '2026-07-04', ['2026-03-01', '2026-12-31']);
+    const r = initialRange(40, '2026-07-04', ['2026-03-01', '2026-12-31']);
     expect(r.start < '2026-03-01').toBe(true);
     expect(r.end > '2026-12-31').toBe(true);
   });
   it('contains the optional center date', () => {
-    const r = initialRange('month', '2026-07-04', [], '2024-01-01');
+    const r = initialRange(40, '2026-07-04', [], '2024-01-01');
     expect(r.start < '2024-01-01').toBe(true);
     expect(r.end > '2026-07-04').toBe(true);
   });
   it('pad in days grows as pxPerDay shrinks', () => {
-    const week = initialRange('week', '2026-07-04', []);
-    const quarter = initialRange('quarter', '2026-07-04', []);
+    const week = initialRange(PX_PER_DAY.week, '2026-07-04', []);
+    const quarter = initialRange(PX_PER_DAY.quarter, '2026-07-04', []);
     expect(daysBetween(week.start, '2026-07-04')).toBe(Math.ceil(4000 / PX_PER_DAY.week));
     expect(daysBetween(quarter.start, '2026-07-04')).toBe(Math.ceil(4000 / PX_PER_DAY.quarter));
   });
   it('spans today only (plus pad) when no dates given', () => {
-    const r = initialRange('month', '2026-07-04', []);
+    const r = initialRange(40, '2026-07-04', []);
     expect(daysBetween(r.start, '2026-07-04')).toBe(100);
     expect(daysBetween('2026-07-04', r.end)).toBe(100);
   });
 });
 
-describe('monthSegments', () => {
-  it('covers whole months when range aligns to month bounds', () => {
-    const segs = monthSegments({ start: '2026-07-01', end: '2026-09-30' });
-    expect(segs.map((s) => ({ label: s.label, days: s.days, start: s.start }))).toEqual([
-      { label: 'Jul', days: 31, start: '2026-07-01' },
-      { label: 'Aug', days: 31, start: '2026-08-01' },
-      { label: 'Sep', days: 30, start: '2026-09-01' },
-    ]);
+describe('clampScale', () => {
+  it('clamps to [MIN, MAX]', () => {
+    expect(clampScale(1)).toBe(MIN_PX_PER_DAY);
+    expect(clampScale(1000)).toBe(MAX_PX_PER_DAY);
+    expect(clampScale(40)).toBe(40);
   });
-  it('clips the first and last months to the range', () => {
-    const segs = monthSegments({ start: '2026-07-15', end: '2026-08-10' });
-    expect(segs).toHaveLength(2);
-    expect(segs[0]).toMatchObject({ start: '2026-07-15', days: 17 });
-    expect(segs[1]).toMatchObject({ start: '2026-08-01', days: 10 });
+});
+
+describe('rulerTicks', () => {
+  const july = { start: '2026-07-01', end: '2026-07-31' };
+
+  it('every day carries a tick at day-detail scales', () => {
+    const ticks = rulerTicks(july, 40); // 40 ≥ 18 → day graduations
+    expect(ticks).toHaveLength(rangeDays(july));
+    expect(ticks.filter((t) => t.unit === 'day').length).toBeGreaterThan(0);
   });
-  it('segment days always sum to rangeDays', () => {
-    const range = { start: '2026-02-10', end: '2027-03-05' };
-    const segs = monthSegments(range);
-    expect(segs.reduce((s, x) => s + x.days, 0)).toBe(rangeDays(range));
+  it('drops day ticks below 18 px/day but keeps labeled weeks', () => {
+    const ticks = rulerTicks(july, 13); // quarter preset
+    expect(ticks.some((t) => t.unit === 'day')).toBe(false);
+    const weeks = ticks.filter((t) => t.unit === 'week');
+    // Sundays in July 2026: 5, 12, 19, 26
+    expect(weeks.map((t) => t.start)).toEqual(['2026-07-05', '2026-07-12', '2026-07-19', '2026-07-26']);
+    expect(weeks.map((t) => t.label)).toEqual(['5', '12', '19', '26']); // 91px ≥ 56 → labeled
   });
-  it('handles leap-year February', () => {
-    const segs = monthSegments({ start: '2028-02-01', end: '2028-02-29' });
-    expect(segs).toEqual([
-      { start: '2028-02-01', days: 29, label: 'Feb', major: false },
-    ]);
+  it('unlabels weeks between 24 and 56 px/week', () => {
+    const ticks = rulerTicks(july, 5); // 35px/week
+    const weeks = ticks.filter((t) => t.unit === 'week');
+    expect(weeks.length).toBe(4);
+    expect(weeks.every((t) => t.label === undefined)).toBe(true);
   });
-  it('labels January with the year and marks it major', () => {
-    const segs = monthSegments({ start: '2026-12-01', end: '2027-01-31' });
-    expect(segs[1]).toMatchObject({ label: 'Jan 2027', major: true });
+  it('drops week ticks below 24 px/week, months remain', () => {
+    const ticks = rulerTicks({ start: '2026-06-01', end: '2026-08-31' }, 3); // 21px/week
+    expect(ticks.some((t) => t.unit === 'week')).toBe(false);
+    expect(ticks.filter((t) => t.unit === 'month').map((t) => t.label)).toEqual(['Jun', 'Jul', 'Aug']);
+  });
+  it('Jan 1 is a year tick labeled with the year, outranking month', () => {
+    const ticks = rulerTicks({ start: '2026-12-15', end: '2027-01-15' }, 13);
+    const jan = ticks.find((t) => t.start === '2027-01-01');
+    expect(jan).toEqual({ start: '2027-01-01', unit: 'year', label: '2027' });
+    expect(ticks.some((t) => t.unit === 'month' && t.start === '2027-01-01')).toBe(false);
+  });
+  it('a Sunday that is also the 1st ranks as month', () => {
+    // 2026-11-01 is a Sunday
+    const ticks = rulerTicks({ start: '2026-10-25', end: '2026-11-08' }, 13);
+    const nov1 = ticks.find((t) => t.start === '2026-11-01');
+    expect(nov1?.unit).toBe('month');
+    expect(nov1?.label).toBe('Nov');
   });
 });
 
@@ -386,11 +406,6 @@ describe('canvas constants', () => {
   it('chunkDays converts px to whole days', () => {
     expect(chunkDays(40)).toBe(75);
     expect(chunkDays(130)).toBe(Math.ceil(3000 / 130));
-  });
-  it('PERIOD_DAYS matches zoom semantics', () => {
-    expect(PERIOD_DAYS.week).toBe(7);
-    expect(PERIOD_DAYS.month).toBe(30);
-    expect(PERIOD_DAYS.quarter).toBe(91);
   });
 });
 

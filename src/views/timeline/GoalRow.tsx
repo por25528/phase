@@ -2,7 +2,7 @@ import { memo, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, daysLeftLabel } from '../../lib/dates';
 import { expectedPct, behindPaceBy, dateToX } from '../../lib/timeline';
-import type { CanvasSeg } from '../../lib/timeline';
+import type { GridTick } from '../../lib/timeline';
 import type { Goal } from '../../db/types';
 import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
@@ -15,7 +15,7 @@ interface GoalRowProps {
   index: number;
   rangeStart: string;
   pxPerDay: number;
-  segs: CanvasSeg[];
+  segs: GridTick[];
   todayX: number;
   canvasW: number;
   isExpanded: boolean;

@@ -1,6 +1,7 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, Task, Session, AppState, ZoomLevel } from '../db/types';
-import { loadState, persist, exportState, importStateFromFile, loadZoom, saveZoom } from '../db/db';
+import type { Goal, Habit, Task, Session, AppState } from '../db/types';
+import { loadState, persist, exportState, importStateFromFile, loadScale, saveScale } from '../db/db';
+import { clampScale } from '../lib/timeline';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import {
@@ -22,7 +23,7 @@ interface UIState {
   expanded: Set<string>;
   toast: string | null;
   pendingUndo: { label: string } | null;
-  zoom: ZoomLevel;
+  pxPerDay: number; // timeline scale — continuous, gesture-driven
 }
 
 interface FullState extends AppState, UIState {}
@@ -38,12 +39,13 @@ let state: FullState = {
   expanded: new Set(),
   toast: null,
   pendingUndo: null,
-  zoom: 'quarter',
+  pxPerDay: 13, // quarter preset until the persisted scale loads
 };
 
 let initialized = false;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let undoTimer: ReturnType<typeof setTimeout> | null = null;
+let scaleTimer: ReturnType<typeof setTimeout> | null = null;
 let restoreFn: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
@@ -93,11 +95,11 @@ function collectContainers(goals: Goal[]): Set<string> {
 export async function initStore(): Promise<void> {
   if (initialized) return;
   initialized = true;
-  const [appState, zoom] = await Promise.all([loadState(), loadZoom()]);
+  const [appState, pxPerDay] = await Promise.all([loadState(), loadScale()]);
   state = {
     ...state,
     ...appState,
-    zoom,
+    pxPerDay,
     expanded: collectContainers(appState.goals),
   };
   notify();
@@ -346,10 +348,14 @@ export const actions = {
     setAndPersist({ tasks });
   },
 
-  // Zoom
-  setZoom(z: ZoomLevel): void {
-    set({ zoom: z });
-    saveZoom(z);
+  // Timeline scale — updates land per gesture frame, so persistence is
+  // debounced rather than written on every wheel tick.
+  setScale(pxPerDay: number): void {
+    const v = clampScale(pxPerDay);
+    if (v === state.pxPerDay) return;
+    set({ pxPerDay: v });
+    if (scaleTimer) clearTimeout(scaleTimer);
+    scaleTimer = setTimeout(() => saveScale(state.pxPerDay), 400);
   },
 
   // Goal date editing
@@ -486,7 +492,7 @@ export const actions = {
 
   // IO
   exportBackup() {
-    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions }, state.zoom);
+    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions }, state.pxPerDay);
     actions.showToast('Backup exported');
   },
 

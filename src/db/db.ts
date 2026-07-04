@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState, ZoomLevel } from './types';
+import type { Goal, Habit, Task, Session, AppState } from './types';
 import { todayStr, addDays } from '../lib/dates';
+import { clampScale } from '../lib/timeline';
 import { uid } from '../lib/tree';
 
 const YEAR = 2026;
@@ -165,19 +166,29 @@ export async function persist(state: AppState): Promise<void> {
   ]);
 }
 
-export async function loadZoom(): Promise<ZoomLevel> {
-  const row = await db.settings.get('zoom');
-  const v = row?.value;
-  // 'quarter' fallback also migrates the retired 'year' zoom from older data
-  return v === 'week' || v === 'quarter' || v === 'month' ? v : 'quarter';
+// Map a legacy zoom-level string (including the long-retired 'year') to its
+// px-per-day scale. Fallback is the quarter preset.
+function legacyZoomToScale(v: string | undefined): number {
+  if (v === 'week') return 130;
+  if (v === 'month') return 40;
+  return 13; // 'quarter', 'year', or anything else
 }
 
-export async function saveZoom(z: ZoomLevel): Promise<void> {
-  await db.settings.put({ key: 'zoom', value: z });
+export async function loadScale(): Promise<number> {
+  const row = await db.settings.get('pxPerDay');
+  const n = Number(row?.value);
+  if (Number.isFinite(n) && n > 0) return clampScale(n);
+  // Migrate from the discrete-zoom era ('week' | 'month' | 'quarter' | 'year')
+  const legacy = await db.settings.get('zoom');
+  return legacyZoomToScale(legacy?.value);
 }
 
-export function exportState(state: AppState, zoom: ZoomLevel): void {
-  const backup = { ...state, zoom };
+export async function saveScale(pxPerDay: number): Promise<void> {
+  await db.settings.put({ key: 'pxPerDay', value: String(pxPerDay) });
+}
+
+export function exportState(state: AppState, pxPerDay: number): void {
+  const backup = { ...state, pxPerDay };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -185,16 +196,18 @@ export function exportState(state: AppState, zoom: ZoomLevel): void {
   a.click();
 }
 
-export async function importStateFromFile(file: File): Promise<AppState & { zoom: ZoomLevel }> {
+export async function importStateFromFile(file: File): Promise<AppState & { pxPerDay: number }> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = async () => {
       try {
-        const raw = JSON.parse(r.result as string) as Partial<AppState & { zoom?: string }>;
-        const zoom: ZoomLevel =
-          raw.zoom === 'week' || raw.zoom === 'quarter' || raw.zoom === 'month'
-            ? raw.zoom
-            : 'quarter'; // old backups may carry the retired 'year'
+        const raw = JSON.parse(r.result as string) as Partial<
+          AppState & { pxPerDay?: number; zoom?: string }
+        >;
+        const pxPerDay =
+          Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0
+            ? clampScale(raw.pxPerDay as number)
+            : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
         const parsed: AppState = {
           goals: raw.goals ?? [],
           habits: raw.habits ?? [],
@@ -202,8 +215,8 @@ export async function importStateFromFile(file: File): Promise<AppState & { zoom
           sessions: raw.sessions ?? [],
         };
         await persist(parsed);
-        await saveZoom(zoom);
-        resolve({ ...parsed, zoom });
+        await saveScale(pxPerDay);
+        resolve({ ...parsed, pxPerDay });
       } catch {
         reject(new Error('Could not read that file'));
       }

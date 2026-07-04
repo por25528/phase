@@ -3,7 +3,7 @@ import { useAppStore } from '../state/store';
 import { todayStr, parseD, addDays } from '../lib/dates';
 import {
   PX_PER_DAY,
-  PERIOD_DAYS,
+  DAY_DETAIL_MIN,
   LABEL_W,
   EXTEND_THRESHOLD_PX,
   chunkDays,
@@ -12,14 +12,15 @@ import {
   dateToX,
   centerDateOf,
   scrollLeftForCenter,
-  monthSegments,
+  rulerTicks,
   daySegments,
   daysBetween,
 } from '../lib/timeline';
-import type { DateRange } from '../lib/timeline';
+import type { DateRange, GridTick } from '../lib/timeline';
 import type { ZoomLevel } from '../db/types';
 import { GoalRow } from './timeline/GoalRow';
 import { DaysLane } from './timeline/DaysLane';
+import { Ruler } from './timeline/Ruler';
 import { useReducedMotion } from './today/useReducedMotion';
 
 const MONTH_FULL = [
@@ -27,26 +28,27 @@ const MONTH_FULL = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-/** Mono header label for the date at the viewport center: quarter → `Q3 2026`,
- * week/month → `JULY 2026`. */
-function headerLabel(zoom: ZoomLevel, center: string): string {
+/** Mono header label for the date at the viewport center — month + year, or
+ * just the year once zoomed far enough out that a single month is noise. */
+function headerLabel(pxPerDay: number, center: string): string {
   const d = parseD(center);
-  const y = d.getFullYear();
-  if (zoom === 'quarter') return `Q${Math.floor(d.getMonth() / 3) + 1} ${y}`;
-  return `${MONTH_FULL[d.getMonth()].toUpperCase()} ${y}`;
+  if (pxPerDay < 8) return String(d.getFullYear());
+  return `${MONTH_FULL[d.getMonth()].toUpperCase()} ${d.getFullYear()}`;
 }
 
 /**
- * Infinite-scroll canvas timeline. Zoom is a fixed px-per-day scale; the canvas
- * covers `range` and quietly extends itself when scroll nears an edge (prepends
- * are compensated in a layout effect so nothing visually jumps). The label
- * column and time header are sticky; Today re-centers; switching zoom preserves
- * the date at the viewport center; `[`/`]` scroll one period.
+ * Infinite-scroll canvas timeline with a continuous, gesture-driven scale.
+ * `pxPerDay` (store state) is adjusted by trackpad pinch / ctrl- or cmd-wheel,
+ * anchored at the cursor so the date under the pointer stays put; the
+ * Week/Month/Quarter buttons snap to preset scales about the viewport center.
+ * The canvas covers `range` and quietly extends itself near scroll edges
+ * (prepends compensated before paint). The header renders an adaptive ruler
+ * whose graduations densify as you zoom; past DAY_DETAIL_MIN it becomes the
+ * DaysLane day strip.
  */
 export function Timeline() {
-  const { goals, zoom, actions } = useAppStore();
+  const { goals, pxPerDay, actions } = useAppStore();
   const reduced = useReducedMotion();
-  const pxPerDay = PX_PER_DAY[zoom];
 
   // Every date the canvas must contain (first-level node spans are what
   // NodeLane renders; deeper nodes are never plotted).
@@ -62,15 +64,17 @@ export function Timeline() {
     }
     return ds;
   }, [goals]);
-  const allDatesRef = useRef(allDates);
-  allDatesRef.current = allDates;
 
-  const [range, setRange] = useState<DateRange>(() => initialRange(zoom, todayStr(), allDates));
+  const [range, setRange] = useState<DateRange>(() => initialRange(pxPerDay, todayStr(), allDates));
   const scrollerRef = useRef<HTMLDivElement>(null);
   const prevRangeStart = useRef(range.start);
   const pendingCenter = useRef<string | null>(todayStr());
   const extendLock = useRef(false);
-  const lastZoom = useRef(zoom);
+  const prevPx = useRef(pxPerDay);
+  const pxRef = useRef(pxPerDay);
+  pxRef.current = pxPerDay;
+  // Plot-relative viewport x a zoom gesture is anchored to; null → scale about center.
+  const anchorX = useRef<number | null>(null);
   const [headerCenter, setHeaderCenter] = useState(todayStr());
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -82,31 +86,50 @@ export function Timeline() {
     });
   }, []);
 
-  // 1. Prepend compensation — after the DOM grows leftward, shift scrollLeft by
-  // the same width before paint so the viewport doesn't visually move.
+  // Extend the range when scroll (or a zoom-out) brings an edge near the
+  // viewport. One chunk per pass; the unlock effect re-checks, so repeated
+  // passes converge without a loop here.
+  const ensureCoverage = useCallback((el: HTMLDivElement) => {
+    if (extendLock.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    if (scrollLeft < EXTEND_THRESHOLD_PX) {
+      extendLock.current = true;
+      setRange((r) => ({ ...r, start: addDays(r.start, -chunkDays(pxRef.current)) }));
+    } else if (scrollLeft > scrollWidth - clientWidth - EXTEND_THRESHOLD_PX) {
+      extendLock.current = true;
+      setRange((r) => ({ ...r, end: addDays(r.end, chunkDays(pxRef.current)) }));
+    }
+  }, []);
+
+  // 1. Prepend compensation + extension unlock — after the DOM grows leftward,
+  // shift scrollLeft by the same width before paint so nothing visually moves.
+  // Keyed on the whole range: appends must also unlock and re-check coverage.
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     const shifted = daysBetween(range.start, prevRangeStart.current);
     prevRangeStart.current = range.start;
     extendLock.current = false;
     if (el && shifted > 0) el.scrollLeft += shifted * pxPerDay;
-  }, [range.start, pxPerDay]);
+    if (el) ensureCoverage(el);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
 
-  // 2. Zoom changed (radio click or persisted zoom arriving at init): rebuild
-  // the range around the date that was at the viewport center.
+  // 2. Scale changed: rescale the scroll position about the gesture anchor
+  // (cursor) or, absent one (presets, persisted-scale load), the viewport
+  // center — the anchored date stays visually fixed while time stretches.
   useLayoutEffect(() => {
-    if (lastZoom.current === zoom) return;
-    lastZoom.current = zoom;
-    const center = pendingCenter.current ?? todayStr();
-    pendingCenter.current = center;
-    const next = initialRange(zoom, todayStr(), allDatesRef.current, center);
-    prevRangeStart.current = next.start;
-    setRange(next);
-  }, [zoom]);
+    const el = scrollerRef.current;
+    const prev = prevPx.current;
+    prevPx.current = pxPerDay;
+    if (!el || prev === pxPerDay) return;
+    const plotW = el.clientWidth - LABEL_W;
+    const q = anchorX.current ?? plotW / 2;
+    anchorX.current = null;
+    el.scrollLeft = (el.scrollLeft + q) * (pxPerDay / prev) - q;
+    ensureCoverage(el);
+  }, [pxPerDay, ensureCoverage]);
 
-  // 3. Consume a pending center (mount → today; zoom switch → captured date).
-  // Depends on `range` only: on a zoom-change render the range hasn't been
-  // rebuilt yet, so this must not fire until effect 2's setRange lands.
+  // 3. Consume a pending center (mount → today; Today button while unmounted).
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el || !pendingCenter.current) return;
@@ -129,38 +152,78 @@ export function Timeline() {
     });
   }, [allDates, pxPerDay]);
 
-  // `[` / `]` scroll one period while the Timeline view is mounted (i.e. active).
+  // 5. Pinch / ctrl+wheel / cmd+wheel zoom, rAF-coalesced and cursor-anchored.
+  // Native listeners: React registers wheel as passive, which would forbid
+  // preventDefault (the browser would page-zoom instead).
+  const hasCanvas = goals.length > 0;
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    let pendingFactor = 1;
+    let raf: number | null = null;
+    function flush() {
+      raf = null;
+      const f = pendingFactor;
+      pendingFactor = 1;
+      if (f !== 1) actions.setScale(pxRef.current * f);
+    }
+    function queue(factor: number, clientX: number) {
+      const rect = el!.getBoundingClientRect();
+      anchorX.current = Math.max(0, Math.min(el!.clientWidth - LABEL_W, clientX - rect.left - LABEL_W));
+      pendingFactor *= factor;
+      if (raf == null) raf = requestAnimationFrame(flush);
+    }
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey && !e.metaKey) return; // trackpad pinch arrives as ctrl+wheel
+      e.preventDefault();
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      queue(Math.exp(-dy * 0.0022), e.clientX);
+    }
+    // Safari fires proprietary gesture events for pinch instead
+    let gestureBase = 1;
+    function onGestureStart(e: Event) {
+      e.preventDefault();
+      gestureBase = 1;
+    }
+    function onGestureChange(e: Event) {
+      e.preventDefault();
+      const g = e as Event & { scale: number; clientX?: number };
+      queue(g.scale / gestureBase, g.clientX ?? el!.getBoundingClientRect().left + LABEL_W);
+      gestureBase = g.scale;
+    }
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('gesturestart', onGestureStart, { passive: false });
+    el.addEventListener('gesturechange', onGestureChange, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, [hasCanvas, actions]);
+
+  // `[` / `]` page by most of a viewport while the Timeline view is mounted.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const el = e.target as HTMLElement;
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key !== '[' && e.key !== ']') return;
+      const sc = scrollerRef.current;
+      if (!sc) return;
       const dir = e.key === '[' ? -1 : 1;
-      scrollerRef.current?.scrollBy({
-        left: dir * PERIOD_DAYS[zoom] * PX_PER_DAY[zoom],
-        behavior: reduced ? 'auto' : 'smooth',
-      });
+      sc.scrollBy({ left: dir * 0.8 * (sc.clientWidth - LABEL_W), behavior: reduced ? 'auto' : 'smooth' });
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [zoom, reduced]);
+  }, [reduced]);
 
   function onScroll() {
     const el = scrollerRef.current;
     if (!el) return;
-    const { scrollLeft, scrollWidth, clientWidth } = el;
-    if (!extendLock.current) {
-      if (scrollLeft < EXTEND_THRESHOLD_PX) {
-        extendLock.current = true;
-        setRange((r) => ({ ...r, start: addDays(r.start, -chunkDays(pxPerDay)) }));
-      } else if (scrollLeft > scrollWidth - clientWidth - EXTEND_THRESHOLD_PX) {
-        extendLock.current = true;
-        setRange((r) => ({ ...r, end: addDays(r.end, chunkDays(pxPerDay)) }));
-      }
-    }
+    ensureCoverage(el);
     // Header label only needs month granularity — avoid re-rendering per frame.
-    const c = centerDateOf(scrollLeft, clientWidth - LABEL_W, range.start, pxPerDay);
+    const c = centerDateOf(el.scrollLeft, el.clientWidth - LABEL_W, range.start, pxPerDay);
     if (c.slice(0, 7) !== headerCenter.slice(0, 7)) setHeaderCenter(c);
   }
 
@@ -173,19 +236,18 @@ export function Timeline() {
     });
   }
 
-  function switchZoom(z: ZoomLevel) {
-    if (z === zoom) return;
-    const el = scrollerRef.current;
-    pendingCenter.current = el
-      ? centerDateOf(el.scrollLeft, el.clientWidth - LABEL_W, range.start, pxPerDay)
-      : todayStr();
-    actions.setZoom(z);
-  }
-
-  const segs = useMemo(
-    () => (zoom === 'week' ? daySegments(range) : monthSegments(range)),
-    [zoom, range],
+  const dayDetail = pxPerDay >= DAY_DETAIL_MIN;
+  const ticks = useMemo(() => rulerTicks(range, pxPerDay), [range, pxPerDay]);
+  const gridTicks: GridTick[] = useMemo(
+    () =>
+      dayDetail
+        ? ticks.map((t) => ({ start: t.start, major: t.unit !== 'day' }))
+        : ticks
+            .filter((t) => t.unit !== 'day')
+            .map((t) => ({ start: t.start, major: t.unit === 'month' || t.unit === 'year' })),
+    [ticks, dayDetail],
   );
+  const daySegs = useMemo(() => (dayDetail ? daySegments(range) : null), [dayDetail, range]);
   const todayX = dateToX(todayStr(), range.start, pxPerDay);
   const canvasW = rangeWidth(range, pxPerDay);
 
@@ -205,15 +267,19 @@ export function Timeline() {
             Today
           </button>
           <span className="font-mono text-[.78rem] tracking-[.05em] text-ink-soft tabular-nums ml-[6px]">
-            {headerLabel(zoom, headerCenter)}
+            {headerLabel(pxPerDay, headerCenter)}
           </span>
         </div>
 
-        <div className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium">
+        <div
+          className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium"
+          title="Pinch or ⌃/⌘-scroll the timeline to zoom freely"
+        >
           {(['week', 'month', 'quarter'] as ZoomLevel[]).map(z => (
-            <button key={z} type="button" onClick={() => switchZoom(z)} aria-pressed={zoom === z}
+            <button key={z} type="button" onClick={() => actions.setScale(PX_PER_DAY[z])}
+              aria-pressed={Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5}
               className={`px-[12px] py-[4px] transition-colors duration-100 ${
-                zoom === z ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'}`}>
+                Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5 ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'}`}>
               {z[0].toUpperCase() + z.slice(1)}
             </button>
           ))}
@@ -221,7 +287,7 @@ export function Timeline() {
       </div>
 
       {/* Empty state — no canvas needed */}
-      {goals.length === 0 ? (
+      {!hasCanvas ? (
         <div className="mt-[6px] border border-line rounded-[10px] bg-panel px-[12px] py-[32px] text-center text-faint text-[.85rem] italic">
           Nothing on your year yet — add a goal in Goals › + new goal to see it here.
         </div>
@@ -238,9 +304,9 @@ export function Timeline() {
                 Goal
               </div>
               <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
-                {zoom === 'week' ? (
+                {dayDetail ? (
                   // Day-level detail absorbed from the Calendar page
-                  <DaysLane segs={segs} rangeStart={range.start} pxPerDay={pxPerDay} />
+                  <DaysLane segs={daySegs!} rangeStart={range.start} pxPerDay={pxPerDay} />
                 ) : (
                   <>
                     {/* Today caret sits above the today-line */}
@@ -252,20 +318,7 @@ export function Timeline() {
                         Today
                       </span>
                     </div>
-                    {segs.map((s) => {
-                      const x = dateToX(s.start, range.start, pxPerDay);
-                      return (
-                        <div
-                          key={s.start}
-                          className={`absolute inset-y-0 py-[9px] pl-[7px] text-[.72rem] text-muted font-medium overflow-hidden whitespace-nowrap${
-                            x <= 0 ? '' : s.major ? ' border-l border-line-2' : ' border-l border-line'
-                          }`}
-                          style={{ left: `${x}px`, width: `${s.days * pxPerDay}px` }}
-                        >
-                          {s.label}
-                        </div>
-                      );
-                    })}
+                    <Ruler ticks={ticks} rangeStart={range.start} pxPerDay={pxPerDay} />
                   </>
                 )}
               </div>
@@ -279,7 +332,7 @@ export function Timeline() {
                 index={i}
                 rangeStart={range.start}
                 pxPerDay={pxPerDay}
-                segs={segs}
+                segs={gridTicks}
                 todayX={todayX}
                 canvasW={canvasW}
                 isExpanded={expanded.has(g.id)}

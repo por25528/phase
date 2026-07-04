@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD } from '../../lib/dates';
 import { defaultNodeSpan, spanOutside, dateToX, daysBetween, LABEL_W } from '../../lib/timeline';
-import type { CanvasSeg } from '../../lib/timeline';
+import type { GridTick } from '../../lib/timeline';
 import type { Goal, GoalNode } from '../../db/types';
 import { nodePct } from '../../lib/pct';
 import { SpanBar } from './SpanBar';
@@ -13,7 +13,7 @@ import { SpanBar } from './SpanBar';
  * range always contains today, so the today-line is unconditional. */
 export function CanvasGrid({
   segs, rangeStart, pxPerDay, todayX,
-}: { segs: CanvasSeg[]; rangeStart: string; pxPerDay: number; todayX: number }) {
+}: { segs: GridTick[]; rangeStart: string; pxPerDay: number; todayX: number }) {
   return (
     <>
       <div className="absolute inset-0 pointer-events-none">
@@ -41,7 +41,7 @@ interface NodeLaneProps {
   goal: Goal;
   rangeStart: string;
   pxPerDay: number;
-  segs: CanvasSeg[];
+  segs: GridTick[];
   todayX: number;
   canvasW: number;
 }
