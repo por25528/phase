@@ -252,6 +252,7 @@ import {
   initialRange,
   rulerTicks,
   daySegments,
+  weekendBands,
 } from './timeline';
 
 describe('dateToX / xToDate', () => {
@@ -399,6 +400,27 @@ describe('daySegments', () => {
     expect(byDate.get('2026-07-05')).toBe(true);
     expect(byDate.get('2026-07-06')).toBe(false);
     expect(byDate.get('2026-08-01')).toBe(true);
+  });
+});
+
+describe('weekendBands', () => {
+  it('emits one 2-day band per Saturday in the range', () => {
+    // Saturdays in July 2026: 4, 11, 18, 25
+    const bands = weekendBands({ start: '2026-07-01', end: '2026-07-31' });
+    expect(bands).toEqual([
+      { start: '2026-07-04', days: 2 },
+      { start: '2026-07-11', days: 2 },
+      { start: '2026-07-18', days: 2 },
+      { start: '2026-07-25', days: 2 },
+    ]);
+  });
+  it('clips a leading Sunday and a trailing Saturday to 1-day bands', () => {
+    // 2026-07-05 is a Sunday, 2026-07-11 a Saturday
+    const bands = weekendBands({ start: '2026-07-05', end: '2026-07-11' });
+    expect(bands).toEqual([
+      { start: '2026-07-05', days: 1 },
+      { start: '2026-07-11', days: 1 },
+    ]);
   });
 });
 

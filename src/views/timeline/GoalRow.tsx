@@ -2,7 +2,7 @@ import { memo, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, daysLeftLabel } from '../../lib/dates';
 import { expectedPct, behindPaceBy, dateToX } from '../../lib/timeline';
-import type { GridTick } from '../../lib/timeline';
+import type { GridTick, DayBand } from '../../lib/timeline';
 import type { Goal } from '../../db/types';
 import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
@@ -16,6 +16,7 @@ interface GoalRowProps {
   rangeStart: string;
   pxPerDay: number;
   segs: GridTick[];
+  bands: DayBand[];
   todayX: number;
   canvasW: number;
   isExpanded: boolean;
@@ -32,7 +33,7 @@ interface GoalRowProps {
  * parent don't touch every row.
  */
 export const GoalRow = memo(function GoalRow({
-  goal: g, index: i, rangeStart, pxPerDay, segs, todayX, canvasW, isExpanded, onToggle, isLast,
+  goal: g, index: i, rangeStart, pxPerDay, segs, bands, todayX, canvasW, isExpanded, onToggle, isLast,
 }: GoalRowProps) {
   const { actions } = useAppStore();
   const reduced = useReducedMotion();
@@ -83,7 +84,7 @@ export const GoalRow = memo(function GoalRow({
 
         {/* Plot area */}
         <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
-          <CanvasGrid segs={segs} rangeStart={rangeStart} pxPerDay={pxPerDay} todayX={todayX} />
+          <CanvasGrid segs={segs} bands={bands} rangeStart={rangeStart} pxPerDay={pxPerDay} todayX={todayX} />
 
           {/* Goal bar — keyboard-accessible draggable/resizable span */}
           <SpanBar
@@ -135,6 +136,7 @@ export const GoalRow = memo(function GoalRow({
           rangeStart={rangeStart}
           pxPerDay={pxPerDay}
           segs={segs}
+          bands={bands}
           todayX={todayX}
           canvasW={canvasW}
         />

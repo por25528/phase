@@ -2,21 +2,29 @@ import { useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD } from '../../lib/dates';
 import { defaultNodeSpan, spanOutside, dateToX, daysBetween, LABEL_W } from '../../lib/timeline';
-import type { GridTick } from '../../lib/timeline';
+import type { GridTick, DayBand } from '../../lib/timeline';
 import type { Goal, GoalNode } from '../../db/types';
 import { nodePct } from '../../lib/pct';
 import { SpanBar } from './SpanBar';
 
 /** Shared segment-divider + today-line backdrop for a canvas plot area.
- * Dividers sit at each segment start (skipping x=0); `major` segments (year
- * boundaries, week starts, month firsts) get the heavier line. The canvas
- * range always contains today, so the today-line is unconditional. */
+ * Optional weekend `bands` shade Sat+Sun behind everything; dividers sit at
+ * each segment start (skipping x=0); `major` segments (year boundaries, week
+ * starts, month firsts) get the heavier line. The canvas range always
+ * contains today, so the today-line is unconditional. */
 export function CanvasGrid({
-  segs, rangeStart, pxPerDay, todayX,
-}: { segs: GridTick[]; rangeStart: string; pxPerDay: number; todayX: number }) {
+  segs, bands = [], rangeStart, pxPerDay, todayX,
+}: { segs: GridTick[]; bands?: DayBand[]; rangeStart: string; pxPerDay: number; todayX: number }) {
   return (
     <>
       <div className="absolute inset-0 pointer-events-none">
+        {bands.map((b) => (
+          <span
+            key={b.start}
+            className="absolute top-0 bottom-0 bg-hover/50"
+            style={{ left: `${dateToX(b.start, rangeStart, pxPerDay)}px`, width: `${b.days * pxPerDay}px` }}
+          />
+        ))}
         {segs.map((s) => {
           const x = dateToX(s.start, rangeStart, pxPerDay);
           if (x <= 0) return null;
@@ -42,6 +50,7 @@ interface NodeLaneProps {
   rangeStart: string;
   pxPerDay: number;
   segs: GridTick[];
+  bands: DayBand[];
   todayX: number;
   canvasW: number;
 }
@@ -53,7 +62,7 @@ type NodeTip = { x: number; y: number; text: string };
  * node (draggable SpanBar) plus a 30px "unscheduled" tray of chips. Nodes are
  * scheduling metadata only — dates never touch `done`/pct.
  */
-export function NodeLane({ goal, rangeStart, pxPerDay, segs, todayX, canvasW }: NodeLaneProps) {
+export function NodeLane({ goal, rangeStart, pxPerDay, segs, bands, todayX, canvasW }: NodeLaneProps) {
   const { actions } = useAppStore();
   const [tip, setTip] = useState<NodeTip | null>(null);
 
@@ -94,7 +103,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, segs, todayX, canvasW }: 
 
             {/* Plot area */}
             <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
-              <CanvasGrid segs={segs} rangeStart={rangeStart} pxPerDay={pxPerDay} todayX={todayX} />
+              <CanvasGrid segs={segs} bands={bands} rangeStart={rangeStart} pxPerDay={pxPerDay} todayX={todayX} />
               <SpanBar
                 span={span}
                 rangeStart={rangeStart}

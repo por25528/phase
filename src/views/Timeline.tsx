@@ -4,6 +4,7 @@ import { todayStr, parseD, addDays } from '../lib/dates';
 import {
   PX_PER_DAY,
   DAY_DETAIL_MIN,
+  DAY_TICK_MIN_PX,
   LABEL_W,
   EXTEND_THRESHOLD_PX,
   chunkDays,
@@ -14,6 +15,7 @@ import {
   scrollLeftForCenter,
   rulerTicks,
   daySegments,
+  weekendBands,
   daysBetween,
 } from '../lib/timeline';
 import type { DateRange, GridTick } from '../lib/timeline';
@@ -174,10 +176,19 @@ export function Timeline() {
       if (raf == null) raf = requestAnimationFrame(flush);
     }
     function onWheel(e: WheelEvent) {
-      if (!e.ctrlKey && !e.metaKey) return; // trackpad pinch arrives as ctrl+wheel
-      e.preventDefault();
       const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-      queue(Math.exp(-dy * 0.0022), e.clientX);
+      if (!e.ctrlKey && !e.metaKey) {
+        // Plain vertical wheel: when the card has no vertical overflow to
+        // spend it on, pan the timeline horizontally instead (Gantt idiom) —
+        // this is what makes mouse-wheel scrolling useful here.
+        if (el!.scrollHeight <= el!.clientHeight && Math.abs(dy) > Math.abs(e.deltaX)) {
+          e.preventDefault();
+          el!.scrollLeft += dy;
+        }
+        return; // trackpad pinch arrives as ctrl+wheel; anything else is native
+      }
+      e.preventDefault();
+      queue(Math.exp(-dy * 0.0045), e.clientX);
     }
     // Safari fires proprietary gesture events for pinch instead
     let gestureBase = 1;
@@ -248,6 +259,10 @@ export function Timeline() {
     [ticks, dayDetail],
   );
   const daySegs = useMemo(() => (dayDetail ? daySegments(range) : null), [dayDetail, range]);
+  // Weekend shading appears with the day graduations — once days are
+  // discernible, the Sat+Sun rhythm is orientation, not decoration.
+  const showBands = pxPerDay >= DAY_TICK_MIN_PX;
+  const bands = useMemo(() => (showBands ? weekendBands(range) : []), [showBands, range]);
   const todayX = dateToX(todayStr(), range.start, pxPerDay);
   const canvasW = rangeWidth(range, pxPerDay);
 
@@ -333,6 +348,7 @@ export function Timeline() {
                 rangeStart={range.start}
                 pxPerDay={pxPerDay}
                 segs={gridTicks}
+                bands={bands}
                 todayX={todayX}
                 canvasW={canvasW}
                 isExpanded={expanded.has(g.id)}

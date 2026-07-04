@@ -186,7 +186,8 @@ export interface RulerTick { start: string; unit: RulerUnit; label?: string }
 // A finer graduation appears once its period is wide enough to read:
 const WEEK_TICK_MIN_PX = 24;  // Sunday ticks when a week spans ≥ this
 const WEEK_LABEL_MIN_PX = 56; // ...and get day-of-month labels at ≥ this
-const DAY_TICK_MIN_PX = 18;   // per-day graduations
+// Per-day graduations — also gates day-scoped decoration like weekend bands.
+export const DAY_TICK_MIN_PX = 18;
 
 /**
  * Hierarchical ruler graduations for the range at a continuous scale, like a
@@ -216,6 +217,26 @@ export function rulerTicks(range: DateRange, pxPerDay: number): RulerTick[] {
     day = addDays(day, 1);
   }
   return ticks;
+}
+
+export interface DayBand { start: string; days: number }
+
+// Sat+Sun bands for weekend shading, clipped to the range (a range opening on
+// a Sunday or closing on a Saturday yields a 1-day band).
+export function weekendBands(range: DateRange): DayBand[] {
+  const bands: DayBand[] = [];
+  const n = rangeDays(range);
+  let day = range.start;
+  for (let i = 0; i < n; i++) {
+    const dow = parseD(day).getDay();
+    if (dow === 6) {
+      bands.push({ start: day, days: i + 1 < n ? 2 : 1 });
+    } else if (dow === 0 && i === 0) {
+      bands.push({ start: day, days: 1 });
+    }
+    day = addDays(day, 1);
+  }
+  return bands;
 }
 
 // One segment per day; `major` marks week starts (Sunday, matching weekDates)

@@ -36,6 +36,7 @@ export function DaysLane({
         const x = dateToX(s.start, rangeStart, pxPerDay);
         const dt = parseD(s.start);
         const isToday = s.start === today;
+        const weekend = dt.getDay() === 0 || dt.getDay() === 6;
         const nTasks = taskCount.get(s.start) ?? 0;
         const hits = habitHits.get(s.start) ?? 0;
         return (
@@ -48,8 +49,8 @@ export function DaysLane({
               actions.setView('today');
             }}
             className={`absolute inset-y-0 text-left px-[7px] py-[5px] hover:bg-hover transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-tint${
-              x <= 0 ? '' : s.major ? ' border-l border-line-2' : ' border-l border-line'
-            }`}
+              weekend ? ' bg-hover/50' : ''
+            }${x <= 0 ? '' : s.major ? ' border-l border-line-2' : ' border-l border-line'}`}
             style={{ left: `${x}px`, width: `${s.days * pxPerDay}px` }}
           >
             <span className="flex items-baseline gap-[5px]">
@@ -57,6 +58,8 @@ export function DaysLane({
                 className={`text-[.74rem] tabular-nums font-medium ${
                   isToday
                     ? 'inline-grid place-items-center w-[20px] h-[20px] rounded-full bg-accent text-white'
+                    : weekend
+                    ? 'text-faint'
                     : 'text-muted'
                 }`}
               >
