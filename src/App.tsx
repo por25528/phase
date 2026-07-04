@@ -4,7 +4,6 @@ import type { Goal } from './db/types';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
-import { Calendar } from './views/Calendar';
 import { GoalTree } from './components/GoalTree';
 import { ProgressBar } from './components/ProgressBar';
 import { InlineEdit } from './components/InlineEdit';
@@ -239,7 +238,6 @@ export function App() {
       if (e.key === '1') actions.setView('today');
       if (e.key === '2') actions.setView('goals');
       if (e.key === '3') actions.setView('timeline');
-      if (e.key === '4') actions.setView('calendar');
       if (e.key === 't') { actions.setView('today'); actions.goToToday(); }
     }
     window.addEventListener('keydown', onKey);
@@ -261,13 +259,12 @@ export function App() {
             Phase<span className="text-accent">.</span>
           </span>
         </div>
-        <nav className="flex gap-[4px]" title="Keyboard: 1–4 switch views · T jumps to today · Esc closes">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · T jumps to today · Esc closes">
           {(
             [
               ['today', 'Today'],
               ['goals', 'Goals'],
               ['timeline', 'Timeline'],
-              ['calendar', 'Calendar'],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -312,13 +309,9 @@ export function App() {
           <div className="w-full px-[36px] py-[32px]">
             <Timeline />
           </div>
-        ) : view === 'goals' ? (
+        ) : (
           <div className="max-w-[1280px] mx-auto px-[36px] py-[42px] pb-[90px]">
             <Goals />
-          </div>
-        ) : (
-          <div className="max-w-[880px] mx-auto px-[40px] py-[42px] pb-[90px]">
-            {view === 'calendar' && <Calendar />}
           </div>
         )}
       </main>
