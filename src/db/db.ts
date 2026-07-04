@@ -59,6 +59,7 @@ function buildSeed(): AppState {
     goals: [
       {
         id: 'g_income',
+        column: 0,
         title: 'First income',
         start: `${YEAR}-08-01`,
         deadline: `${YEAR}-12-31`,
@@ -72,6 +73,7 @@ function buildSeed(): AppState {
       },
       {
         id: 'g_cs',
+        column: 0,
         title: 'CS:APP',
         start: `${YEAR}-06-30`,
         deadline: `${YEAR}-12-31`,
@@ -79,6 +81,7 @@ function buildSeed(): AppState {
       },
       {
         id: 'g_jp',
+        column: 1,
         title: 'Japanese · N3',
         start: `${YEAR}-06-30`,
         deadline: `${YEAR}-12-31`,
@@ -93,6 +96,7 @@ function buildSeed(): AppState {
       },
       {
         id: 'g_fit',
+        column: 1,
         title: 'Fitness',
         start: `${YEAR}-06-30`,
         deadline: `${YEAR}-12-31`,
@@ -104,6 +108,7 @@ function buildSeed(): AppState {
       },
       {
         id: 'g_yt',
+        column: 2,
         title: 'YouTube',
         start: `${YEAR}-07-01`,
         deadline: `${YEAR}-12-31`,

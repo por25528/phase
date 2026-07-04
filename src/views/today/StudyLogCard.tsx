@@ -40,7 +40,7 @@ export function StudyLogCard() {
       {daySessions.map((s) => {
         const goal = s.goalId ? goals.find((g) => g.id === s.goalId) : null;
         return (
-          <div key={s.id} className="group flex items-center gap-[12px] py-[7px] px-[8px] -mx-[8px] rounded-field hover:bg-hover">
+          <div key={s.id} className="group flex items-center gap-[12px] py-[6px] px-[8px] -mx-[8px] rounded-field hover:bg-hover">
             <span className="font-mono text-[.78rem] font-semibold text-ink w-[48px] flex-none tabular-nums">
               {fmtMinutes(s.minutes)}
             </span>

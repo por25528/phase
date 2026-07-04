@@ -18,9 +18,9 @@ export function Today() {
   }
 
   return (
-    <div className="pt-[26px]">
+    <div className="pt-[18px]">
       {/* Hero + quick add */}
-      <div className="today-hero grid gap-[28px] items-end mb-[20px]">
+      <div className="today-hero grid gap-[24px] items-end mb-[13px]">
         <Hero />
         <QuickAdd type={quickType} onType={setQuickType} inputRef={quickRef} />
       </div>
@@ -28,13 +28,13 @@ export function Today() {
       <WeekStrip />
 
       {/* Main grid */}
-      <div className="today-main grid gap-[22px] items-start mt-[20px]">
-        <div className="flex flex-col gap-[18px] min-w-0">
+      <div className="today-main grid gap-[20px] items-start mt-[14px]">
+        <div className="flex flex-col gap-[14px] min-w-0">
           <HabitsCard />
-          <StudyLogCard />
           <TasksCard />
+          <StudyLogCard />
         </div>
-        <div className="flex flex-col gap-[18px] min-w-0">
+        <div className="flex flex-col gap-[14px] min-w-0">
           <GoalsCard onAddGoal={() => focusQuick('goal')} />
           <MiniCalendar />
         </div>

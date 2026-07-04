@@ -9,7 +9,7 @@ export function WeekStrip() {
   const habitsLeft = habits.filter((h) => !h.checkins.includes(today)).length;
 
   return (
-    <div className="grid grid-cols-7 gap-[10px]">
+    <div className="grid grid-cols-7 gap-[8px]">
       {weekDates(today).map((d) => {
         const isToday = d === today;
         const sel = selDate === d;
@@ -29,7 +29,7 @@ export function WeekStrip() {
             onClick={() => actions.setSelDate(d)}
             aria-pressed={sel}
             aria-label={`Select ${d}`}
-            className={`text-left rounded-[12px] border px-[12px] py-[8px] min-h-[60px] flex flex-col gap-[5px] ${
+            className={`text-left rounded-[11px] border px-[11px] py-[7px] min-h-[52px] flex flex-col gap-[3px] ${
               isToday ? 'bg-panel-bright shadow-today' : 'bg-panel'
             } ${border}`}
           >

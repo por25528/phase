@@ -36,8 +36,8 @@ export function QuickAdd({
   }
 
   return (
-    <div className="bg-panel border border-line rounded-card shadow-card px-[16px] py-[14px]">
-      <div className="font-mono text-[.66rem] tracking-[.12em] text-accent font-semibold mb-[9px]">QUICK ADD</div>
+    <div className="bg-panel border border-line rounded-card shadow-card px-[16px] py-[12px]">
+      <div className="font-mono text-[.66rem] tracking-[.12em] text-accent font-semibold mb-[8px]">QUICK ADD</div>
       <div className="flex gap-[8px]">
         <input
           ref={inputRef}
@@ -54,7 +54,7 @@ export function QuickAdd({
           +
         </button>
       </div>
-      <div className="flex items-center gap-[6px] mt-[9px]">
+      <div className="flex items-center gap-[6px] mt-[8px]">
         {(['task', 'habit', 'goal'] as QuickType[]).map((t) => (
           <button
             key={t}

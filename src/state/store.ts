@@ -65,6 +65,16 @@ function setAndPersist(patch: Partial<AppState>) {
   });
 }
 
+// Keep the goals array in column-major order (all column-0 goals in their
+// vertical order, then column-1, …). Array.sort is stable, so within-column
+// order is preserved. This makes flat consumers (Today, Timeline) read goals
+// in true priority order for free.
+function normalizeByColumn(goals: Goal[]): Goal[] {
+  return [...goals]
+    .map((g) => ({ ...g, column: g.column ?? 0 }))
+    .sort((a, b) => (a.column ?? 0) - (b.column ?? 0));
+}
+
 // Walk all goals and collect container node ids for auto-expand on init
 function collectContainers(goals: Goal[]): Set<string> {
   const ids = new Set<string>();
@@ -169,8 +179,33 @@ export const actions = {
   },
 
   addGoal(title: string, deadline: string) {
-    const goal: Goal = { id: uid(), title, start: todayStr(), deadline, nodes: [] };
-    setAndPersist({ goals: [...state.goals, goal] });
+    // New goals land at the bottom of the highest-priority column; the user
+    // drags them rightward to deprioritize.
+    const goal: Goal = { id: uid(), title, start: todayStr(), deadline, nodes: [], column: 0 };
+    setAndPersist({ goals: normalizeByColumn([...state.goals, goal]) });
+  },
+
+  // Priority board: commit an entire column layout. `columns[c]` is the ordered
+  // list of goal ids in column c (0 = leftmost/highest). Rebuilds the goals
+  // array in column-major order and stamps each goal's `column`.
+  setGoalBoard(columns: string[][]) {
+    const byId = new Map(state.goals.map((g) => [g.id, g]));
+    const seen = new Set<string>();
+    const goals: Goal[] = [];
+    columns.forEach((ids, col) => {
+      ids.forEach((id) => {
+        const g = byId.get(id);
+        if (g && !seen.has(id)) {
+          goals.push({ ...g, column: col });
+          seen.add(id);
+        }
+      });
+    });
+    // Safety net: never drop a goal that was missing from the incoming layout.
+    for (const g of state.goals) {
+      if (!seen.has(g.id)) goals.push({ ...g, column: g.column ?? 0 });
+    }
+    setAndPersist({ goals });
   },
 
   renameGoal(goalId: string, title: string) {
@@ -208,8 +243,13 @@ export const actions = {
   },
 
   addHabit(title: string, cadence: Habit['cadence'], weeklyTarget: number) {
-    const habit: Habit = { id: uid(), title, cadence, weeklyTarget, goalId: null, checkins: [] };
+    const habit: Habit = { id: uid(), title, cadence, weeklyTarget, goalId: null, checkins: [], createdAt: todayStr() };
     setAndPersist({ habits: [...state.habits, habit] });
+  },
+
+  renameHabit(habitId: string, title: string) {
+    const habits = state.habits.map((h) => (h.id === habitId ? { ...h, title } : h));
+    setAndPersist({ habits });
   },
 
   removeHabit(habitId: string) {

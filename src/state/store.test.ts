@@ -30,6 +30,48 @@ describe('store actions', () => {
     expect(getState().goals[0].nodes[0].done).toBe(true);
   });
 
+  it('new goals default to column 0 and sort ahead of higher columns', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('A', '2026-12-31');
+    actions.addGoal('B', '2026-12-31');
+    const [a, b] = getState().goals;
+    // both column 0, insertion order preserved
+    expect(a.column).toBe(0);
+    expect(b.column).toBe(0);
+    // push B to column 2 via the board, then add C — C (col 0) must sort before B
+    actions.setGoalBoard([[a.id], [], [b.id], []]);
+    actions.addGoal('C', '2026-12-31');
+    const order = getState().goals.map((g) => g.title);
+    const cols = getState().goals.map((g) => g.column);
+    expect(order).toEqual(['A', 'C', 'B']); // column-major: col0 (A, C) then col2 (B)
+    expect(cols).toEqual([0, 0, 2]);
+  });
+
+  it('setGoalBoard rebuilds goals in column-major order and stamps columns', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('one', '2026-12-31');
+    actions.addGoal('two', '2026-12-31');
+    actions.addGoal('three', '2026-12-31');
+    const [g1, g2, g3] = getState().goals.map((g) => g.id);
+    // three across columns: g3 highest (col0), g1 col1 top, g2 col1 below
+    actions.setGoalBoard([[g3], [g1, g2], [], []]);
+    const goals = getState().goals;
+    expect(goals.map((g) => g.id)).toEqual([g3, g1, g2]);
+    expect(goals.map((g) => g.column)).toEqual([0, 1, 1]);
+  });
+
+  it('setGoalBoard never drops a goal missing from the layout', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('keep', '2026-12-31');
+    actions.addGoal('orphan', '2026-12-31');
+    const [keep, orphan] = getState().goals.map((g) => g.id);
+    actions.setGoalBoard([[keep], [], [], []]); // orphan omitted
+    const ids = getState().goals.map((g) => g.id);
+    expect(ids).toContain(keep);
+    expect(ids).toContain(orphan);
+    expect(ids).toHaveLength(2);
+  });
+
   it('addChild converts a leaf into a container (done removed, parent expanded)', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('G', '2026-12-31');
@@ -147,6 +189,22 @@ describe('store actions', () => {
     expect(getState().habits[0].checkins).toHaveLength(1);
     actions.toggleHabit(hid);
     expect(getState().habits[0].checkins).toHaveLength(0);
+  });
+
+  it('addHabit stamps createdAt with today', async () => {
+    vi.setSystemTime(new Date(2026, 6, 4)); // 2026-07-04
+    const { actions, getState } = await freshStore();
+    actions.addHabit('Study', 'daily', 4);
+    expect(getState().habits[0].createdAt).toBe('2026-07-04');
+  });
+
+  it('renameHabit updates the title only', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addHabit('2 hour of studying', 'daily', 4);
+    const hid = getState().habits[0].id;
+    actions.renameHabit(hid, '3 hour of studying');
+    expect(getState().habits[0].title).toBe('3 hour of studying');
+    expect(getState().habits[0].cadence).toBe('daily');
   });
 
   it('moveTaskToDate reschedules a task', async () => {

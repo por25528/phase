@@ -25,6 +25,7 @@ export interface Goal {
   nodes: GoalNode[];
   milestones?: Milestone[]; // markers only — never used in pct roll-up
   notes?: string;           // free-form working notes — rides along in the goal object
+  column?: number;          // priority-board column, 0 = leftmost/highest. Absent ⇒ 0.
 }
 
 export type ZoomLevel = 'year' | 'quarter' | 'month';
@@ -38,6 +39,7 @@ export interface Habit {
   weeklyTarget: number; // used when cadence==='weekly'
   goalId: string | null; // tag FOR CONTEXT ONLY
   checkins: string[];   // array of 'YYYY-MM-DD' strings
+  createdAt?: string;   // 'YYYY-MM-DD' — day the habit began; misses before it don't count. Optional for legacy data.
 }
 
 export interface Task {
