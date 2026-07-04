@@ -38,7 +38,7 @@ let state: FullState = {
   expanded: new Set(),
   toast: null,
   pendingUndo: null,
-  zoom: 'year',
+  zoom: 'quarter',
 };
 
 let initialized = false;

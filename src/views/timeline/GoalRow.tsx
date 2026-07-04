@@ -3,7 +3,7 @@ import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, daysLeftLabel } from '../../lib/dates';
 import { windowFrac, expectedPct, behindPaceBy } from '../../lib/timeline';
 import type { DateWindow, Segment } from '../../lib/timeline';
-import type { Goal, ZoomLevel } from '../../db/types';
+import type { Goal } from '../../db/types';
 import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
 import { NodeLane, PlotGrid } from './NodeLane';
@@ -15,7 +15,6 @@ interface GoalRowProps {
   win: DateWindow;
   segs: Segment[];
   tf: number;
-  zoom: ZoomLevel;
   isExpanded: boolean;
   onToggle(): void;
   isLast: boolean;
@@ -27,7 +26,7 @@ interface GoalRowProps {
  * milestones), and — when expanded — the NodeLane sub-goal section. Owns its own
  * tooltip/preview state; the fixed-position tooltips escape the card overflow.
  */
-export function GoalRow({ goal: g, index: i, win, segs, tf, zoom, isExpanded, onToggle, isLast }: GoalRowProps) {
+export function GoalRow({ goal: g, index: i, win, segs, tf, isExpanded, onToggle, isLast }: GoalRowProps) {
   const { actions } = useAppStore();
   const reduced = useReducedMotion();
   const [barTip, setBarTip] = useState<{ x: number; y: number } | null>(null);
@@ -71,7 +70,7 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, zoom, isExpanded, on
 
         {/* Plot area */}
         <div className="flex-1 relative">
-          <PlotGrid segs={segs} tf={tf} zoom={zoom} showToday={showToday} />
+          <PlotGrid segs={segs} tf={tf} showToday={showToday} />
 
           {/* Goal bar — keyboard-accessible draggable/resizable span */}
           <SpanBar
@@ -122,7 +121,7 @@ export function GoalRow({ goal: g, index: i, win, segs, tf, zoom, isExpanded, on
       </div>
 
       {/* Expanded sub-goal lanes + unscheduled tray */}
-      {isExpanded && <NodeLane goal={g} win={win} segs={segs} tf={tf} zoom={zoom} />}
+      {isExpanded && <NodeLane goal={g} win={win} segs={segs} tf={tf} />}
 
       {/* Bar tooltip — fixed so it escapes the card's overflow:hidden */}
       {barTip && (

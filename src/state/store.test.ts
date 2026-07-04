@@ -3,7 +3,7 @@ import { goalPct } from '../lib/pct';
 
 vi.mock('../db/db', () => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
-  loadZoom: vi.fn(async () => 'year'),
+  loadZoom: vi.fn(async () => 'quarter'),
   saveZoom: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),

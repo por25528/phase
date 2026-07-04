@@ -172,8 +172,9 @@ import {
 } from './timeline';
 
 describe('zoomWindow', () => {
-  it('year spans Jan 1 – Dec 31 of today year', () => {
-    expect(zoomWindow('year', '2026-07-02')).toEqual({ start: '2026-01-01', end: '2026-12-31' });
+  it('week spans Sunday–Saturday around the anchor', () => {
+    // 2026-07-02 is a Thursday; its week is Jun 28 (Sun) – Jul 4 (Sat)
+    expect(zoomWindow('week', '2026-07-02')).toEqual({ start: '2026-06-28', end: '2026-07-04' });
   });
   it('quarter spans the current quarter', () => {
     expect(zoomWindow('quarter', '2026-07-02')).toEqual({ start: '2026-07-01', end: '2026-09-30' });
@@ -187,9 +188,6 @@ describe('zoomWindow', () => {
   // Non-today anchor cases: zoomWindow must derive the window from the
   // passed-in anchor date, not from "today" — proving it already works
   // for arbitrary anchors (e.g. when the user has paged the timeline).
-  it('year spans Jan 1 – Dec 31 of a non-today anchor year', () => {
-    expect(zoomWindow('year', '2027-03-15')).toEqual({ start: '2027-01-01', end: '2027-12-31' });
-  });
   it('quarter spans the anchor quarter for a non-today anchor', () => {
     expect(zoomWindow('quarter', '2026-11-15')).toEqual({ start: '2026-10-01', end: '2026-12-31' });
   });
@@ -199,10 +197,9 @@ describe('zoomWindow', () => {
 });
 
 describe('shiftAnchor', () => {
-  it('year: shifts by n years, same month/day', () => {
-    expect(shiftAnchor('year', '2026-07-02', 1)).toBe('2027-07-02');
-    expect(shiftAnchor('year', '2026-07-02', -1)).toBe('2025-07-02');
-    expect(shiftAnchor('year', '2026-07-02', 3)).toBe('2029-07-02');
+  it('week: shifts by 7n days', () => {
+    expect(shiftAnchor('week', '2026-07-02', 1)).toBe('2026-07-09');
+    expect(shiftAnchor('week', '2026-07-02', -1)).toBe('2026-06-25');
   });
   it('quarter: shifts by 3n months', () => {
     expect(shiftAnchor('quarter', '2026-07-02', 1)).toBe('2026-10-02');
@@ -223,9 +220,6 @@ describe('shiftAnchor', () => {
   it('clamps day for quarter shift landing on a shorter month', () => {
     // Nov 30 + 3 months (quarter) -> Feb 28 (2026 is not a leap year)
     expect(shiftAnchor('quarter', '2025-11-30', 1)).toBe('2026-02-28');
-  });
-  it('clamps day for year shift landing on Feb 29 in a non-leap year', () => {
-    expect(shiftAnchor('year', '2028-02-29', 1)).toBe('2029-02-28');
   });
 });
 
@@ -461,7 +455,7 @@ describe('windowDays / windowFrac', () => {
   const july = { start: '2026-07-01', end: '2026-07-31' };
   it('counts inclusive days', () => {
     expect(windowDays(july)).toBe(31);
-    expect(windowDays(zoomWindow('year', '2026-07-02'))).toBe(365);
+    expect(windowDays(zoomWindow('week', '2026-07-02'))).toBe(7);
   });
   it('frac is 0 at start, 1 at day after end, negative before', () => {
     expect(windowFrac('2026-07-01', july)).toBe(0);
@@ -472,11 +466,11 @@ describe('windowDays / windowFrac', () => {
 });
 
 describe('windowSegments', () => {
-  it('year → 12 month segments summing to 365', () => {
-    const segs = windowSegments('year', zoomWindow('year', '2026-07-02'));
-    expect(segs).toHaveLength(12);
-    expect(segs[0]).toEqual({ label: 'Jan', days: 31 });
-    expect(segs.reduce((s, x) => s + x.days, 0)).toBe(365);
+  it('week → 7 day segments', () => {
+    const segs = windowSegments('week', zoomWindow('week', '2026-07-02'));
+    expect(segs).toHaveLength(7);
+    expect(segs.every((s) => s.days === 1)).toBe(true);
+    expect(segs[0].label).toBe('28'); // Jun 28
   });
   it('quarter → 3 month segments', () => {
     expect(windowSegments('quarter', zoomWindow('quarter', '2026-07-02'))).toEqual([

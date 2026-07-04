@@ -4,18 +4,16 @@ import { todayStr, parseD } from '../lib/dates';
 import { zoomWindow, shiftAnchor, windowFrac, windowSegments } from '../lib/timeline';
 import type { ZoomLevel } from '../db/types';
 import { GoalRow } from './timeline/GoalRow';
-import { QUARTER_MONTHS } from './timeline/NodeLane';
 
 const MONTH_FULL = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-/** Mono window label: year → `2026`, quarter → `Q3 2026`, month → `JULY 2026`. */
+/** Mono window label: quarter → `Q3 2026`, week/month → `JULY 2026`. */
 function windowLabel(zoom: ZoomLevel, anchor: string): string {
   const d = parseD(anchor);
   const y = d.getFullYear();
-  if (zoom === 'year') return `${y}`;
   if (zoom === 'quarter') return `Q${Math.floor(d.getMonth() / 3) + 1} ${y}`;
   return `${MONTH_FULL[d.getMonth()].toUpperCase()} ${y}`;
 }
@@ -90,7 +88,7 @@ export function Timeline() {
         </div>
 
         <div className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium">
-          {(['year', 'quarter', 'month'] as ZoomLevel[]).map(z => (
+          {(['week', 'month', 'quarter'] as ZoomLevel[]).map(z => (
             <button key={z} type="button" onClick={() => actions.setZoom(z)} aria-pressed={zoom === z}
               className={`px-[12px] py-[4px] transition-colors duration-100 ${
                 zoom === z ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'}`}>
@@ -122,11 +120,7 @@ export function Timeline() {
               <div
                 key={m}
                 className={`py-[9px] pl-[7px] text-[.72rem] text-muted font-medium${
-                  m === 0
-                    ? ''
-                    : zoom === 'year' && QUARTER_MONTHS.has(m)
-                    ? ' border-l border-line-2'
-                    : ' border-l border-line'
+                  m === 0 ? '' : ' border-l border-line'
                 }`}
                 style={{ flex: `${s.days} 0 0` }}
               >
@@ -152,7 +146,6 @@ export function Timeline() {
             win={win}
             segs={segs}
             tf={tf}
-            zoom={zoom}
             isExpanded={expanded.has(g.id)}
             onToggle={() => toggle(g.id)}
             isLast={i === goals.length - 1}

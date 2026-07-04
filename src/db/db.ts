@@ -168,7 +168,8 @@ export async function persist(state: AppState): Promise<void> {
 export async function loadZoom(): Promise<ZoomLevel> {
   const row = await db.settings.get('zoom');
   const v = row?.value;
-  return v === 'quarter' || v === 'month' ? v : 'year';
+  // 'quarter' fallback also migrates the retired 'year' zoom from older data
+  return v === 'week' || v === 'quarter' || v === 'month' ? v : 'quarter';
 }
 
 export async function saveZoom(z: ZoomLevel): Promise<void> {
@@ -191,7 +192,9 @@ export async function importStateFromFile(file: File): Promise<AppState & { zoom
       try {
         const raw = JSON.parse(r.result as string) as Partial<AppState & { zoom?: string }>;
         const zoom: ZoomLevel =
-          raw.zoom === 'quarter' || raw.zoom === 'month' ? raw.zoom : 'year';
+          raw.zoom === 'week' || raw.zoom === 'quarter' || raw.zoom === 'month'
+            ? raw.zoom
+            : 'quarter'; // old backups may carry the retired 'year'
         const parsed: AppState = {
           goals: raw.goals ?? [],
           habits: raw.habits ?? [],

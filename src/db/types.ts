@@ -28,7 +28,7 @@ export interface Goal {
   column?: number;          // priority-board column, 0 = leftmost/highest. Absent ⇒ 0.
 }
 
-export type ZoomLevel = 'year' | 'quarter' | 'month';
+export type ZoomLevel = 'week' | 'month' | 'quarter';
 
 export type Cadence = 'daily' | 'weekly';
 

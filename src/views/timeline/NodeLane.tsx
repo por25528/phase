@@ -3,29 +3,21 @@ import { useAppStore } from '../../state/store';
 import { todayStr, fmtD } from '../../lib/dates';
 import { windowFrac, defaultNodeSpan, spanOutside } from '../../lib/timeline';
 import type { DateWindow, Segment } from '../../lib/timeline';
-import type { Goal, GoalNode, ZoomLevel } from '../../db/types';
+import type { Goal, GoalNode } from '../../db/types';
 import { nodePct } from '../../lib/pct';
 import { SpanBar } from './SpanBar';
-
-export const QUARTER_MONTHS = new Set([3, 6, 9]);
 
 /** Shared month-grid + today-line backdrop for a plot area. `showToday` gates the
  * today-line — callers should only pass `true` when today falls inside the window
  * (`tf` in `[0, 100]`), since a window that doesn't contain today has no today-line. */
-export function PlotGrid({ segs, tf, zoom, showToday }: { segs: Segment[]; tf: number; zoom: ZoomLevel; showToday: boolean }) {
+export function PlotGrid({ segs, tf, showToday }: { segs: Segment[]; tf: number; showToday: boolean }) {
   return (
     <>
       <div className="absolute inset-0 flex pointer-events-none">
         {segs.map((s, m) => (
           <span
             key={m}
-            className={
-              m === 0
-                ? ''
-                : zoom === 'year' && QUARTER_MONTHS.has(m)
-                ? 'border-l border-line-2'
-                : 'border-l border-line'
-            }
+            className={m === 0 ? '' : 'border-l border-line'}
             style={{ flex: `${s.days} 0 0` }}
           />
         ))}
@@ -45,7 +37,6 @@ interface NodeLaneProps {
   win: DateWindow;
   segs: Segment[];
   tf: number;
-  zoom: ZoomLevel;
 }
 
 type NodeTip = { x: number; y: number; text: string };
@@ -55,7 +46,7 @@ type NodeTip = { x: number; y: number; text: string };
  * node (draggable SpanBar) plus a 30px "unscheduled" tray of chips. Nodes are
  * scheduling metadata only — dates never touch `done`/pct.
  */
-export function NodeLane({ goal, win, segs, tf, zoom }: NodeLaneProps) {
+export function NodeLane({ goal, win, segs, tf }: NodeLaneProps) {
   const { actions } = useAppStore();
   const plotRef = useRef<HTMLDivElement>(null);
   const [plotW, setPlotW] = useState(0);
@@ -124,7 +115,7 @@ export function NodeLane({ goal, win, segs, tf, zoom }: NodeLaneProps) {
 
             {/* Plot area */}
             <div className="flex-1 relative">
-              <PlotGrid segs={segs} tf={tf} zoom={zoom} showToday={showToday} />
+              <PlotGrid segs={segs} tf={tf} showToday={showToday} />
               <SpanBar
                 span={span}
                 win={win}

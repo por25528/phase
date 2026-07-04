@@ -70,10 +70,15 @@ function iso(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// TEMPORARY 'week' branches below keep the old windowed UI alive between the
+// ZoomLevel migration and the canvas rewrite; they die with these functions.
 export function zoomWindow(zoom: ZoomLevel, today: string): DateWindow {
   const d = parseD(today);
   const y = d.getFullYear();
-  if (zoom === 'year') return { start: `${y}-01-01`, end: `${y}-12-31` };
+  if (zoom === 'week') {
+    const start = addDays(today, -d.getDay());
+    return { start, end: addDays(start, 6) };
+  }
   if (zoom === 'quarter') {
     const q = Math.floor(d.getMonth() / 3) * 3;
     return { start: iso(new Date(y, q, 1)), end: iso(new Date(y, q + 3, 0)) };
@@ -82,10 +87,10 @@ export function zoomWindow(zoom: ZoomLevel, today: string): DateWindow {
 }
 
 export function shiftAnchor(zoom: ZoomLevel, anchor: string, n: number): string {
+  if (zoom === 'week') return addDays(anchor, 7 * n);
   const d = parseD(anchor);
-  const months = zoom === 'year' ? 0 : zoom === 'quarter' ? 3 * n : n;
-  const years = zoom === 'year' ? n : 0;
-  const targetYear = d.getFullYear() + years + Math.floor((d.getMonth() + months) / 12);
+  const months = zoom === 'quarter' ? 3 * n : n;
+  const targetYear = d.getFullYear() + Math.floor((d.getMonth() + months) / 12);
   const targetMonth = ((d.getMonth() + months) % 12 + 12) % 12;
   const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
   const day = Math.min(d.getDate(), lastDay);
@@ -113,12 +118,8 @@ export function spanOutside(
 // The canvas replaces the fixed window: a DateRange rendered at a constant
 // px-per-day scale per zoom, scrolled horizontally and extended on demand.
 
-// Note: 'year' is being retired; these use the canvas zoom union directly
-// until ZoomLevel itself is migrated to 'week' | 'month' | 'quarter'.
-type CanvasZoom = 'week' | 'month' | 'quarter';
-
-export const PX_PER_DAY: Record<CanvasZoom, number> = { week: 130, month: 40, quarter: 13 };
-export const PERIOD_DAYS: Record<CanvasZoom, number> = { week: 7, month: 30, quarter: 91 };
+export const PX_PER_DAY: Record<ZoomLevel, number> = { week: 130, month: 40, quarter: 13 };
+export const PERIOD_DAYS: Record<ZoomLevel, number> = { week: 7, month: 30, quarter: 91 };
 export const LABEL_W = 200; // sticky goal-label column width (px)
 
 // Extend the range when scroll comes within this many px of an edge…
@@ -177,7 +178,7 @@ export function scrollLeftForCenter(
 // scroll room before the first extension kicks in. Guarantees every bar is
 // on-canvas from the start.
 export function initialRange(
-  zoom: CanvasZoom,
+  zoom: ZoomLevel,
   today: string,
   dates: string[],
   center?: string,
@@ -250,6 +251,13 @@ export function windowFrac(date: string, win: DateWindow): number {
 export interface Segment { label: string; days: number }
 
 export function windowSegments(zoom: ZoomLevel, win: DateWindow): Segment[] {
+  if (zoom === 'week') {
+    const segs: Segment[] = [];
+    for (let i = 0; i < 7; i++) {
+      segs.push({ label: String(parseD(addDays(win.start, i)).getDate()), days: 1 });
+    }
+    return segs;
+  }
   if (zoom === 'month') {
     const total = windowDays(win);
     const segs: Segment[] = [];
@@ -261,9 +269,8 @@ export function windowSegments(zoom: ZoomLevel, win: DateWindow): Segment[] {
     return segs;
   }
   const startD = parseD(win.start);
-  const count = zoom === 'year' ? 12 : 3;
   const segs: Segment[] = [];
-  for (let k = 0; k < count; k++) {
+  for (let k = 0; k < 3; k++) {
     const first = new Date(startD.getFullYear(), startD.getMonth() + k, 1);
     const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
     segs.push({ label: MO[first.getMonth()], days });
