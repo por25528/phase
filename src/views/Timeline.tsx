@@ -19,6 +19,7 @@ import {
 import type { DateRange } from '../lib/timeline';
 import type { ZoomLevel } from '../db/types';
 import { GoalRow } from './timeline/GoalRow';
+import { DaysLane } from './timeline/DaysLane';
 import { useReducedMotion } from './today/useReducedMotion';
 
 const MONTH_FULL = [
@@ -237,29 +238,36 @@ export function Timeline() {
                 Goal
               </div>
               <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
-                {/* Today caret sits above the today-line */}
-                <div
-                  className="absolute inset-y-0 flex flex-col justify-start items-center pointer-events-none z-[5]"
-                  style={{ left: `${todayX}px`, transform: 'translateX(-50%)' }}
-                >
-                  <span className="text-accent text-[.62rem] tabular-nums font-medium leading-none pt-[3px] select-none">
-                    Today
-                  </span>
-                </div>
-                {segs.map((s) => {
-                  const x = dateToX(s.start, range.start, pxPerDay);
-                  return (
+                {zoom === 'week' ? (
+                  // Day-level detail absorbed from the Calendar page
+                  <DaysLane segs={segs} rangeStart={range.start} pxPerDay={pxPerDay} />
+                ) : (
+                  <>
+                    {/* Today caret sits above the today-line */}
                     <div
-                      key={s.start}
-                      className={`absolute inset-y-0 py-[9px] pl-[7px] text-[.72rem] text-muted font-medium overflow-hidden whitespace-nowrap${
-                        x <= 0 ? '' : s.major ? ' border-l border-line-2' : ' border-l border-line'
-                      }`}
-                      style={{ left: `${x}px`, width: `${s.days * pxPerDay}px` }}
+                      className="absolute inset-y-0 flex flex-col justify-start items-center pointer-events-none z-[5]"
+                      style={{ left: `${todayX}px`, transform: 'translateX(-50%)' }}
                     >
-                      {s.label}
+                      <span className="text-accent text-[.62rem] tabular-nums font-medium leading-none pt-[3px] select-none">
+                        Today
+                      </span>
                     </div>
-                  );
-                })}
+                    {segs.map((s) => {
+                      const x = dateToX(s.start, range.start, pxPerDay);
+                      return (
+                        <div
+                          key={s.start}
+                          className={`absolute inset-y-0 py-[9px] pl-[7px] text-[.72rem] text-muted font-medium overflow-hidden whitespace-nowrap${
+                            x <= 0 ? '' : s.major ? ' border-l border-line-2' : ' border-l border-line'
+                          }`}
+                          style={{ left: `${x}px`, width: `${s.days * pxPerDay}px` }}
+                        >
+                          {s.label}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </div>
 
