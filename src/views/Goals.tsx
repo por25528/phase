@@ -29,6 +29,16 @@ import { todayStr } from '../lib/dates';
 import { deadlineChip } from '../lib/today';
 import { behindPaceBy, expectedPct } from '../lib/timeline';
 import { BehindChip } from '../components/BehindChip';
+import { Modal } from '../components/Modal';
+import {
+  buildManualGoal,
+  buildAiPrompt,
+  parseGoalImport,
+  priorityToColumn,
+  PRIORITY_WORDS,
+  defaultDeadline,
+  FORMAT_HINT,
+} from '../lib/goalImport';
 
 // Priority columns, left → right = highest → lowest. Order IS the priority model:
 // a goal's column sets its tier, its height within the column sets rank in-tier.
@@ -64,73 +74,253 @@ function groupByColumn(goals: Goal[], n: number): string[][] {
   return cols;
 }
 
-// ── New goal form ─────────────────────────────────────────────────────────────
+// Shared field styling
+const fieldCls =
+  'rounded-field border border-line-2 px-[8px] py-[5px] text-[.8rem] text-ink bg-transparent outline-none focus-visible:border-accent';
+const labelCls = 'text-[.72rem] font-medium text-muted';
+const primaryBtn =
+  'text-[.84rem] font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover disabled:opacity-40';
+const ghostBtn = 'text-[.84rem] text-muted px-[10px] py-[7px] rounded-field hover:bg-hover';
 
-function NewGoalForm({
+// ── New goal modal ────────────────────────────────────────────────────────────
+
+function NewGoalModal({
+  open,
+  onClose,
   onAdd,
-  onCancel,
 }: {
-  onAdd: (title: string, deadline: string) => void;
-  onCancel?: () => void;
+  open: boolean;
+  onClose: () => void;
+  onAdd: (goal: Goal) => void;
 }) {
   const [title, setTitle] = useState('');
-  const [deadline, setDeadline] = useState('2026-12-31');
+  const [priority, setPriority] = useState<(typeof PRIORITY_WORDS)[number]>('highest');
+  const [start, setStart] = useState(todayStr());
+  const [deadline, setDeadline] = useState(defaultDeadline(todayStr()));
+  const [subgoals, setSubgoals] = useState<string[]>([]);
+  const [draft, setDraft] = useState('');
+  const [notes, setNotes] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // Reset the form each time it opens.
   useEffect(() => {
-    titleRef.current?.focus();
-  }, []);
+    if (!open) return;
+    setTitle('');
+    setPriority('highest');
+    setStart(todayStr());
+    setDeadline(defaultDeadline(todayStr()));
+    setSubgoals([]);
+    setDraft('');
+    setNotes('');
+    const t = setTimeout(() => titleRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [open]);
+
+  function commitDraft() {
+    const v = draft.trim();
+    if (!v) return;
+    setSubgoals((s) => [...s, v]);
+    setDraft('');
+  }
 
   function submit() {
     const t = title.trim();
     if (!t) return;
-    onAdd(t, deadline);
+    const pending = draft.trim();
+    const goal = buildManualGoal({
+      title: t,
+      start,
+      deadline,
+      column: priorityToColumn(priority),
+      notes,
+      subgoalTitles: pending ? [...subgoals, pending] : subgoals,
+    });
+    onAdd(goal);
   }
 
   return (
-    <div className="p-[14px] rounded-card border border-line-2 bg-panel shadow-card flex flex-col gap-[9px] w-full max-w-[440px]">
-      <input
-        ref={titleRef}
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="What do you want to make progress on?"
-        className="w-full bg-transparent border-none outline-none font-disp text-[1.02rem] font-semibold text-ink placeholder:text-faint placeholder:font-normal placeholder:font-ui"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); submit(); }
-          if (e.key === 'Escape' && onCancel) onCancel();
-        }}
-      />
-      <div className="flex items-center gap-[9px]">
-        <label className="text-[.72rem] text-muted whitespace-nowrap">Deadline</label>
-        <input
-          type="date"
-          value={deadline}
-          onChange={(e) => setDeadline(e.target.value)}
-          className="rounded-field border border-line-2 px-[8px] py-[4px] text-[.78rem] text-ink bg-transparent outline-none focus-visible:border-accent"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); submit(); }
-            if (e.key === 'Escape' && onCancel) onCancel();
-          }}
-        />
-      </div>
-      <div className="flex items-center gap-[8px] mt-[2px]">
-        <button
-          className="text-[.82rem] font-semibold text-paper bg-ink px-[12px] py-[6px] rounded-field hover:bg-ink-hover disabled:opacity-40"
-          onClick={submit}
-          disabled={!title.trim()}
-        >
-          Add to Highest
-        </button>
-        {onCancel && (
-          <button
-            className="text-[.82rem] text-muted px-[9px] py-[6px] rounded-field hover:bg-hover"
-            onClick={onCancel}
-          >
-            Cancel
+    <Modal open={open} onClose={onClose} title="New goal">
+      <div className="flex flex-col gap-[14px]">
+        <div className="flex flex-col gap-[5px]">
+          <label className={labelCls}>Title</label>
+          <input
+            ref={titleRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="What do you want to make progress on?"
+            className={`${fieldCls} w-full`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); submit(); }
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-[14px]">
+          <div className="flex flex-col gap-[5px]">
+            <label className={labelCls}>Priority</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as (typeof PRIORITY_WORDS)[number])}
+              className={fieldCls}
+            >
+              {PRIORITY_WORDS.map((w) => (
+                <option key={w} value={w}>
+                  {COLUMNS[PRIORITY_WORDS.indexOf(w)].label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-[5px]">
+            <label className={labelCls}>Start</label>
+            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={fieldCls} />
+          </div>
+          <div className="flex flex-col gap-[5px]">
+            <label className={labelCls}>Deadline</label>
+            <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={fieldCls} />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-[6px]">
+          <label className={labelCls}>First steps <span className="text-faint font-normal">(optional)</span></label>
+          {subgoals.length > 0 && (
+            <div className="flex flex-col gap-[4px]">
+              {subgoals.map((s, i) => (
+                <div key={i} className="flex items-center gap-[8px] text-[.84rem] text-ink-soft">
+                  <span className="text-faint">•</span>
+                  <span className="flex-1 truncate">{s}</span>
+                  <button
+                    aria-label={`Remove ${s}`}
+                    className="text-faint text-[.78rem] hover:text-[#b4453a]"
+                    onClick={() => setSubgoals((arr) => arr.filter((_, j) => j !== i))}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Type a step, press Enter…"
+            className={`${fieldCls} w-full`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commitDraft(); }
+            }}
+          />
+        </div>
+
+        <div className="flex flex-col gap-[5px]">
+          <label className={labelCls}>Notes <span className="text-faint font-normal">(optional)</span></label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Strategy, links, blockers…"
+            className={`${fieldCls} w-full resize-y leading-[1.5]`}
+          />
+        </div>
+
+        <div className="flex items-center gap-[8px] mt-[2px]">
+          <button className={primaryBtn} onClick={submit} disabled={!title.trim()}>
+            Add goal
           </button>
-        )}
+          <button className={ghostBtn} onClick={onClose}>Cancel</button>
+        </div>
       </div>
-    </div>
+    </Modal>
+  );
+}
+
+// ── Import goal modal ─────────────────────────────────────────────────────────
+
+function ImportGoalModal({
+  open,
+  onClose,
+  onImport,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onImport: (goals: Goal[]) => void;
+}) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setText('');
+    setError(null);
+    setCopied(false);
+  }, [open]);
+
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+
+  function copyPrompt() {
+    navigator.clipboard?.writeText(buildAiPrompt(todayStr())).then(
+      () => {
+        setCopied(true);
+        if (copyTimer.current) clearTimeout(copyTimer.current);
+        copyTimer.current = setTimeout(() => setCopied(false), 1600);
+      },
+      () => setError('Could not access the clipboard.'),
+    );
+  }
+
+  function submit() {
+    const result = parseGoalImport(text, todayStr());
+    if ('error' in result) {
+      setError(result.error);
+      return;
+    }
+    onImport(result.goals);
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Import goal">
+      <div className="flex flex-col gap-[14px]">
+        <p className="text-[.82rem] text-muted leading-[1.5]">
+          Paste JSON to create a goal with its subgoals. No AI handy? Copy the prompt below
+          and ask any AI to plan a goal for you, then paste its reply here.
+        </p>
+
+        <div className="flex items-center gap-[10px]">
+          <button className={primaryBtn} onClick={copyPrompt}>
+            {copied ? 'Copied!' : 'Copy AI prompt'}
+          </button>
+          <span className="text-[.74rem] text-faint">Paste into ChatGPT, Claude, etc.</span>
+        </div>
+
+        <details className="rounded-field border border-line-2 px-[10px] py-[8px]">
+          <summary className="text-[.76rem] font-medium text-muted cursor-pointer select-none">
+            Format reference
+          </summary>
+          <pre className="mt-[8px] text-[.68rem] leading-[1.45] text-ink-soft font-mono overflow-x-auto whitespace-pre">
+            {FORMAT_HINT}
+          </pre>
+        </details>
+
+        <div className="flex flex-col gap-[5px]">
+          <label className={labelCls}>Paste goal JSON</label>
+          <textarea
+            value={text}
+            onChange={(e) => { setText(e.target.value); if (error) setError(null); }}
+            rows={8}
+            placeholder={'{ "title": "…", "subgoals": ["…"] }'}
+            className={`${fieldCls} w-full resize-y font-mono text-[.76rem] leading-[1.5]`}
+          />
+          {error && <p className="text-[.78rem] text-[#b4453a]">{error}</p>}
+        </div>
+
+        <div className="flex items-center gap-[8px] mt-[2px]">
+          <button className={primaryBtn} onClick={submit} disabled={!text.trim()}>
+            Add to board
+          </button>
+          <button className={ghostBtn} onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -290,7 +480,7 @@ function Column({
 
 export function Goals() {
   const { goals, actions } = useAppStore();
-  const [showNewGoal, setShowNewGoal] = useState(false);
+  const [modal, setModal] = useState<null | 'new' | 'import'>(null);
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -391,31 +581,42 @@ export function Goals() {
             Drag goals between columns to set priority — leftmost is highest, and higher within a column outranks lower.
           </p>
         </div>
-        {!isEmpty && !showNewGoal && (
+        <div className="flex-none flex items-center gap-[8px]">
           <button
-            className="flex-none text-[.82rem] font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
-            onClick={() => setShowNewGoal(true)}
+            className="text-[.82rem] font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
+            onClick={() => setModal('import')}
+          >
+            Import goal
+          </button>
+          <button
+            className="text-[.82rem] font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
+            onClick={() => setModal('new')}
           >
             + New goal
           </button>
-        )}
+        </div>
       </div>
 
-      {/* Add form (top, not buried at the bottom) */}
-      {(showNewGoal || isEmpty) && (
-        <div className="mb-[22px] mt-[10px]">
-          {isEmpty && (
-            <p className="text-muted text-[.84rem] mb-[10px]">
-              No goals yet — name your first one and pick a deadline.
-            </p>
-          )}
-          <NewGoalForm
-            onAdd={(title, deadline) => {
-              actions.addGoal(title, deadline);
-              setShowNewGoal(false);
-            }}
-            onCancel={isEmpty ? undefined : () => setShowNewGoal(false)}
-          />
+      {/* Empty state */}
+      {isEmpty && (
+        <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
+          <p className="text-muted text-[.9rem] mb-[14px]">
+            No goals yet — create one by hand, or import a plan an AI made for you.
+          </p>
+          <div className="flex items-center gap-[10px]">
+            <button
+              className="text-[.84rem] font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
+              onClick={() => setModal('new')}
+            >
+              + New goal
+            </button>
+            <button
+              className="text-[.84rem] font-medium text-ink-soft border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-hover"
+              onClick={() => setModal('import')}
+            >
+              Import goal
+            </button>
+          </div>
         </div>
       )}
 
@@ -458,6 +659,25 @@ export function Goals() {
           </DragOverlay>
         </DndContext>
       )}
+
+      <NewGoalModal
+        open={modal === 'new'}
+        onClose={() => setModal(null)}
+        onAdd={(goal) => {
+          actions.addGoals([goal]);
+          actions.showToast('Goal added');
+          setModal(null);
+        }}
+      />
+      <ImportGoalModal
+        open={modal === 'import'}
+        onClose={() => setModal(null)}
+        onImport={(imported) => {
+          actions.addGoals(imported);
+          actions.showToast(`Imported ${imported.length} goal${imported.length === 1 ? '' : 's'}`);
+          setModal(null);
+        }}
+      />
     </div>
   );
 }

@@ -180,11 +180,22 @@ export const actions = {
     setAndPersist({ goals });
   },
 
+  // Append one or more fully-built goals (manual New Goal form or JSON import).
+  // Single write path: normalize by column so the array stays priority-ordered,
+  // and auto-expand any container nodes the new goals carry so their trees render
+  // open in the drawer (mirrors init behavior).
+  addGoals(newGoals: Goal[]) {
+    if (newGoals.length === 0) return;
+    const goals = normalizeByColumn([...state.goals, ...newGoals]);
+    const expanded = new Set(state.expanded);
+    collectContainers(newGoals).forEach((id) => expanded.add(id));
+    state = { ...state, expanded };
+    setAndPersist({ goals });
+  },
+
+  // Convenience wrapper (QuickAdd, tests): a bare goal in the highest column.
   addGoal(title: string, deadline: string) {
-    // New goals land at the bottom of the highest-priority column; the user
-    // drags them rightward to deprioritize.
-    const goal: Goal = { id: uid(), title, start: todayStr(), deadline, nodes: [], column: 0 };
-    setAndPersist({ goals: normalizeByColumn([...state.goals, goal]) });
+    actions.addGoals([{ id: uid(), title, start: todayStr(), deadline, nodes: [], column: 0 }]);
   },
 
   // Priority board: commit an entire column layout. `columns[c]` is the ordered

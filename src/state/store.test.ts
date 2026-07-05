@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
+import type { Goal } from '../db/types';
 
 vi.mock('../db/db', () => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
@@ -232,5 +233,32 @@ describe('store actions', () => {
     expect(getState().pendingUndo).not.toBeNull();
     actions.undoLastDelete();
     expect(getState().sessions).toHaveLength(1);
+  });
+
+  describe('addGoals (import path)', () => {
+    it('appends, re-sorts column-major, and auto-expands imported containers', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('existing', '2026-12-31'); // lands in column 0
+      const imported: Goal[] = [
+        {
+          id: 'gi_later', title: 'Imported later', start: '2026-07-05', deadline: '2026-12-31',
+          column: 2,
+          nodes: [{ id: 'grp1', title: 'Group', children: [{ id: 'leaf1', title: 'Leaf', done: false }] }],
+        },
+        { id: 'gi_top', title: 'Imported top', start: '2026-07-05', deadline: '2026-12-31', column: 0, nodes: [] },
+      ];
+      actions.addGoals(imported);
+      // column-major: both col-0 goals (in insertion order) before the col-2 goal
+      expect(getState().goals.map((g) => g.title)).toEqual(['existing', 'Imported top', 'Imported later']);
+      // container nodes from imported goals render expanded in the drawer
+      expect(getState().expanded.has('grp1')).toBe(true);
+    });
+
+    it('is a no-op for an empty array', async () => {
+      const { actions, getState } = await freshStore();
+      const before = getState().goals;
+      actions.addGoals([]);
+      expect(getState().goals).toBe(before);
+    });
   });
 });
