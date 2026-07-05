@@ -218,7 +218,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
 }
 
 export function App() {
-  const { view, openGoalId, toast, pendingUndo, goals, hydration, actions } = useAppStore();
+  const { view, openGoalId, toast, pendingUndo, goals, hydration, secondTab, actions } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -300,6 +300,12 @@ export function App() {
           />
         </div>
       </header>
+
+      {secondTab && (
+        <div className="bg-warn-tint text-warn text-[.8rem] px-[16px] sm:px-[36px] py-[7px] border-b border-line">
+          Phase is already open in another tab. Edits from two tabs overwrite each other — keep just one open.
+        </div>
+      )}
 
       {/* Main */}
       <main className="flex-1 min-w-0">

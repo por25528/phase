@@ -4,6 +4,7 @@ import { loadState, persist, exportState, importStateFromFile, loadScale, saveSc
 import { clampScale } from '../lib/timeline';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
+import { acquireTabLock } from '../lib/tabLock';
 import {
   uid, findInAll, findNode, removeNode,
   findNodePath,
@@ -25,6 +26,7 @@ interface UIState {
   pendingUndo: { label: string } | null;
   pxPerDay: number; // timeline scale — continuous, gesture-driven
   hydration: 'loading' | 'ready' | 'error';
+  secondTab: boolean;
 }
 
 interface FullState extends AppState, UIState {}
@@ -42,6 +44,7 @@ let state: FullState = {
   pendingUndo: null,
   pxPerDay: 13, // quarter preset until the persisted scale loads
   hydration: 'loading',
+  secondTab: false,
 };
 
 let initialized = false;
@@ -97,6 +100,9 @@ function collectContainers(goals: Goal[]): Set<string> {
 export async function initStore(): Promise<void> {
   if (initialized) return;
   initialized = true;
+  void acquireTabLock().then((owned) => {
+    if (!owned) set({ secondTab: true });
+  });
   try {
     const [appState, pxPerDay] = await Promise.all([loadState(), loadScale()]);
     state = {
