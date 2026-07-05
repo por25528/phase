@@ -13,11 +13,6 @@ import { expectedPct, behindPaceBy } from './lib/timeline';
 import { todayStr, daysLeftLabel } from './lib/dates';
 import { minutesThisWeek, fmtMinutes } from './lib/sessions';
 
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 function MilestonesSection({
   goal: g,
   actions,
@@ -27,7 +22,7 @@ function MilestonesSection({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
-  const [newDate, setNewDate] = useState(g.start || todayISO());
+  const [newDate, setNewDate] = useState(g.start || todayStr());
   const newTitleRef = useRef<HTMLInputElement>(null);
 
   const sorted = [...(g.milestones ?? [])].sort((a, b) => a.date.localeCompare(b.date));
@@ -35,9 +30,9 @@ function MilestonesSection({
   function submitNew() {
     const t = newTitle.trim();
     if (!t) return;
-    actions.addMilestone(g.id, t, newDate || todayISO());
+    actions.addMilestone(g.id, t, newDate || todayStr());
     setNewTitle('');
-    setNewDate(g.start || todayISO());
+    setNewDate(g.start || todayStr());
     newTitleRef.current?.focus();
   }
 
