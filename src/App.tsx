@@ -278,8 +278,8 @@ export function App() {
         </nav>
         <div className="flex-1" />
         <div className="flex gap-[16px] font-mono text-[.72rem] tracking-[.06em] text-muted">
-          <button onClick={() => actions.exportBackup()} className="hover:text-ink">↓ EXPORT</button>
-          <button onClick={() => fileInputRef.current?.click()} className="hover:text-ink">↑ IMPORT</button>
+          <button onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'} className="hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↓ EXPORT</button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'} className="hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↑ IMPORT</button>
           <input
             ref={fileInputRef}
             type="file"

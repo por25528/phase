@@ -8,10 +8,15 @@ export function acquireTabLock(
 ): Promise<boolean> {
   if (!locks) return Promise.resolve(true); // no Web Locks (very old browser / node) — don't block usage
   return new Promise((resolve) => {
-    void locks.request('phase-tab', { ifAvailable: true }, (lock) => {
-      resolve(lock !== null);
-      // Returning a never-resolving promise keeps the lock for the tab's lifetime.
-      return lock ? new Promise<void>(() => {}) : undefined;
-    });
+    void locks
+      .request('phase-tab', { ifAvailable: true }, (lock) => {
+        resolve(lock !== null);
+        // Returning a never-resolving promise keeps the lock for the tab's lifetime.
+        return lock ? new Promise<void>(() => {}) : undefined;
+      })
+      // An unexpected rejection (e.g. SecurityError in a sandboxed/opaque origin)
+      // must not leave this promise pending or surface as an unhandled rejection —
+      // degrade to sole-owner (no banner) so it never blocks usage.
+      .catch(() => resolve(true));
   });
 }
