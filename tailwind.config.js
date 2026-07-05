@@ -43,8 +43,8 @@ export default {
         today: '0 2px 6px rgba(30,28,22,.07)',
       },
       fontFamily: {
-        disp: ['Fraunces', 'Georgia', 'serif'],
-        ui: ['Inter', '-apple-system', 'system-ui', 'sans-serif'],
+        disp: ['Fraunces Variable', 'Fraunces', 'Georgia', 'serif'],
+        ui: ['Inter Variable', 'Inter', '-apple-system', 'system-ui', 'sans-serif'],
       },
     },
   },
