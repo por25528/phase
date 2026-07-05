@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { db, persist, importStateFromFile } from './db';
+import { db, persist, importStateFromFile, loadState } from './db';
 import type { AppState, Goal } from './types';
 
 function goal(id: string): Goal {
@@ -53,5 +53,12 @@ describe('importStateFromFile', () => {
 
   it('rejects a backup whose tables are malformed', async () => {
     await expect(importStateFromFile(fileOf('{"goals": "nope"}'))).rejects.toThrow(/Phase backup/);
+  });
+});
+
+describe('loadState', () => {
+  it('returns an empty state on a fresh database — no demo seed', async () => {
+    const s = await loadState();
+    expect(s).toEqual({ goals: [], habits: [], tasks: [], sessions: [] });
   });
 });
