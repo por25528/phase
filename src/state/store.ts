@@ -24,6 +24,7 @@ interface UIState {
   toast: string | null;
   pendingUndo: { label: string } | null;
   pxPerDay: number; // timeline scale — continuous, gesture-driven
+  hydration: 'loading' | 'ready' | 'error';
 }
 
 interface FullState extends AppState, UIState {}
@@ -40,6 +41,7 @@ let state: FullState = {
   toast: null,
   pendingUndo: null,
   pxPerDay: 13, // quarter preset until the persisted scale loads
+  hydration: 'loading',
 };
 
 let initialized = false;
@@ -95,14 +97,22 @@ function collectContainers(goals: Goal[]): Set<string> {
 export async function initStore(): Promise<void> {
   if (initialized) return;
   initialized = true;
-  const [appState, pxPerDay] = await Promise.all([loadState(), loadScale()]);
-  state = {
-    ...state,
-    ...appState,
-    pxPerDay,
-    expanded: collectContainers(appState.goals),
-  };
-  notify();
+  try {
+    const [appState, pxPerDay] = await Promise.all([loadState(), loadScale()]);
+    state = {
+      ...state,
+      ...appState,
+      pxPerDay,
+      hydration: 'ready',
+      expanded: collectContainers(appState.goals),
+    };
+    notify();
+  } catch {
+    // IndexedDB unavailable (private mode, blocked storage) or corrupt.
+    // Nothing was deleted — refuse to render an empty board that would
+    // read as data loss.
+    set({ hydration: 'error' });
+  }
 }
 
 // ---- selectors ----

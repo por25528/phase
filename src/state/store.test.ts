@@ -261,4 +261,22 @@ describe('store actions', () => {
       expect(getState().goals).toBe(before);
     });
   });
+
+  describe('hydration', () => {
+    it('starts loading and becomes ready after initStore', async () => {
+      const store = await freshStore();
+      expect(store.getState().hydration).toBe('loading');
+      await store.initStore();
+      expect(store.getState().hydration).toBe('ready');
+    });
+
+    it('reports error when the DB cannot load', async () => {
+      vi.resetModules();
+      const dbMod = await import('../db/db');
+      vi.mocked(dbMod.loadState).mockRejectedValueOnce(new Error('idb unavailable'));
+      const store = await import('./store');
+      await store.initStore();
+      expect(store.getState().hydration).toBe('error');
+    });
+  });
 });

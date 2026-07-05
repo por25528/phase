@@ -218,7 +218,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
 }
 
 export function App() {
-  const { view, openGoalId, toast, pendingUndo, goals, actions } = useAppStore();
+  const { view, openGoalId, toast, pendingUndo, goals, hydration, actions } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -301,7 +301,24 @@ export function App() {
 
       {/* Main */}
       <main className="flex-1 min-w-0">
-        {view === 'today' ? (
+        {hydration === 'error' ? (
+          <div className="max-w-[520px] mx-auto mt-[80px] px-[24px] text-center">
+            <div className="font-disp text-[1.3rem] font-semibold mb-[10px]">
+              Phase can’t reach its local database
+            </div>
+            <p className="text-[.9rem] text-muted leading-[1.6] mb-[18px]">
+              Your data lives in this browser’s storage (IndexedDB) and nothing has been
+              deleted — but it can’t be opened right now. This usually means private
+              browsing, blocked site data, or a full disk.
+            </p>
+            <button
+              className="text-[.84rem] font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
+              onClick={() => window.location.reload()}
+            >
+              Reload
+            </button>
+          </div>
+        ) : hydration === 'loading' ? null : view === 'today' ? (
           <div className="max-w-[1280px] mx-auto px-[36px] pb-[40px]">
             <Today />
           </div>
