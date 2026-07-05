@@ -11,6 +11,7 @@ import {
   initialRange,
   rangeWidth,
   dateToX,
+  xToDate,
   centerDateOf,
   scrollLeftForCenter,
   rulerTicks,
@@ -75,9 +76,37 @@ export function Timeline() {
   const prevPx = useRef(pxPerDay);
   const pxRef = useRef(pxPerDay);
   pxRef.current = pxPerDay;
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
   // Plot-relative viewport x a zoom gesture is anchored to; null → scale about center.
   const anchorX = useRef<number | null>(null);
   const [headerCenter, setHeaderCenter] = useState(todayStr());
+
+  // Decoration culling: ticks, day cells, and weekend bands only render for
+  // the dates near the viewport, not the whole canvas — at day-detail scales
+  // the full range is thousands of DOM nodes, which is what makes pinch
+  // zooming chug. `view` covers the viewport ±1.5 viewports and only rebuilds
+  // (hysteresis) when the visible edge escapes it or the scale changes.
+  const [view, setView] = useState<{ range: DateRange; px: number }>(() => ({ range, px: pxPerDay }));
+  const updateView = useCallback((el: HTMLDivElement) => {
+    const px = pxRef.current;
+    const whole = rangeRef.current;
+    const plotW = el.clientWidth - LABEL_W;
+    setView((v) => {
+      const visStart = xToDate(Math.max(0, el.scrollLeft), whole.start, px);
+      const visEnd = xToDate(el.scrollLeft + plotW, whole.start, px);
+      if (v.px === px && v.range.start <= visStart && visEnd <= v.range.end) return v;
+      const start = xToDate(Math.max(0, el.scrollLeft - 1.5 * plotW), whole.start, px);
+      const end = xToDate(el.scrollLeft + 2.5 * plotW, whole.start, px);
+      return {
+        px,
+        range: {
+          start: start < whole.start ? whole.start : start,
+          end: end > whole.end ? whole.end : end,
+        },
+      };
+    });
+  }, []);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = useCallback((id: string) => {
@@ -112,7 +141,10 @@ export function Timeline() {
     prevRangeStart.current = range.start;
     extendLock.current = false;
     if (el && shifted > 0) el.scrollLeft += shifted * pxPerDay;
-    if (el) ensureCoverage(el);
+    if (el) {
+      ensureCoverage(el);
+      updateView(el);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
 
@@ -129,7 +161,8 @@ export function Timeline() {
     anchorX.current = null;
     el.scrollLeft = (el.scrollLeft + q) * (pxPerDay / prev) - q;
     ensureCoverage(el);
-  }, [pxPerDay, ensureCoverage]);
+    updateView(el);
+  }, [pxPerDay, ensureCoverage, updateView]);
 
   // 3. Consume a pending center (mount → today; Today button while unmounted).
   useLayoutEffect(() => {
@@ -138,6 +171,7 @@ export function Timeline() {
     el.scrollLeft = scrollLeftForCenter(pendingCenter.current, el.clientWidth - LABEL_W, range.start, pxPerDay);
     setHeaderCenter(pendingCenter.current);
     pendingCenter.current = null;
+    updateView(el);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
 
@@ -162,16 +196,20 @@ export function Timeline() {
     const el = scrollerRef.current;
     if (!el) return;
     let pendingFactor = 1;
+    let lastClientX = 0;
     let raf: number | null = null;
     function flush() {
       raf = null;
       const f = pendingFactor;
       pendingFactor = 1;
-      if (f !== 1) actions.setScale(pxRef.current * f);
+      if (f === 1) return;
+      // One layout read per frame, not per event — pinch fires at 60–120Hz
+      const rect = el!.getBoundingClientRect();
+      anchorX.current = Math.max(0, Math.min(el!.clientWidth - LABEL_W, lastClientX - rect.left - LABEL_W));
+      actions.setScale(pxRef.current * f);
     }
     function queue(factor: number, clientX: number) {
-      const rect = el!.getBoundingClientRect();
-      anchorX.current = Math.max(0, Math.min(el!.clientWidth - LABEL_W, clientX - rect.left - LABEL_W));
+      lastClientX = clientX;
       pendingFactor *= factor;
       if (raf == null) raf = requestAnimationFrame(flush);
     }
@@ -188,7 +226,7 @@ export function Timeline() {
         return; // trackpad pinch arrives as ctrl+wheel; anything else is native
       }
       e.preventDefault();
-      queue(Math.exp(-dy * 0.009), e.clientX);
+      queue(Math.exp(-dy * 0.012), e.clientX);
     }
     // Safari fires proprietary gesture events for pinch instead
     let gestureBase = 1;
@@ -234,6 +272,7 @@ export function Timeline() {
     const el = scrollerRef.current;
     if (!el) return;
     ensureCoverage(el);
+    updateView(el);
     // Header label only needs month granularity — avoid re-rendering per frame.
     const c = centerDateOf(el.scrollLeft, el.clientWidth - LABEL_W, range.start, pxPerDay);
     if (c.slice(0, 7) !== headerCenter.slice(0, 7)) setHeaderCenter(c);
@@ -249,7 +288,10 @@ export function Timeline() {
   }
 
   const dayDetail = pxPerDay >= DAY_DETAIL_MIN;
-  const ticks = useMemo(() => rulerTicks(range, pxPerDay), [range, pxPerDay]);
+  // All decorations generate over the culled `view`, not the whole range —
+  // positions still use range.start as the origin, so nothing shifts.
+  const decoRange = view.range;
+  const ticks = useMemo(() => rulerTicks(decoRange, pxPerDay), [decoRange, pxPerDay]);
   const gridTicks: GridTick[] = useMemo(
     () =>
       dayDetail
@@ -259,11 +301,11 @@ export function Timeline() {
             .map((t) => ({ start: t.start, major: t.unit === 'month' || t.unit === 'year' })),
     [ticks, dayDetail],
   );
-  const daySegs = useMemo(() => (dayDetail ? daySegments(range) : null), [dayDetail, range]);
+  const daySegs = useMemo(() => (dayDetail ? daySegments(decoRange) : null), [dayDetail, decoRange]);
   // Weekend shading appears with the day graduations — once days are
   // discernible, the Sat+Sun rhythm is orientation, not decoration.
   const showBands = pxPerDay >= DAY_TICK_MIN_PX;
-  const bands = useMemo(() => (showBands ? weekendBands(range) : []), [showBands, range]);
+  const bands = useMemo(() => (showBands ? weekendBands(decoRange) : []), [showBands, decoRange]);
   const todayX = dateToX(todayStr(), range.start, pxPerDay);
   const canvasW = rangeWidth(range, pxPerDay);
 
