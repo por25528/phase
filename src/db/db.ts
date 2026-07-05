@@ -201,32 +201,44 @@ export function exportState(state: AppState, pxPerDay: number): void {
   a.click();
 }
 
+function isEntityArray(v: unknown): boolean {
+  return Array.isArray(v) && v.every(
+    (x) => !!x && typeof x === 'object' && typeof (x as { id?: unknown }).id === 'string',
+  );
+}
+
 export async function importStateFromFile(file: File): Promise<AppState & { pxPerDay: number }> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = async () => {
-      try {
-        const raw = JSON.parse(r.result as string) as Partial<
-          AppState & { pxPerDay?: number; zoom?: string }
-        >;
-        const pxPerDay =
-          Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0
-            ? clampScale(raw.pxPerDay as number)
-            : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
-        const parsed: AppState = {
-          goals: raw.goals ?? [],
-          habits: raw.habits ?? [],
-          tasks: raw.tasks ?? [],
-          sessions: raw.sessions ?? [],
-        };
-        await persist(parsed);
-        await saveScale(pxPerDay);
-        resolve({ ...parsed, pxPerDay });
-      } catch {
-        reject(new Error('Could not read that file'));
-      }
-    };
-    r.onerror = () => reject(new Error('Could not read that file'));
-    r.readAsText(file);
-  });
+  let text: string;
+  try {
+    text = await file.text();
+  } catch {
+    throw new Error('Could not read that file.');
+  }
+
+  let raw: Partial<AppState & { pxPerDay?: number; zoom?: string }>;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new Error("That file isn't valid JSON.");
+  }
+
+  const tables = ['goals', 'habits', 'tasks', 'sessions'] as const;
+  const present = raw && typeof raw === 'object' ? tables.filter((t) => raw[t] !== undefined) : [];
+  if (present.length === 0 || present.some((t) => !isEntityArray(raw[t]))) {
+    throw new Error("That file doesn't look like a Phase backup.");
+  }
+
+  const pxPerDay =
+    Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0
+      ? clampScale(raw.pxPerDay as number)
+      : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
+  const parsed: AppState = {
+    goals: raw.goals ?? [],
+    habits: raw.habits ?? [],
+    tasks: raw.tasks ?? [],
+    sessions: raw.sessions ?? [],
+  };
+  await persist(parsed);
+  await saveScale(pxPerDay);
+  return { ...parsed, pxPerDay };
 }

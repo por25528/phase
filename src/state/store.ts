@@ -522,8 +522,8 @@ export const actions = {
       const appState = await importStateFromFile(file);
       set({ ...appState, expanded: collectContainers(appState.goals) });
       actions.showToast('Backup imported');
-    } catch {
-      actions.showToast('Could not read that file');
+    } catch (e) {
+      actions.showToast(e instanceof Error ? e.message : 'Could not read that file.');
     }
   },
 };

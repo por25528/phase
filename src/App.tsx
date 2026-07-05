@@ -292,7 +292,9 @@ export function App() {
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) actions.importBackup(f);
+              if (f && window.confirm('Importing a backup replaces everything currently in Phase. Continue?')) {
+                actions.importBackup(f);
+              }
               e.target.value = '';
             }}
           />
