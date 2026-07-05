@@ -1,0 +1,12 @@
+{
+  "name": "Phase",
+  "short_name": "Phase",
+  "description": "Local goal, habit and task planner",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF9F7",
+  "theme_color": "#FAF9F7",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
