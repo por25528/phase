@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD } from '../../lib/dates';
-import { defaultNodeSpan, spanOutside, dateToX, daysBetween, LABEL_W } from '../../lib/timeline';
+import { defaultNodeSpan, spanOutside, dateToX, daysBetween } from '../../lib/timeline';
 import type { GridTick, DayBand } from '../../lib/timeline';
 import type { Goal, GoalNode } from '../../db/types';
 import { nodePct } from '../../lib/pct';
@@ -49,6 +49,7 @@ interface NodeLaneProps {
   goal: Goal;
   rangeStart: string;
   pxPerDay: number;
+  labelW: number;
   segs: GridTick[];
   bands: DayBand[];
   todayX: number;
@@ -62,7 +63,7 @@ type NodeTip = { x: number; y: number; text: string };
  * node (draggable SpanBar) plus a 30px "unscheduled" tray of chips. Nodes are
  * scheduling metadata only — dates never touch `done`/pct.
  */
-export function NodeLane({ goal, rangeStart, pxPerDay, segs, bands, todayX, canvasW }: NodeLaneProps) {
+export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, todayX, canvasW }: NodeLaneProps) {
   const { actions } = useAppStore();
   const [tip, setTip] = useState<NodeTip | null>(null);
 
@@ -89,7 +90,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, segs, bands, todayX, canv
         return (
           <div key={node.id} className="group flex items-stretch h-[34px] border-t border-line">
             {/* Lane label — sticky so it stays put while the canvas scrolls under it */}
-            <div className="sticky left-0 z-[10] w-[200px] flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center justify-between gap-[4px] bg-panel group-hover:bg-hover">
+            <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center justify-between gap-[4px] bg-panel group-hover:bg-hover">
               <span className="text-[.78rem] text-ink-soft truncate">{node.title}</span>
               <button
                 type="button"
@@ -126,14 +127,14 @@ export function NodeLane({ goal, rangeStart, pxPerDay, segs, bands, todayX, canv
       {/* Unscheduled tray */}
       {unscheduled.length > 0 && (
         <div className="flex items-stretch min-h-[30px] border-t border-line">
-          <div className="sticky left-0 z-[10] w-[200px] flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center bg-panel">
+          <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center bg-panel">
             <span className="font-mono text-[.6rem] tracking-[.1em] uppercase text-faint">Unscheduled</span>
           </div>
           <div className="flex-none px-[8px] py-[4px]" style={{ width: `${canvasW}px` }}>
             {/* Chips ride sticky just right of the label column so they stay visible at any scroll */}
             <div
               className="sticky inline-flex items-center gap-[6px] flex-wrap"
-              style={{ left: `${LABEL_W + 8}px` }}
+              style={{ left: `${labelW + 8}px` }}
             >
               {unscheduled.map((node) => (
                 <button

@@ -6,6 +6,8 @@ import {
   DAY_DETAIL_MIN,
   DAY_TICK_MIN_PX,
   LABEL_W,
+  LABEL_W_NARROW,
+  LABEL_BREAKPOINT,
   EXTEND_THRESHOLD_PX,
   chunkDays,
   initialRange,
@@ -39,6 +41,25 @@ function headerLabel(pxPerDay: number, center: string): string {
   return `${MONTH_FULL[d.getMonth()].toUpperCase()} ${d.getFullYear()}`;
 }
 
+// The sticky label column is LABEL_W (200px) at ≥640px and LABEL_W_NARROW (148px)
+// below — matching the `.tl-label-w` Tailwind class. All plot geometry reads the live
+// value or the mobile canvas drifts from the narrower label column. Defaults to the
+// wide value where matchMedia is unavailable (SSR/tests) — same as pre-change behavior.
+function useLabelW(): number {
+  const query = `(min-width: ${LABEL_BREAKPOINT}px)`;
+  const [wide, setWide] = useState(
+    () => typeof window === 'undefined' || !window.matchMedia || window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia(query);
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return wide ? LABEL_W : LABEL_W_NARROW;
+}
+
 /**
  * Infinite-scroll canvas timeline with a continuous, gesture-driven scale.
  * `pxPerDay` (store state) is adjusted by trackpad pinch / ctrl- or cmd-wheel,
@@ -52,6 +73,9 @@ function headerLabel(pxPerDay: number, center: string): string {
 export function Timeline() {
   const { goals, pxPerDay, actions } = useAppStore();
   const reduced = useReducedMotion();
+  const labelW = useLabelW();
+  const labelWRef = useRef(labelW);
+  labelWRef.current = labelW;
 
   // Every date the canvas must contain (first-level node spans are what
   // NodeLane renders; deeper nodes are never plotted).
@@ -91,7 +115,7 @@ export function Timeline() {
   const updateView = useCallback((el: HTMLDivElement) => {
     const px = pxRef.current;
     const whole = rangeRef.current;
-    const plotW = el.clientWidth - LABEL_W;
+    const plotW = el.clientWidth - labelWRef.current;
     setView((v) => {
       const visStart = xToDate(Math.max(0, el.scrollLeft), whole.start, px);
       const visEnd = xToDate(el.scrollLeft + plotW, whole.start, px);
@@ -156,7 +180,7 @@ export function Timeline() {
     const prev = prevPx.current;
     prevPx.current = pxPerDay;
     if (!el || prev === pxPerDay) return;
-    const plotW = el.clientWidth - LABEL_W;
+    const plotW = el.clientWidth - labelWRef.current;
     const q = anchorX.current ?? plotW / 2;
     anchorX.current = null;
     el.scrollLeft = (el.scrollLeft + q) * (pxPerDay / prev) - q;
@@ -168,7 +192,7 @@ export function Timeline() {
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el || !pendingCenter.current) return;
-    el.scrollLeft = scrollLeftForCenter(pendingCenter.current, el.clientWidth - LABEL_W, range.start, pxPerDay);
+    el.scrollLeft = scrollLeftForCenter(pendingCenter.current, el.clientWidth - labelWRef.current, range.start, pxPerDay);
     setHeaderCenter(pendingCenter.current);
     pendingCenter.current = null;
     updateView(el);
@@ -205,7 +229,7 @@ export function Timeline() {
       if (f === 1) return;
       // One layout read per frame, not per event — pinch fires at 60–120Hz
       const rect = el!.getBoundingClientRect();
-      anchorX.current = Math.max(0, Math.min(el!.clientWidth - LABEL_W, lastClientX - rect.left - LABEL_W));
+      anchorX.current = Math.max(0, Math.min(el!.clientWidth - labelWRef.current, lastClientX - rect.left - labelWRef.current));
       actions.setScale(pxRef.current * f);
     }
     function queue(factor: number, clientX: number) {
@@ -238,7 +262,7 @@ export function Timeline() {
       e.preventDefault();
       const g = e as Event & { scale: number; clientX?: number };
       // Amplify past the physical pinch ratio so a full gesture covers more range
-      queue(Math.pow(g.scale / gestureBase, 1.5), g.clientX ?? el!.getBoundingClientRect().left + LABEL_W);
+      queue(Math.pow(g.scale / gestureBase, 1.5), g.clientX ?? el!.getBoundingClientRect().left + labelWRef.current);
       gestureBase = g.scale;
     }
     el.addEventListener('wheel', onWheel, { passive: false });
@@ -262,7 +286,7 @@ export function Timeline() {
       const sc = scrollerRef.current;
       if (!sc) return;
       const dir = e.key === '[' ? -1 : 1;
-      sc.scrollBy({ left: dir * 0.8 * (sc.clientWidth - LABEL_W), behavior: reduced ? 'auto' : 'smooth' });
+      sc.scrollBy({ left: dir * 0.8 * (sc.clientWidth - labelWRef.current), behavior: reduced ? 'auto' : 'smooth' });
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -274,7 +298,7 @@ export function Timeline() {
     ensureCoverage(el);
     updateView(el);
     // Header label only needs month granularity — avoid re-rendering per frame.
-    const c = centerDateOf(el.scrollLeft, el.clientWidth - LABEL_W, range.start, pxPerDay);
+    const c = centerDateOf(el.scrollLeft, el.clientWidth - labelWRef.current, range.start, pxPerDay);
     if (c.slice(0, 7) !== headerCenter.slice(0, 7)) setHeaderCenter(c);
   }
 
@@ -282,7 +306,7 @@ export function Timeline() {
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTo({
-      left: scrollLeftForCenter(todayStr(), el.clientWidth - LABEL_W, range.start, pxPerDay),
+      left: scrollLeftForCenter(todayStr(), el.clientWidth - labelWRef.current, range.start, pxPerDay),
       behavior: reduced ? 'auto' : 'smooth',
     });
   }
@@ -355,10 +379,10 @@ export function Timeline() {
           onScroll={onScroll}
           className="mt-[6px] border border-line rounded-[10px] bg-panel overflow-auto max-h-[calc(100vh-190px)]"
         >
-          <div style={{ width: `${LABEL_W + canvasW}px` }}>
+          <div style={{ width: `${labelW + canvasW}px` }}>
             {/* Time header — sticky against vertical scroll; its label cell also against horizontal */}
             <div className="sticky top-0 z-[15] flex border-b border-line bg-bg">
-              <div className="sticky left-0 z-[16] w-[200px] flex-shrink-0 border-r border-line px-[12px] py-[9px] text-[.7rem] tracking-[.1em] uppercase text-muted font-semibold bg-bg">
+              <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-[.7rem] tracking-[.1em] uppercase text-muted font-semibold bg-bg">
                 Goal
               </div>
               <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
@@ -390,6 +414,7 @@ export function Timeline() {
                 index={i}
                 rangeStart={range.start}
                 pxPerDay={pxPerDay}
+                labelW={labelW}
                 segs={gridTicks}
                 bands={bands}
                 todayX={todayX}

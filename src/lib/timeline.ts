@@ -94,6 +94,12 @@ export const MAX_PX_PER_DAY = 260;
 // (the DaysLane header with numbers, task counts, habit dots).
 export const DAY_DETAIL_MIN = 48;
 export const LABEL_W = 200; // sticky goal-label column width (px)
+// Below Tailwind's `sm` (640px) the sticky label column narrows to 148px (see the
+// `.tl-label-w` class in index.css). The plot geometry in Timeline/NodeLane derives from
+// whichever width is active so the canvas stays aligned with the label column. Keep these
+// three in lockstep with `.tl-label-w`.
+export const LABEL_W_NARROW = 148;
+export const LABEL_BREAKPOINT = 640;
 
 export function clampScale(n: number): number {
   return Math.min(MAX_PX_PER_DAY, Math.max(MIN_PX_PER_DAY, n));

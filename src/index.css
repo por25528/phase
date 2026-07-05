@@ -55,6 +55,10 @@
   /* Today dashboard responsive grids */
   .today-hero { grid-template-columns: minmax(0, 1fr) 396px; }
   .today-main { grid-template-columns: minmax(0, 1fr) 372px; }
+
+  /* Timeline sticky label column — single width source so all lanes align.
+     JS plot geometry mirrors these px in lib/timeline.ts (LABEL_W / LABEL_W_NARROW). */
+  .tl-label-w { @apply w-[148px] sm:w-[200px]; }
 }
 
 @media (prefers-reduced-motion: reduce) {

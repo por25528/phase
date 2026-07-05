@@ -253,7 +253,7 @@ export function App() {
   return (
     <>
       {/* Top bar */}
-      <header className="sticky top-0 z-30 bg-bg border-b border-line flex items-center gap-[30px] px-[36px] py-[13px]">
+      <header className="sticky top-0 z-30 bg-bg border-b border-line flex items-center gap-[30px] px-[16px] sm:px-[36px] py-[13px]">
         <div className="flex items-baseline gap-[10px]">
           <span className="font-disp text-[1.5rem] font-[650] tracking-[-0.01em]">
             Phase<span className="text-accent">.</span>
@@ -327,15 +327,15 @@ export function App() {
             </button>
           </div>
         ) : hydration === 'loading' ? null : view === 'today' ? (
-          <div className="max-w-[1280px] mx-auto px-[36px] pb-[40px]">
+          <div className="max-w-[1280px] mx-auto px-[16px] sm:px-[36px] pb-[40px]">
             <Today />
           </div>
         ) : view === 'timeline' ? (
-          <div className="w-full px-[36px] py-[32px]">
+          <div className="w-full px-[16px] sm:px-[36px] py-[32px]">
             <Timeline />
           </div>
         ) : (
-          <div className="max-w-[1280px] mx-auto px-[36px] py-[42px] pb-[90px]">
+          <div className="max-w-[1280px] mx-auto px-[16px] sm:px-[36px] py-[42px] pb-[90px]">
             <Goals />
           </div>
         )}

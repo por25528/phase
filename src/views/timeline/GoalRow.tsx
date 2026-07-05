@@ -15,6 +15,7 @@ interface GoalRowProps {
   index: number;
   rangeStart: string;
   pxPerDay: number;
+  labelW: number;
   segs: GridTick[];
   bands: DayBand[];
   todayX: number;
@@ -33,7 +34,7 @@ interface GoalRowProps {
  * parent don't touch every row.
  */
 export const GoalRow = memo(function GoalRow({
-  goal: g, index: i, rangeStart, pxPerDay, segs, bands, todayX, canvasW, isExpanded, onToggle, isLast,
+  goal: g, index: i, rangeStart, pxPerDay, labelW, segs, bands, todayX, canvasW, isExpanded, onToggle, isLast,
 }: GoalRowProps) {
   const { actions } = useAppStore();
   const reduced = useReducedMotion();
@@ -51,7 +52,7 @@ export const GoalRow = memo(function GoalRow({
     <div className={isLast ? '' : 'border-b border-line'}>
       <div className="group flex items-stretch min-h-[52px]">
         {/* Lane label — sticky so it stays put while the canvas scrolls under it */}
-        <div className="sticky left-0 z-[10] w-[200px] flex-shrink-0 border-r border-line px-[12px] py-[8px] flex items-center gap-[7px] bg-panel group-hover:bg-hover">
+        <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[8px] flex items-center gap-[7px] bg-panel group-hover:bg-hover">
           <button
             type="button"
             onClick={() => onToggle(g.id)}
@@ -135,6 +136,7 @@ export const GoalRow = memo(function GoalRow({
           goal={g}
           rangeStart={rangeStart}
           pxPerDay={pxPerDay}
+          labelW={labelW}
           segs={segs}
           bands={bands}
           todayX={todayX}
