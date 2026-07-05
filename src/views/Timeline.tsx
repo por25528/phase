@@ -188,7 +188,7 @@ export function Timeline() {
         return; // trackpad pinch arrives as ctrl+wheel; anything else is native
       }
       e.preventDefault();
-      queue(Math.exp(-dy * 0.0045), e.clientX);
+      queue(Math.exp(-dy * 0.009), e.clientX);
     }
     // Safari fires proprietary gesture events for pinch instead
     let gestureBase = 1;
@@ -199,7 +199,8 @@ export function Timeline() {
     function onGestureChange(e: Event) {
       e.preventDefault();
       const g = e as Event & { scale: number; clientX?: number };
-      queue(g.scale / gestureBase, g.clientX ?? el!.getBoundingClientRect().left + LABEL_W);
+      // Amplify past the physical pinch ratio so a full gesture covers more range
+      queue(Math.pow(g.scale / gestureBase, 1.5), g.clientX ?? el!.getBoundingClientRect().left + LABEL_W);
       gestureBase = g.scale;
     }
     el.addEventListener('wheel', onWheel, { passive: false });
