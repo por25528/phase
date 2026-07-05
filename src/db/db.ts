@@ -158,12 +158,17 @@ export async function loadState(): Promise<AppState> {
 }
 
 export async function persist(state: AppState): Promise<void> {
-  await Promise.all([
-    db.goals.clear().then(() => db.goals.bulkPut(state.goals)),
-    db.habits.clear().then(() => db.habits.bulkPut(state.habits)),
-    db.tasks.clear().then(() => db.tasks.bulkPut(state.tasks)),
-    db.sessions.clear().then(() => db.sessions.bulkPut(state.sessions)),
-  ]);
+  // One rw transaction: either every table reflects `state`, or none does.
+  // (The previous Promise.all of independent clear→bulkPut chains could leave
+  // the DB partially wiped if one chain failed mid-flight.)
+  await db.transaction('rw', db.goals, db.habits, db.tasks, db.sessions, async () => {
+    await Promise.all([
+      db.goals.clear().then(() => db.goals.bulkPut(state.goals)),
+      db.habits.clear().then(() => db.habits.bulkPut(state.habits)),
+      db.tasks.clear().then(() => db.tasks.bulkPut(state.tasks)),
+      db.sessions.clear().then(() => db.sessions.bulkPut(state.sessions)),
+    ]);
+  });
 }
 
 // Map a legacy zoom-level string (including the long-retired 'year') to its
