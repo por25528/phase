@@ -1,4 +1,6 @@
 node_modules
 dist
+release
+build/icon.png
 .DS_Store
 *.local
