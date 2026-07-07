@@ -63,8 +63,10 @@ function set(patch: Partial<FullState>) {
   notify();
 }
 
-function setAndPersist(patch: Partial<AppState>) {
-  const next = { ...state, ...patch };
+// uiPatch merges in first so patch (the persisted slice) always wins on overlap;
+// letting callers fold a same-tick UI change (e.g. expanded) into this single write+notify.
+function setAndPersist(patch: Partial<AppState>, uiPatch?: Partial<UIState>) {
+  const next = { ...state, ...uiPatch, ...patch };
   state = next;
   notify();
   persist({ goals: next.goals, habits: next.habits, tasks: next.tasks, sessions: next.sessions }).catch(() => {
@@ -138,6 +140,16 @@ function scheduleUndo(label: string, restore: () => void): void {
   }, 5000);
 }
 
+// Snapshot state[key], arm its restoration, then persist `next` — the shared
+// seam behind every undoable edit (deletes, date edits). Callers compute
+// `next` from the pre-write state and hand it in; the snapshot below is taken
+// before that value lands, so restore always replays the prior slice.
+function withUndo<K extends keyof AppState>(label: string, key: K, next: AppState[K]): void {
+  const snapshot = structuredClone(state[key]);
+  scheduleUndo(label, () => setAndPersist({ [key]: snapshot } as Partial<AppState>));
+  setAndPersist({ [key]: next } as Partial<AppState>);
+}
+
 // ---- actions ----
 export const actions = {
   // Goals / nodes
@@ -163,8 +175,7 @@ export const actions = {
     delete node.done;
     const expanded = new Set(state.expanded);
     expanded.add(nodeId);
-    state = { ...state, expanded };
-    setAndPersist({ goals });
+    setAndPersist({ goals }, { expanded });
   },
 
   addRootNode(goalId: string, title: string) {
@@ -186,14 +197,12 @@ export const actions = {
   removeNode(nodeId: string) {
     const node = findInAll(state.goals, nodeId);
     const title = node?.title ?? 'item';
-    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ goals: snapshot }));
     const goals = state.goals.map((g) => {
-      const nodes = JSON.parse(JSON.stringify(g.nodes));
+      const nodes = structuredClone(g.nodes);
       removeNode(nodes, nodeId);
       return { ...g, nodes };
     });
-    setAndPersist({ goals });
+    withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
   },
 
   // Append one or more fully-built goals (manual New Goal form or JSON import).
@@ -205,8 +214,7 @@ export const actions = {
     const goals = normalizeByColumn([...state.goals, ...newGoals]);
     const expanded = new Set(state.expanded);
     collectContainers(newGoals).forEach((id) => expanded.add(id));
-    state = { ...state, expanded };
-    setAndPersist({ goals });
+    setAndPersist({ goals }, { expanded });
   },
 
   // Convenience wrapper (QuickAdd, tests): a bare goal in the highest column.
@@ -250,10 +258,8 @@ export const actions = {
   removeGoal(goalId: string) {
     const goal = state.goals.find((g) => g.id === goalId);
     const title = goal?.title ?? 'goal';
-    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ goals: snapshot }));
     const goals = state.goals.filter((g) => g.id !== goalId);
-    setAndPersist({ goals });
+    withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
   },
 
   // Habits
@@ -284,9 +290,7 @@ export const actions = {
   removeHabit(habitId: string) {
     const habit = state.habits.find((h) => h.id === habitId);
     const title = habit?.title ?? 'habit';
-    const snapshot = JSON.parse(JSON.stringify(state.habits)) as Habit[];
-    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ habits: snapshot }));
-    setAndPersist({ habits: state.habits.filter((h) => h.id !== habitId) });
+    withUndo(`Deleted "${title}" · Undo`, 'habits', state.habits.filter((h) => h.id !== habitId));
   },
 
   // Tasks
@@ -303,9 +307,7 @@ export const actions = {
   removeTask(taskId: string) {
     const task = state.tasks.find((t) => t.id === taskId);
     const title = task?.title ?? 'task';
-    const snapshot = JSON.parse(JSON.stringify(state.tasks)) as Task[];
-    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ tasks: snapshot }));
-    setAndPersist({ tasks: state.tasks.filter((t) => t.id !== taskId) });
+    withUndo(`Deleted "${title}" · Undo`, 'tasks', state.tasks.filter((t) => t.id !== taskId));
   },
 
   moveTaskToDate(taskId: string, date: string) {
@@ -323,9 +325,7 @@ export const actions = {
   removeSession(sessionId: string) {
     const s = state.sessions.find((x) => x.id === sessionId);
     const label = s ? `Deleted ${s.minutes}m log · Undo` : 'Deleted log · Undo';
-    const snapshot = state.sessions.slice();
-    scheduleUndo(label, () => setAndPersist({ sessions: snapshot }));
-    setAndPersist({ sessions: state.sessions.filter((x) => x.id !== sessionId) });
+    withUndo(label, 'sessions', state.sessions.filter((x) => x.id !== sessionId));
   },
 
   // Structural reorder / indent / outdent
@@ -336,8 +336,7 @@ export const actions = {
     if (nodePath && nodePath.length > 1) {
       expanded.add(nodePath[nodePath.length - 2]); // new parent container
     }
-    state = { ...state, expanded };
-    setAndPersist({ goals });
+    setAndPersist({ goals }, { expanded });
   },
 
   outdentNode(nodeId: string): void {
@@ -351,8 +350,7 @@ export const actions = {
         expanded.delete(oldParentId);
       }
     }
-    state = { ...state, expanded };
-    setAndPersist({ goals });
+    setAndPersist({ goals }, { expanded });
   },
 
   reorderSiblingNodes(activeId: string, overId: string): void {
@@ -390,14 +388,10 @@ export const actions = {
     const goal = state.goals.find((g) => g.id === goalId);
     if (!goal) return;
     const clamped = clampSpan(start, deadline);
-    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(`Updated dates for "${goal.title}" · Undo`, () =>
-      setAndPersist({ goals: snapshot }),
-    );
     const goals = state.goals.map((g) =>
       g.id === goalId ? { ...g, start: clamped.start, deadline: clamped.deadline } : g,
     );
-    setAndPersist({ goals });
+    withUndo(`Updated dates for "${goal.title}" · Undo`, 'goals', goals);
   },
 
   // Node scheduling — start/deadline are scheduling metadata only, never affect pct
@@ -407,14 +401,12 @@ export const actions = {
     const node = findNode(goal.nodes, nodeId);
     if (!node) return;
     const clamped = clampSpan(start, deadline);
-    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(`Scheduled "${node.title}" · Undo`, () => setAndPersist({ goals: snapshot }));
     const goals = cloneGoals(state.goals);
     const clonedGoal = goals.find((g) => g.id === goalId)!;
     const clonedNode = findNode(clonedGoal.nodes, nodeId)!;
     clonedNode.start = clamped.start;
     clonedNode.deadline = clamped.deadline;
-    setAndPersist({ goals });
+    withUndo(`Scheduled "${node.title}" · Undo`, 'goals', goals);
   },
 
   clearNodeDates(goalId: string, nodeId: string): void {
@@ -422,14 +414,12 @@ export const actions = {
     if (!goal) return;
     const node = findNode(goal.nodes, nodeId);
     if (!node) return;
-    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(`Unscheduled "${node.title}" · Undo`, () => setAndPersist({ goals: snapshot }));
     const goals = cloneGoals(state.goals);
     const clonedGoal = goals.find((g) => g.id === goalId)!;
     const clonedNode = findNode(clonedGoal.nodes, nodeId)!;
     delete clonedNode.start;
     delete clonedNode.deadline;
-    setAndPersist({ goals });
+    withUndo(`Unscheduled "${node.title}" · Undo`, 'goals', goals);
   },
 
   // Milestones — markers only, never enter pct roll-up
@@ -464,14 +454,12 @@ export const actions = {
     const goal = state.goals.find((g) => g.id === goalId);
     const ms = goal?.milestones?.find((m) => m.id === milestoneId);
     const title = ms?.title ?? 'milestone';
-    const snapshot = JSON.parse(JSON.stringify(state.goals)) as Goal[];
-    scheduleUndo(`Deleted "${title}" · Undo`, () => setAndPersist({ goals: snapshot }));
     const goals = state.goals.map((g) =>
       g.id === goalId
         ? { ...g, milestones: (g.milestones ?? []).filter((m) => m.id !== milestoneId) }
         : g,
     );
-    setAndPersist({ goals });
+    withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
   },
 
   undoLastDelete(): void {

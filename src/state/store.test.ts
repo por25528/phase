@@ -86,6 +86,20 @@ describe('store actions', () => {
     expect(getState().expanded.has(nid)).toBe(true);
   });
 
+  it('removeNode schedules undo; undoLastDelete restores', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G', '2026-12-31');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Step 1');
+    const nid = getState().goals[0].nodes[0].id;
+    actions.removeNode(nid);
+    expect(getState().goals[0].nodes).toHaveLength(0);
+    expect(getState().pendingUndo).not.toBeNull();
+    actions.undoLastDelete();
+    expect(getState().goals[0].nodes).toHaveLength(1);
+    expect(getState().goals[0].nodes[0].id).toBe(nid);
+  });
+
   it('removeGoal schedules undo; undoLastDelete restores', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('G', '2026-12-31');
@@ -208,11 +222,35 @@ describe('store actions', () => {
     expect(getState().habits[0].cadence).toBe('daily');
   });
 
+  it('removeHabit schedules undo; undoLastDelete restores', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addHabit('Run', 'daily', 4);
+    const hid = getState().habits[0].id;
+    actions.removeHabit(hid);
+    expect(getState().habits).toHaveLength(0);
+    expect(getState().pendingUndo).not.toBeNull();
+    actions.undoLastDelete();
+    expect(getState().habits).toHaveLength(1);
+    expect(getState().habits[0].id).toBe(hid);
+  });
+
   it('moveTaskToDate reschedules a task', async () => {
     const { actions, getState } = await freshStore();
     actions.addTask('T', '2026-01-05', null);
     actions.moveTaskToDate(getState().tasks[0].id, '2026-07-02');
     expect(getState().tasks[0].date).toBe('2026-07-02');
+  });
+
+  it('removeTask schedules undo; undoLastDelete restores', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addTask('T', '2026-07-02', null);
+    const tid = getState().tasks[0].id;
+    actions.removeTask(tid);
+    expect(getState().tasks).toHaveLength(0);
+    expect(getState().pendingUndo).not.toBeNull();
+    actions.undoLastDelete();
+    expect(getState().tasks).toHaveLength(1);
+    expect(getState().tasks[0].id).toBe(tid);
   });
 
   it('addSession logs; non-positive minutes are ignored', async () => {
@@ -233,6 +271,20 @@ describe('store actions', () => {
     expect(getState().pendingUndo).not.toBeNull();
     actions.undoLastDelete();
     expect(getState().sessions).toHaveLength(1);
+  });
+
+  it('removeMilestone schedules undo; undoLastDelete restores', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G', '2026-12-31');
+    const gid = getState().goals[0].id;
+    actions.addMilestone(gid, 'Launch', '2026-08-01');
+    const mid = getState().goals[0].milestones![0].id;
+    actions.removeMilestone(gid, mid);
+    expect(getState().goals[0].milestones).toHaveLength(0);
+    expect(getState().pendingUndo).not.toBeNull();
+    actions.undoLastDelete();
+    expect(getState().goals[0].milestones).toHaveLength(1);
+    expect(getState().goals[0].milestones![0].id).toBe(mid);
   });
 
   describe('addGoals (import path)', () => {
