@@ -14,9 +14,12 @@ import {
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
 import { groupByColumn } from '../lib/board';
+import { computeBoardInsights } from '../lib/boardInsights';
+import { todayStr } from '../lib/dates';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
+import { InsightBar } from './goals/InsightBar';
 import { Column } from './goals/Column';
 
 // Priority columns, left → right = highest → lowest. Order IS the priority model:
@@ -123,6 +126,7 @@ export function Goals() {
 
   const isEmpty = goals.length === 0;
   const activeGoal = activeId ? goalById.get(activeId) : null;
+  const insights = useMemo(() => computeBoardInsights(goals, todayStr(), COL_COUNT), [goals]);
 
   return (
     <div>
@@ -172,6 +176,9 @@ export function Goals() {
           </div>
         </div>
       )}
+
+      {/* Board insight bar — read-only attention signals, non-empty board only */}
+      {!isEmpty && <InsightBar insights={insights} />}
 
       {/* Priority board */}
       {!isEmpty && (
