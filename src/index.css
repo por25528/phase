@@ -2,6 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Color tokens as `R G B` channel triples, consumed by tailwind.config.js as
+   `rgb(var(--c-*) / <alpha-value>)`. Light values below are the exact current
+   hex, so light output is unchanged; `.dark` overrides them for OLED.
+   NB: these live OUTSIDE @layer so Tailwind never tree-shakes the `.dark`
+   class selector (it's applied to <html> via JS, so it appears in no source). */
+:root {
+    --c-bg: 250 249 247;            /* #FAF9F7 */
+    --c-panel: 255 255 255;         /* #FFFFFF */
+    --c-panel-bright: 255 255 255;  /* #FFFFFF */
+    --c-field: 255 255 255;         /* #FFFFFF */
+    --c-ink: 33 30 25;              /* #211E19 */
+    --c-ink-hover: 58 53 44;        /* #3A352C */
+    --c-ink-soft: 74 70 60;         /* #4A463C */
+    --c-muted: 133 129 122;         /* #85817A */
+    --c-faint: 176 172 164;         /* #B0ACA4 */
+    --c-faint-2: 201 197 189;       /* #C9C5BD */
+    --c-line: 234 232 227;          /* #EAE8E3 */
+    --c-line-2: 222 219 211;        /* #DEDBD3 */
+    --c-line-soft: 240 238 233;     /* #F0EEE9 */
+    --c-hover: 244 243 239;         /* #F4F3EF */
+    --c-hover-deep: 235 233 227;    /* #EBE9E3 */
+    --c-fill: 33 30 25;             /* #211E19 */
+    --c-dot: 59 54 43;              /* #3B362B */
+    --c-dot-off: 232 230 223;       /* #E8E6DF */
+    --c-track: 239 237 231;         /* #EFEDE7 */
+    --c-accent: 200 81 47;          /* #C8512F */
+    --c-accent-deep: 179 69 38;     /* #B34526 */
+    --c-accent-soft: 216 154 126;   /* #D89A7E */
+    --c-accent-contrast: 255 246 238; /* #FFF6EE */
+    --c-accent-tint: 245 227 218;   /* #F5E3DA */
+    --c-paper: 250 249 247;         /* #FAF9F7 */
+    --c-chip: 241 239 234;          /* #F1EFEA */
+    --c-chip-ink: 110 106 97;       /* #6E6A61 */
+    --c-warn: 160 90 44;            /* #A05A2C */
+    --c-warn-tint: 246 234 223;     /* #F6EADF */
+
+    --shadow-card: 0 1px 2px rgba(30, 28, 22, 0.05);
+    --shadow-today: 0 2px 6px rgba(30, 28, 22, 0.07);
+  }
+
+  /* OLED dark theme — pure-black base, faintly elevated surfaces, off-white ink,
+     warmer accent. Toggled by adding `.dark` to <html> (see src/lib/theme.ts). */
+  .dark {
+    --c-bg: 0 0 0;                  /* #000000 */
+    --c-panel: 13 13 14;            /* #0D0D0E */
+    --c-panel-bright: 22 22 24;     /* #161618 */
+    --c-field: 13 13 14;            /* #0D0D0E */
+    --c-ink: 236 235 232;           /* #ECEBE8 */
+    --c-ink-hover: 218 216 211;     /* #DAD8D3 */
+    --c-ink-soft: 183 180 173;      /* #B7B4AD */
+    --c-muted: 139 136 127;         /* #8B887F */
+    --c-faint: 92 90 84;            /* #5C5A54 */
+    --c-faint-2: 71 69 63;          /* #47453F */
+    --c-line: 34 34 36;             /* #222224 */
+    --c-line-2: 46 46 49;           /* #2E2E31 */
+    --c-line-soft: 26 26 28;        /* #1A1A1C */
+    --c-hover: 22 22 24;            /* #161618 */
+    --c-hover-deep: 32 32 35;       /* #202023 */
+    --c-fill: 236 235 232;          /* #ECEBE8 */
+    --c-dot: 227 225 219;           /* #E3E1DB */
+    --c-dot-off: 42 42 45;          /* #2A2A2D */
+    --c-track: 28 28 30;            /* #1C1C1E */
+    --c-accent: 225 97 59;          /* #E1613B */
+    --c-accent-deep: 200 81 47;     /* #C8512F */
+    --c-accent-soft: 122 65 48;     /* #7A4130 */
+    --c-accent-contrast: 251 237 228; /* #FBEDE4 */
+    --c-accent-tint: 42 24 16;      /* #2A1810 */
+    --c-paper: 10 10 11;            /* #0A0A0B */
+    --c-chip: 27 27 29;             /* #1B1B1D */
+    --c-chip-ink: 154 151 143;      /* #9A978F */
+    --c-warn: 208 138 78;           /* #D08A4E */
+    --c-warn-tint: 36 26 18;        /* #241A12 */
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-today: 0 2px 8px rgba(0, 0, 0, 0.6);
+  }
+
 @layer base {
   html, body {
     height: 100%;
@@ -25,13 +102,16 @@
   input, select {
     font-family: inherit;
     font-size: 14px;
-    color: theme('colors.ink');
+    /* Direct var(): theme('colors.ink') would inline the literal
+       `rgb(var(--c-ink) / <alpha-value>)` string, and <alpha-value> is only
+       substituted for generated utilities, not raw CSS. These theme for free. */
+    color: rgb(var(--c-ink));
   }
   ::selection {
-    background: theme('colors.accent-tint');
+    background: rgb(var(--c-accent-tint));
   }
   :focus-visible {
-    outline: 2px solid theme('colors.accent');
+    outline: 2px solid rgb(var(--c-accent));
     outline-offset: 1px;
     border-radius: 3px;
   }

@@ -6,6 +6,14 @@ import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import { acquireTabLock } from '../lib/tabLock';
 import {
+  type Theme,
+  resolveTheme,
+  readStoredTheme,
+  writeStoredTheme,
+  applyTheme,
+  systemPrefersDark,
+} from '../lib/theme';
+import {
   uid, findInAll, findNode, removeNode,
   findNodePath,
   indentNode as treeIndentNode,
@@ -27,6 +35,7 @@ interface UIState {
   pxPerDay: number; // timeline scale — continuous, gesture-driven
   hydration: 'loading' | 'ready' | 'error';
   secondTab: boolean;
+  theme: Theme; // per-device UI preference (localStorage, not Dexie)
 }
 
 interface FullState extends AppState, UIState {}
@@ -45,6 +54,10 @@ let state: FullState = {
   pxPerDay: 13, // quarter preset until the persisted scale loads
   hydration: 'loading',
   secondTab: false,
+  // Read synchronously at module load so the header toggle shows the correct
+  // state immediately (the no-FOUC script already painted <html>). 'system' in
+  // non-DOM contexts (tests).
+  theme: readStoredTheme(),
 };
 
 let initialized = false;
@@ -477,6 +490,15 @@ export const actions = {
   // UI
   setView(v: ViewName) {
     set({ view: v });
+  },
+
+  // Theme is a per-device UI preference: persist to localStorage, apply the
+  // resolved effective theme to the DOM, and update state so the header toggle
+  // re-renders. Never routed through setAndPersist — it is not app data.
+  setTheme(next: Theme) {
+    writeStoredTheme(next);
+    applyTheme(resolveTheme(next, systemPrefersDark()));
+    set({ theme: next });
   },
 
   setSelDate(s: string) {

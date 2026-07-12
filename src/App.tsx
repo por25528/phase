@@ -1,17 +1,60 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore, initStore } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { GoalDrawer } from './components/GoalDrawer';
+import {
+  type Theme,
+  resolveTheme,
+  readStoredTheme,
+  systemPrefersDark,
+  applyTheme,
+} from './lib/theme';
+
+// Header toggle cycles System → Light → Dark → System.
+const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' };
+const THEME_LABEL: Record<Theme, string> = { system: 'SYSTEM', light: 'LIGHT', dark: 'DARK' };
+
+function SunIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </svg>
+  );
+}
+function MoonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+    </svg>
+  );
+}
 
 export function App() {
-  const { view, openGoalId, toast, pendingUndo, goals, hydration, secondTab, actions } = useAppStore();
+  const { view, openGoalId, toast, pendingUndo, goals, hydration, secondTab, theme, actions } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [sysDark, setSysDark] = useState(() => systemPrefersDark());
 
   useEffect(() => {
     initStore();
   }, []);
+
+  // Live-follow the OS theme: keep the effective-icon in sync, and when the
+  // preference is `system` re-apply so the palette flips without a reload.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => {
+      setSysDark(e.matches);
+      if (readStoredTheme() === 'system') applyTheme(resolveTheme('system', e.matches));
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const effectiveTheme = resolveTheme(theme, sysDark);
 
   useEffect(() => {
     function onKey(e: globalThis.KeyboardEvent) {
@@ -65,7 +108,16 @@ export function App() {
           ))}
         </nav>
         <div className="flex-1" />
-        <div className="flex gap-[16px] font-mono text-[.72rem] tracking-[.06em] text-muted">
+        <div className="flex items-center gap-[16px] font-mono text-[.72rem] tracking-[.06em] text-muted">
+          <button
+            onClick={() => actions.setTheme(NEXT_THEME[theme])}
+            aria-label={`Theme: ${THEME_LABEL[theme]}${theme === 'system' ? ` (${effectiveTheme})` : ''} — switch to ${THEME_LABEL[NEXT_THEME[theme]]}`}
+            title={`Theme: ${THEME_LABEL[theme]}`}
+            className="flex items-center gap-[6px] hover:text-ink"
+          >
+            {effectiveTheme === 'dark' ? <MoonIcon /> : <SunIcon />}
+            <span className="hidden sm:inline">{THEME_LABEL[theme]}</span>
+          </button>
           <button onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'} className="hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↓ EXPORT</button>
           <button onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'} className="hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↑ IMPORT</button>
           <input
@@ -130,7 +182,7 @@ export function App() {
       <div
         role="status"
         aria-live="polite"
-        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-white px-[16px] py-[9px] rounded-[8px] text-[.84rem] z-[60] transition-all duration-[220ms] flex items-center gap-[12px] whitespace-nowrap ${
+        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-[8px] text-[.84rem] z-[60] transition-all duration-[220ms] flex items-center gap-[12px] whitespace-nowrap ${
           pendingUndo
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-[20px] pointer-events-none'
@@ -138,7 +190,7 @@ export function App() {
       >
         <span>{pendingUndo?.label}</span>
         <button
-          className="font-semibold underline hover:no-underline focus-visible:outline-white focus-visible:outline-offset-2 focus-visible:rounded-[2px]"
+          className="font-semibold underline hover:no-underline focus-visible:outline-paper focus-visible:outline-offset-2 focus-visible:rounded-[2px]"
           onClick={() => actions.undoLastDelete()}
           tabIndex={pendingUndo ? 0 : -1}
         >
@@ -148,7 +200,7 @@ export function App() {
 
       {/* Toast */}
       <div
-        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-white px-[16px] py-[9px] rounded-[8px] text-[.84rem] z-[60] transition-all duration-[220ms] ${
+        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-[8px] text-[.84rem] z-[60] transition-all duration-[220ms] ${
           toast
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-[20px] pointer-events-none'
