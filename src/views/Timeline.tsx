@@ -22,6 +22,7 @@ import {
   daysBetween,
 } from '../lib/timeline';
 import type { DateRange, GridTick } from '../lib/timeline';
+import { byPriority } from '../lib/priority';
 import type { ZoomLevel } from '../db/types';
 import { GoalRow } from './timeline/GoalRow';
 import { DaysLane } from './timeline/DaysLane';
@@ -76,6 +77,11 @@ export function Timeline() {
   const labelW = useLabelW();
   const labelWRef = useRef(labelW);
   labelWRef.current = labelW;
+
+  // Rows render highest-priority-first (priority-board column, 0 = top). The
+  // store keeps `goals` column-major after edits, but a fresh hydration returns
+  // them in id order (Dexie `toArray`), so order explicitly here.
+  const orderedGoals = useMemo(() => byPriority(goals), [goals]);
 
   // Every date the canvas must contain (first-level node spans are what
   // NodeLane renders; deeper nodes are never plotted).
@@ -406,8 +412,8 @@ export function Timeline() {
               </div>
             </div>
 
-            {/* Goal rows */}
-            {goals.map((g, i) => (
+            {/* Goal rows — highest priority (board column 0) first */}
+            {orderedGoals.map((g, i) => (
               <GoalRow
                 key={g.id}
                 goal={g}
@@ -421,7 +427,7 @@ export function Timeline() {
                 canvasW={canvasW}
                 isExpanded={expanded.has(g.id)}
                 onToggle={toggle}
-                isLast={i === goals.length - 1}
+                isLast={i === orderedGoals.length - 1}
               />
             ))}
           </div>
