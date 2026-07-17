@@ -45,7 +45,7 @@ export function monthFrac(m: number): number {
 export function weekDates(s: string): string[] {
   const out: string[] = [];
   const d = parseD(s);
-  const dow = d.getDay();
+  const dow = (d.getDay() + 6) % 7; // 0 = Monday … 6 = Sunday
   for (let i = 0; i < 7; i++) {
     const x = new Date(d);
     x.setDate(d.getDate() - dow + i);

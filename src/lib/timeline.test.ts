@@ -352,9 +352,9 @@ describe('rulerTicks', () => {
     const ticks = rulerTicks(july, 13); // quarter preset
     expect(ticks.some((t) => t.unit === 'day')).toBe(false);
     const weeks = ticks.filter((t) => t.unit === 'week');
-    // Sundays in July 2026: 5, 12, 19, 26
-    expect(weeks.map((t) => t.start)).toEqual(['2026-07-05', '2026-07-12', '2026-07-19', '2026-07-26']);
-    expect(weeks.map((t) => t.label)).toEqual(['5', '12', '19', '26']); // 91px ≥ 56 → labeled
+    // Mondays in July 2026: 6, 13, 20, 27
+    expect(weeks.map((t) => t.start)).toEqual(['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27']);
+    expect(weeks.map((t) => t.label)).toEqual(['6', '13', '20', '27']); // 91px ≥ 56 → labeled
   });
   it('unlabels weeks between 24 and 56 px/week', () => {
     const ticks = rulerTicks(july, 5); // 35px/week
@@ -393,12 +393,12 @@ describe('daySegments', () => {
     const segs = daySegments({ start: '2026-07-30', end: '2026-08-02' });
     expect(segs.map((s) => s.label)).toEqual(['30', '31', '1', '2']);
   });
-  it('marks Sundays and month firsts as major', () => {
-    // 2026-07-05 is a Sunday; 2026-08-01 is a Saturday (still major as the 1st)
+  it('marks Mondays and month firsts as major', () => {
+    // 2026-07-06 is a Monday; 2026-08-01 is a Saturday (still major as the 1st)
     const segs = daySegments({ start: '2026-07-04', end: '2026-08-01' });
     const byDate = new Map(segs.map((s) => [s.start, s.major]));
-    expect(byDate.get('2026-07-05')).toBe(true);
-    expect(byDate.get('2026-07-06')).toBe(false);
+    expect(byDate.get('2026-07-06')).toBe(true);
+    expect(byDate.get('2026-07-05')).toBe(false);
     expect(byDate.get('2026-08-01')).toBe(true);
   });
 });
@@ -430,4 +430,3 @@ describe('canvas constants', () => {
     expect(chunkDays(130)).toBe(Math.ceil(3000 / 130));
   });
 });
-

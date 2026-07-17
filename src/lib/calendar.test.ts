@@ -12,18 +12,33 @@ describe('ym helpers', () => {
 });
 
 describe('monthGrid', () => {
-  it('July 2026 starts Sun Jun 28 and ends Sat Aug 1 (5 rows)', () => {
+  it('July 2026 starts Mon Jun 29 and ends Sun Aug 2 (5 rows)', () => {
     const g = monthGrid('2026-07');
     expect(g).toHaveLength(5);
-    expect(g[0][0]).toBe('2026-06-28');
-    expect(g[0][3]).toBe('2026-07-01'); // Jul 1 2026 is a Wednesday
-    expect(g[4][6]).toBe('2026-08-01');
+    expect(g[0][0]).toBe('2026-06-29');
+    expect(g[0][2]).toBe('2026-07-01'); // Jul 1 2026 is a Wednesday
+    expect(g[4][6]).toBe('2026-08-02');
     g.forEach(w => expect(w).toHaveLength(7));
   });
-  it('Feb 2026 fits in 4 rows (Feb 1 is a Sunday, 28 days)', () => {
+  it('Feb 2026 fits in 5 rows (Feb 1 is a Sunday, 28 days)', () => {
     const g = monthGrid('2026-02');
-    expect(g).toHaveLength(4);
-    expect(g[0][0]).toBe('2026-02-01');
-    expect(g[3][6]).toBe('2026-02-28');
+    expect(g).toHaveLength(5);
+    expect(g[0][0]).toBe('2026-01-26');
+    expect(g[4][6]).toBe('2026-03-01');
+  });
+});
+
+describe('monthGrid (Monday-first)', () => {
+  it('rows start on Monday', () => {
+    // July 2026 starts on a Wednesday; the grid's first cell is Mon Jun 29
+    const grid = monthGrid('2026-07');
+    expect(grid[0][0]).toBe('2026-06-29');
+  });
+
+  it('every row has 7 days and covers the whole month', () => {
+    const grid = monthGrid('2026-07');
+    for (const week of grid) expect(week).toHaveLength(7);
+    expect(grid.flat()).toContain('2026-07-01');
+    expect(grid.flat()).toContain('2026-07-31');
   });
 });

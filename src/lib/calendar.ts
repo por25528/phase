@@ -21,7 +21,7 @@ export function monthGrid(ym: string): string[][] {
   const [y, m] = ym.split('-').map(Number);
   const first = new Date(y, m - 1, 1);
   const cur = new Date(first);
-  cur.setDate(cur.getDate() - cur.getDay()); // back to Sunday
+  cur.setDate(cur.getDate() - ((cur.getDay() + 6) % 7)); // back to Monday
   const last = new Date(y, m, 0);
   const weeks: string[][] = [];
   while (cur <= last) {

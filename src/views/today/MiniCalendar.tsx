@@ -3,7 +3,7 @@ import { useAppStore } from '../../state/store';
 import { todayStr, parseD } from '../../lib/dates';
 import { ymOf, shiftYm, ymLabel, monthGrid } from '../../lib/calendar';
 
-const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export function MiniCalendar() {
   const { tasks, selDate, actions } = useAppStore();

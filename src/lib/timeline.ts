@@ -190,7 +190,7 @@ export type RulerUnit = 'day' | 'week' | 'month' | 'year';
 export interface RulerTick { start: string; unit: RulerUnit; label?: string }
 
 // A finer graduation appears once its period is wide enough to read:
-const WEEK_TICK_MIN_PX = 24;  // Sunday ticks when a week spans ≥ this
+const WEEK_TICK_MIN_PX = 24;  // Monday ticks when a week spans ≥ this
 const WEEK_LABEL_MIN_PX = 56; // ...and get day-of-month labels at ≥ this
 // Per-day graduations — also gates day-scoped decoration like weekend bands.
 export const DAY_TICK_MIN_PX = 18;
@@ -199,7 +199,7 @@ export const DAY_TICK_MIN_PX = 18;
  * Hierarchical ruler graduations for the range at a continuous scale, like a
  * physical ruler gaining finer tick marks as you zoom in. Every date carries
  * its highest unit: year (Jan 1, labeled with the year) > month (the 1st,
- * labeled) > week (Sundays, once wide enough) > day (once wide enough).
+ * labeled) > week (Mondays, once wide enough) > day (once wide enough).
  */
 export function rulerTicks(range: DateRange, pxPerDay: number): RulerTick[] {
   const showDays = pxPerDay >= DAY_TICK_MIN_PX;
@@ -215,7 +215,7 @@ export function rulerTicks(range: DateRange, pxPerDay: number): RulerTick[] {
       ticks.push({ start: day, unit: 'year', label: String(dt.getFullYear()) });
     } else if (dom === 1) {
       ticks.push({ start: day, unit: 'month', label: MO[dt.getMonth()] });
-    } else if (dt.getDay() === 0 && showWeeks) {
+    } else if (dt.getDay() === 1 && showWeeks) {
       ticks.push({ start: day, unit: 'week', label: labelWeeks ? String(dom) : undefined });
     } else if (showDays) {
       ticks.push({ start: day, unit: 'day' });
@@ -245,7 +245,7 @@ export function weekendBands(range: DateRange): DayBand[] {
   return bands;
 }
 
-// One segment per day; `major` marks week starts (Sunday, matching weekDates)
+// One segment per day; `major` marks week starts (Monday, matching weekDates)
 // and month firsts.
 export function daySegments(range: DateRange): CanvasSeg[] {
   const segs: CanvasSeg[] = [];
@@ -257,10 +257,9 @@ export function daySegments(range: DateRange): CanvasSeg[] {
       start: day,
       days: 1,
       label: String(dt.getDate()),
-      major: dt.getDay() === 0 || dt.getDate() === 1,
+      major: dt.getDay() === 1 || dt.getDate() === 1,
     });
     day = addDays(day, 1);
   }
   return segs;
 }
-

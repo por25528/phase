@@ -11,10 +11,10 @@ describe('sessions math', () => {
     expect(minutesOn(s, '2026-07-02')).toBe(75);
     expect(minutesOn(s, '2026-07-02', 'g1')).toBe(30);
   });
-  it('minutesThisWeek sums the Sun–Sat week containing today', () => {
-    // 2026-07-02 is a Thursday → week is Jun 28 – Jul 4
+  it('minutesThisWeek sums the Mon–Sun week containing today', () => {
+    // 2026-07-02 is a Thursday → week is Jun 29 – Jul 5
     const s = [S('2026-06-28', 10), S('2026-07-04', 20), S('2026-07-05', 99), S('2026-06-27', 99)];
-    expect(minutesThisWeek(s, '2026-07-02')).toBe(30);
+    expect(minutesThisWeek(s, '2026-07-02')).toBe(119);
   });
   it('fmtMinutes renders h/m compactly', () => {
     expect(fmtMinutes(45)).toBe('45m');
