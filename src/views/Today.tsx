@@ -2,8 +2,7 @@ import { useState, useRef } from 'react';
 import { Hero } from './today/Hero';
 import { WeekStrip } from './today/WeekStrip';
 import { HabitsCard } from './today/HabitsCard';
-import { StudyLogCard } from './today/StudyLogCard';
-import { TasksCard } from './today/TasksCard';
+import { NextUpCard } from './today/NextUpCard';
 import { GoalsCard } from './today/GoalsCard';
 import { MiniCalendar } from './today/MiniCalendar';
 import { QuickAdd } from './today/QuickAdd';
@@ -11,7 +10,7 @@ import type { QuickType } from './today/QuickAdd';
 
 export function Today() {
   const quickRef = useRef<HTMLInputElement>(null);
-  const [quickType, setQuickType] = useState<QuickType>('task');
+  const [quickType, setQuickType] = useState<QuickType>('goal');
   function focusQuick(t: QuickType) {
     setQuickType(t);
     quickRef.current?.focus();
@@ -31,8 +30,7 @@ export function Today() {
       <div className="today-main grid gap-[20px] items-start mt-[14px]">
         <div className="flex flex-col gap-[14px] min-w-0">
           <HabitsCard />
-          <TasksCard />
-          <StudyLogCard />
+          <NextUpCard />
         </div>
         <div className="flex flex-col gap-[14px] min-w-0">
           <GoalsCard onAddGoal={() => focusQuick('goal')} />

@@ -2,15 +2,14 @@ import type { KeyboardEvent, RefObject } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr } from '../../lib/dates';
 
-export type QuickType = 'task' | 'habit' | 'goal';
+export type QuickType = 'habit' | 'goal';
 
 const PLACEHOLDER: Record<QuickType, string> = {
-  task: 'Add a task for today…',
   habit: 'New habit name…',
   goal: 'New goal or project…',
 };
 
-const LABEL: Record<QuickType, string> = { task: 'Task', habit: 'Habit', goal: 'Goal' };
+const LABEL: Record<QuickType, string> = { habit: 'Habit', goal: 'Goal' };
 
 export function QuickAdd({
   type,
@@ -21,14 +20,13 @@ export function QuickAdd({
   onType: (t: QuickType) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }) {
-  const { selDate, actions } = useAppStore();
+  const { actions } = useAppStore();
 
   function submit() {
     const el = inputRef.current;
     if (!el) return;
     const val = el.value.trim();
     if (!val) { el.focus(); return; }
-    if (type === 'task') actions.addTask(val, selDate, null);
     if (type === 'habit') actions.addHabit(val, 'daily', 4);
     if (type === 'goal') actions.addGoal(val, `${todayStr().slice(0, 4)}-12-31`);
     el.value = '';
@@ -55,7 +53,7 @@ export function QuickAdd({
         </button>
       </div>
       <div className="flex items-center gap-[6px] mt-[8px]">
-        {(['task', 'habit', 'goal'] as QuickType[]).map((t) => (
+        {(['habit', 'goal'] as QuickType[]).map((t) => (
           <button
             key={t}
             onClick={() => onType(t)}
