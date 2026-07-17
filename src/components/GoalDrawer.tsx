@@ -8,7 +8,7 @@ import { firstOpenLeaf } from '../lib/tree';
 import { goalPct } from '../lib/pct';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel } from '../lib/dates';
-import { minutesThisWeek, fmtMinutes } from '../lib/sessions';
+import { plannedLeaves, weekOf } from '../lib/plan';
 
 function MilestonesSection({
   goal: g,
@@ -114,13 +114,13 @@ function MilestonesSection({
 }
 
 function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
-  const { sessions } = useAppStore();
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const pct = Math.round(goalPct(g));
   const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
   const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, todayStr()));
-  const weekMins = minutesThisWeek(sessions, todayStr(), g.id);
+  const wk = plannedLeaves([g], weekOf(todayStr()));
+  const wkDone = wk.filter((l) => l.done).length;
   const next = firstOpenLeaf(g.nodes);
   return (
     <>
@@ -160,9 +160,9 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           ? `${behind} pts behind pace · expected ${expected}% by today`
           : `on pace · expected ${expected}% by today`}
       </div>
-      {weekMins > 0 && (
+      {wk.length > 0 && (
         <div className="text-[.74rem] text-muted mt-[2px] tabular-nums">
-          {fmtMinutes(weekMins)} logged this week
+          {wkDone}/{wk.length} planned this week
         </div>
       )}
       {next && (

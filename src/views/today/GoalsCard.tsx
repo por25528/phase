@@ -5,11 +5,13 @@ import { firstOpenLeaf } from '../../lib/tree';
 import { deadlineChip } from '../../lib/today';
 import { todayStr } from '../../lib/dates';
 import { behindPaceBy } from '../../lib/timeline';
+import { weekOf } from '../../lib/plan';
 import { BehindChip } from '../../components/BehindChip';
 
 export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
-  const { goals, tasks, actions } = useAppStore();
+  const { goals, actions } = useAppStore();
   const today = todayStr();
+  const week = weekOf(today);
 
   return (
     <CardSection
@@ -32,8 +34,7 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
         const pct = Math.round(goalPct(g));
         const next = firstOpenLeaf(g.nodes);
         const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, today));
-        const alreadyPlanned =
-          !!next && tasks.some((t) => !t.done && t.goalId === g.id && t.title === next.title && t.date === today);
+        const alreadyPlanned = !!next && next.plannedWeek === week && next.plannedDay === today;
 
         function openDrawer() {
           actions.openDrawer(g.id);
@@ -78,9 +79,9 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (alreadyPlanned) return;
-                    actions.addTask(next.title, today, g.id);
-                    actions.showToast(`Added "${next.title}" to today`);
+                    if (alreadyPlanned || !next) return;
+                    actions.planNode(g.id, next.id, week, today);
+                    actions.showToast(`Planned "${next.title}" for today`);
                   }}
                   disabled={alreadyPlanned}
                   aria-label={`Plan "${next.title}" for today`}

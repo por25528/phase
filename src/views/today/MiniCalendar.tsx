@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, parseD } from '../../lib/dates';
 import { ymOf, shiftYm, ymLabel, monthGrid } from '../../lib/calendar';
+import { pinnedDayCounts } from '../../lib/plan';
 
 const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export function MiniCalendar() {
-  const { tasks, selDate, actions } = useAppStore();
+  const { goals, selDate, actions } = useAppStore();
   const today = todayStr();
   const [ym, setYm] = useState(ymOf(today));
   const [monthName, year] = ymLabel(ym).split(' ');
-  const planned = new Set(tasks.filter((t) => !t.done).map((t) => t.date));
+  const planned = pinnedDayCounts(goals);
 
   const navBtn =
     'w-[24px] h-[24px] rounded-[7px] border border-line-2 text-[.8rem] text-chip-ink hover:bg-hover grid place-items-center';
@@ -45,7 +46,7 @@ export function MiniCalendar() {
             if (!inMonth) return <span key={d} className="h-[32px]" />;
             const isToday = d === today;
             const sel = d === selDate;
-            const hasDot = planned.has(d) && !isToday;
+            const hasDot = (planned.get(d) ?? 0) > 0 && !isToday;
             return (
               <button
                 key={d}

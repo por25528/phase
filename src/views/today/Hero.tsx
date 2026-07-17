@@ -1,20 +1,18 @@
 import { useAppStore } from '../../state/store';
 import { todayStr } from '../../lib/dates';
 import { dateKicker, greeting, habitHitPct } from '../../lib/today';
-import { minutesThisWeek, fmtMinutes } from '../../lib/sessions';
+import { plannedLeaves, weekOf } from '../../lib/plan';
 
 export function Hero() {
-  const { habits, tasks, sessions } = useAppStore();
+  const { habits, goals } = useAppStore();
   const today = todayStr();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
-  const todayTasks = tasks.filter((t) => t.date === today);
-  const tasksDone = todayTasks.filter((t) => t.done).length;
-  const weekMin = minutesThisWeek(sessions, today);
+  const wk = plannedLeaves(goals, weekOf(today));
+  const wkDone = wk.filter((l) => l.done).length;
 
   const stats: [string, string][] = [
     [`${habitsDone}/${habits.length}`, 'habits'],
-    [`${tasksDone}/${todayTasks.length}`, 'tasks'],
-    [weekMin > 0 ? fmtMinutes(weekMin).toLowerCase() : '0m', 'this week'],
+    [`${wkDone}/${wk.length}`, 'planned this week'],
   ];
   if (habits.length > 0) stats.push([`${habitHitPct(habits, today, 20)}%`, 'habit hits']);
 

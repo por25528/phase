@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, parseD } from '../../lib/dates';
 import { dateToX } from '../../lib/timeline';
+import { pinnedDayCounts } from '../../lib/plan';
 import type { CanvasSeg } from '../../lib/timeline';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -9,20 +10,16 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /**
  * Week-zoom day strip in the timeline header — the Calendar page's day-level
  * detail, absorbed: day-number buttons (accent circle on today, month name on
- * the 1st), task count, and habit check-in dots. Clicking a day opens it in
+ * the 1st), planned-step count, and habit check-in dots. Clicking a day opens it in
  * the Today view, exactly like clicking a Calendar cell used to.
  */
 export function DaysLane({
   segs, rangeStart, pxPerDay,
 }: { segs: CanvasSeg[]; rangeStart: string; pxPerDay: number }) {
-  const { tasks, habits, actions } = useAppStore();
+  const { goals, habits, actions } = useAppStore();
   const today = todayStr();
 
-  const taskCount = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const t of tasks) m.set(t.date, (m.get(t.date) ?? 0) + 1);
-    return m;
-  }, [tasks]);
+  const stepCount = useMemo(() => pinnedDayCounts(goals), [goals]);
 
   const habitHits = useMemo(() => {
     const m = new Map<string, number>();
@@ -37,7 +34,7 @@ export function DaysLane({
         const dt = parseD(s.start);
         const isToday = s.start === today;
         const weekend = dt.getDay() === 0 || dt.getDay() === 6;
-        const nTasks = taskCount.get(s.start) ?? 0;
+        const nSteps = stepCount.get(s.start) ?? 0;
         const hits = habitHits.get(s.start) ?? 0;
         return (
           <button
@@ -66,9 +63,9 @@ export function DaysLane({
                 {!isToday && dt.getDate() === 1 ? fmtD(s.start) : s.label}
               </span>
               <span className="text-[.6rem] uppercase tracking-[.08em] text-faint">{DOW[dt.getDay()]}</span>
-              {nTasks > 0 && (
-                <span className="text-[.66rem] text-ink-soft tabular-nums" aria-label={`${nTasks} tasks`}>
-                  ·{nTasks}
+              {nSteps > 0 && (
+                <span className="text-[.66rem] text-ink-soft tabular-nums" aria-label={`${nSteps} planned steps`}>
+                  ·{nSteps}
                 </span>
               )}
             </span>

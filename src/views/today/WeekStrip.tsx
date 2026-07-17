@@ -1,26 +1,28 @@
 import { useAppStore } from '../../state/store';
 import { todayStr, weekDates, parseD } from '../../lib/dates';
+import { plannedLeaves, weekOf } from '../../lib/plan';
 
 const WD = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 export function WeekStrip() {
-  const { tasks, habits, selDate, actions } = useAppStore();
+  const { goals, habits, selDate, actions } = useAppStore();
   const today = todayStr();
   const habitsLeft = habits.filter((h) => !h.checkins.includes(today)).length;
+  const wk = plannedLeaves(goals, weekOf(today));
 
   return (
     <div className="grid grid-cols-7 gap-[8px]">
       {weekDates(today).map((d) => {
         const isToday = d === today;
         const sel = selDate === d;
-        const open = tasks.filter((t) => t.date === d && !t.done);
+        const open = wk.filter((l) => l.plannedDay === d && !l.done);
         const summary = isToday
-          ? `${open.length} task${open.length === 1 ? '' : 's'} · ${habitsLeft} habit${habitsLeft === 1 ? '' : 's'} due`
+          ? `${open.length} step${open.length === 1 ? '' : 's'} · ${habitsLeft} habit${habitsLeft === 1 ? '' : 's'} due`
           : open.length === 0
             ? '—'
             : open.length === 1
               ? open[0].title
-              : `${open.length} tasks planned`;
+              : `${open.length} steps planned`;
         const date = parseD(d);
         const border = isToday ? 'border-accent-soft' : sel ? 'border-ink' : 'border-line hover:bg-hover';
         return (
