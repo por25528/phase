@@ -155,6 +155,8 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
   const pr = (raw as { planReview?: PlanReview }).planReview;
   if (pr && typeof pr.week === 'string' && Array.isArray(pr.entries) && typeof pr.reviewed === 'boolean') {
     await savePlanReview(pr);
+  } else {
+    await db.planReview.clear();
   }
   return { ...parsed, pxPerDay };
 }

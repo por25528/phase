@@ -478,6 +478,47 @@ describe('store actions', () => {
       actions.markWeekReviewed();
       expect(getState().planReview?.reviewed).toBe(true);
     });
+
+    it('rebuilds the previous-week snapshot after importing a backup without one', async () => {
+      const { loadState, loadPlanReview, importStateFromFile } = await import('../db/db');
+      const { weekOf } = await import('../lib/plan');
+      const { todayStr, addDays } = await import('../lib/dates');
+      const prevWeek = addDays(weekOf(todayStr()), -7);
+
+      vi.mocked(loadState).mockResolvedValueOnce({
+        goals: [{
+          id: 'old-goal', title: 'Old goal', start: '2026-01-01', deadline: '2026-12-31', column: 0,
+          nodes: [{ id: 'old-node', title: 'Old commitment', done: false, plannedWeek: prevWeek }],
+        }],
+        habits: [], tasks: [], sessions: [],
+      });
+      vi.mocked(loadPlanReview)
+        .mockResolvedValueOnce({
+          week: prevWeek,
+          entries: [{ nodeId: 'old-node', goalId: 'old-goal', leafTitle: 'Old commitment', goalTitle: 'Old goal' }],
+          reviewed: false,
+        })
+        .mockResolvedValueOnce(null);
+      vi.mocked(importStateFromFile).mockResolvedValueOnce({
+        goals: [{
+          id: 'new-goal', title: 'New goal', start: '2026-01-01', deadline: '2026-12-31', column: 0,
+          nodes: [{ id: 'new-node', title: 'New commitment', done: false, plannedWeek: prevWeek }],
+        }],
+        habits: [], tasks: [], sessions: [], pxPerDay: 40,
+      });
+
+      const store = await freshStore();
+      await store.initStore();
+      await store.actions.importBackup(new File([], 'backup.json'));
+
+      expect(store.getState().planReview).toEqual({
+        week: prevWeek,
+        entries: [{
+          nodeId: 'new-node', goalId: 'new-goal', leafTitle: 'New commitment', goalTitle: 'New goal',
+        }],
+        reviewed: false,
+      });
+    });
   });
 
   describe('hydration', () => {

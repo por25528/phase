@@ -606,6 +606,7 @@ export const actions = {
       const appState = await importStateFromFile(file);
       const planReview = await loadPlanReview();
       set({ ...appState, planReview, expanded: collectContainers(appState.goals) });
+      ensureWeekRollover();
       actions.showToast('Backup imported');
     } catch (e) {
       actions.showToast(e instanceof Error ? e.message : 'Could not read that file.');
