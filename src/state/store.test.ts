@@ -2,14 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
 import type { Goal } from '../db/types';
 
-vi.mock('../db/db', () => ({
+const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
+  loadPlanReview: vi.fn(async () => null),
   saveScale: vi.fn(async () => {}),
+  savePlanReview: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
 }));
+
+vi.mock('../db/db', () => dbMocks);
 
 async function freshStore() {
   vi.resetModules();
@@ -330,6 +334,149 @@ describe('store actions', () => {
       const before = getState().goals;
       actions.addGoals([]);
       expect(getState().goals).toBe(before);
+    });
+  });
+
+  describe('planNode / unplanNode', () => {
+    it('plans a leaf into a week, normalizing week and day together', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+
+      // day wins: plannedWeek is derived FROM the day
+      actions.planNode(gid, nid, '2026-07-01', '2026-07-15');
+      let n = getState().goals[0].nodes[0];
+      expect(n.plannedWeek).toBe('2026-07-13');
+      expect(n.plannedDay).toBe('2026-07-15');
+
+      // re-plan without a day clears the pin and normalizes the week
+      actions.planNode(gid, nid, '2026-07-15');
+      n = getState().goals[0].nodes[0];
+      expect(n.plannedWeek).toBe('2026-07-13');
+      expect(n.plannedDay).toBeUndefined();
+    });
+
+    it('is a no-op on containers and unknown ids', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.addChild(nid, 'child'); // nid is now a container
+      actions.planNode(gid, nid, '2026-07-13');
+      expect(getState().goals[0].nodes[0].plannedWeek).toBeUndefined();
+      actions.planNode('nope', 'nada', '2026-07-13'); // must not throw
+    });
+
+    it('unplanNode clears both fields with an undo window', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.planNode(gid, nid, '2026-07-13', '2026-07-15');
+      actions.unplanNode(gid, nid);
+      expect(getState().goals[0].nodes[0].plannedWeek).toBeUndefined();
+      expect(getState().pendingUndo).not.toBeNull();
+      actions.undoLastDelete();
+      expect(getState().goals[0].nodes[0].plannedWeek).toBe('2026-07-13');
+      expect(getState().goals[0].nodes[0].plannedDay).toBe('2026-07-15');
+    });
+  });
+
+  describe('toggleLeaf completion undo', () => {
+    it('completing arms an undo that restores the unchecked state', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'Draft introduction');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.toggleLeaf(nid);
+      expect(getState().goals[0].nodes[0].done).toBe(true);
+      expect(getState().pendingUndo?.label).toBe('Completed "Draft introduction" · Undo');
+      actions.undoLastDelete();
+      expect(getState().goals[0].nodes[0].done).toBe(false);
+    });
+
+    it('unchecking is direct — no undo toast', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.toggleLeaf(nid);       // done
+      actions.undoLastDelete();      // clear pending undo state
+      actions.toggleLeaf(nid);       // done again
+      actions.toggleLeaf(nid);       // uncheck
+      expect(getState().goals[0].nodes[0].done).toBe(false);
+    });
+  });
+
+  describe('week rollover snapshot', () => {
+    // NOTE: initStore itself calls ensureWeekRollover(), so a fresh store
+    // already holds an (empty, pre-reviewed) snapshot for the previous week.
+    // To test snapshot CREATION with entries, drive the init path: make the
+    // db mocks return a stale review and goals with leaves planned for the
+    // outgoing week. Import the mocked fns from '../db/db' and use
+    // vi.mocked(...).mockResolvedValueOnce BEFORE calling freshStore().
+
+    it('snapshots the outgoing week at init when the stored review is stale', async () => {
+      const { loadState, loadPlanReview } = await import('../db/db');
+      const { weekOf } = await import('../lib/plan');
+      const { todayStr, addDays } = await import('../lib/dates');
+      const prevWeek = addDays(weekOf(todayStr()), -7);
+      vi.mocked(loadState).mockResolvedValueOnce({
+        goals: [{
+          id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
+          nodes: [{ id: 'n1', title: 'Old commitment', done: false, plannedWeek: prevWeek }],
+        }],
+        habits: [], tasks: [], sessions: [],
+      });
+      vi.mocked(loadPlanReview).mockResolvedValueOnce({ week: '2020-01-06', entries: [], reviewed: true });
+      const store = await freshStore();
+      await store.initStore();
+      const { getState, actions } = store;
+      const pr = getState().planReview;
+      expect(pr?.week).toBe(prevWeek);
+      expect(pr?.entries.map((e) => e.nodeId)).toEqual(['n1']);
+      expect(pr?.reviewed).toBe(false);
+
+      // Triage must not change the snapshot, and rollover is idempotent:
+      actions.unplanNode('g1', 'n1');
+      actions.ensureWeekRollover();
+      expect(getState().planReview?.entries).toHaveLength(1);
+    });
+
+    it('a previous week with no commitments is born pre-reviewed', async () => {
+      const store = await freshStore();
+      await store.initStore(); // empty goals → empty snapshot
+      const { getState } = store;
+      expect(getState().planReview?.entries).toHaveLength(0);
+      expect(getState().planReview?.reviewed).toBe(true);
+    });
+
+    it('markWeekReviewed flips reviewed on an unreviewed snapshot', async () => {
+      const { loadState, loadPlanReview } = await import('../db/db');
+      const { weekOf } = await import('../lib/plan');
+      const { todayStr, addDays } = await import('../lib/dates');
+      const prevWeek = addDays(weekOf(todayStr()), -7);
+      vi.mocked(loadState).mockResolvedValueOnce({
+        goals: [{
+          id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
+          nodes: [{ id: 'n1', title: 'leaf', done: false, plannedWeek: prevWeek }],
+        }],
+        habits: [], tasks: [], sessions: [],
+      });
+      vi.mocked(loadPlanReview).mockResolvedValueOnce(null);
+      const store = await freshStore();
+      await store.initStore();
+      const { actions, getState } = store;
+      expect(getState().planReview?.reviewed).toBe(false);
+      actions.markWeekReviewed();
+      expect(getState().planReview?.reviewed).toBe(true);
     });
   });
 

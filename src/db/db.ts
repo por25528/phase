@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState } from './types';
+import type { Goal, Habit, Task, Session, AppState, PlanReview } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 
@@ -9,6 +9,7 @@ class PhaseDB extends Dexie {
   tasks!: Table<Task, string>;
   sessions!: Table<Session, string>;
   settings!: Table<{ key: string; value: string }, string>;
+  planReview!: Table<PlanReview, string>;
 
   constructor() {
     super('phase');
@@ -29,6 +30,14 @@ class PhaseDB extends Dexie {
       tasks: 'id',
       settings: 'key',
       sessions: 'id',
+    });
+    this.version(4).stores({
+      goals: 'id',
+      habits: 'id',
+      tasks: 'id',
+      settings: 'key',
+      sessions: 'id',
+      planReview: 'week',
     });
   }
 }
@@ -80,8 +89,22 @@ export async function saveScale(pxPerDay: number): Promise<void> {
   await db.settings.put({ key: 'pxPerDay', value: String(pxPerDay) });
 }
 
-export function exportState(state: AppState, pxPerDay: number): void {
-  const backup = { ...state, pxPerDay };
+// Single-row table: the one previous-week snapshot. clear+put inside a
+// transaction so a crash can't leave two rows.
+export async function loadPlanReview(): Promise<PlanReview | null> {
+  const rows = await db.planReview.toArray();
+  return rows[0] ?? null;
+}
+
+export async function savePlanReview(review: PlanReview): Promise<void> {
+  await db.transaction('rw', db.planReview, async () => {
+    await db.planReview.clear();
+    await db.planReview.put(review);
+  });
+}
+
+export function exportState(state: AppState, pxPerDay: number, planReview: PlanReview | null): void {
+  const backup = { ...state, pxPerDay, ...(planReview ? { planReview } : {}) };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -128,5 +151,10 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
   };
   await persist(parsed);
   await saveScale(pxPerDay);
+  // Optional: restore the week-review snapshot if the backup carries a sane one.
+  const pr = (raw as { planReview?: PlanReview }).planReview;
+  if (pr && typeof pr.week === 'string' && Array.isArray(pr.entries) && typeof pr.reviewed === 'boolean') {
+    await savePlanReview(pr);
+  }
   return { ...parsed, pxPerDay };
 }

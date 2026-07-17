@@ -1,9 +1,13 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, Task, Session, AppState } from '../db/types';
-import { loadState, persist, exportState, importStateFromFile, loadScale, saveScale } from '../db/db';
+import type { Goal, Habit, Task, Session, AppState, PlanReview } from '../db/types';
+import {
+  loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
+  loadPlanReview, savePlanReview,
+} from '../db/db';
 import { clampScale } from '../lib/timeline';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
+import { weekOf, plannedLeaves } from '../lib/plan';
 import { acquireTabLock } from '../lib/tabLock';
 import {
   type Theme,
@@ -36,6 +40,7 @@ interface UIState {
   hydration: 'loading' | 'ready' | 'error';
   secondTab: boolean;
   theme: Theme; // per-device UI preference (localStorage, not Dexie)
+  planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
 }
 
 interface FullState extends AppState, UIState {}
@@ -54,6 +59,7 @@ let state: FullState = {
   pxPerDay: 13, // quarter preset until the persisted scale loads
   hydration: 'loading',
   secondTab: false,
+  planReview: null,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
   // non-DOM contexts (tests).
@@ -119,15 +125,17 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay] = await Promise.all([loadState(), loadScale()]);
+    const [appState, pxPerDay, planReview] = await Promise.all([loadState(), loadScale(), loadPlanReview()]);
     state = {
       ...state,
       ...appState,
       pxPerDay,
+      planReview,
       hydration: 'ready',
       expanded: collectContainers(appState.goals),
     };
     notify();
+    ensureWeekRollover();
   } catch {
     // IndexedDB unavailable (private mode, blocked storage) or corrupt.
     // Nothing was deleted — refuse to render an empty board that would
@@ -163,14 +171,35 @@ function withUndo<K extends keyof AppState>(label: string, key: K, next: AppStat
   setAndPersist({ [key]: next } as Partial<AppState>);
 }
 
+// Snapshot the outgoing week's commitments exactly once per rollover. Entries
+// are immutable after creation; a week with no commitments needs no review.
+function ensureWeekRollover(): void {
+  const prevWeek = addDays(weekOf(todayStr()), -7);
+  if (state.planReview?.week === prevWeek) return;
+  const entries = plannedLeaves(state.goals, prevWeek).map((l) => ({
+    nodeId: l.nodeId, goalId: l.goalId, leafTitle: l.title, goalTitle: l.goalTitle,
+  }));
+  const review: PlanReview = { week: prevWeek, entries, reviewed: entries.length === 0 };
+  set({ planReview: review });
+  savePlanReview(review).catch(() => {});
+}
+
 // ---- actions ----
 export const actions = {
   // Goals / nodes
   toggleLeaf(nodeId: string) {
-    const goals = state.goals.map((g) => ({ ...g, nodes: [...g.nodes] }));
+    const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
-    if (node) node.done = !node.done;
-    setAndPersist({ goals });
+    if (!node) return;
+    if (node.done) {
+      // Unchecking is self-inverse and the row stays visible — no undo toast.
+      node.done = false;
+      setAndPersist({ goals });
+    } else {
+      // Completion makes the row vanish from Next up — arm the undo window.
+      node.done = true;
+      withUndo(`Completed "${node.title}" · Undo`, 'goals', goals);
+    }
   },
 
   toggleExpand(nodeId: string) {
@@ -437,6 +466,43 @@ export const actions = {
     withUndo(`Unscheduled "${node.title}" · Undo`, 'goals', goals);
   },
 
+  // Planning — plannedWeek/plannedDay are scheduling metadata only.
+  // A provided day derives the week (they can never disagree); containers
+  // and unknown ids are no-ops.
+  planNode(goalId: string, nodeId: string, week: string, day?: string): void {
+    const goals = cloneGoals(state.goals);
+    const goal = goals.find((g) => g.id === goalId);
+    if (!goal) return;
+    const node = findNode(goal.nodes, nodeId);
+    if (!node || node.children) return;
+    node.plannedWeek = day ? weekOf(day) : weekOf(week);
+    if (day) node.plannedDay = day;
+    else delete node.plannedDay;
+    setAndPersist({ goals });
+  },
+
+  unplanNode(goalId: string, nodeId: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    const node = goal ? findNode(goal.nodes, nodeId) : null;
+    if (!goal || !node || !node.plannedWeek) return;
+    const goals = cloneGoals(state.goals);
+    const cloned = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
+    delete cloned.plannedWeek;
+    delete cloned.plannedDay;
+    withUndo(`Removed "${node.title}" from plan · Undo`, 'goals', goals);
+  },
+
+  markWeekReviewed(): void {
+    if (!state.planReview || state.planReview.reviewed) return;
+    const review = { ...state.planReview, reviewed: true };
+    set({ planReview: review });
+    savePlanReview(review).catch(() => {});
+  },
+
+  ensureWeekRollover(): void {
+    ensureWeekRollover();
+  },
+
   // Milestones — markers only, never enter pct roll-up
   addMilestone(goalId: string, title: string, date: string): void {
     const goals = state.goals.map((g) =>
@@ -531,14 +597,15 @@ export const actions = {
 
   // IO
   exportBackup() {
-    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions }, state.pxPerDay);
+    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions }, state.pxPerDay, state.planReview);
     actions.showToast('Backup exported');
   },
 
   async importBackup(file: File) {
     try {
       const appState = await importStateFromFile(file);
-      set({ ...appState, expanded: collectContainers(appState.goals) });
+      const planReview = await loadPlanReview();
+      set({ ...appState, planReview, expanded: collectContainers(appState.goals) });
       actions.showToast('Backup imported');
     } catch (e) {
       actions.showToast(e instanceof Error ? e.message : 'Could not read that file.');
