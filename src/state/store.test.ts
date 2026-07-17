@@ -86,6 +86,25 @@ describe('store actions', () => {
     expect(getState().expanded.has(nid)).toBe(true);
   });
 
+  describe('addChild clears planning fields', () => {
+    it('a planned leaf that gains a child loses done/plannedWeek/plannedDay', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      // plan the leaf by hand (planNode arrives in a later task)
+      getState().goals[0].nodes[0].plannedWeek = '2026-07-13';
+      getState().goals[0].nodes[0].plannedDay = '2026-07-15';
+      actions.addChild(nid, 'child');
+      const node = getState().goals[0].nodes[0];
+      expect(node.children).toHaveLength(1);
+      expect(node.done).toBeUndefined();
+      expect(node.plannedWeek).toBeUndefined();
+      expect(node.plannedDay).toBeUndefined();
+    });
+  });
+
   it('removeNode schedules undo; undoLastDelete restores', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('G', '2026-12-31');

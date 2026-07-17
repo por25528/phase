@@ -147,6 +147,24 @@ describe('indentNode', () => {
     const reordered = reorderSiblings(goals, 'c', 'ld');
     expect(goalPct(reordered[0])).toBe(75); // NOT 66.7 (leaf-flattened)
   });
+
+  describe('indentNode clears planning fields on the new container', () => {
+    it('drops done, plannedWeek and plannedDay when the preceding leaf becomes a container', () => {
+      const goals: Goal[] = [{
+        id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31',
+        nodes: [
+          { id: 'a', title: 'A', done: false, plannedWeek: '2026-07-13', plannedDay: '2026-07-15' },
+          { id: 'b', title: 'B', done: false },
+        ],
+      }];
+      const next = indentNode(goals, 'b');
+      const a = next[0].nodes[0];
+      expect(a.children).toHaveLength(1);
+      expect(a.done).toBeUndefined();
+      expect(a.plannedWeek).toBeUndefined();
+      expect(a.plannedDay).toBeUndefined();
+    });
+  });
 });
 
 // ---- outdentNode ----

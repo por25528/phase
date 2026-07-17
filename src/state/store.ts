@@ -186,6 +186,8 @@ export const actions = {
     if (!node.children) node.children = [];
     node.children.push({ id: uid(), title });
     delete node.done;
+    delete node.plannedWeek;
+    delete node.plannedDay;
     const expanded = new Set(state.expanded);
     expanded.add(nodeId);
     setAndPersist({ goals }, { expanded });

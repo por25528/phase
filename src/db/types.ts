@@ -8,6 +8,8 @@ export interface GoalNode {
   // A node with children[].length > 0 is a container.
   start?: string;    // 'YYYY-MM-DD' — scheduling metadata only, never affects pct
   deadline?: string; // both present or both absent
+  plannedWeek?: string; // 'YYYY-MM-DD' Monday — "this week" commitment. Scheduling metadata only, never affects pct.
+  plannedDay?: string;  // optional pin within plannedWeek; never present without plannedWeek
 }
 
 // Markers only — milestones are never used in pct roll-up.
@@ -15,6 +17,23 @@ export interface Milestone {
   id: string;
   title: string;
   date: string; // 'YYYY-MM-DD'
+}
+
+// One immutable snapshot of the PREVIOUS week's commitments, taken at week
+// rollover. Entries never change after creation (triage mutates nodes, not
+// this); only `reviewed` flips. Titles are stored so deleted nodes can still
+// be shown in the recap.
+export interface PlanReviewEntry {
+  nodeId: string;
+  goalId: string;
+  leafTitle: string;
+  goalTitle: string;
+}
+
+export interface PlanReview {
+  week: string; // Monday of the snapshotted week
+  entries: PlanReviewEntry[];
+  reviewed: boolean;
 }
 
 export interface Goal {
