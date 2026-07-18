@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAppStore } from '../../state/store';
+import { useLocalDate } from '../../hooks/useLocalDate';
 import { CardSection } from '../../components/CardSection';
 import { Tag } from '../../components/Tag';
 import { TodayCheckbox } from './TodayCheckbox';
-import { todayStr, parseD, fmtD } from '../../lib/dates';
+import { parseD, fmtD } from '../../lib/dates';
 import { nextUp, carryOvers, plannedLeaves, weekOf } from '../../lib/plan';
 import { PlanWeekOverlay } from '../plan/PlanWeekOverlay';
 
@@ -12,13 +13,8 @@ const DOW_SHORT = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 export function NextUpCard() {
   const { goals, planReview, actions } = useAppStore();
   const [planOpen, setPlanOpen] = useState(false);
-  const today = todayStr();
+  const today = useLocalDate();
   const week = weekOf(today);
-
-  // Day-change while running: re-check the rollover whenever the card mounts.
-  useEffect(() => {
-    actions.ensureWeekRollover();
-  }, [actions]);
 
   const items = nextUp(goals, today, 7);
   const stale = carryOvers(goals, today);

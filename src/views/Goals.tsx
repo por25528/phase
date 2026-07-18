@@ -15,7 +15,7 @@ import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
 import { groupByColumn } from '../lib/board';
 import { computeBoardInsights } from '../lib/boardInsights';
-import { todayStr } from '../lib/dates';
+import { useLocalDate } from '../hooks/useLocalDate';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
@@ -37,18 +37,7 @@ const COL_COUNT = COLUMNS.length;
 export function Goals() {
   const { goals, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
-  const [currentDate, setCurrentDate] = useState(todayStr);
-
-  useEffect(() => {
-    const now = new Date();
-    const nextDay = new Date(now);
-    nextDay.setHours(24, 0, 0, 0);
-    const rolloverTimer = window.setTimeout(() => {
-      actions.ensureWeekRollover();
-      setCurrentDate(todayStr());
-    }, nextDay.getTime() - now.getTime() + 100);
-    return () => window.clearTimeout(rolloverTimer);
-  }, [actions, currentDate]);
+  const currentDate = useLocalDate();
 
   const reducedMotion =
     typeof window !== 'undefined' &&

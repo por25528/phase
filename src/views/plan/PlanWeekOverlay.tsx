@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '../../components/Modal';
 import { BehindChip } from '../../components/BehindChip';
-import { useAppStore } from '../../state/store';
+import { getState, useAppStore } from '../../state/store';
 import { todayStr, addDays, fmtD } from '../../lib/dates';
 import { goalPct } from '../../lib/pct';
 import { behindPaceBy } from '../../lib/timeline';
 import {
-  weekOf, plannedLeaves, attentionRank, paceStatus, weekRecap, PACE_THRESHOLD_PTS,
+  weekOf, plannedLeaves, attentionRank, paceStatus, weekRecap, planOpeningStep,
+  PACE_THRESHOLD_PTS,
 } from '../../lib/plan';
 import { PlanGoalTree } from './PlanGoalTree';
 import type { Goal } from '../../db/types';
@@ -16,18 +17,16 @@ const SOFT_CAPACITY = 7;
 
 export function PlanWeekOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { planReview, actions } = useAppStore();
-  const recapWaiting = !!planReview && planReview.entries.length > 0 && !planReview.reviewed;
   const [step, setStep] = useState<'recap' | 'plan'>('plan');
 
   useEffect(() => {
     if (open) {
       actions.ensureWeekRollover();
-      setStep(recapWaiting ? 'recap' : 'plan');
+      setStep(planOpeningStep(getState().planReview));
     }
-    // recapWaiting is intentionally read only at open time: finishing the
-    // recap mid-session must not bounce the user back into it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    // Read review state only when opening: finishing recap mid-session must
+    // not bounce back. getState() observes the synchronous rollover write.
+  }, [open, actions]);
 
   if (!open) return null;
   return (

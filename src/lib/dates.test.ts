@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { weekDates } from './dates';
+import { millisecondsUntilNextLocalMidnight, weekDates } from './dates';
+
+describe('millisecondsUntilNextLocalMidnight', () => {
+  it('returns the remaining local-clock time through the next day boundary', () => {
+    const now = new Date(2026, 6, 18, 23, 59, 59, 900);
+    expect(millisecondsUntilNextLocalMidnight(now)).toBe(100);
+  });
+
+  it('crosses month and year boundaries using the local calendar', () => {
+    const now = new Date(2026, 11, 31, 23, 0, 0, 0);
+    const next = new Date(2027, 0, 1, 0, 0, 0, 0);
+    expect(millisecondsUntilNextLocalMidnight(now)).toBe(next.getTime() - now.getTime());
+  });
+});
 
 describe('weekDates (Monday-based)', () => {
   it('a Wednesday maps to the preceding Monday', () => {

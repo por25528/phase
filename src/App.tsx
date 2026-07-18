@@ -4,6 +4,7 @@ import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { GoalDrawer } from './components/GoalDrawer';
+import { useLocalDate } from './hooks/useLocalDate';
 import {
   type Theme,
   resolveTheme,
@@ -34,6 +35,7 @@ function MoonIcon() {
 
 export function App() {
   const { view, openGoalId, toast, pendingUndo, goals, hydration, secondTab, theme, actions } = useAppStore();
+  useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
 

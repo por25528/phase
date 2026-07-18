@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Goal, PlanReview } from '../db/types';
 import {
   weekOf, plannedLeaves, nextUp, carryOvers, paceStatus, attentionRank,
-  weekRecap, pinnedDayCounts, PACE_THRESHOLD_PTS,
+  weekRecap, pinnedDayCounts, planOpeningStep, PACE_THRESHOLD_PTS,
 } from './plan';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
@@ -13,6 +13,21 @@ const LAST_WEEK = '2026-07-06';
 function goal(over: Partial<Goal>): Goal {
   return { id: 'g1', title: 'Goal', start: '2026-01-01', deadline: '2026-12-31', nodes: [], ...over };
 }
+
+describe('planOpeningStep', () => {
+  const pendingReview: PlanReview = {
+    week: LAST_WEEK,
+    entries: [{ nodeId: 'n1', goalId: 'g1', leafTitle: 'Leaf', goalTitle: 'Goal' }],
+    reviewed: false,
+  };
+
+  it('opens recap only for a non-empty unreviewed snapshot', () => {
+    expect(planOpeningStep(pendingReview)).toBe('recap');
+    expect(planOpeningStep({ ...pendingReview, reviewed: true })).toBe('plan');
+    expect(planOpeningStep({ ...pendingReview, entries: [] })).toBe('plan');
+    expect(planOpeningStep(null)).toBe('plan');
+  });
+});
 
 describe('weekOf', () => {
   it('is the Monday of the week', () => {

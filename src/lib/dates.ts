@@ -13,6 +13,13 @@ export function todayStr(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+export function millisecondsUntilNextLocalMidnight(now: Date): number {
+  const next = new Date(now);
+  next.setDate(next.getDate() + 1);
+  next.setHours(0, 0, 0, 0);
+  return next.getTime() - now.getTime();
+}
+
 export function parseD(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);

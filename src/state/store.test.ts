@@ -407,6 +407,26 @@ describe('store actions', () => {
     // outgoing week. Import the mocked fns from '../db/db' and use
     // vi.mocked(...).mockResolvedValueOnce BEFORE calling freshStore().
 
+    it('makes an action-triggered rollover synchronously observable', async () => {
+      const { actions, getState } = await freshStore();
+      const { weekOf } = await import('../lib/plan');
+      const { todayStr, addDays } = await import('../lib/dates');
+      const prevWeek = addDays(weekOf(todayStr()), -7);
+      actions.addGoal('G', '2026-12-31');
+      const goalId = getState().goals[0].id;
+      actions.addRootNode(goalId, 'Outgoing commitment');
+      const nodeId = getState().goals[0].nodes[0].id;
+      actions.planNode(goalId, nodeId, prevWeek);
+
+      actions.ensureWeekRollover();
+
+      expect(getState().planReview).toMatchObject({
+        week: prevWeek,
+        entries: [{ nodeId }],
+        reviewed: false,
+      });
+    });
+
     it('snapshots the outgoing week at init when the stored review is stale', async () => {
       const { loadState, loadPlanReview } = await import('../db/db');
       const { weekOf } = await import('../lib/plan');

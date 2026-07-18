@@ -13,6 +13,12 @@ export function weekOf(date: string): string {
   return weekDates(date)[0];
 }
 
+export type PlanOpeningStep = 'recap' | 'plan';
+
+export function planOpeningStep(review: PlanReview | null): PlanOpeningStep {
+  return review && review.entries.length > 0 && !review.reviewed ? 'recap' : 'plan';
+}
+
 export interface PlannedLeaf {
   goalId: string;
   goalTitle: string;
