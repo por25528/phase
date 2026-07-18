@@ -5,7 +5,7 @@ import { firstOpenLeaf } from '../../lib/tree';
 import { deadlineChip } from '../../lib/today';
 import { todayStr } from '../../lib/dates';
 import { behindPaceBy } from '../../lib/timeline';
-import { weekOf } from '../../lib/plan';
+import { weekOf, paceStatus } from '../../lib/plan';
 import { BehindChip } from '../../components/BehindChip';
 
 export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
@@ -34,6 +34,7 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
         const pct = Math.round(goalPct(g));
         const next = firstOpenLeaf(g.nodes);
         const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, today));
+        const pace = paceStatus(g, today);
         const alreadyPlanned = !!next && next.plannedWeek === week && next.plannedDay === today;
 
         function openDrawer() {
@@ -59,7 +60,7 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
           >
             <span className="flex items-baseline gap-[10px]">
               <span className="font-disp text-[.98rem] font-semibold flex-1 min-w-0 truncate">{g.title}</span>
-              {behind >= 10 && <BehindChip pts={behind} className="flex-none" />}
+              {pace === 'behind' && <BehindChip pts={behind} className="flex-none" />}
               <span className="font-mono text-[.62rem] tracking-[.05em] text-muted flex-none tabular-nums">
                 {deadlineChip(g.deadline, today)}
               </span>

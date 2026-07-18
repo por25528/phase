@@ -27,6 +27,8 @@ describe('computeBoardInsights', () => {
       dueSoonCount: 0,
       nearestDeadline: null,
       behindPaceCount: 0,
+      weekPlanned: 0,
+      weekDone: 0,
     });
   });
 
@@ -96,8 +98,15 @@ describe('computeBoardInsights', () => {
       const deadline = addDays(start, 1000);
       const at96 = addDays(start, 96); // 0% actual, expected 9.6 → round 10 → counts
       const at94 = addDays(start, 94); // 0% actual, expected 9.4 → round 9  → excluded
-      expect(computeBoardInsights([g({ id: 'a', start, deadline })], at96, 4).behindPaceCount).toBe(1);
-      expect(computeBoardInsights([g({ id: 'a', start, deadline })], at94, 4).behindPaceCount).toBe(0);
+      expect(computeBoardInsights([g({ id: 'a', start, deadline, nodes: [todo()] })], at96, 4).behindPaceCount).toBe(1);
+      expect(computeBoardInsights([g({ id: 'a', start, deadline, nodes: [todo()] })], at94, 4).behindPaceCount).toBe(0);
+    });
+
+    it('does not count a zero-leaf goal that needs breakdown as behind', () => {
+      const start = '2026-01-01';
+      const deadline = addDays(start, 100);
+      const today = addDays(start, 40);
+      expect(computeBoardInsights([g({ id: 'empty', start, deadline })], today, 4).behindPaceCount).toBe(0);
     });
 
     it('counts a mid-progress goal that is behind (goalPct + behindPaceBy path)', () => {
@@ -116,5 +125,20 @@ describe('computeBoardInsights', () => {
       const goal = g({ id: 'ok', start, deadline, nodes: [done('1'), done('2'), done('3'), done('4')] }); // 100%
       expect(computeBoardInsights([goal], today, 4).behindPaceCount).toBe(0);
     });
+  });
+
+  it('counts this week\'s planned and done leaves', () => {
+    const today = '2026-07-15';
+    const goals: Goal[] = [{
+      id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
+      nodes: [
+        { id: 'a', title: 'A', done: false, plannedWeek: '2026-07-13' },
+        { id: 'b', title: 'B', done: true, plannedWeek: '2026-07-13' },
+        { id: 'c', title: 'C', done: false, plannedWeek: '2026-07-06' },
+      ],
+    }];
+    const out = computeBoardInsights(goals, today, 3);
+    expect(out.weekPlanned).toBe(2);
+    expect(out.weekDone).toBe(1);
   });
 });

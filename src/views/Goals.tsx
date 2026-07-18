@@ -37,6 +37,18 @@ const COL_COUNT = COLUMNS.length;
 export function Goals() {
   const { goals, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
+  const [currentDate, setCurrentDate] = useState(todayStr);
+
+  useEffect(() => {
+    const now = new Date();
+    const nextDay = new Date(now);
+    nextDay.setHours(24, 0, 0, 0);
+    const rolloverTimer = window.setTimeout(() => {
+      actions.ensureWeekRollover();
+      setCurrentDate(todayStr());
+    }, nextDay.getTime() - now.getTime() + 100);
+    return () => window.clearTimeout(rolloverTimer);
+  }, [actions, currentDate]);
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -126,7 +138,7 @@ export function Goals() {
 
   const isEmpty = goals.length === 0;
   const activeGoal = activeId ? goalById.get(activeId) : null;
-  const insights = useMemo(() => computeBoardInsights(goals, todayStr(), COL_COUNT), [goals]);
+  const insights = useMemo(() => computeBoardInsights(goals, currentDate, COL_COUNT), [goals, currentDate]);
 
   return (
     <div>

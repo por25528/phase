@@ -9,6 +9,7 @@ import { SpanBar, type Span } from './SpanBar';
 import { NodeLane, CanvasGrid } from './NodeLane';
 import { BehindChip } from '../../components/BehindChip';
 import { useReducedMotion } from '../today/useReducedMotion';
+import { paceStatus } from '../../lib/plan';
 
 interface GoalRowProps {
   goal: Goal;
@@ -45,8 +46,10 @@ export const GoalRow = memo(function GoalRow({
 
   const flagDeadline = preview ? preview.deadline : g.deadline;
   const flagX = dateToX(flagDeadline, rangeStart, pxPerDay);
+  const today = todayStr();
   const p = Math.round(goalPct(g));
-  const behind = Math.round(behindPaceBy(p, g.start, g.deadline, todayStr()));
+  const behind = Math.round(behindPaceBy(p, g.start, g.deadline, today));
+  const pace = paceStatus(g, today);
 
   return (
     <div className={isLast ? '' : 'border-b border-line'}>
@@ -78,7 +81,10 @@ export const GoalRow = memo(function GoalRow({
               <span className="text-[.68rem] text-muted tabular-nums truncate">
                 {p}% · {daysLeftLabel(g.deadline)}
               </span>
-              {behind >= 10 && <BehindChip pts={behind} className="flex-none" />}
+              {pace === 'behind' && <BehindChip pts={behind} className="flex-none" />}
+              {pace === 'needs-breakdown' && (
+                <span className="text-[.66rem] text-muted italic flex-none">define next step</span>
+              )}
             </span>
           </div>
         </div>
@@ -158,12 +164,15 @@ export const GoalRow = memo(function GoalRow({
           <div className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</div>
           <div className="text-[.72rem] text-muted tabular-nums">
             {(() => {
-              const actual = Math.round(goalPct(g));
-              const behind = Math.round(behindPaceBy(actual, g.start, g.deadline, todayStr()));
-              const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
-              return behind > 0
-                ? `${behind} pts behind pace · expected ${expected}% by today`
-                : `on pace · expected ${expected}% by today`;
+              const expected = Math.round(expectedPct(g.start, g.deadline, today));
+              if (pace === 'behind') {
+                return `${behind} pts behind pace · expected ${expected}% by today`;
+              }
+              if (pace === 'needs-breakdown') {
+                return `define next step · expected ${expected}% by today`;
+              }
+              if (pace === 'complete') return 'complete';
+              return `on pace · expected ${expected}% by today`;
             })()}
           </div>
         </div>

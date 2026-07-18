@@ -1,7 +1,6 @@
 import type { Goal } from '../db/types';
-import { goalPct } from './pct';
-import { behindPaceBy } from './timeline';
 import { addDays } from './dates';
+import { weekOf, plannedLeaves, paceStatus } from './plan';
 
 // Read-only aggregation over the board for the Goals insight bar. Pure — never
 // mutates `goals`. Thresholds reuse the same helpers the cards use so the bar
@@ -12,6 +11,8 @@ export interface BoardInsights {
   dueSoonCount: number;
   nearestDeadline: string | null; // 'YYYY-MM-DD' of the soonest upcoming deadline, or null
   behindPaceCount: number;
+  weekPlanned: number;
+  weekDone: number;
 }
 
 export function computeBoardInsights(
@@ -44,13 +45,14 @@ export function computeBoardInsights(
       nearestDeadline = g.deadline;
     }
 
-    // Behind pace — mirror BoardCard exactly: round the pct first, then round
-    // the shortfall, then compare, so a card's behind chip and this count never
-    // disagree at the rounding boundary.
-    const pct = Math.round(goalPct(g));
-    const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, today));
-    if (behind >= 10) behindPaceCount++;
+    // The five-state verdict is authoritative so attention states remain
+    // mutually exclusive (for example, needs-breakdown is never also behind).
+    if (paceStatus(g, today) === 'behind') behindPaceCount++;
   }
 
-  return { total: goals.length, perColumn, dueSoonCount, nearestDeadline, behindPaceCount };
+  const wk = plannedLeaves(goals, weekOf(today));
+  const weekPlanned = wk.length;
+  const weekDone = wk.filter((l) => l.done).length;
+
+  return { total: goals.length, perColumn, dueSoonCount, nearestDeadline, behindPaceCount, weekPlanned, weekDone };
 }

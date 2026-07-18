@@ -6,7 +6,7 @@ import { fmtD } from '../../lib/dates';
 // soon, and what's behind pace. Informational only in v1. Built from existing
 // tokens so it themes into dark automatically.
 export function InsightBar({ insights }: { insights: BoardInsights }) {
-  const { total, perColumn, dueSoonCount, nearestDeadline, behindPaceCount } = insights;
+  const { total, perColumn, dueSoonCount, nearestDeadline, behindPaceCount, weekPlanned, weekDone } = insights;
 
   return (
     <div className="mt-[16px] rounded-card border border-line bg-panel shadow-card px-[16px] py-[11px] flex flex-wrap items-center gap-x-[22px] gap-y-[10px]">
@@ -46,6 +46,19 @@ export function InsightBar({ insights }: { insights: BoardInsights }) {
           </span>
         ) : (
           <span className="text-[.82rem] text-ink-soft">On pace</span>
+        )}
+      </Segment>
+
+      <Divider />
+
+      <Segment label="This week">
+        {weekPlanned > 0 ? (
+          <>
+            <span className="font-disp text-[.92rem] font-semibold tabular-nums">{weekDone}/{weekPlanned}</span>
+            <span className="text-[.78rem] text-muted">planned steps done</span>
+          </>
+        ) : (
+          <span className="text-[.82rem] text-ink-soft">Nothing planned yet</span>
         )}
       </Segment>
     </div>

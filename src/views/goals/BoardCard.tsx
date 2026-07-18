@@ -9,15 +9,18 @@ import { deadlineChip } from '../../lib/today';
 import { behindPaceBy, expectedPct } from '../../lib/timeline';
 import { BehindChip } from '../../components/BehindChip';
 import { leafCount } from '../../lib/board';
+import { paceStatus } from '../../lib/plan';
 
 // ── Card visual (shared by sortable card + drag overlay) ──────────────────────
 
 export function GoalCardVisual({ goal, overlay }: { goal: Goal; overlay?: boolean }) {
+  const today = todayStr();
   const pct = Math.round(goalPct(goal));
   const leaves = leafCount(goal.nodes);
   const next = firstOpenLeaf(goal.nodes);
-  const behind = Math.round(behindPaceBy(pct, goal.start, goal.deadline, todayStr()));
-  const expected = Math.round(expectedPct(goal.start, goal.deadline, todayStr()));
+  const behind = Math.round(behindPaceBy(pct, goal.start, goal.deadline, today));
+  const expected = Math.round(expectedPct(goal.start, goal.deadline, today));
+  const pace = paceStatus(goal, today);
 
   return (
     <div
@@ -36,12 +39,15 @@ export function GoalCardVisual({ goal, overlay }: { goal: Goal; overlay?: boolea
         <span className="text-[.72rem] text-muted tabular-nums">{leaves.done}/{leaves.total}</span>
         <span className="text-faint text-[.66rem]">·</span>
         <span className="font-mono text-[.6rem] tracking-[.04em] text-muted tabular-nums">
-          {deadlineChip(goal.deadline, todayStr())}
+          {deadlineChip(goal.deadline, today)}
         </span>
         {expected > 0 && expected < 100 && (
           <span className="text-[.72rem] text-muted tabular-nums">exp {expected}%</span>
         )}
-        {behind >= 10 && <BehindChip pts={behind} />}
+        {pace === 'behind' && <BehindChip pts={behind} />}
+        {pace === 'needs-breakdown' && (
+          <span className="text-[.68rem] text-muted italic">define next step</span>
+        )}
       </div>
       <div className="text-[.72rem] text-muted truncate">
         Next: <span className="text-ink-soft">{next ? next.title : 'Define the first step'}</span>

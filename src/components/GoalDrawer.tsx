@@ -8,7 +8,7 @@ import { firstOpenLeaf } from '../lib/tree';
 import { goalPct } from '../lib/pct';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel } from '../lib/dates';
-import { plannedLeaves, weekOf } from '../lib/plan';
+import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
 
 function MilestonesSection({
   goal: g,
@@ -116,10 +116,12 @@ function MilestonesSection({
 function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
+  const today = todayStr();
   const pct = Math.round(goalPct(g));
-  const expected = Math.round(expectedPct(g.start, g.deadline, todayStr()));
-  const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, todayStr()));
-  const wk = plannedLeaves([g], weekOf(todayStr()));
+  const expected = Math.round(expectedPct(g.start, g.deadline, today));
+  const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, today));
+  const pace = paceStatus(g, today);
+  const wk = plannedLeaves([g], weekOf(today));
   const wkDone = wk.filter((l) => l.done).length;
   const next = firstOpenLeaf(g.nodes);
   return (
@@ -156,9 +158,13 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
         <ProgressBar pct={pct} />
       </div>
       <div className="text-[.74rem] text-muted mt-[6px] tabular-nums">
-        {behind > 0
+        {pace === 'behind'
           ? `${behind} pts behind pace · expected ${expected}% by today`
-          : `on pace · expected ${expected}% by today`}
+          : pace === 'needs-breakdown'
+            ? `define next step · expected ${expected}% by today`
+            : pace === 'complete'
+              ? 'complete'
+              : `on pace · expected ${expected}% by today`}
       </div>
       {wk.length > 0 && (
         <div className="text-[.74rem] text-muted mt-[2px] tabular-nums">
