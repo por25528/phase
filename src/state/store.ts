@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, Task, Session, AppState, PlanReview } from '../db/types';
+import type { Goal, Habit, AppState, PlanReview } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview,
@@ -337,41 +337,6 @@ export const actions = {
     withUndo(`Deleted "${title}" · Undo`, 'habits', state.habits.filter((h) => h.id !== habitId));
   },
 
-  // Tasks
-  toggleTask(taskId: string) {
-    const tasks = state.tasks.map((t) => (t.id === taskId ? { ...t, done: !t.done } : t));
-    setAndPersist({ tasks });
-  },
-
-  addTask(title: string, date: string, goalId: string | null) {
-    const task: Task = { id: uid(), title, date, done: false, goalId };
-    setAndPersist({ tasks: [...state.tasks, task] });
-  },
-
-  removeTask(taskId: string) {
-    const task = state.tasks.find((t) => t.id === taskId);
-    const title = task?.title ?? 'task';
-    withUndo(`Deleted "${title}" · Undo`, 'tasks', state.tasks.filter((t) => t.id !== taskId));
-  },
-
-  moveTaskToDate(taskId: string, date: string) {
-    const tasks = state.tasks.map((t) => (t.id === taskId ? { ...t, date } : t));
-    setAndPersist({ tasks });
-  },
-
-  // Sessions — study/work log, context only
-  addSession(goalId: string | null, date: string, minutes: number, note = '') {
-    if (minutes <= 0) return;
-    const session: Session = { id: uid(), goalId, date, minutes, note };
-    setAndPersist({ sessions: [...state.sessions, session] });
-  },
-
-  removeSession(sessionId: string) {
-    const s = state.sessions.find((x) => x.id === sessionId);
-    const label = s ? `Deleted ${s.minutes}m log · Undo` : 'Deleted log · Undo';
-    withUndo(label, 'sessions', state.sessions.filter((x) => x.id !== sessionId));
-  },
-
   // Structural reorder / indent / outdent
   indentNode(nodeId: string): void {
     const goals = treeIndentNode(state.goals, nodeId);
@@ -410,11 +375,6 @@ export const actions = {
   reorderHabits(activeId: string, overId: string): void {
     const habits = reorderTop(state.habits, activeId, overId);
     setAndPersist({ habits });
-  },
-
-  reorderTasks(activeId: string, overId: string): void {
-    const tasks = reorderTop(state.tasks, activeId, overId);
-    setAndPersist({ tasks });
   },
 
   // Timeline scale — updates land per gesture frame, so persistence is

@@ -36,11 +36,17 @@ function fileOf(contents: string): File {
 
 describe('importStateFromFile', () => {
   it('imports a valid backup, persists it, and returns the scale', async () => {
-    const backup = { goals: [goal('g1')], habits: [], tasks: [], sessions: [], pxPerDay: 40 };
+    const task = { id: 't1', title: 'Legacy task', date: '2026-07-05', done: false, goalId: null };
+    const session = { id: 's1', goalId: 'g1', date: '2026-07-05', minutes: 30, note: 'Legacy log' };
+    const backup = { goals: [goal('g1')], habits: [], tasks: [task], sessions: [session], pxPerDay: 40 };
     const result = await importStateFromFile(fileOf(JSON.stringify(backup)));
     expect(result.goals.map((g) => g.id)).toEqual(['g1']);
+    expect(result.tasks).toEqual([task]);
+    expect(result.sessions).toEqual([session]);
     expect(result.pxPerDay).toBe(40);
-    expect((await db.goals.toArray()).map((g) => g.id)).toEqual(['g1']);
+    expect(await loadState()).toEqual({
+      goals: [goal('g1')], habits: [], tasks: [task], sessions: [session],
+    });
   });
 
   it('rejects non-JSON with a JSON-specific message', async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
-import type { Goal } from '../db/types';
+import type { Goal, PlanReview, Session, Task } from '../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
@@ -18,6 +18,29 @@ vi.mock('../db/db', () => dbMocks);
 async function freshStore() {
   vi.resetModules();
   return await import('./store');
+}
+
+const legacyTask: Task = {
+  id: 'legacy-task', title: 'Legacy task', date: '2026-07-10', done: false, goalId: null,
+};
+const legacySession: Session = {
+  id: 'legacy-session', goalId: null, date: '2026-07-10', minutes: 45, note: 'Legacy study log',
+};
+
+async function freshStoreWithLegacyData() {
+  const { loadState, loadPlanReview } = await import('../db/db');
+  const { weekOf } = await import('../lib/plan');
+  const { todayStr, addDays } = await import('../lib/dates');
+  const planReview: PlanReview = {
+    week: addDays(weekOf(todayStr()), -7), entries: [], reviewed: true,
+  };
+  vi.mocked(loadState).mockResolvedValueOnce({
+    goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
+  });
+  vi.mocked(loadPlanReview).mockResolvedValueOnce(planReview);
+  const store = await freshStore();
+  await store.initStore();
+  return { store, planReview };
 }
 
 describe('store actions', () => {
@@ -255,45 +278,6 @@ describe('store actions', () => {
     actions.undoLastDelete();
     expect(getState().habits).toHaveLength(1);
     expect(getState().habits[0].id).toBe(hid);
-  });
-
-  it('moveTaskToDate reschedules a task', async () => {
-    const { actions, getState } = await freshStore();
-    actions.addTask('T', '2026-01-05', null);
-    actions.moveTaskToDate(getState().tasks[0].id, '2026-07-02');
-    expect(getState().tasks[0].date).toBe('2026-07-02');
-  });
-
-  it('removeTask schedules undo; undoLastDelete restores', async () => {
-    const { actions, getState } = await freshStore();
-    actions.addTask('T', '2026-07-02', null);
-    const tid = getState().tasks[0].id;
-    actions.removeTask(tid);
-    expect(getState().tasks).toHaveLength(0);
-    expect(getState().pendingUndo).not.toBeNull();
-    actions.undoLastDelete();
-    expect(getState().tasks).toHaveLength(1);
-    expect(getState().tasks[0].id).toBe(tid);
-  });
-
-  it('addSession logs; non-positive minutes are ignored', async () => {
-    const { actions, getState } = await freshStore();
-    actions.addSession('g1', '2026-07-02', 30, 'Studied');
-    expect(getState().sessions).toHaveLength(1);
-    expect(getState().sessions[0].minutes).toBe(30);
-    actions.addSession('g1', '2026-07-02', 0, 'noop');
-    expect(getState().sessions).toHaveLength(1);
-  });
-
-  it('removeSession schedules undo; undoLastDelete restores the log', async () => {
-    const { actions, getState } = await freshStore();
-    actions.addSession(null, '2026-07-02', 45);
-    const sid = getState().sessions[0].id;
-    actions.removeSession(sid);
-    expect(getState().sessions).toHaveLength(0);
-    expect(getState().pendingUndo).not.toBeNull();
-    actions.undoLastDelete();
-    expect(getState().sessions).toHaveLength(1);
   });
 
   it('removeMilestone schedules undo; undoLastDelete restores', async () => {
@@ -536,6 +520,44 @@ describe('store actions', () => {
       const store = await import('./store');
       await store.initStore();
       expect(store.getState().hydration).toBe('error');
+    });
+  });
+
+  describe('legacy task and session data retention', () => {
+    it('hydrates non-empty legacy task and session arrays', async () => {
+      const { store } = await freshStoreWithLegacyData();
+
+      expect(store.getState().tasks).toEqual([legacyTask]);
+      expect(store.getState().sessions).toEqual([legacySession]);
+    });
+
+    it('retains legacy arrays when a supported mutation persists state', async () => {
+      const { store } = await freshStoreWithLegacyData();
+      const { persist } = await import('../db/db');
+      vi.mocked(persist).mockClear();
+
+      store.actions.addGoal('New goal', '2026-12-31');
+
+      expect(persist).toHaveBeenCalledOnce();
+      expect(persist).toHaveBeenCalledWith(expect.objectContaining({
+        tasks: [legacyTask],
+        sessions: [legacySession],
+      }));
+      expect(store.getState().tasks).toEqual([legacyTask]);
+      expect(store.getState().sessions).toEqual([legacySession]);
+    });
+
+    it('includes legacy arrays and the plan review in backup export', async () => {
+      const { store, planReview } = await freshStoreWithLegacyData();
+      const { exportState } = await import('../db/db');
+      vi.mocked(exportState).mockClear();
+
+      store.actions.exportBackup();
+
+      expect(exportState).toHaveBeenCalledOnce();
+      expect(exportState).toHaveBeenCalledWith({
+        goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
+      }, 13, planReview);
     });
   });
 });
