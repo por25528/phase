@@ -68,20 +68,25 @@ function TreeNode({
       type="button"
       onClick={() => (planned ? onUnplan(n.id) : onPlan(n.id))}
       aria-pressed={planned}
-      className={`flex items-center gap-[8px] py-[4px] rounded-field w-full text-left text-[.84rem] hover:bg-hover px-[4px] ${
+      className={`group/step flex items-center gap-[8px] py-[4px] rounded-field w-full text-left text-[.84rem] hover:bg-hover px-[4px] ${
         planned ? 'text-ink font-medium' : 'text-ink-soft'
       }`}
       style={pad}
     >
-      <span
-        className={`w-[14px] h-[14px] rounded-[4px] border flex-none ${
-          planned ? 'bg-accent border-accent' : 'border-line-2'
-        }`}
-      />
       <span className="flex-1 min-w-0 truncate">{n.title}</span>
       {futureStart && (
         <span className="font-mono text-[.6rem] text-faint flex-none">starts {fmtD(n.start!)}</span>
       )}
+      {/* A plan toggle, not a done-checkbox — the label says what the click does. */}
+      <span
+        className={`flex-none text-[.62rem] font-medium px-[7px] py-[1px] rounded-full ${
+          planned
+            ? 'text-accent-deep bg-accent-tint'
+            : 'text-muted border border-line-2 group-hover/step:border-muted'
+        }`}
+      >
+        {planned ? '✓ This week' : '+ Plan'}
+      </span>
     </button>
   );
 }

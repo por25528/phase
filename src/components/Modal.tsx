@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
  * Centered modal dialog — mirrors the goal drawer's scrim/panel styling.
  * Closes on scrim click, ✕, and Escape. Renders nothing when `open` is false.
  * Focus is trapped inside while open and restored to the opener on close;
- * body scroll is locked. size='full' is the near-full-screen planner variant.
+ * body scroll is locked. size='full' is the wide, content-sized planner variant.
  */
 export function Modal({
   open,
@@ -64,7 +64,9 @@ export function Modal({
 
   if (!open) return null;
 
-  const width = size === 'full' ? 'max-w-[960px] min-h-[70vh]' : 'max-w-[480px]';
+  // `full` is the wide planner variant. It sizes to its content — no forced
+  // min-height, which otherwise leaves a large empty panel when little is planned.
+  const width = size === 'full' ? 'max-w-[860px]' : 'max-w-[480px]';
 
   return (
     <div

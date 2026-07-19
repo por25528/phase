@@ -45,7 +45,7 @@ export function PlanWeekOverlay({ open, onClose }: { open: boolean; onClose: () 
           onCloseAll={onClose}
         />
       ) : (
-        <PlanStep />
+        <PlanStep onClose={onClose} />
       )}
     </Modal>
   );
@@ -153,7 +153,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
 
 // ── Step 2: plan ──────────────────────────────────────────────────────────────
 
-function PlanStep() {
+function PlanStep({ onClose }: { onClose: () => void }) {
   const { goals, actions } = useAppStore();
   const today = todayStr();
   const week = weekOf(today);
@@ -162,7 +162,14 @@ function PlanStep() {
   const openCount = pool.filter((l) => !l.done).length;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
+    <div className="flex flex-col gap-[16px]">
+      <p className="text-[.82rem] text-muted leading-[1.5]">
+        Pick the steps you'll focus on this week — hit <span className="text-ink-soft font-medium">+ Plan</span> on the
+        left to commit one. It moves to <span className="text-ink-soft font-medium">Your week</span>, where you can
+        pin it to a day if you want.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
       {/* Left: what needs attention */}
       <div className="min-w-0">
         <h3 className="font-mono text-[.62rem] tracking-[.1em] uppercase text-muted font-semibold mb-[8px]">
@@ -200,8 +207,10 @@ function PlanStep() {
           {openCount} focus step{openCount === 1 ? '' : 's'} planned
           {openCount > SOFT_CAPACITY && <span className="text-warn"> · that's a big week</span>}
         </div>
-        {pool.length === 0 && (
-          <div className="text-faint text-[.85rem] italic">Click steps on the left to commit them to this week.</div>
+        {pool.length === 0 ? (
+          <div className="text-faint text-[.85rem] italic">Click <span className="not-italic">+ Plan</span> on a step at left to commit it to this week.</div>
+        ) : (
+          <div className="text-[.7rem] text-faint mb-[6px]">Tap a weekday to pin a step to it — optional.</div>
         )}
         {pool.map((l) => (
           <div
@@ -250,6 +259,17 @@ function PlanStep() {
             </button>
           </div>
         ))}
+      </div>
+      </div>
+
+      <div className="flex justify-end pt-[6px] border-t border-line-soft">
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-[16px] py-[8px] rounded-field bg-ink text-paper text-[.84rem] font-semibold hover:bg-ink-hover"
+        >
+          Done
+        </button>
       </div>
     </div>
   );
