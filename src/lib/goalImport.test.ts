@@ -7,6 +7,7 @@ import {
   buildManualGoal,
   parseGoalImport,
   buildAiPrompt,
+  sanitizeBackupGoal,
 } from './goalImport';
 import type { Goal, GoalNode } from '../db/types';
 
@@ -21,6 +22,23 @@ function err(r: { goals: Goal[] } | { error: string }): string {
   if (!('error' in r)) throw new Error('expected error, got goals');
   return r.error;
 }
+
+describe('sanitizeBackupGoal', () => {
+  const base: Goal = { id: 'g', title: 'G', start: '2026-01-01', deadline: '2026-12-31', nodes: [] };
+
+  it('keeps a valid completedAt', () => {
+    expect(sanitizeBackupGoal({ ...base, completedAt: '2026-07-10' }).completedAt).toBe('2026-07-10');
+  });
+
+  it('drops an invalid completedAt so a bad value cannot hide the project', () => {
+    expect(sanitizeBackupGoal({ ...base, completedAt: 'nope' as unknown as string }).completedAt).toBeUndefined();
+    expect(sanitizeBackupGoal({ ...base, completedAt: 20260710 as unknown as string }).completedAt).toBeUndefined();
+  });
+
+  it('leaves a goal without completedAt untouched', () => {
+    expect('completedAt' in sanitizeBackupGoal(base)).toBe(false);
+  });
+});
 
 // ---- priorityToColumn / columnToPriority ----
 

@@ -44,7 +44,8 @@ export interface Goal {
   nodes: GoalNode[];
   milestones?: Milestone[]; // markers only — never used in pct roll-up
   notes?: string;           // free-form working notes — rides along in the goal object
-  column?: number;          // priority-board column, 0 = leftmost/highest. Absent ⇒ 0.
+  column?: number;          // commitment-horizon column, 0 = Now … 3 = Someday. Absent ⇒ 0.
+  completedAt?: string;     // 'YYYY-MM-DD' — set when the project is explicitly archived. Absent ⇒ active.
 }
 
 export type ZoomLevel = 'week' | 'month' | 'quarter';

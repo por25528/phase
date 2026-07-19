@@ -2,6 +2,7 @@ import Dexie, { type Table } from 'dexie';
 import type { Goal, Habit, Task, Session, AppState, PlanReview } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
+import { sanitizeBackupGoal } from '../lib/goalImport';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -144,7 +145,7 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
       ? clampScale(raw.pxPerDay as number)
       : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
   const parsed: AppState = {
-    goals: raw.goals ?? [],
+    goals: (raw.goals ?? []).map(sanitizeBackupGoal),
     habits: raw.habits ?? [],
     tasks: raw.tasks ?? [],
     sessions: raw.sessions ?? [],

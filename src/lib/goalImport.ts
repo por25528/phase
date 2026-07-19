@@ -136,6 +136,19 @@ function buildImportedGoal(spec: GoalSpec, today: string): Goal {
 }
 
 /**
+ * Drop an invalid `completedAt` from a backup goal so a malformed value can't
+ * silently hide a project on import (spec §5). A valid `YYYY-MM-DD` is kept;
+ * anything else is removed, leaving the project active.
+ */
+export function sanitizeBackupGoal(goal: Goal): Goal {
+  const c = (goal as { completedAt?: unknown }).completedAt;
+  if (c === undefined || (typeof c === 'string' && isDateStr(c))) return goal;
+  const copy = { ...goal };
+  delete (copy as { completedAt?: unknown }).completedAt;
+  return copy;
+}
+
+/**
  * Parse pasted JSON into ready-to-store Goal objects. Accepts a single goal
  * object or an array. Forgiving on optional fields (defaults applied), strict on
  * `title` and JSON validity, all-or-nothing: any bad goal rejects the whole paste.
