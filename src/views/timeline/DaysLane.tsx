@@ -1,31 +1,21 @@
-import { useMemo } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, parseD } from '../../lib/dates';
 import { dateToX } from '../../lib/timeline';
-import { pinnedDayCounts } from '../../lib/plan';
 import type { CanvasSeg } from '../../lib/timeline';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /**
- * Week-zoom day strip in the timeline header — the Calendar page's day-level
- * detail, absorbed: day-number buttons (accent circle on today, month name on
- * the 1st), planned-step count, and habit check-in dots. Clicking a day opens it in
- * the Today view, exactly like clicking a Calendar cell used to.
+ * Week-zoom day strip in the timeline header: day-number buttons (accent circle
+ * on today, month name on the 1st). Clicking a day opens it in the Today view as
+ * a navigation convenience — the Timeline no longer schedules actions, so the
+ * per-day planned counts and habit dots are gone (spec §3.3).
  */
 export function DaysLane({
   segs, rangeStart, pxPerDay,
 }: { segs: CanvasSeg[]; rangeStart: string; pxPerDay: number }) {
-  const { goals, habits, actions } = useAppStore();
+  const { actions } = useAppStore();
   const today = todayStr();
-
-  const stepCount = useMemo(() => pinnedDayCounts(goals), [goals]);
-
-  const habitHits = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const h of habits) for (const d of h.checkins) m.set(d, (m.get(d) ?? 0) + 1);
-    return m;
-  }, [habits]);
 
   return (
     <div className="relative h-[46px]">
@@ -34,8 +24,6 @@ export function DaysLane({
         const dt = parseD(s.start);
         const isToday = s.start === today;
         const weekend = dt.getDay() === 0 || dt.getDay() === 6;
-        const nSteps = stepCount.get(s.start) ?? 0;
-        const hits = habitHits.get(s.start) ?? 0;
         return (
           <button
             key={s.start}
@@ -63,22 +51,7 @@ export function DaysLane({
                 {!isToday && dt.getDate() === 1 ? fmtD(s.start) : s.label}
               </span>
               <span className="text-[.6rem] uppercase tracking-[.08em] text-faint">{DOW[dt.getDay()]}</span>
-              {nSteps > 0 && (
-                <span className="text-[.66rem] text-ink-soft tabular-nums" aria-label={`${nSteps} planned steps`}>
-                  ·{nSteps}
-                </span>
-              )}
             </span>
-            {hits > 0 && (
-              <span
-                className="absolute bottom-[5px] left-[7px] flex gap-[3px]"
-                aria-label={`${hits} habit check-ins`}
-              >
-                {Array.from({ length: Math.min(hits, 5) }, (_, i) => (
-                  <span key={i} className="w-[5px] h-[5px] rounded-full bg-fill inline-block" />
-                ))}
-              </span>
-            )}
           </button>
         );
       })}

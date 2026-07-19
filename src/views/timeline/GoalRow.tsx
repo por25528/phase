@@ -10,6 +10,7 @@ import { NodeLane, CanvasGrid } from './NodeLane';
 import { BehindChip } from '../../components/BehindChip';
 import { useReducedMotion } from '../today/useReducedMotion';
 import { paceStatus } from '../../lib/plan';
+import { roadmapWarnings } from '../../lib/roadmap';
 
 interface GoalRowProps {
   goal: Goal;
@@ -50,6 +51,8 @@ export const GoalRow = memo(function GoalRow({
   const p = Math.round(goalPct(g));
   const behind = Math.round(behindPaceBy(p, g.start, g.deadline, today));
   const pace = paceStatus(g, today);
+  const warnings = roadmapWarnings(g, today);
+  const projectOverdue = warnings.some((w) => w.kind === 'project-overdue');
 
   return (
     <div className={isLast ? '' : 'border-b border-line'}>
@@ -86,6 +89,16 @@ export const GoalRow = memo(function GoalRow({
                 <span className="text-[.66rem] text-muted italic flex-none">define next step</span>
               )}
             </span>
+            {warnings.length > 0 && (
+              <button
+                type="button"
+                onClick={() => actions.openDrawer(g.id, warnings[0].nodeIds?.[0])}
+                className="text-[.66rem] text-warn text-left leading-[1.3] truncate hover:underline"
+                title={warnings.map((w) => w.message).join(' · ')}
+              >
+                ⚠ {warnings[0].message}{warnings.length > 1 ? ` · +${warnings.length - 1}` : ''}
+              </button>
+            )}
           </div>
         </div>
 
@@ -102,6 +115,7 @@ export const GoalRow = memo(function GoalRow({
             label={`${p}%`}
             ariaLabel={`${g.title}: ${p}% complete, ${fmtD(g.start)}–${fmtD(g.deadline)}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
             height={22}
+            warn={projectOverdue}
             onCommit={(next) => actions.setGoalDates(g.id, next.start, next.deadline)}
             onOpen={() => actions.openDrawer(g.id)}
             onHover={(pos) => setBarTip(pos)}

@@ -66,10 +66,19 @@ type NodeTip = { x: number; y: number; text: string };
 export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, todayX, canvasW }: NodeLaneProps) {
   const { actions } = useAppStore();
   const [tip, setTip] = useState<NodeTip | null>(null);
+  const today = todayStr();
 
   const isScheduled = (n: GoalNode) => Boolean(n.start && n.deadline);
   const scheduled = goal.nodes.filter(isScheduled);
   const unscheduled = goal.nodes.filter((n) => !isScheduled(n));
+
+  // Schedule an unscheduled phase (default 7-day span) and open it for adjustment
+  // rather than a separate date picker (spec §3.3).
+  function schedule(node: GoalNode) {
+    const sp = defaultNodeSpan({ start: goal.start, deadline: goal.deadline }, today);
+    actions.setNodeDates(goal.id, node.id, sp.start, sp.deadline);
+    actions.openDrawer(goal.id, node.id);
+  }
 
   if (goal.nodes.length === 0) {
     return (
@@ -83,8 +92,10 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
     <div>
       {scheduled.map((node) => {
         const span = { start: node.start!, deadline: node.deadline! };
-        const warn = spanOutside(span, { start: goal.start, deadline: goal.deadline });
         const p = Math.round(nodePct(node));
+        // Warn when a phase falls outside the project span, or is past due while
+        // still incomplete — mirrors roadmapWarnings' phase checks.
+        const warn = spanOutside(span, { start: goal.start, deadline: goal.deadline }) || (span.deadline < today && p < 100);
         const barWidthPx = daysBetween(span.start, span.deadline) * pxPerDay;
         const showLabel = barWidthPx >= 90;
         return (
@@ -115,6 +126,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
                 height={18}
                 warn={warn}
                 onCommit={(next) => actions.setNodeDates(goal.id, node.id, next.start, next.deadline)}
+                onOpen={() => actions.openDrawer(goal.id, node.id)}
                 onHover={(pos) =>
                   setTip(pos ? { x: pos.x, y: pos.y, text: `${node.title} · ${fmtD(span.start)} → ${fmtD(span.deadline)}` } : null)
                 }
@@ -124,30 +136,39 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
         );
       })}
 
-      {/* Unscheduled tray */}
+      {/* Unscheduled phases — a labelled row (no long chip tray); each phase has
+          Schedule (assigns the default span + opens it) and Open (spec §3.3). */}
       {unscheduled.length > 0 && (
         <div className="flex items-stretch min-h-[30px] border-t border-line">
           <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center bg-panel">
-            <span className="font-mono text-[.6rem] tracking-[.1em] uppercase text-faint">Unscheduled</span>
+            <span className="font-mono text-[.6rem] tracking-[.1em] uppercase text-faint">
+              Unscheduled phases ({unscheduled.length})
+            </span>
           </div>
           <div className="flex-none px-[8px] py-[4px]" style={{ width: `${canvasW}px` }}>
-            {/* Chips ride sticky just right of the label column so they stay visible at any scroll */}
             <div
-              className="sticky inline-flex items-center gap-[6px] flex-wrap"
+              className="sticky inline-flex items-center gap-[10px] flex-wrap"
               style={{ left: `${labelW + 8}px` }}
             >
               {unscheduled.map((node) => (
-                <button
-                  key={node.id}
-                  type="button"
-                  onClick={() => {
-                    const sp = defaultNodeSpan({ start: goal.start, deadline: goal.deadline }, todayStr());
-                    actions.setNodeDates(goal.id, node.id, sp.start, sp.deadline);
-                  }}
-                  className="bg-chip text-chip-ink rounded-full px-[10px] py-[2px] text-[.72rem] leading-[1.35] hover:opacity-80 transition-opacity"
-                >
-                  + {node.title}
-                </button>
+                <span key={node.id} className="inline-flex items-center gap-[5px] text-[.72rem]">
+                  <span className="text-ink-soft truncate max-w-[160px]">{node.title}</span>
+                  <button
+                    type="button"
+                    onClick={() => schedule(node)}
+                    className="text-accent-deep font-medium hover:underline"
+                  >
+                    Schedule
+                  </button>
+                  <span className="text-faint">·</span>
+                  <button
+                    type="button"
+                    onClick={() => actions.openDrawer(goal.id, node.id)}
+                    className="text-muted hover:text-ink"
+                  >
+                    Open
+                  </button>
+                </span>
               ))}
             </div>
           </div>

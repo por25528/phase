@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../state/store';
-import { todayStr, parseD, addDays } from '../lib/dates';
+import { todayStr, parseD, addDays, fmtD } from '../lib/dates';
 import {
   PX_PER_DAY,
   DAY_DETAIL_MIN,
@@ -23,11 +23,15 @@ import {
 } from '../lib/timeline';
 import type { DateRange, GridTick } from '../lib/timeline';
 import { byPriority } from '../lib/priority';
-import type { ZoomLevel } from '../db/types';
+import { fitRoadmapRange, focusOverlap } from '../lib/roadmap';
+import { HORIZON_LABELS } from './goals/styles';
+import type { ZoomLevel, Goal } from '../db/types';
 import { GoalRow } from './timeline/GoalRow';
 import { DaysLane } from './timeline/DaysLane';
 import { Ruler } from './timeline/Ruler';
 import { useReducedMotion } from './today/useReducedMotion';
+
+type Scope = 'focus' | 'all' | string; // 'focus' | 'all' | a project id
 
 const MONTH_FULL = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -82,6 +86,37 @@ export function Timeline() {
   // store keeps `goals` column-major after edits, but a fresh hydration returns
   // them in id order (Dexie `toArray`), so order explicitly here.
   const orderedGoals = useMemo(() => byPriority(goals), [goals]);
+
+  // Scope + completed toggle are view-local (unpersisted, spec §3.1).
+  const [scope, setScope] = useState<Scope>('focus');
+  const [includeCompleted, setIncludeCompleted] = useState(false);
+
+  // A single-project selection that no longer resolves (deleted, or completed
+  // while completed are hidden) falls back to Focus (spec §5).
+  const singleValid =
+    scope !== 'focus' && scope !== 'all' &&
+    orderedGoals.some((g) => g.id === scope && (includeCompleted || !g.completedAt));
+
+  const visibleGoals = useMemo(() => {
+    if (singleValid) return orderedGoals.filter((g) => g.id === scope);
+    const base = orderedGoals.filter((g) => includeCompleted || !g.completedAt);
+    return scope === 'all' ? base : base.filter((g) => (g.column ?? 0) <= 1); // Focus = Now + Next
+  }, [orderedGoals, scope, includeCompleted, singleValid]);
+
+  // Group visible rows by horizon in board order, omitting empty groups (§3.1).
+  const horizonGroups = useMemo(() => {
+    return HORIZON_LABELS
+      .map((label, col) => ({ col, label, goals: visibleGoals.filter((g) => Math.min(3, Math.max(0, g.column ?? 0)) === col) }))
+      .filter((grp) => grp.goals.length > 0);
+  }, [visibleGoals]);
+  const lastVisibleId = visibleGoals[visibleGoals.length - 1]?.id;
+
+  // Portfolio focus-overlap: one sweep over the active Now set (§3.4).
+  const overlap = useMemo(
+    () => focusOverlap(orderedGoals.filter((g) => (g.column ?? 0) === 0 && !g.completedAt)),
+    [orderedGoals],
+  );
+  const overlapGoals = overlap ? overlap.goalIds.map((id) => goals.find((g) => g.id === id)).filter(Boolean) as Goal[] : [];
 
   // Every date the canvas must contain (first-level node spans are what
   // NodeLane renders; deeper nodes are never plotted).
@@ -194,7 +229,10 @@ export function Timeline() {
     updateView(el);
   }, [pxPerDay, ensureCoverage, updateView]);
 
-  // 3. Consume a pending center (mount → today; Today button while unmounted).
+  // 3. Consume a pending center (mount → today; Fit → its center date). Also
+  // keyed on pxPerDay: Fit sets the scale, and this runs AFTER effect 2's rescale
+  // (declared earlier) settles, so the fit date lands centered rather than being
+  // clobbered by the rescale.
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el || !pendingCenter.current) return;
@@ -203,7 +241,7 @@ export function Timeline() {
     pendingCenter.current = null;
     updateView(el);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range]);
+  }, [range, pxPerDay]);
 
   // 4. Keep the range covering every plotted date (goals added/edited while
   // the timeline is mounted). Prepends are compensated by effect 1.
@@ -317,6 +355,25 @@ export function Timeline() {
     });
   }
 
+  // Fit the visible selection into the plot width (§3.2). Route the center date
+  // through pendingCenter so effect 3 positions it after the scale settles; if the
+  // scale is unchanged, effect 3 won't fire, so center directly.
+  function fitProjects() {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const plotW = el.clientWidth - labelWRef.current;
+    const fit = fitRoadmapRange(visibleGoals, plotW);
+    if (!fit) return;
+    if (Math.abs(fit.scale - pxRef.current) < 0.5) {
+      el.scrollLeft = scrollLeftForCenter(fit.scrollToCenterDate, plotW, rangeRef.current.start, pxRef.current);
+      setHeaderCenter(fit.scrollToCenterDate);
+      updateView(el);
+    } else {
+      pendingCenter.current = fit.scrollToCenterDate;
+      actions.setScale(fit.scale);
+    }
+  }
+
   const dayDetail = pxPerDay >= DAY_DETAIL_MIN;
   // All decorations generate over the culled `view`, not the whole range —
   // positions still use range.start as the origin, so nothing shifts.
@@ -343,7 +400,7 @@ export function Timeline() {
     <div>
       <h1 className="font-disp text-[1.4rem] font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
 
-      <div className="flex items-center justify-between mb-[10px]">
+      <div className="flex flex-wrap items-center justify-between gap-[8px] mb-[10px]">
         <div className="flex items-center gap-[6px]">
           <button
             type="button"
@@ -354,30 +411,87 @@ export function Timeline() {
           >
             Today
           </button>
+          <button
+            type="button"
+            onClick={fitProjects}
+            disabled={visibleGoals.length === 0}
+            title="Frame the selected projects"
+            className="px-[10px] h-[26px] rounded-[6px] border border-line-2 text-[.78rem] text-ink-soft hover:bg-hover disabled:opacity-40"
+          >
+            Fit
+          </button>
           <span className="font-mono text-[.78rem] tracking-[.05em] text-ink-soft tabular-nums ml-[6px]">
             {headerLabel(pxPerDay, headerCenter)}
           </span>
         </div>
 
-        <div
-          className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium"
-          title="Pinch or ⌃/⌘-scroll the timeline to zoom freely"
-        >
-          {(['week', 'month', 'quarter'] as ZoomLevel[]).map(z => (
-            <button key={z} type="button" onClick={() => actions.setScale(PX_PER_DAY[z])}
-              aria-pressed={Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5}
-              className={`px-[12px] py-[4px] transition-colors duration-100 ${
-                Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5 ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'}`}>
-              {z[0].toUpperCase() + z.slice(1)}
-            </button>
-          ))}
+        <div className="flex items-center gap-[8px]">
+          <select
+            value={singleValid ? scope : scope === 'all' ? 'all' : 'focus'}
+            onChange={(e) => setScope(e.target.value)}
+            aria-label="Timeline scope"
+            className="h-[26px] rounded-[6px] border border-line-2 bg-transparent text-[.78rem] text-ink-soft px-[6px] outline-none focus-visible:border-accent max-w-[180px]"
+          >
+            <option value="focus">Focus · Now + Next</option>
+            <option value="all">All active</option>
+            <optgroup label="One project">
+              {orderedGoals.map((g) => (
+                <option key={g.id} value={g.id}>{g.title}</option>
+              ))}
+            </optgroup>
+          </select>
+          <label className="flex items-center gap-[5px] text-[.74rem] text-muted select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeCompleted}
+              onChange={(e) => setIncludeCompleted(e.target.checked)}
+              className="accent-accent"
+            />
+            Completed
+          </label>
+
+          <div
+            className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium"
+            title="Pinch or ⌃/⌘-scroll the timeline to zoom freely"
+          >
+            {(['week', 'month', 'quarter'] as ZoomLevel[]).map(z => (
+              <button key={z} type="button" onClick={() => actions.setScale(PX_PER_DAY[z])}
+                aria-pressed={Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5}
+                className={`px-[12px] py-[4px] transition-colors duration-100 ${
+                  Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5 ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'}`}>
+                {z[0].toUpperCase() + z.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Portfolio focus-overlap banner (§3.4) — text + colour, with a move action */}
+      {overlap && overlapGoals.length > 0 && (
+        <div className="mb-[10px] rounded-[10px] border border-warn/40 bg-warn-tint px-[13px] py-[9px]">
+          <div className="text-[.82rem] text-warn font-medium">
+            {overlap.goalIds.length} Now projects overlap {fmtD(overlap.window.start)}–{fmtD(overlap.window.end)} — Now is crowded.
+          </div>
+          <div className="mt-[6px] flex flex-wrap items-center gap-[6px]">
+            <span className="text-[.72rem] text-muted">Move one out of Now:</span>
+            {overlapGoals.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => actions.moveGoalToColumn(g.id, 1)}
+                className="text-[.72rem] text-accent-deep border border-accent-soft rounded-full px-[9px] py-[2px] hover:bg-accent-tint"
+              >
+                {g.title} → Next
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Empty state — no canvas needed */}
       {!hasCanvas ? (
         <div className="mt-[6px] border border-line rounded-[10px] bg-panel px-[12px] py-[32px] text-center text-faint text-[.85rem] italic">
-          Nothing on your year yet — add a goal in Goals › + new goal to see it here.
+          Nothing on your year yet — add a project in Goals › + New project to see it here.
         </div>
       ) : (
         <div
@@ -389,7 +503,7 @@ export function Timeline() {
             {/* Time header — sticky against vertical scroll; its label cell also against horizontal */}
             <div className="sticky top-0 z-[15] flex border-b border-line bg-bg">
               <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-[.7rem] tracking-[.1em] uppercase text-muted font-semibold bg-bg">
-                Goal
+                Project
               </div>
               <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
                 {dayDetail ? (
@@ -412,24 +526,40 @@ export function Timeline() {
               </div>
             </div>
 
-            {/* Goal rows — highest priority (board column 0) first */}
-            {orderedGoals.map((g, i) => (
-              <GoalRow
-                key={g.id}
-                goal={g}
-                index={i}
-                rangeStart={range.start}
-                pxPerDay={pxPerDay}
-                labelW={labelW}
-                segs={gridTicks}
-                bands={bands}
-                todayX={todayX}
-                canvasW={canvasW}
-                isExpanded={expanded.has(g.id)}
-                onToggle={toggle}
-                isLast={i === orderedGoals.length - 1}
-              />
-            ))}
+            {/* Goal rows, grouped by horizon (Now → Someday), empty groups omitted */}
+            {horizonGroups.length === 0 ? (
+              <div className="sticky left-0 w-fit px-[12px] py-[14px] text-[.8rem] text-faint italic">
+                No projects in this scope.
+              </div>
+            ) : (
+              horizonGroups.map((grp) => (
+                <Fragment key={grp.col}>
+                  <div className="flex items-stretch border-b border-line bg-bg">
+                    <div className="sticky left-0 z-[12] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[5px] bg-bg font-mono text-[.6rem] tracking-[.11em] uppercase text-muted font-semibold">
+                      {grp.label} · {grp.goals.length}
+                    </div>
+                    <div className="flex-none" style={{ width: `${canvasW}px` }} />
+                  </div>
+                  {grp.goals.map((g, i) => (
+                    <GoalRow
+                      key={g.id}
+                      goal={g}
+                      index={i}
+                      rangeStart={range.start}
+                      pxPerDay={pxPerDay}
+                      labelW={labelW}
+                      segs={gridTicks}
+                      bands={bands}
+                      todayX={todayX}
+                      canvasW={canvasW}
+                      isExpanded={expanded.has(g.id)}
+                      onToggle={toggle}
+                      isLast={g.id === lastVisibleId}
+                    />
+                  ))}
+                </Fragment>
+              ))
+            )}
           </div>
         </div>
       )}
