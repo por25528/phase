@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leafCount, groupByColumn } from './board';
+import { leafCount, groupByColumn, weaveCompleted } from './board';
 import type { Goal, GoalNode } from '../db/types';
 
 // ---- helpers ----
@@ -77,5 +77,32 @@ describe('groupByColumn', () => {
 
   it('returns n empty columns for an empty goals array', () => {
     expect(groupByColumn([], 3)).toEqual([[], [], []]);
+  });
+});
+
+// ---- weaveCompleted ----
+
+describe('weaveCompleted', () => {
+  const done = (id: string, column: number): Goal => ({ ...makeGoal(id, column), completedAt: '2026-07-01' });
+
+  it('re-inserts a hidden goal at its within-column index after an active reorder', () => {
+    const goals = [makeGoal('A', 0), done('B', 0), makeGoal('C', 0)];
+    // actives dragged to [C, A]; completed B omitted from the layout
+    expect(weaveCompleted(goals, [['C', 'A'], [], [], []])).toEqual([['C', 'B', 'A'], [], [], []]);
+  });
+
+  it('pins a hidden goal at the top when it was first', () => {
+    const goals = [done('A', 0), makeGoal('B', 0), makeGoal('C', 0)];
+    expect(weaveCompleted(goals, [['C', 'B'], [], [], []])).toEqual([['A', 'C', 'B'], [], [], []]);
+  });
+
+  it('keeps a hidden goal in its own column, not Now', () => {
+    const goals = [makeGoal('A', 0), done('L', 2), makeGoal('M', 2)];
+    expect(weaveCompleted(goals, [['A'], [], ['M'], []])).toEqual([['A'], [], ['L', 'M'], []]);
+  });
+
+  it('is a no-op when nothing is hidden', () => {
+    const goals = [makeGoal('A', 0), makeGoal('B', 1)];
+    expect(weaveCompleted(goals, [['A'], ['B'], [], []])).toEqual([['A'], ['B'], [], []]);
   });
 });
