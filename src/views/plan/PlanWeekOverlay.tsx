@@ -1,32 +1,52 @@
 import { useEffect, useState } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import { Modal } from '../../components/Modal';
 import { BehindChip } from '../../components/BehindChip';
 import { getState, useAppStore } from '../../state/store';
-import { todayStr, addDays, fmtD } from '../../lib/dates';
+import { todayStr, addDays, fmtD, weekDates, parseD } from '../../lib/dates';
 import { goalPct } from '../../lib/pct';
 import { behindPaceBy } from '../../lib/timeline';
+import { firstOpenLeaf } from '../../lib/tree';
 import {
   weekOf, plannedLeaves, attentionRank, paceStatus, weekRecap, planOpeningStep,
-  PACE_THRESHOLD_PTS,
+  PACE_THRESHOLD_PTS, unplannedOpenLeaves, type PlannedLeaf,
 } from '../../lib/plan';
-import { PlanGoalTree } from './PlanGoalTree';
-import type { Goal } from '../../db/types';
+import type { GoalNode } from '../../db/types';
 
-const DAY_CHIPS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const SOFT_CAPACITY = 7;
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-export function PlanWeekOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function PlanWeekOverlay({
+  open,
+  onClose,
+  focusGoalId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  focusGoalId?: string | null;
+}) {
   const { planReview, actions } = useAppStore();
   const [step, setStep] = useState<'recap' | 'plan'>('plan');
 
   useEffect(() => {
     if (open) {
       actions.ensureWeekRollover();
-      setStep(planOpeningStep(getState().planReview));
+      // A focused open (board "Plan next step") jumps straight to planning and
+      // must NOT consume the pending recap — leave planReview unreviewed.
+      setStep(focusGoalId ? 'plan' : planOpeningStep(getState().planReview));
     }
-    // Read review state only when opening: finishing recap mid-session must
-    // not bounce back. getState() observes the synchronous rollover write.
-  }, [open, actions]);
+  }, [open, actions, focusGoalId]);
 
   if (!open) return null;
   return (
@@ -45,7 +65,7 @@ export function PlanWeekOverlay({ open, onClose }: { open: boolean; onClose: () 
           onCloseAll={onClose}
         />
       ) : (
-        <PlanStep onClose={onClose} />
+        <PlanStep onClose={onClose} focusGoalId={focusGoalId ?? null} />
       )}
     </Modal>
   );
@@ -151,144 +171,301 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
   );
 }
 
-// ── Step 2: plan ──────────────────────────────────────────────────────────────
+// ── Step 2: plan — the week grid ──────────────────────────────────────────────
 
-function PlanStep({ onClose }: { onClose: () => void }) {
+function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: string | null }) {
   const { goals, actions } = useAppStore();
   const today = todayStr();
   const week = weekOf(today);
-  const ranked = attentionRank(goals, today);
-  const pool = plannedLeaves(goals, week);
-  const openCount = pool.filter((l) => !l.done).length;
+  const days = weekDates(today); // Mon … Sun (ISO)
+
+  // Rail: unplanned open steps, project-grouped in attention order. A project
+  // with no steps at all (needs-breakdown) prompts a first step instead.
+  const railGroups = attentionRank(goals, today)
+    .map((goal) => ({ goal, steps: unplannedOpenLeaves(goal, week), pace: paceStatus(goal, today) }))
+    .filter((g) => g.steps.length > 0 || g.pace === 'needs-breakdown');
+
+  // Grid: everything committed to the week, bucketed by day (undated → Any day).
+  const placed = plannedLeaves(goals, week);
+  const byDay = new Map<string, PlannedLeaf[]>(days.map((d) => [d, []]));
+  const anyDay: PlannedLeaf[] = [];
+  for (const l of placed) {
+    if (l.plannedDay && byDay.has(l.plannedDay)) byDay.get(l.plannedDay)!.push(l);
+    else anyDay.push(l);
+  }
+  const openCount = placed.filter((l) => !l.done).length;
+
+  const focusNodeId = focusGoalId
+    ? firstOpenLeaf(goals.find((g) => g.id === focusGoalId)?.nodes ?? [])?.id
+    : undefined;
+
+  const [dragTitle, setDragTitle] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  // Focus (T9): scroll the target project's rail group into view and pulse it.
+  useEffect(() => {
+    if (!focusGoalId) return;
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const t = setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-project="${CSS.escape(focusGoalId)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+      if (!reduced && typeof el.animate === 'function') {
+        el.animate(
+          [{ boxShadow: '0 0 0 2px rgb(var(--c-accent))', borderRadius: '10px' }, { boxShadow: '0 0 0 2px rgba(0,0,0,0)', borderRadius: '10px' }],
+          { duration: 1400, easing: 'ease-out' },
+        );
+      }
+    }, 70);
+    return () => clearTimeout(t);
+  }, [focusGoalId]);
+
+  function handleDragStart(e: DragStartEvent) {
+    setDragTitle((e.active.data.current as { title?: string } | undefined)?.title ?? '');
+  }
+  function handleDragEnd(e: DragEndEvent) {
+    setDragTitle(null);
+    if (!e.over) return;
+    const data = e.active.data.current as { goalId: string; nodeId: string } | undefined;
+    if (!data) return;
+    const zone = String(e.over.id);
+    if (zone === 'rail') actions.unplanNode(data.goalId, data.nodeId);
+    else if (zone === 'anyday') actions.planNode(data.goalId, data.nodeId, week);
+    else if (zone.startsWith('day:')) actions.planNode(data.goalId, data.nodeId, week, zone.slice(4));
+  }
 
   return (
-    <div className="flex flex-col gap-[16px]">
-      <p className="text-[.82rem] text-muted leading-[1.5]">
-        Pick the steps you'll focus on this week — hit <span className="text-ink-soft font-medium">+ Plan</span> on the
-        left to commit one. It moves to <span className="text-ink-soft font-medium">Your week</span>, where you can
-        pin it to a day if you want.
-      </p>
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="flex flex-col gap-[14px]">
+        <p className="text-[.82rem] text-muted leading-[1.5]">
+          Drag a step from the left onto a day to plan it — or onto{' '}
+          <span className="text-ink-soft font-medium">Any day</span> to commit it to the week without a date. Drag a
+          planned step back to the left to unplan it.
+        </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-[22px]">
-      {/* Left: what needs attention */}
-      <div className="min-w-0">
-        <h3 className="font-mono text-[.62rem] tracking-[.1em] uppercase text-muted font-semibold mb-[8px]">
-          What needs attention
-        </h3>
-        {ranked.length === 0 && (
-          <div className="text-faint text-[.85rem] italic">Nothing to plan — add a goal on the board first.</div>
-        )}
-        {ranked.map((g) => {
-          const pct = Math.round(goalPct(g));
-          const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, today));
-          const pace = paceStatus(g, today);
-          return (
-            <div key={g.id} className="mb-[12px] pb-[10px] border-b border-line-soft last:border-b-0">
-              <div className="flex items-baseline gap-[8px] mb-[4px]">
-                <span className="font-disp text-[.94rem] font-semibold flex-1 min-w-0 truncate">{g.title}</span>
-                {pace === 'behind' && behind >= PACE_THRESHOLD_PTS && <BehindChip pts={behind} className="flex-none" />}
-                {pace === 'needs-breakdown' && (
-                  <span className="text-[.68rem] text-muted italic flex-none">define next step</span>
-                )}
-                <span className="font-mono text-[.66rem] text-ink-soft tabular-nums flex-none">{pct}%</span>
+        <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
+          {/* Rail */}
+          <RailZone>
+            <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold mb-[10px]">
+              To plan
+            </h3>
+            {railGroups.length === 0 ? (
+              <div className="text-faint text-[.82rem] italic">
+                {goals.some((g) => !g.completedAt)
+                  ? 'All caught up — every open step is planned.'
+                  : 'No projects yet — add one on the Goals board first.'}
               </div>
-              <PlanGoalTreeLazy goal={g} week={week} today={today} actions={actions} />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Right: your week */}
-      <div className="min-w-0">
-        <h3 className="font-mono text-[.62rem] tracking-[.1em] uppercase text-muted font-semibold mb-[8px]">
-          Your week · {fmtD(week)} – {fmtD(addDays(week, 6))}
-        </h3>
-        <div className="text-[.8rem] text-muted mb-[8px] tabular-nums">
-          {openCount} focus step{openCount === 1 ? '' : 's'} planned
-          {openCount > SOFT_CAPACITY && <span className="text-warn"> · that's a big week</span>}
-        </div>
-        {pool.length === 0 ? (
-          <div className="text-faint text-[.85rem] italic">Click <span className="not-italic">+ Plan</span> on a step at left to commit it to this week.</div>
-        ) : (
-          <div className="text-[.7rem] text-faint mb-[6px]">Tap a weekday to pin a step to it — optional.</div>
-        )}
-        {pool.map((l) => (
-          <div
-            key={l.nodeId}
-            className={`flex items-center gap-[8px] py-[6px] border-b border-line-soft last:border-b-0 ${
-              l.done ? 'opacity-50' : ''
-            }`}
-          >
-            <span className={`flex-1 min-w-0 truncate text-[.86rem] ${l.done ? 'line-through text-muted' : ''}`}>
-              {l.title}
-            </span>
-            <span className="text-[.7rem] text-muted truncate max-w-[90px]">{l.goalTitle}</span>
-            <span className="flex gap-[2px]" aria-label={`Pin "${l.title}" to a day`}>
-              {DAY_CHIPS.map((c, i) => {
-                const day = addDays(week, i);
-                const pinned = l.plannedDay === day;
+            ) : (
+              railGroups.map(({ goal, steps, pace }) => {
+                const pct = Math.round(goalPct(goal));
+                const behind = Math.round(behindPaceBy(pct, goal.start, goal.deadline, today));
                 return (
-                  <button
-                    key={day}
-                    type="button"
-                    aria-pressed={pinned}
-                    aria-label={`Pin to ${fmtD(day)}`}
-                    onClick={() =>
-                      pinned
-                        ? actions.planNode(l.goalId, l.nodeId, week)
-                        : actions.planNode(l.goalId, l.nodeId, week, day)
-                    }
-                    className={`w-[18px] h-[18px] rounded-[5px] text-[.6rem] font-mono grid place-items-center border ${
-                      pinned
-                        ? 'bg-accent text-accent-contrast border-accent'
-                        : 'text-muted border-line-2 hover:bg-hover'
-                    }`}
+                  <div
+                    key={goal.id}
+                    data-project={goal.id}
+                    className="mb-[14px] pb-[12px] border-b border-line-soft last:border-b-0"
                   >
-                    {c}
-                  </button>
+                    <div className="flex items-baseline gap-[7px] mb-[6px]">
+                      <span className="font-disp text-[.86rem] font-semibold flex-1 min-w-0 truncate">{goal.title}</span>
+                      {pace === 'behind' && behind >= PACE_THRESHOLD_PTS && <BehindChip pts={behind} className="flex-none" />}
+                      <span className="font-mono text-[.62rem] text-ink-soft tabular-nums flex-none">{pct}%</span>
+                    </div>
+                    {steps.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          actions.openDrawer(goal.id);
+                        }}
+                        className="text-[.76rem] text-muted italic text-left hover:text-ink"
+                      >
+                        No steps yet — <span className="not-italic font-semibold text-accent-deep">define a first step</span>
+                      </button>
+                    ) : (
+                      steps.map((n) => (
+                        <RailChip
+                          key={n.id}
+                          goalId={goal.id}
+                          node={n}
+                          focus={n.id === focusNodeId}
+                          onClick={() => actions.planNode(goal.id, n.id, week)}
+                        />
+                      ))
+                    )}
+                  </div>
                 );
-              })}
-            </span>
-            <button
-              type="button"
-              aria-label={`Remove "${l.title}" from this week`}
-              onClick={() => actions.unplanNode(l.goalId, l.nodeId)}
-              className="text-faint text-[.78rem] px-[3px] hover:text-ink"
-            >
-              ✕
-            </button>
+              })
+            )}
+          </RailZone>
+
+          {/* Week grid */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-[10px] mb-[10px]">
+              <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold">
+                Your week · {fmtD(week)} – {fmtD(addDays(week, 6))}
+              </h3>
+              <span className="text-[.78rem] text-muted tabular-nums">
+                {openCount} planned{openCount > SOFT_CAPACITY && <span className="text-warn"> · big week</span>}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto pb-[6px]">
+              <div className="grid gap-[8px]" style={{ gridTemplateColumns: '1.2fr repeat(7, minmax(66px, 1fr))' }}>
+                <DayZone id="anyday" label="Any day" sub="this wk" anyday>
+                  {anyDay.map((l) => (
+                    <PlacedChip key={l.nodeId} leaf={l} onRemove={() => actions.unplanNode(l.goalId, l.nodeId)} />
+                  ))}
+                </DayZone>
+                {days.map((iso, i) => (
+                  <DayZone key={iso} id={`day:${iso}`} label={DOW[i]} sub={String(parseD(iso).getDate())} today={iso === today}>
+                    {byDay.get(iso)!.map((l) => (
+                      <PlacedChip key={l.nodeId} leaf={l} onRemove={() => actions.unplanNode(l.goalId, l.nodeId)} />
+                    ))}
+                  </DayZone>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-[12px] mt-[16px] pt-[14px] border-t border-line">
+              <span className="text-[.82rem] text-ink-soft">
+                <span className="font-disp font-semibold">{openCount}</span> step{openCount === 1 ? '' : 's'} committed this week
+              </span>
+              <span className="flex-1" />
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-[16px] py-[8px] rounded-field bg-ink text-paper text-[.84rem] font-semibold hover:bg-ink-hover"
+              >
+                Done
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
       </div>
 
-      <div className="flex justify-end pt-[6px] border-t border-line-soft">
-        <button
-          type="button"
-          onClick={onClose}
-          className="px-[16px] py-[8px] rounded-field bg-ink text-paper text-[.84rem] font-semibold hover:bg-ink-hover"
-        >
-          Done
-        </button>
-      </div>
+      <DragOverlay>
+        {dragTitle != null ? (
+          <div className="px-[9px] py-[6px] rounded-[9px] bg-panel border border-accent shadow-today text-[.8rem] text-ink cursor-grabbing max-w-[220px] truncate">
+            {dragTitle}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+// ── Drag zones + chips ────────────────────────────────────────────────────────
+
+function RailZone({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'rail' });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-w-0 rounded-card p-[8px] -m-[8px] transition-colors ${isOver ? 'bg-hover' : ''}`}
+    >
+      {children}
     </div>
   );
 }
 
-// Thin adapter so PlanGoalTree stays free of store imports.
-function PlanGoalTreeLazy({
-  goal, week, today, actions,
+function DayZone({
+  id, label, sub, today, anyday, children,
 }: {
-  goal: Goal; week: string; today: string;
-  actions: ReturnType<typeof useAppStore>['actions'];
+  id: string; label: string; sub: string; today?: boolean; anyday?: boolean; children: React.ReactNode;
 }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  const empty = Array.isArray(children) ? children.length === 0 : !children;
   return (
-    <PlanGoalTree
-      goal={goal}
-      week={week}
-      today={today}
-      onPlan={(nodeId) => actions.planNode(goal.id, nodeId, week)}
-      onUnplan={(nodeId) => actions.unplanNode(goal.id, nodeId)}
-    />
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col gap-[5px] min-h-[168px] px-[7px] py-[8px] rounded-[11px] border transition-colors ${
+        anyday ? 'border-dashed border-line-2' : 'bg-panel border-line'
+      } ${today ? 'border-accent' : ''} ${isOver ? 'bg-accent-tint border-accent' : ''}`}
+    >
+      <div className="flex items-baseline justify-between gap-[4px] pb-[3px] mb-[2px] border-b border-line-soft">
+        <span
+          className={`font-mono text-[.62rem] font-semibold tracking-[.04em] uppercase ${
+            today ? 'text-accent-deep' : anyday ? 'text-ink-soft' : 'text-muted'
+          }`}
+        >
+          {label}
+        </span>
+        <span className="font-mono text-[.56rem] text-faint tabular-nums">{sub}</span>
+      </div>
+      {children}
+      {empty && (
+        <div className="flex-1 grid place-items-center text-faint text-[.62rem] italic min-h-[40px]">—</div>
+      )}
+    </div>
+  );
+}
+
+function RailChip({
+  goalId, node, focus, onClick,
+}: {
+  goalId: string; node: GoalNode; focus: boolean; onClick: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: node.id,
+    data: { goalId, nodeId: node.id, title: node.title },
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      onClick={onClick}
+      data-step={node.id}
+      className={`flex items-center gap-[7px] w-full text-left px-[9px] py-[6px] my-[5px] rounded-[9px] border bg-panel shadow-card text-[.8rem] text-ink-soft cursor-grab hover:shadow-today ${
+        focus ? 'border-accent ring-2 ring-accent-tint' : 'border-line-2'
+      } ${isDragging ? 'opacity-40' : ''}`}
+    >
+      <span className="text-faint text-[.7rem] flex-none">⠿</span>
+      <span className="flex-1 min-w-0 truncate">{node.title}</span>
+    </button>
+  );
+}
+
+function PlacedChip({ leaf, onRemove }: { leaf: PlannedLeaf; onRemove: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: leaf.nodeId,
+    data: { goalId: leaf.goalId, nodeId: leaf.nodeId, title: leaf.title },
+    disabled: leaf.done,
+  });
+  if (leaf.done) {
+    return (
+      <div className="flex items-center gap-[5px] px-[7px] py-[5px] rounded-[7px] opacity-60 text-[.72rem]">
+        <span className="text-accent flex-none">✓</span>
+        <span className="flex-1 min-w-0 truncate line-through text-muted">{leaf.title}</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      className={`group flex items-center gap-[5px] px-[7px] py-[5px] rounded-[7px] bg-hover text-[.72rem] cursor-grab ${
+        isDragging ? 'opacity-40' : ''
+      }`}
+    >
+      <span className="flex-1 min-w-0 truncate text-ink">{leaf.title}</span>
+      <span className="font-mono text-[.52rem] text-muted flex-none max-w-[54px] truncate">{leaf.goalTitle}</span>
+      <button
+        type="button"
+        aria-label={`Unplan "${leaf.title}"`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={onRemove}
+        className="text-faint text-[.66rem] flex-none opacity-0 group-hover:opacity-100 hover:text-ink"
+      >
+        ✕
+      </button>
+    </div>
   );
 }

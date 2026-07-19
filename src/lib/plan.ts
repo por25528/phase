@@ -124,6 +124,14 @@ export function nextUp(goals: Goal[], today: string, limit = 7): NextUpItem[] {
   return [...pinnedToday, ...weekPool, ...suggested];
 }
 
+// Open leaves not committed to `week` — the week planner's left rail (T9). A leaf
+// planned to a different week (a carry-over) still counts as available to plan.
+export function unplannedOpenLeaves(g: Goal, week: string): GoalNode[] {
+  const out: GoalNode[] = [];
+  walkLeaves(g, (n) => { if (!n.done && n.plannedWeek !== week) out.push(n); });
+  return out;
+}
+
 // Unchecked leaves whose plan slipped past its week — the "Needs a decision" list.
 export function carryOvers(goals: Goal[], today: string): PlannedLeaf[] {
   const week = weekOf(today);

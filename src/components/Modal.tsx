@@ -64,9 +64,9 @@ export function Modal({
 
   if (!open) return null;
 
-  // `full` is the wide planner variant. It sizes to its content — no forced
-  // min-height, which otherwise leaves a large empty panel when little is planned.
-  const width = size === 'full' ? 'max-w-[860px]' : 'max-w-[480px]';
+  // `full` is the wide planner variant (fits the week grid). It sizes to its
+  // content — no forced min-height, which otherwise leaves a large empty panel.
+  const width = size === 'full' ? 'max-w-[980px]' : 'max-w-[480px]';
 
   return (
     <div

@@ -6,6 +6,7 @@ import {
   projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
   DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
   nearestMeaningfulDate, nextOpenAction, attentionBadge, cardPrimaryAction,
+  unplannedOpenLeaves,
 } from './plan';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
@@ -509,6 +510,25 @@ describe('attentionBadge', () => {
   it('shows no badge for an on-track (gated) project', () => {
     const g = goal({ column: 2, nodes: [{ id: 'a', title: 'A', done: false }] });
     expect(attentionBadge(g, TODAY)).toBeNull();
+  });
+});
+
+describe('unplannedOpenLeaves', () => {
+  it('returns open leaves not committed to this week, skipping done and already-planned', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false },                       // unplanned open → in
+      { id: 'b', title: 'B', done: true },                        // done → out
+      { id: 'c', title: 'C', done: false, plannedWeek: WEEK },    // planned this week → out
+      { id: 'd', title: 'D', done: false, plannedWeek: LAST_WEEK }, // carry-over → in (available)
+      { id: 'grp', title: 'G', children: [
+        { id: 'e', title: 'E', done: false },                     // nested open → in
+      ]},
+    ]});
+    expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual(['a', 'd', 'e']);
+  });
+
+  it('is empty for a project with no leaves', () => {
+    expect(unplannedOpenLeaves(goal({ nodes: [] }), WEEK)).toEqual([]);
   });
 });
 

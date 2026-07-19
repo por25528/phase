@@ -37,6 +37,7 @@ export function Goals() {
   const { goals, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
   const [planOpen, setPlanOpen] = useState(false);
+  const [planFocusId, setPlanFocusId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FocusFilter | null>(null);
   const currentDate = useLocalDate();
 
@@ -151,9 +152,10 @@ export function Goals() {
   }, [filter, summary]);
   const filtering = matchIds != null && matchIds.size > 0;
 
-  // Phase 4 (T9) will focus the planner on the passed project; for now it just
-  // opens the weekly planner, matching how Today's "Plan week" behaves.
-  function onPlan(_id: string) {
+  // Board "Plan next step" opens the planner focused on this project (T9): the
+  // planner jumps to planning, scrolls to the project's rail group, and pulses it.
+  function onPlan(id: string) {
+    setPlanFocusId(id);
     setPlanOpen(true);
   }
 
@@ -286,7 +288,14 @@ export function Goals() {
         }}
       />
 
-      <PlanWeekOverlay open={planOpen} onClose={() => setPlanOpen(false)} />
+      <PlanWeekOverlay
+        open={planOpen}
+        onClose={() => {
+          setPlanOpen(false);
+          setPlanFocusId(null);
+        }}
+        focusGoalId={planFocusId}
+      />
     </div>
   );
 }
