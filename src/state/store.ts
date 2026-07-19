@@ -34,6 +34,7 @@ interface UIState {
   view: ViewName;
   selDate: string;
   openGoalId: string | null;
+  drawerFocusNodeId: string | null; // node the drawer should scroll to + highlight
   expanded: Set<string>;
   toast: string | null;
   pendingUndo: { label: string } | null;
@@ -54,6 +55,7 @@ let state: FullState = {
   view: 'today',
   selDate: todayStr(),
   openGoalId: null,
+  drawerFocusNodeId: null,
   expanded: new Set(),
   toast: null,
   pendingUndo: null,
@@ -609,12 +611,26 @@ export const actions = {
     set({ selDate: todayStr() });
   },
 
-  openDrawer(goalId: string) {
-    set({ openGoalId: goalId });
+  // Open the project drawer, optionally focused on a node (Q10). A node focus
+  // expands the node's ancestor containers so the row is on-screen for the
+  // drawer to scroll to and highlight; an unknown node falls back to the root.
+  openDrawer(goalId: string, nodeId?: string) {
+    if (!nodeId) {
+      set({ openGoalId: goalId, drawerFocusNodeId: null });
+      return;
+    }
+    const path = findNodePath(state.goals, nodeId);
+    if (!path) {
+      set({ openGoalId: goalId, drawerFocusNodeId: null });
+      return;
+    }
+    const expanded = new Set(state.expanded);
+    for (const id of path.slice(0, -1)) expanded.add(id); // ancestor containers
+    set({ openGoalId: goalId, drawerFocusNodeId: nodeId, expanded });
   },
 
   closeDrawer() {
-    set({ openGoalId: null });
+    set({ openGoalId: null, drawerFocusNodeId: null });
   },
 
   showToast(msg: string) {

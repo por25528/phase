@@ -102,7 +102,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
                 type="button"
                 onClick={() => {
                   onCloseAll();
-                  actions.openDrawer(e.goalId);
+                  actions.openDrawer(e.goalId, e.nodeId);
                 }}
                 className="text-[.72rem] font-semibold text-ink-soft hover:text-ink px-[4px]"
               >

@@ -34,7 +34,7 @@ function MoonIcon() {
 }
 
 export function App() {
-  const { view, openGoalId, toast, pendingUndo, goals, hydration, secondTab, theme, actions } = useAppStore();
+  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, hydration, secondTab, theme, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -178,7 +178,7 @@ export function App() {
         )}
       </main>
 
-      <GoalDrawer goal={openGoal ?? null} actions={actions} />
+      <GoalDrawer goal={openGoal ?? null} actions={actions} focusNodeId={drawerFocusNodeId} />
 
       {/* Undo toast */}
       <div

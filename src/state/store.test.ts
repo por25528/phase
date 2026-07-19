@@ -648,3 +648,54 @@ describe('store actions', () => {
     });
   });
 });
+
+describe('openDrawer node focus (T8)', () => {
+  const nested: Goal = {
+    id: 'gp', title: 'Project', start: '2026-01-01', deadline: '2026-12-31', column: 0,
+    nodes: [
+      { id: 'root-a', title: 'Root A', children: [
+        { id: 'mid', title: 'Mid', children: [{ id: 'leaf', title: 'Leaf', done: false }] },
+      ] },
+    ],
+  };
+
+  it('focuses a node: sets openGoalId + drawerFocusNodeId and re-expands its ancestor containers', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.toggleExpand('root-a'); // collapse what addGoals auto-expanded
+    actions.toggleExpand('mid');
+    expect(getState().expanded.has('root-a')).toBe(false);
+
+    actions.openDrawer('gp', 'leaf');
+    const s = getState();
+    expect(s.openGoalId).toBe('gp');
+    expect(s.drawerFocusNodeId).toBe('leaf');
+    expect(s.expanded.has('root-a')).toBe(true);
+    expect(s.expanded.has('mid')).toBe(true);
+  });
+
+  it('opens at the root when no node is given', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openDrawer('gp');
+    expect(getState().openGoalId).toBe('gp');
+    expect(getState().drawerFocusNodeId).toBeNull();
+  });
+
+  it('ignores an unknown node id but still opens the project', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openDrawer('gp', 'ghost');
+    expect(getState().openGoalId).toBe('gp');
+    expect(getState().drawerFocusNodeId).toBeNull();
+  });
+
+  it('closeDrawer clears both the open project and the focus node', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openDrawer('gp', 'leaf');
+    actions.closeDrawer();
+    expect(getState().openGoalId).toBeNull();
+    expect(getState().drawerFocusNodeId).toBeNull();
+  });
+});

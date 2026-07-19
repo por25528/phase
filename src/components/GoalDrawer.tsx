@@ -245,15 +245,43 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
 interface GoalDrawerProps {
   goal: Goal | null;
   actions: ReturnType<typeof useAppStore>['actions'];
+  focusNodeId?: string | null;
 }
 
-export function GoalDrawer({ goal, actions }: GoalDrawerProps) {
+export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const open = goal != null;
 
   useEffect(() => {
     if (open) closeBtnRef.current?.focus();
   }, [open]);
+
+  // Node focus (Q10 / T8): once the drawer is open and the tree has rendered
+  // (ancestors were expanded in openDrawer), scroll the row into view and pulse
+  // it. Done via the DOM so the shared GoalTree needs no focus-aware prop.
+  useEffect(() => {
+    if (!open || !focusNodeId) return;
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const t = setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(
+        `#drawerBody [data-node-id="${CSS.escape(focusNodeId)}"]`,
+      );
+      if (!row) return;
+      row.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+      if (!reduced && typeof row.animate === 'function') {
+        row.animate(
+          [
+            { boxShadow: '0 0 0 2px rgb(var(--c-accent))', borderRadius: '6px' },
+            { boxShadow: '0 0 0 2px rgba(0,0,0,0)', borderRadius: '6px' },
+          ],
+          { duration: 1400, easing: 'ease-out' },
+        );
+      }
+    }, 70); // let expand/fade-in settle before measuring
+    return () => clearTimeout(t);
+  }, [open, focusNodeId]);
 
   return (
     <>

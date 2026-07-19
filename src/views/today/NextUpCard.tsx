@@ -109,7 +109,7 @@ export function NextUpCard() {
               </button>
               <button
                 type="button"
-                onClick={() => actions.openDrawer(l.goalId)}
+                onClick={() => actions.openDrawer(l.goalId, l.nodeId)}
                 className="text-[.7rem] font-semibold text-ink-soft hover:text-ink px-[3px]"
               >
                 Break down
