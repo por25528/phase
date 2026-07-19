@@ -17,6 +17,7 @@ import { groupByColumn } from '../lib/board';
 import { focusSummary } from '../lib/plan';
 import { fmtD } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
@@ -40,6 +41,12 @@ export function Goals() {
   const [planFocusId, setPlanFocusId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FocusFilter | null>(null);
   const currentDate = useLocalDate();
+
+  // Below ~920px the four columns fold into a horizon switcher — one horizon at a
+  // time — rather than compressing (spec §2.1/§6). Cross-horizon moves then go
+  // through the card's ⋯ menu instead of a drag.
+  const wide = useMediaQuery('(min-width: 920px)');
+  const [activeHorizon, setActiveHorizon] = useState(0);
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -218,6 +225,27 @@ export function Goals() {
         />
       )}
 
+      {/* Narrow horizon switcher — one horizon at a time under ~920px */}
+      {!isEmpty && !wide && (
+        <div role="group" aria-label="Show horizon" className="mt-[16px] flex gap-[4px] p-[4px] bg-hover rounded-[11px]">
+          {COLUMNS.map((col, i) => (
+            <button
+              key={col.id}
+              type="button"
+              aria-pressed={i === activeHorizon}
+              aria-label={`Show ${col.label} — ${(columns[i] ?? []).length} project${(columns[i] ?? []).length === 1 ? '' : 's'}`}
+              onClick={() => setActiveHorizon(i)}
+              className={`flex-1 text-[.78rem] font-medium px-[6px] py-[7px] rounded-[8px] transition-colors ${
+                i === activeHorizon ? 'bg-panel text-ink shadow-card' : 'text-muted hover:text-ink'
+              }`}
+            >
+              {col.label}
+              <span className="tabular-nums text-faint"> · {(columns[i] ?? []).length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Commitment-horizon board */}
       {!isEmpty && (
         <DndContext
@@ -229,8 +257,10 @@ export function Goals() {
           onDragCancel={handleDragCancel}
         >
           <div className="mt-[20px] flex gap-[18px] items-start overflow-x-auto pb-[8px]">
-            {COLUMNS.map((col, i) => (
-              <Column key={col.id} col={col} index={i} ids={columns[i] ?? []}>
+            {COLUMNS.map((col, i) => {
+              if (!wide && i !== activeHorizon) return null;
+              return (
+              <Column key={col.id} col={col} index={i} ids={columns[i] ?? []} solo={!wide}>
                 {(columns[i] ?? []).map((id) => {
                   const g = goalById.get(id);
                   if (!g) return null;
@@ -252,7 +282,8 @@ export function Goals() {
                   );
                 })}
               </Column>
-            ))}
+              );
+            })}
           </div>
 
           <DragOverlay dropAnimation={reducedMotion ? null : undefined}>

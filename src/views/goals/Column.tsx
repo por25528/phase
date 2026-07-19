@@ -14,11 +14,13 @@ export function Column({
   index,
   ids,
   children,
+  solo,
 }: {
   col: { id: string; label: string };
   index: number;
   ids: string[];
   children: React.ReactNode;
+  solo?: boolean; // rendered alone in the narrow horizon switcher → full width, no divider
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const isNow = index === 0;
@@ -27,7 +29,7 @@ export function Column({
   const hint = HINTS[index];
 
   return (
-    <section className={`flex-1 min-w-[236px] ${index > 0 ? 'border-l border-line pl-[18px]' : ''}`}>
+    <section className={solo ? 'w-full' : `flex-1 min-w-[236px] ${index > 0 ? 'border-l border-line pl-[18px]' : ''}`}>
       <header className="flex items-baseline gap-[8px] mb-[12px] px-[2px]">
         <span
           className={`text-[.8rem] font-medium tracking-[.01em] ${

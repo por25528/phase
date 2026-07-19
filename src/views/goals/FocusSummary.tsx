@@ -79,6 +79,7 @@ export function FocusSummary({
             type="button"
             disabled={!enabled}
             aria-pressed={isActive}
+            aria-label={`${s.label}: ${s.num} ${s.txt}${enabled ? `, ${isActive ? 'showing' : 'show'} these projects` : ''}`}
             onClick={() => enabled && onToggle(s.key)}
             className={[
               'flex flex-col gap-[3px] text-left px-[14px] py-[9px] rounded-[12px] border shadow-card min-w-[150px] transition-colors',
