@@ -54,10 +54,18 @@ function asPlanned(g: Goal, n: GoalNode): PlannedLeaf {
   };
 }
 
+// Active (non-archived) projects. Completed projects are excluded from every
+// planning selector below, so a finished project never surfaces a no-op control
+// in Today or the planner (spec §2.5).
+export function activeGoals(goals: Goal[]): Goal[] {
+  return goals.filter((g) => !g.completedAt);
+}
+
 // All leaves planned for `week` (done and not), day-pinned first in day order.
 export function plannedLeaves(goals: Goal[], week: string): PlannedLeaf[] {
   const out: PlannedLeaf[] = [];
   for (const g of goals) {
+    if (g.completedAt) continue;
     walkLeaves(g, (n) => { if (n.plannedWeek === week) out.push(asPlanned(g, n)); });
   }
   return out.sort((a, b) => (a.plannedDay ?? '9999').localeCompare(b.plannedDay ?? '9999'));
@@ -86,6 +94,7 @@ export function nextUp(goals: Goal[], today: string, limit = 7): NextUpItem[] {
   const suggested: NextUpItem[] = [];
 
   for (const g of goals) {
+    if (g.completedAt) continue;
     walkLeaves(g, (n) => {
       if (n.done || n.plannedWeek !== week) return;
       const item: NextUpItem = {
@@ -100,6 +109,7 @@ export function nextUp(goals: Goal[], today: string, limit = 7): NextUpItem[] {
 
   for (const g of goals) {
     if (suggested.length >= limit) break;
+    if (g.completedAt) continue;
     if (g.start > today) continue;
     walkLeaves(g, (n) => {
       if (suggested.length >= limit) return;
@@ -119,6 +129,7 @@ export function carryOvers(goals: Goal[], today: string): PlannedLeaf[] {
   const week = weekOf(today);
   const out: PlannedLeaf[] = [];
   for (const g of goals) {
+    if (g.completedAt) continue;
     walkLeaves(g, (n) => {
       if (!n.done && n.plannedWeek && n.plannedWeek < week) out.push(asPlanned(g, n));
     });
@@ -236,6 +247,47 @@ export function attentionRank(goals: Goal[], today: string): Goal[] {
     .filter((x) => x.a !== 'completed' && x.a !== 'ready-to-complete')
     .sort((a, b) => (ATTENTION_RANK[a.a] - ATTENTION_RANK[b.a]) || (a.i - b.i))
     .map((x) => x.g);
+}
+
+// ── Focus summary ─────────────────────────────────────────────────────────────
+// The board's four signals (spec §2.3). Each carries its match set so the view
+// can emphasise the right cards without re-deriving any attention predicate.
+export const NOW_WIP_LIMIT = 3;
+
+export interface FocusSummary {
+  slots: { used: number; limit: number; goalIds: string[] };
+  needsFirstStep: { count: number; goalIds: string[] };
+  behind: { count: number; goalIds: string[] };
+  plannedRemaining: { count: number; goalIds: string[] };
+}
+
+export function focusSummary(goals: Goal[], today: string): FocusSummary {
+  const active = activeGoals(goals);
+  const week = weekOf(today);
+
+  const slots = active.filter((g) => (g.column ?? 0) === 0).map((g) => g.id);
+  const needsFirstStep = active
+    .filter((g) => (g.column ?? 0) === 0 && projectAttention(g, today) === 'needs-breakdown')
+    .map((g) => g.id);
+  const behind = active
+    .filter((g) => projectAttention(g, today) === 'behind')
+    .map((g) => g.id);
+
+  // Open leaves planned for this week, and which projects still own one.
+  let plannedCount = 0;
+  const plannedIds: string[] = [];
+  for (const g of active) {
+    let has = false;
+    walkLeaves(g, (n) => { if (!n.done && n.plannedWeek === week) { plannedCount++; has = true; } });
+    if (has) plannedIds.push(g.id);
+  }
+
+  return {
+    slots: { used: slots.length, limit: NOW_WIP_LIMIT, goalIds: slots },
+    needsFirstStep: { count: needsFirstStep.length, goalIds: needsFirstStep },
+    behind: { count: behind.length, goalIds: behind },
+    plannedRemaining: { count: plannedCount, goalIds: plannedIds },
+  };
 }
 
 export interface WeekRecapResult {

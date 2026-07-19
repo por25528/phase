@@ -4,7 +4,7 @@ import {
   weekOf, plannedLeaves, nextUp, carryOvers, paceStatus, attentionRank,
   weekRecap, pinnedDayCounts, planOpeningStep, PACE_THRESHOLD_PTS,
   projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
-  DUE_SOON_DAYS, MILESTONE_SOON_DAYS,
+  DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
 } from './plan';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
@@ -288,6 +288,77 @@ describe('shared predicates', () => {
   it('DUE_SOON_DAYS and MILESTONE_SOON_DAYS are 14', () => {
     expect(DUE_SOON_DAYS).toBe(14);
     expect(MILESTONE_SOON_DAYS).toBe(14);
+  });
+});
+
+describe('lifecycle filtering', () => {
+  const completed = goal({ id: 'c', completedAt: '2026-07-01', nodes: [
+    { id: 'p', title: 'P', done: false, plannedWeek: WEEK },
+    { id: 'old', title: 'Old', done: false, plannedWeek: LAST_WEEK },
+    { id: 'free', title: 'Free', done: false },
+  ]});
+  const active = goal({ id: 'a', nodes: [
+    { id: 'ap', title: 'AP', done: false, plannedWeek: WEEK },
+  ]});
+
+  it('plannedLeaves skips completed projects', () => {
+    expect(plannedLeaves([completed, active], WEEK).map((l) => l.nodeId)).toEqual(['ap']);
+  });
+
+  it('nextUp skips completed projects', () => {
+    expect(nextUp([completed, active], TODAY, 7).map((i) => i.nodeId)).toEqual(['ap']);
+  });
+
+  it('carryOvers skips completed projects', () => {
+    expect(carryOvers([completed, active], TODAY)).toEqual([]);
+  });
+});
+
+describe('focusSummary', () => {
+  it('reports focus slots over active Now projects, excluding completed', () => {
+    const goals = [
+      goal({ id: 'n1', column: 0, nodes: [{ id: 'a', title: 'A', done: false }] }),
+      goal({ id: 'n2', column: 0, nodes: [{ id: 'b', title: 'B', done: false }] }),
+      goal({ id: 'done', column: 0, completedAt: '2026-07-01', nodes: [{ id: 'c', title: 'C', done: true }] }),
+      goal({ id: 'next', column: 1, nodes: [{ id: 'd', title: 'D', done: false }] }),
+    ];
+    const fs = focusSummary(goals, TODAY);
+    expect(fs.slots.used).toBe(2);
+    expect(fs.slots.limit).toBe(3);
+    expect(fs.slots.goalIds).toEqual(['n1', 'n2']);
+  });
+
+  it('needsFirstStep is Now-only', () => {
+    const goals = [
+      goal({ id: 'now-empty', column: 0, nodes: [] }),
+      goal({ id: 'next-empty', column: 1, nodes: [] }),
+    ];
+    expect(focusSummary(goals, TODAY).needsFirstStep.goalIds).toEqual(['now-empty']);
+  });
+
+  it('behind matches projectAttention behind (gated to Now/Next)', () => {
+    const behindNodes = [{ id: 'x', title: 'X', done: false }] as Goal['nodes'];
+    const goals = [
+      goal({ id: 'now-behind', column: 0, nodes: behindNodes }),
+      goal({ id: 'later-behind', column: 2, nodes: behindNodes }),
+    ];
+    expect(focusSummary(goals, TODAY).behind.goalIds).toEqual(['now-behind']);
+  });
+
+  it('plannedRemaining counts open planned leaves this week and their projects', () => {
+    const goals = [
+      goal({ id: 'g1', column: 0, nodes: [
+        { id: 'a', title: 'A', done: false, plannedWeek: WEEK },
+        { id: 'b', title: 'B', done: true, plannedWeek: WEEK },
+      ]}),
+      goal({ id: 'g2', column: 0, nodes: [{ id: 'c', title: 'C', done: false, plannedWeek: WEEK }] }),
+      goal({ id: 'done', column: 0, completedAt: '2026-07-01', nodes: [
+        { id: 'd', title: 'D', done: false, plannedWeek: WEEK },
+      ]}),
+    ];
+    const fs = focusSummary(goals, TODAY);
+    expect(fs.plannedRemaining.count).toBe(2);
+    expect(fs.plannedRemaining.goalIds).toEqual(['g1', 'g2']);
   });
 });
 
