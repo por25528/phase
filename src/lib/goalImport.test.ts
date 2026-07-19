@@ -7,6 +7,8 @@ import {
   buildManualGoal,
   parseGoalImport,
   buildAiPrompt,
+  buildSubtaskPrompt,
+  parseSubtasks,
   sanitizeBackupGoal,
 } from './goalImport';
 import type { Goal, GoalNode } from '../db/types';
@@ -257,5 +259,33 @@ describe('buildAiPrompt', () => {
     expect(p).toContain(`Today's date is ${TODAY}`);
     expect(p).toContain("Here's what I want to achieve:");
     expect(p).toContain('"subgoals"');
+  });
+});
+
+describe('buildSubtaskPrompt', () => {
+  it('names the project, the step, today, and asks for one-day subtasks', () => {
+    const p = buildSubtaskPrompt('Launch website', 'Draft the hero', TODAY);
+    expect(p).toContain('"Launch website"');
+    expect(p).toContain('"Draft the hero"');
+    expect(p).toContain(`Today's date is ${TODAY}`);
+    expect(p).toContain('single focused day');
+  });
+});
+
+describe('parseSubtasks', () => {
+  it('parses a JSON array of strings, trimming and dropping blanks', () => {
+    expect(parseSubtasks('["  A ", "B", "", "  "]')).toEqual({ titles: ['A', 'B'] });
+  });
+
+  it('accepts an array of {title} objects', () => {
+    expect(parseSubtasks('[{"title":"A"},{"title":"B"}]')).toEqual({ titles: ['A', 'B'] });
+  });
+
+  it('rejects empty input, non-arrays, invalid JSON, and empty results', () => {
+    expect(parseSubtasks('   ')).toEqual({ error: expect.stringContaining('Paste') });
+    expect(parseSubtasks('{"title":"A"}')).toEqual({ error: expect.stringContaining('array') });
+    expect(parseSubtasks('not json')).toEqual({ error: expect.stringContaining('valid JSON') });
+    expect(parseSubtasks('[]')).toEqual({ error: expect.stringContaining('No subtasks') });
+    expect(parseSubtasks('[1, 2, {}]')).toEqual({ error: expect.stringContaining('No subtasks') });
   });
 });

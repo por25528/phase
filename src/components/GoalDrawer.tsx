@@ -4,6 +4,7 @@ import type { Goal } from '../db/types';
 import { GoalTree } from './GoalTree';
 import { ProgressBar } from './ProgressBar';
 import { InlineEdit } from './InlineEdit';
+import { SubtaskAiModal } from './SubtaskAiModal';
 import { firstOpenLeaf } from '../lib/tree';
 import { goalPct } from '../lib/pct';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
@@ -113,9 +114,18 @@ function MilestonesSection({
   );
 }
 
-function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<typeof useAppStore>['actions'] }) {
+function DrawerBody({
+  goal: g,
+  actions,
+  focusNodeId,
+}: {
+  goal: Goal;
+  actions: ReturnType<typeof useAppStore>['actions'];
+  focusNodeId?: string | null;
+}) {
   const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
+  const [subtaskOpen, setSubtaskOpen] = useState(false);
   const today = todayStr();
   const pct = Math.round(goalPct(g));
   const expected = Math.round(expectedPct(g.start, g.deadline, today));
@@ -220,8 +230,23 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
               }
             }}
           />
+          <button
+            type="button"
+            onClick={() => setSubtaskOpen(true)}
+            className="mt-[6px] text-[.78rem] font-medium text-accent-deep hover:bg-accent-tint px-[7px] py-[4px] rounded-[7px]"
+          >
+            ✦ Break a step into daily tasks with AI
+          </button>
         </div>
       )}
+
+      <SubtaskAiModal
+        open={subtaskOpen}
+        onClose={() => setSubtaskOpen(false)}
+        goal={g}
+        defaultStepId={focusNodeId}
+        actions={actions}
+      />
       <MilestonesSection goal={g} actions={actions} />
 
       <div className="mt-[22px]">
@@ -308,7 +333,7 @@ export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
           ✕
         </button>
         <div id="drawerBody">
-          {goal && <DrawerBody goal={goal} actions={actions} />}
+          {goal && <DrawerBody goal={goal} actions={actions} focusNodeId={focusNodeId} />}
         </div>
       </aside>
     </>

@@ -699,3 +699,32 @@ describe('openDrawer node focus (T8)', () => {
     expect(getState().drawerFocusNodeId).toBeNull();
   });
 });
+
+describe('addChildren (AI daily subtasks)', () => {
+  const withStep: Goal = {
+    id: 'g', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
+    nodes: [{ id: 'n', title: 'Step', done: false, plannedWeek: '2026-07-13', plannedDay: '2026-07-15' }],
+  };
+
+  it('appends several children, converting a leaf to a container and clearing its plan fields', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([withStep]);
+    actions.addChildren('n', ['Sub A', '  Sub B  ', '', '   ']);
+    const node = getState().goals[0].nodes[0];
+    expect(node.children?.map((c) => c.title)).toEqual(['Sub A', 'Sub B']); // trimmed, blanks dropped
+    expect(node.done).toBeUndefined();
+    expect(node.plannedWeek).toBeUndefined();
+    expect(node.plannedDay).toBeUndefined();
+    expect(getState().expanded.has('n')).toBe(true);
+  });
+
+  it('is a no-op for an all-blank list and for a completed (frozen) project', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([withStep]);
+    actions.addChildren('n', ['   ', '']);
+    expect(getState().goals[0].nodes[0].children).toBeUndefined();
+    actions.completeGoal('g');
+    actions.addChildren('n', ['X']);
+    expect(getState().goals[0].nodes[0].children).toBeUndefined();
+  });
+});

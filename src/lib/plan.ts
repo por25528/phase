@@ -124,6 +124,30 @@ export function nextUp(goals: Goal[], today: string, limit = 7): NextUpItem[] {
   return [...pinnedToday, ...weekPool, ...suggested];
 }
 
+export interface PlannedGoalGroup {
+  goalId: string;
+  goalTitle: string;
+  leaves: PlannedLeaf[];
+}
+
+// Group a day's planned leaves by their project, preserving first-seen order, so
+// a day column can stack steps under a per-project heading rather than blurring
+// several projects together (planner grouping).
+export function groupPlannedByGoal(leaves: PlannedLeaf[]): PlannedGoalGroup[] {
+  const order: string[] = [];
+  const map = new Map<string, PlannedGoalGroup>();
+  for (const l of leaves) {
+    let grp = map.get(l.goalId);
+    if (!grp) {
+      grp = { goalId: l.goalId, goalTitle: l.goalTitle, leaves: [] };
+      map.set(l.goalId, grp);
+      order.push(l.goalId);
+    }
+    grp.leaves.push(l);
+  }
+  return order.map((id) => map.get(id)!);
+}
+
 // Open leaves not committed to `week` — the week planner's left rail (T9). A leaf
 // planned to a different week (a carry-over) still counts as available to plan.
 export function unplannedOpenLeaves(g: Goal, week: string): GoalNode[] {

@@ -243,6 +243,26 @@ export const actions = {
     setAndPersist({ goals }, { expanded });
   },
 
+  // Batch add (the AI daily-subtasks helper): append several children to a node
+  // at once, converting a leaf into a container. Same freeze + field-clearing as
+  // addChild; blanks are dropped and an all-blank list is a no-op.
+  addChildren(nodeId: string, titles: string[]) {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
+    const clean = titles.map((t) => t.trim()).filter(Boolean);
+    if (clean.length === 0) return;
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
+    if (!node) return;
+    if (!node.children) node.children = [];
+    for (const title of clean) node.children.push({ id: uid(), title, done: false });
+    delete node.done;
+    delete node.plannedWeek;
+    delete node.plannedDay;
+    const expanded = new Set(state.expanded);
+    expanded.add(nodeId);
+    setAndPersist({ goals }, { expanded });
+  },
+
   addRootNode(goalId: string, title: string) {
     if (!isActiveGoal(goalId)) return; // frozen on a completed project
     const goals = state.goals.map((g) =>

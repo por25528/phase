@@ -20,7 +20,7 @@ import { behindPaceBy } from '../../lib/timeline';
 import { firstOpenLeaf } from '../../lib/tree';
 import {
   weekOf, plannedLeaves, attentionRank, paceStatus, weekRecap, planOpeningStep,
-  PACE_THRESHOLD_PTS, unplannedOpenLeaves, type PlannedLeaf,
+  PACE_THRESHOLD_PTS, unplannedOpenLeaves, groupPlannedByGoal, type PlannedLeaf,
 } from '../../lib/plan';
 import type { GoalNode } from '../../db/types';
 
@@ -317,15 +317,11 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
             <div className="overflow-x-auto pb-[6px]">
               <div className="grid gap-[8px]" style={{ gridTemplateColumns: '1.2fr repeat(7, minmax(66px, 1fr))' }}>
                 <DayZone id="anyday" label="Any day" sub="this wk" anyday>
-                  {anyDay.map((l) => (
-                    <PlacedChip key={l.nodeId} leaf={l} onRemove={() => actions.unplanNode(l.goalId, l.nodeId)} />
-                  ))}
+                  <DayContent leaves={anyDay} onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)} />
                 </DayZone>
                 {days.map((iso, i) => (
                   <DayZone key={iso} id={`day:${iso}`} label={DOW[i]} sub={String(parseD(iso).getDate())} today={iso === today}>
-                    {byDay.get(iso)!.map((l) => (
-                      <PlacedChip key={l.nodeId} leaf={l} onRemove={() => actions.unplanNode(l.goalId, l.nodeId)} />
-                    ))}
+                    <DayContent leaves={byDay.get(iso)!} onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)} />
                   </DayZone>
                 ))}
               </div>
@@ -379,7 +375,6 @@ function DayZone({
   id: string; label: string; sub: string; today?: boolean; anyday?: boolean; children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
-  const empty = Array.isArray(children) ? children.length === 0 : !children;
   return (
     <div
       ref={setNodeRef}
@@ -398,10 +393,29 @@ function DayZone({
         <span className="font-mono text-[.56rem] text-faint tabular-nums">{sub}</span>
       </div>
       {children}
-      {empty && (
-        <div className="flex-1 grid place-items-center text-faint text-[.62rem] italic min-h-[40px]">—</div>
-      )}
     </div>
+  );
+}
+
+// A day's steps, stacked under a per-project heading so several projects sharing
+// a day never blur together (the "group by project in a day" rule).
+function DayContent({ leaves, onRemove }: { leaves: PlannedLeaf[]; onRemove: (l: PlannedLeaf) => void }) {
+  if (leaves.length === 0) {
+    return <div className="flex-1 grid place-items-center text-faint text-[.62rem] italic min-h-[40px]">—</div>;
+  }
+  return (
+    <>
+      {groupPlannedByGoal(leaves).map((grp) => (
+        <div key={grp.goalId} className="flex flex-col gap-[3px]">
+          <span className="font-mono text-[.5rem] tracking-[.08em] uppercase text-faint truncate px-[1px]">
+            {grp.goalTitle}
+          </span>
+          {grp.leaves.map((l) => (
+            <PlacedChip key={l.nodeId} leaf={l} onRemove={() => onRemove(l)} />
+          ))}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -456,7 +470,6 @@ function PlacedChip({ leaf, onRemove }: { leaf: PlannedLeaf; onRemove: () => voi
       }`}
     >
       <span className="flex-1 min-w-0 truncate text-ink">{leaf.title}</span>
-      <span className="font-mono text-[.52rem] text-muted flex-none max-w-[54px] truncate">{leaf.goalTitle}</span>
       <button
         type="button"
         aria-label={`Unplan "${leaf.title}"`}

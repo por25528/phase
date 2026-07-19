@@ -255,3 +255,51 @@ Example:
 Here's what I want to achieve:
 <describe your project here>`;
 }
+
+// ── Daily subtasks for one step ───────────────────────────────────────────────
+
+/** Prompt to break a single step into day-sized subtasks (drawer AI helper). */
+export function buildSubtaskPrompt(goalTitle: string, stepTitle: string, today: string): string {
+  return `You are helping me break one step of a project into small daily tasks.
+
+Project: "${goalTitle}"
+Step: "${stepTitle}"
+Today's date is ${today}.
+
+Break this step into 2–6 subtasks, each small enough to finish in a single focused day.
+Output ONLY a JSON array of short strings — no prose, no markdown code fences.
+
+Example:
+["Draft the outline", "Write the first section", "Write the second section", "Edit and polish"]`;
+}
+
+/**
+ * Parse an AI response into subtask titles. Accepts a JSON array of strings, or
+ * of `{ title }` objects (forgiving). Trims, drops blanks; empty/invalid rejects.
+ */
+export function parseSubtasks(raw: string): { titles: string[] } | { error: string } {
+  const text = raw.trim();
+  if (!text) return { error: 'Paste the AI output first.' };
+
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { error: "That's not valid JSON — expected an array of subtask strings." };
+  }
+  if (!Array.isArray(data)) return { error: 'Expected a JSON array of subtask strings.' };
+
+  const titles = data
+    .map((d): string => {
+      if (typeof d === 'string') return d;
+      if (d && typeof d === 'object' && typeof (d as { title?: unknown }).title === 'string') {
+        return (d as { title: string }).title;
+      }
+      return '';
+    })
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (titles.length === 0) return { error: 'No subtasks found in that JSON.' };
+  return { titles };
+}

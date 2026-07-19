@@ -6,8 +6,9 @@ import {
   projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
   DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
   nearestMeaningfulDate, nextOpenAction, attentionBadge, cardPrimaryAction,
-  unplannedOpenLeaves,
+  unplannedOpenLeaves, groupPlannedByGoal,
 } from './plan';
+import type { PlannedLeaf } from './plan';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
 const TODAY = '2026-07-15';
@@ -510,6 +511,28 @@ describe('attentionBadge', () => {
   it('shows no badge for an on-track (gated) project', () => {
     const g = goal({ column: 2, nodes: [{ id: 'a', title: 'A', done: false }] });
     expect(attentionBadge(g, TODAY)).toBeNull();
+  });
+});
+
+describe('groupPlannedByGoal', () => {
+  const leaf = (nodeId: string, goalId: string, goalTitle: string): PlannedLeaf => ({
+    goalId, goalTitle, nodeId, title: nodeId, done: false, plannedWeek: WEEK,
+  });
+
+  it('groups leaves by project, preserving first-seen order within and across groups', () => {
+    const groups = groupPlannedByGoal([
+      leaf('a', 'g1', 'One'),
+      leaf('b', 'g2', 'Two'),
+      leaf('c', 'g1', 'One'),
+    ]);
+    expect(groups.map((g) => g.goalId)).toEqual(['g1', 'g2']);
+    expect(groups[0].leaves.map((l) => l.nodeId)).toEqual(['a', 'c']);
+    expect(groups[1].leaves.map((l) => l.nodeId)).toEqual(['b']);
+    expect(groups[0].goalTitle).toBe('One');
+  });
+
+  it('is empty for no leaves', () => {
+    expect(groupPlannedByGoal([])).toEqual([]);
   });
 });
 
