@@ -17,7 +17,7 @@ export function NewGoalModal({
   columns: readonly { id: string; label: string }[];
 }) {
   const [title, setTitle] = useState('');
-  const [priority, setPriority] = useState<(typeof PRIORITY_WORDS)[number]>('highest');
+  const [priority, setPriority] = useState<(typeof PRIORITY_WORDS)[number]>('now');
   const [start, setStart] = useState(todayStr());
   const [deadline, setDeadline] = useState(defaultDeadline(todayStr()));
   const [subgoals, setSubgoals] = useState<string[]>([]);
@@ -29,7 +29,7 @@ export function NewGoalModal({
   useEffect(() => {
     if (!open) return;
     setTitle('');
-    setPriority('highest');
+    setPriority('now');
     setStart(todayStr());
     setDeadline(defaultDeadline(todayStr()));
     setSubgoals([]);
@@ -62,7 +62,7 @@ export function NewGoalModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New goal">
+    <Modal open={open} onClose={onClose} title="New project">
       <div className="flex flex-col gap-[14px]">
         <div className="flex flex-col gap-[5px]">
           <label className={labelCls}>Title</label>
@@ -80,7 +80,7 @@ export function NewGoalModal({
 
         <div className="flex flex-wrap gap-[14px]">
           <div className="flex flex-col gap-[5px]">
-            <label className={labelCls}>Priority</label>
+            <label className={labelCls}>Horizon</label>
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value as (typeof PRIORITY_WORDS)[number])}
@@ -146,7 +146,7 @@ export function NewGoalModal({
 
         <div className="flex items-center gap-[8px] mt-[2px]">
           <button className={primaryBtn} onClick={submit} disabled={!title.trim()}>
-            Add goal
+            Add project
           </button>
           <button className={ghostBtn} onClick={onClose}>Cancel</button>
         </div>

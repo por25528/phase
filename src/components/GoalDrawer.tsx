@@ -7,7 +7,7 @@ import { InlineEdit } from './InlineEdit';
 import { firstOpenLeaf } from '../lib/tree';
 import { goalPct } from '../lib/pct';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
-import { todayStr, daysLeftLabel } from '../lib/dates';
+import { todayStr, daysLeftLabel, fmtD } from '../lib/dates';
 import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
 
 function MilestonesSection({
@@ -124,6 +124,7 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
   const wk = plannedLeaves([g], weekOf(today));
   const wkDone = wk.filter((l) => l.done).length;
   const next = firstOpenLeaf(g.nodes);
+  const isCompleted = !!g.completedAt;
   return (
     <>
       <div className="mb-[4px]">
@@ -171,30 +172,56 @@ function DrawerBody({ goal: g, actions }: { goal: Goal; actions: ReturnType<type
           {wkDone}/{wk.length} planned this week
         </div>
       )}
-      {next && (
+      {next && !isCompleted && (
         <div className="text-[.76rem] text-muted truncate mt-[2px]">
           Next: <span className="text-ink-soft">{next.title}</span>
         </div>
       )}
-      <div className="mt-[14px]">
+
+      {/* Completion lifecycle (spec §2.5). A completed project is frozen for
+          structural edits (the store guards enforce it); metadata below stays
+          editable. Complete is offered once every step is done. */}
+      {isCompleted ? (
+        <div className="flex items-center gap-[10px] mt-[14px] px-[11px] py-[9px] rounded-card border border-line bg-hover">
+          <span className="text-accent text-[.9rem]" aria-hidden="true">✓</span>
+          <span className="text-[.8rem] text-ink-soft flex-1">Completed {fmtD(g.completedAt!)}</span>
+          <button
+            onClick={() => actions.reopenGoal(g.id)}
+            className="text-[.78rem] font-semibold text-ink-soft px-[10px] py-[5px] rounded-[8px] border border-line-2 hover:bg-panel"
+          >
+            Reopen project
+          </button>
+        </div>
+      ) : pace === 'complete' ? (
+        <button
+          onClick={() => actions.completeGoal(g.id)}
+          className="mt-[14px] w-full text-[.82rem] font-semibold text-accent-contrast bg-accent px-[13px] py-[8px] rounded-field hover:bg-accent-deep"
+        >
+          Complete project
+        </button>
+      ) : null}
+
+      <div className={`mt-[14px] ${isCompleted ? 'opacity-70 pointer-events-none' : ''}`} aria-disabled={isCompleted}>
         <GoalTree nodes={g.nodes} />
       </div>
-      <div className="px-[6px] py-[2px]">
-        <input
-          ref={addRootRef}
-          className="ghost-in w-full text-[.85rem]"
-          placeholder="+ add sub-goal…"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && addRootRef.current) {
-              const v = addRootRef.current.value.trim();
-              if (v) {
-                actions.addRootNode(g.id, v);
-                addRootRef.current.value = '';
+      {!isCompleted && (
+        <div className="px-[6px] py-[2px]">
+          <input
+            ref={addRootRef}
+            className="ghost-in w-full text-[.85rem]"
+            placeholder="+ add sub-goal…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && addRootRef.current) {
+                const v = addRootRef.current.value.trim();
+                if (v) {
+                  actions.addRootNode(g.id, v);
+                  addRootRef.current.value = '';
+                }
               }
-            }
-          }}
-        />
-      </div>
+            }}
+          />
+        </div>
+      )}
       <MilestonesSection goal={g} actions={actions} />
 
       <div className="mt-[22px]">

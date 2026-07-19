@@ -1,7 +1,7 @@
 import type { Goal, GoalNode, PlanReview, PlanReviewEntry } from '../db/types';
 import { weekDates, addDays } from './dates';
 import { goalPct } from './pct';
-import { expectedPct } from './timeline';
+import { expectedPct, behindPaceBy, daysBetween } from './timeline';
 import { leafCount } from './board';
 import { findInAll } from './tree';
 
@@ -146,7 +146,7 @@ export function paceStatus(g: Goal, today: string): PaceState {
   const leaves = leafCount(g.nodes);
   if (leaves.total === 0) return 'needs-breakdown';
   if (leaves.done === leaves.total) return 'complete';
-  // Round pct first, then the diff — mirrors BoardCard/boardInsights exactly.
+  // Round pct first, then the diff — mirrors the card badge derivation exactly.
   const pct = Math.round(goalPct(g));
   const diff = Math.round(expectedPct(g.start, g.deadline, today) - pct);
   if (diff >= PACE_THRESHOLD_PTS) return 'behind';
@@ -288,6 +288,98 @@ export function focusSummary(goals: Goal[], today: string): FocusSummary {
     behind: { count: behind.length, goalIds: behind },
     plannedRemaining: { count: plannedCount, goalIds: plannedIds },
   };
+}
+
+// ── Card derivations ──────────────────────────────────────────────────────────
+// Pure view-model for a board card (spec §2.4). The component maps these to JSX;
+// all the date/leaf reasoning lives here so a card can never disagree with the
+// attention authority.
+
+export interface MeaningfulDate {
+  date: string;
+  kind: 'deadline' | 'milestone';
+  past: boolean;
+}
+
+// The one date a card leads with: the soonest upcoming milestone that still
+// lands before the deadline, else the deadline itself. `past` flags an overdue
+// deadline (nothing upcoming and the deadline already behind us).
+export function nearestMeaningfulDate(g: Goal, today: string): MeaningfulDate {
+  const upcoming = (g.milestones ?? [])
+    .filter((m) => m.date >= today && m.date < g.deadline)
+    .map((m) => m.date)
+    .sort();
+  if (upcoming.length > 0) return { date: upcoming[0], kind: 'milestone', past: false };
+  return { date: g.deadline, kind: 'deadline', past: deadlineBefore(g.deadline, today) };
+}
+
+export interface NextAction {
+  kind: 'planned' | 'open' | 'needs-breakdown' | 'complete';
+  title: string;
+}
+
+// The single "what's next" line: a leaf already planned for this week wins, then
+// the first open leaf, then the breakdown/complete prompts. Preference order
+// mirrors how the planner surfaces work.
+export function nextOpenAction(g: Goal, today: string): NextAction {
+  const leaves = leafCount(g.nodes);
+  if (leaves.total === 0) return { kind: 'needs-breakdown', title: 'No steps yet — break the project into actions' };
+  if (leaves.done === leaves.total) return { kind: 'complete', title: 'All steps complete' };
+  const week = weekOf(today);
+  const open: GoalNode[] = [];
+  walkLeaves(g, (n) => { if (!n.done) open.push(n); });
+  const planned = open.find((n) => n.plannedWeek === week);
+  const pick = planned ?? open[0];
+  return { kind: planned ? 'planned' : 'open', title: pick.title };
+}
+
+export interface AttentionBadge {
+  label: string;
+  tone: 'warn' | 'warn-strong' | 'accent' | 'plan' | 'step';
+}
+
+// The single badge a card shows, straight off projectAttention. `on-track`
+// (and the terminal states, which never render as board cards) carry no badge.
+export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
+  switch (projectAttention(g, today)) {
+    case 'overdue':
+      return { label: 'Overdue', tone: 'warn-strong' };
+    case 'needs-breakdown':
+      return { label: 'Needs a first step', tone: 'step' };
+    case 'behind': {
+      const pts = Math.round(behindPaceBy(Math.round(goalPct(g)), g.start, g.deadline, today));
+      return { label: `Behind ${pts}%`, tone: 'warn' };
+    }
+    case 'due-soon':
+      return { label: `Due in ${daysBetween(today, g.deadline)}d`, tone: 'warn' };
+    case 'milestone-soon': {
+      const soon = (g.milestones ?? [])
+        .filter((m) => m.date >= today && m.date <= addDays(today, MILESTONE_SOON_DAYS))
+        .map((m) => m.date)
+        .sort();
+      if (soon.length === 0) return null; // unreachable given the state, but keep total
+      return { label: `Milestone in ${daysBetween(today, soon[0])}d`, tone: 'warn' };
+    }
+    case 'not-planned':
+      return { label: 'Not planned this week', tone: 'plan' };
+    case 'ready-to-complete':
+      return { label: 'Ready to complete', tone: 'accent' };
+    default:
+      return null; // on-track, completed
+  }
+}
+
+export type CardActionKind = 'plan' | 'define' | 'complete' | 'none';
+
+// The card's primary verb follows the verdict: break it down, complete it, or
+// plan the next step. Someday projects get no plan nag (matches horizon gating).
+export function cardPrimaryAction(g: Goal, today: string): CardActionKind {
+  switch (projectAttention(g, today)) {
+    case 'needs-breakdown': return 'define';
+    case 'ready-to-complete': return 'complete';
+    case 'completed': return 'none';
+    default: return (g.column ?? 0) >= 3 ? 'none' : 'plan';
+  }
 }
 
 export interface WeekRecapResult {

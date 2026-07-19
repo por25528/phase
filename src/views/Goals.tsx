@@ -14,22 +14,21 @@ import {
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
 import { groupByColumn } from '../lib/board';
-import { computeBoardInsights } from '../lib/boardInsights';
+import { focusSummary } from '../lib/plan';
+import { fmtD } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
-import { InsightBar } from './goals/InsightBar';
+import { FocusSummary, type FocusFilter } from './goals/FocusSummary';
 import { Column } from './goals/Column';
+import { HORIZON_LABELS } from './goals/styles';
+import { PlanWeekOverlay } from './plan/PlanWeekOverlay';
+import type { Goal } from '../db/types';
 
-// Priority columns, left → right = highest → lowest. Order IS the priority model:
-// a goal's column sets its tier, its height within the column sets rank in-tier.
-const COLUMNS = [
-  { id: 'col-0', label: 'Highest' },
-  { id: 'col-1', label: 'High' },
-  { id: 'col-2', label: 'Medium' },
-  { id: 'col-3', label: 'Later' },
-] as const;
+// Commitment horizons, left → right = Now … Someday. Column order IS the model:
+// a project's column is its horizon; height within a column is rank in-horizon.
+const COLUMNS = HORIZON_LABELS.map((label, i) => ({ id: `col-${i}`, label }));
 const COL_COUNT = COLUMNS.length;
 
 // ── Goals view ────────────────────────────────────────────────────────────────
@@ -37,6 +36,8 @@ const COL_COUNT = COLUMNS.length;
 export function Goals() {
   const { goals, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [filter, setFilter] = useState<FocusFilter | null>(null);
   const currentDate = useLocalDate();
 
   const reducedMotion =
@@ -44,18 +45,25 @@ export function Goals() {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const goalById = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals]);
+  const active = useMemo(() => goals.filter((g) => !g.completedAt), [goals]);
+  const completed = useMemo(
+    () => goals.filter((g) => g.completedAt).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
+    [goals],
+  );
 
-  const [columns, setColumns] = useState<string[][]>(() => groupByColumn(goals, COL_COUNT));
+  // Board columns are built from active projects only; completed projects live
+  // in their own section. setGoalBoard weaves the hidden ones back into place.
+  const [columns, setColumns] = useState<string[][]>(() => groupByColumn(active, COL_COUNT));
   const columnsRef = useRef(columns);
   columnsRef.current = columns;
   const [activeId, setActiveId] = useState<string | null>(null);
 
   // Re-sync from the store whenever goals change and we're NOT mid-drag
-  // (covers add / delete / drawer edits from elsewhere).
+  // (covers add / delete / complete / drawer edits from elsewhere).
   useEffect(() => {
     if (activeId) return;
-    setColumns(groupByColumn(goals, COL_COUNT));
-  }, [goals, activeId]);
+    setColumns(groupByColumn(active, COL_COUNT));
+  }, [active, activeId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -73,9 +81,9 @@ export function Goals() {
   }
 
   // Live cross-column movement so cards part to show the drop target.
-  function handleDragOver({ active, over }: DragOverEvent) {
+  function handleDragOver({ active: a, over }: DragOverEvent) {
     if (!over) return;
-    const activeIdStr = String(active.id);
+    const activeIdStr = String(a.id);
     const overIdStr = String(over.id);
     const from = colIndexOf(activeIdStr);
     const to = colIndexOf(overIdStr);
@@ -95,8 +103,8 @@ export function Goals() {
     });
   }
 
-  function handleDragEnd({ active, over }: DragEndEvent) {
-    const activeIdStr = String(active.id);
+  function handleDragEnd({ active: a, over }: DragEndEvent) {
+    const activeIdStr = String(a.id);
     const current = columnsRef.current; // already reflects cross-column moves from dragOver
     let next = current;
 
@@ -122,12 +130,32 @@ export function Goals() {
 
   function handleDragCancel() {
     setActiveId(null);
-    setColumns(groupByColumn(goals, COL_COUNT));
+    setColumns(groupByColumn(active, COL_COUNT));
   }
 
   const isEmpty = goals.length === 0;
   const activeGoal = activeId ? goalById.get(activeId) : null;
-  const insights = useMemo(() => computeBoardInsights(goals, currentDate, COL_COUNT), [goals, currentDate]);
+
+  // Focus summary + spotlight filter. Buttons expose their goalId match sets, so
+  // dimming is a pure set membership check — no attention predicate re-derived.
+  const summary = useMemo(() => focusSummary(goals, currentDate), [goals, currentDate]);
+  const matchIds = useMemo(() => {
+    if (!filter) return null;
+    const src = {
+      slots: summary.slots.goalIds,
+      'needs-step': summary.needsFirstStep.goalIds,
+      behind: summary.behind.goalIds,
+      planned: summary.plannedRemaining.goalIds,
+    }[filter];
+    return new Set(src);
+  }, [filter, summary]);
+  const filtering = matchIds != null && matchIds.size > 0;
+
+  // Phase 4 (T9) will focus the planner on the passed project; for now it just
+  // opens the weekly planner, matching how Today's "Plan week" behaves.
+  function onPlan(_id: string) {
+    setPlanOpen(true);
+  }
 
   return (
     <div>
@@ -136,7 +164,7 @@ export function Goals() {
         <div>
           <h1 className="font-disp text-[1.4rem] font-semibold tracking-[-0.015em]">Goals</h1>
           <p className="text-[.8rem] text-muted mt-[3px]">
-            Drag goals between columns to set priority — leftmost is highest, and higher within a column outranks lower.
+            Drag a project between horizons to recommit it — Now is what you're actively pushing on, capped at {summary.slots.limit} to keep focus honest.
           </p>
         </div>
         <div className="flex-none flex items-center gap-[8px]">
@@ -144,13 +172,13 @@ export function Goals() {
             className="text-[.82rem] font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
             onClick={() => setModal('import')}
           >
-            Import goal
+            Import project
           </button>
           <button
             className="text-[.82rem] font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
             onClick={() => setModal('new')}
           >
-            + New goal
+            + New project
           </button>
         </div>
       </div>
@@ -159,29 +187,36 @@ export function Goals() {
       {isEmpty && (
         <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
           <p className="text-muted text-[.9rem] mb-[14px]">
-            No goals yet — create one by hand, or import a plan an AI made for you.
+            No projects yet — create one by hand, or import a plan an AI made for you.
           </p>
           <div className="flex items-center gap-[10px]">
             <button
               className="text-[.84rem] font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
               onClick={() => setModal('new')}
             >
-              + New goal
+              + New project
             </button>
             <button
               className="text-[.84rem] font-medium text-ink-soft border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-hover"
               onClick={() => setModal('import')}
             >
-              Import goal
+              Import project
             </button>
           </div>
         </div>
       )}
 
-      {/* Board insight bar — read-only attention signals, non-empty board only */}
-      {!isEmpty && <InsightBar insights={insights} />}
+      {/* Focus summary — the board's four attention signals */}
+      {!isEmpty && (
+        <FocusSummary
+          summary={summary}
+          active={filtering ? filter : null}
+          onToggle={(f) => setFilter((cur) => (cur === f ? null : f))}
+          onClear={() => setFilter(null)}
+        />
+      )}
 
-      {/* Priority board */}
+      {/* Commitment-horizon board */}
       {!isEmpty && (
         <DndContext
           sensors={sensors}
@@ -201,9 +236,16 @@ export function Goals() {
                     <BoardCard
                       key={id}
                       goal={g}
+                      today={currentDate}
                       onOpen={actions.openDrawer}
+                      onPlan={onPlan}
+                      onDefine={actions.openDrawer}
+                      onComplete={actions.completeGoal}
+                      onMove={actions.moveGoalToColumn}
                       onDelete={actions.removeGoal}
                       reducedMotion={reducedMotion}
+                      dimmed={filtering && !matchIds!.has(id)}
+                      matched={filtering && matchIds!.has(id)}
                     />
                   );
                 })}
@@ -214,19 +256,22 @@ export function Goals() {
           <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
             {activeGoal ? (
               <div className="w-[240px]">
-                <GoalCardVisual goal={activeGoal} overlay />
+                <GoalCardVisual goal={activeGoal} today={currentDate} overlay />
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
       )}
 
+      {/* Completed projects */}
+      {completed.length > 0 && <CompletedSection goals={completed} onReopen={actions.reopenGoal} />}
+
       <NewGoalModal
         open={modal === 'new'}
         onClose={() => setModal(null)}
         onAdd={(goal) => {
           actions.addGoals([goal]);
-          actions.showToast('Goal added');
+          actions.showToast('Project added');
           setModal(null);
         }}
         columns={COLUMNS}
@@ -236,10 +281,60 @@ export function Goals() {
         onClose={() => setModal(null)}
         onImport={(imported) => {
           actions.addGoals(imported);
-          actions.showToast(`Imported ${imported.length} goal${imported.length === 1 ? '' : 's'}`);
+          actions.showToast(`Imported ${imported.length} project${imported.length === 1 ? '' : 's'}`);
           setModal(null);
         }}
       />
+
+      <PlanWeekOverlay open={planOpen} onClose={() => setPlanOpen(false)} />
+    </div>
+  );
+}
+
+// ── Completed section ─────────────────────────────────────────────────────────
+// Collapsed by default, newest-completed first; each project offers Reopen. Now
+// capacity already excludes these (they carry `completedAt`), spec §2.5.
+function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-[22px] border-t border-line pt-[16px]">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-[9px] w-full text-left px-[2px] py-[4px]"
+      >
+        <span
+          className="text-faint text-[.7rem] transition-transform"
+          style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+          aria-hidden="true"
+        >
+          ▶
+        </span>
+        <span className="font-mono text-[.62rem] tracking-[.11em] uppercase text-muted font-semibold">Completed</span>
+        <span className="font-mono text-[.66rem] text-faint tabular-nums">{goals.length}</span>
+      </button>
+      {open && (
+        <div className="mt-[13px] grid gap-[11px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+          {goals.map((g) => (
+            <div
+              key={g.id}
+              className="flex items-center gap-[10px] px-[13px] py-[11px] border border-line rounded-card bg-panel opacity-[.86]"
+            >
+              <span className="text-accent text-[.82rem]" aria-hidden="true">✓</span>
+              <span className="font-disp text-[.9rem] font-semibold flex-1 min-w-0 truncate">{g.title}</span>
+              {g.completedAt && <span className="font-mono text-[.6rem] text-faint whitespace-nowrap">{fmtD(g.completedAt)}</span>}
+              <button
+                type="button"
+                onClick={() => onReopen(g.id)}
+                className="text-[.72rem] text-muted px-[9px] py-[4px] rounded-[8px] border border-line-2 hover:bg-hover hover:text-ink"
+              >
+                Reopen
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

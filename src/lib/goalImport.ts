@@ -2,17 +2,29 @@ import type { Goal, GoalNode } from '../db/types';
 import { uid } from './tree';
 import { clampSpan } from './timeline';
 
-// ── Priority ↔ column ─────────────────────────────────────────────────────────
-// The Goals board has 4 columns, 0 = highest. The AI-facing format uses words so
-// neither the model nor the user has to think in column indices.
+// ── Horizon ↔ column ──────────────────────────────────────────────────────────
+// The Goals board has 4 commitment horizons, column 0 = Now. The AI-facing
+// format uses words so neither the model nor the user thinks in column indices.
+// Imports stay backward-compatible: the legacy priority words map to the same
+// columns as the horizon words they were renamed to.
 
-export const PRIORITY_WORDS = ['highest', 'high', 'medium', 'later'] as const;
+export const PRIORITY_WORDS = ['now', 'next', 'later', 'someday'] as const;
 export type PriorityWord = (typeof PRIORITY_WORDS)[number];
+
+// Legacy highest|high|medium|later → columns 0–3, so old backups and prompts
+// still import to the right horizon. `later` is intentionally shared: it meant
+// column 3 under the old scheme and column 2 under the new one — the new horizon
+// word wins (checked first) so a fresh export round-trips, while an old backup's
+// `later` still resolves via this table to its original column 3.
+const LEGACY_PRIORITY_WORDS = ['highest', 'high', 'medium', 'later'] as const;
 
 export function priorityToColumn(word?: unknown): number {
   if (typeof word !== 'string') return 0;
-  const i = PRIORITY_WORDS.indexOf(word.trim().toLowerCase() as PriorityWord);
-  return i === -1 ? 0 : i;
+  const w = word.trim().toLowerCase();
+  const horizon = PRIORITY_WORDS.indexOf(w as PriorityWord);
+  if (horizon !== -1) return horizon;
+  const legacy = LEGACY_PRIORITY_WORDS.indexOf(w as (typeof LEGACY_PRIORITY_WORDS)[number]);
+  return legacy === -1 ? 0 : legacy;
 }
 
 export function columnToPriority(column?: number): PriorityWord {
@@ -189,10 +201,10 @@ export function parseGoalImport(
 
 /** Compact, human-readable schema shown inside the Import modal. */
 export const FORMAT_HINT = `{
-  "title": "Goal name",                 // required
+  "title": "Project name",              // required
   "start": "YYYY-MM-DD",                // optional → today
   "deadline": "YYYY-MM-DD",             // optional → end of year
-  "priority": "highest|high|medium|later", // optional → highest
+  "priority": "now|next|later|someday", // optional → now
   "notes": "context…",                  // optional
   "subgoals": [
     "a step",                            // string = one step
@@ -203,14 +215,14 @@ export const FORMAT_HINT = `{
 
 /** The full instruction block copied to the clipboard for pasting into any AI. */
 export function buildAiPrompt(today: string): string {
-  return `You are helping me plan a goal for my goal-tracking app.
+  return `You are helping me plan a project for my goal-tracking app.
 Output ONLY valid JSON — no prose, no markdown code fences — matching this exact format:
 
 {
-  "title": "string (required) — the goal name",
+  "title": "string (required) — the project name",
   "start": "YYYY-MM-DD (optional, defaults to today)",
   "deadline": "YYYY-MM-DD (optional, defaults to end of the year)",
-  "priority": "highest | high | medium | later (optional, default highest)",
+  "priority": "now | next | later | someday (optional, default now) — the commitment horizon",
   "notes": "string (optional) — strategy, context, links",
   "subgoals": [
     "a plain string is one concrete step",
@@ -223,16 +235,16 @@ Output ONLY valid JSON — no prose, no markdown code fences — matching this e
 }
 
 Rules:
-- Break the goal into 3–7 concrete subgoals; nest a group only when a step needs its own sub-steps.
+- Break the project into 3–7 concrete subgoals; nest a group only when a step needs its own sub-steps.
 - Keep every leaf step small and actionable.
 - Today's date is ${today}. Make all dates realistic relative to today.
-- Output a single goal object, or an array of goal objects if I ask for several goals.
+- Output a single project object, or an array of project objects if I ask for several.
 
 Example:
 {
   "title": "Launch my side project",
   "deadline": "${today.slice(0, 4)}-12-31",
-  "priority": "highest",
+  "priority": "now",
   "subgoals": [
     "Pick one idea",
     { "title": "Build v1", "subgoals": ["Design mockups", "Implement backend"] },
@@ -241,5 +253,5 @@ Example:
 }
 
 Here's what I want to achieve:
-<describe your goal here>`;
+<describe your project here>`;
 }

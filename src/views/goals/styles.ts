@@ -1,3 +1,8 @@
+// Commitment horizons, left → right (column 0 → 3). The order IS the model:
+// a project's column is its horizon; height within a column is rank in-horizon.
+export const HORIZON_LABELS = ['Now', 'Next', 'Later', 'Someday'] as const;
+export const HORIZON_COUNT = HORIZON_LABELS.length;
+
 // Shared field/button styling used by the goal-creation modals.
 export const fieldCls =
   'rounded-field border border-line-2 px-[8px] py-[5px] text-[.8rem] text-ink bg-transparent outline-none focus-visible:border-accent';

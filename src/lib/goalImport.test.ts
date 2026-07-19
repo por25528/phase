@@ -43,15 +43,24 @@ describe('sanitizeBackupGoal', () => {
 // ---- priorityToColumn / columnToPriority ----
 
 describe('priorityToColumn', () => {
-  it('maps the four words to columns 0–3', () => {
+  it('maps the horizon words to columns 0–3', () => {
+    expect(priorityToColumn('now')).toBe(0);
+    expect(priorityToColumn('next')).toBe(1);
+    expect(priorityToColumn('later')).toBe(2);
+    expect(priorityToColumn('someday')).toBe(3);
+  });
+
+  it('still accepts the legacy priority words', () => {
     expect(priorityToColumn('highest')).toBe(0);
     expect(priorityToColumn('high')).toBe(1);
     expect(priorityToColumn('medium')).toBe(2);
-    expect(priorityToColumn('later')).toBe(3);
+    // 'later' is shared — the horizon meaning (column 2) wins so fresh exports round-trip.
+    expect(priorityToColumn('later')).toBe(2);
   });
 
   it('is case/whitespace insensitive', () => {
     expect(priorityToColumn('  HIGH ')).toBe(1);
+    expect(priorityToColumn(' Someday ')).toBe(3);
   });
 
   it('defaults unknown / non-string to 0', () => {
@@ -61,10 +70,11 @@ describe('priorityToColumn', () => {
   });
 
   it('columnToPriority is the inverse and clamps', () => {
-    expect(columnToPriority(0)).toBe('highest');
-    expect(columnToPriority(3)).toBe('later');
-    expect(columnToPriority(99)).toBe('later');
-    expect(columnToPriority(undefined)).toBe('highest');
+    expect(columnToPriority(0)).toBe('now');
+    expect(columnToPriority(2)).toBe('later');
+    expect(columnToPriority(3)).toBe('someday');
+    expect(columnToPriority(99)).toBe('someday');
+    expect(columnToPriority(undefined)).toBe('now');
   });
 });
 

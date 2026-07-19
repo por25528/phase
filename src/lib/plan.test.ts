@@ -5,6 +5,7 @@ import {
   weekRecap, pinnedDayCounts, planOpeningStep, PACE_THRESHOLD_PTS,
   projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
   DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
+  nearestMeaningfulDate, nextOpenAction, attentionBadge, cardPrimaryAction,
 } from './plan';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
@@ -403,5 +404,123 @@ describe('pinnedDayCounts', () => {
       { id: 'c', title: 'C', done: true, plannedWeek: WEEK, plannedDay: TODAY },
     ]});
     expect(pinnedDayCounts([g]).get(TODAY)).toBe(2);
+  });
+});
+
+// ── Card derivations ──────────────────────────────────────────────────────────
+
+describe('nearestMeaningfulDate', () => {
+  it('leads with the soonest upcoming milestone before the deadline', () => {
+    const g = goal({ deadline: '2026-12-31', milestones: [
+      { id: 'm1', title: 'Late', date: '2026-10-01' },
+      { id: 'm2', title: 'Soon', date: '2026-08-01' },
+    ]});
+    expect(nearestMeaningfulDate(g, TODAY)).toEqual({ date: '2026-08-01', kind: 'milestone', past: false });
+  });
+
+  it('ignores milestones that are past or at/after the deadline', () => {
+    const g = goal({ deadline: '2026-08-01', milestones: [
+      { id: 'm1', title: 'Past', date: '2026-06-01' },
+      { id: 'm2', title: 'After deadline', date: '2026-09-01' },
+    ]});
+    expect(nearestMeaningfulDate(g, TODAY)).toEqual({ date: '2026-08-01', kind: 'deadline', past: false });
+  });
+
+  it('falls back to the deadline and flags it past when overdue', () => {
+    expect(nearestMeaningfulDate(goal({ deadline: '2026-12-31' }), TODAY))
+      .toEqual({ date: '2026-12-31', kind: 'deadline', past: false });
+    expect(nearestMeaningfulDate(goal({ deadline: '2026-07-01' }), TODAY))
+      .toEqual({ date: '2026-07-01', kind: 'deadline', past: true });
+  });
+});
+
+describe('nextOpenAction', () => {
+  it('prompts a breakdown when there are no leaves', () => {
+    expect(nextOpenAction(goal({ nodes: [] }), TODAY))
+      .toEqual({ kind: 'needs-breakdown', title: 'No steps yet — break the project into actions' });
+  });
+
+  it('reports completion when every leaf is done', () => {
+    const g = goal({ nodes: [{ id: 'a', title: 'A', done: true }] });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'complete', title: 'All steps complete' });
+  });
+
+  it('prefers a leaf planned for this week over the first open leaf', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false },
+      { id: 'b', title: 'B', done: false, plannedWeek: WEEK },
+    ]});
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'planned', title: 'B' });
+  });
+
+  it('falls back to the first open leaf when nothing is planned this week', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true },
+      { id: 'b', title: 'B', done: false },
+      { id: 'c', title: 'C', done: false },
+    ]});
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'B' });
+  });
+});
+
+describe('attentionBadge', () => {
+  const twoLeaves = (planned = false) => [
+    { id: 'a', title: 'A', done: true },
+    { id: 'b', title: 'B', done: false, ...(planned ? { plannedWeek: WEEK } : {}) },
+  ];
+
+  it('renders a warn "Behind N%" badge', () => {
+    const b = attentionBadge(goal({ column: 0, nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY);
+    expect(b?.tone).toBe('warn');
+    expect(b?.label).toMatch(/^Behind \d+%$/);
+  });
+
+  it('renders the not-planned badge for an unplanned Now project on pace', () => {
+    const g = goal({ column: 0, nodes: twoLeaves() });
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Not planned this week', tone: 'plan' });
+  });
+
+  it('renders the needs-a-first-step badge', () => {
+    expect(attentionBadge(goal({ column: 0, nodes: [] }), TODAY))
+      .toEqual({ label: 'Needs a first step', tone: 'step' });
+  });
+
+  it('renders the ready-to-complete badge', () => {
+    const g = goal({ column: 0, nodes: [{ id: 'a', title: 'A', done: true }] });
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Ready to complete', tone: 'accent' });
+  });
+
+  it('renders the overdue badge (warn-strong)', () => {
+    const g = goal({ column: 0, deadline: '2026-07-01', nodes: [{ id: 'a', title: 'A', done: false }] });
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Overdue', tone: 'warn-strong' });
+  });
+
+  it('renders a "Milestone in Nd" badge', () => {
+    const g = goal({ column: 1, deadline: '2026-12-31', nodes: twoLeaves(),
+      milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] });
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Milestone in 5d', tone: 'warn' });
+  });
+
+  it('renders a "Due in Nd" badge', () => {
+    const g = goal({ column: 0, start: '2026-07-01', deadline: '2026-07-25', nodes: twoLeaves() });
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Due in 10d', tone: 'warn' });
+  });
+
+  it('shows no badge for an on-track (gated) project', () => {
+    const g = goal({ column: 2, nodes: [{ id: 'a', title: 'A', done: false }] });
+    expect(attentionBadge(g, TODAY)).toBeNull();
+  });
+});
+
+describe('cardPrimaryAction', () => {
+  it('maps the verdict to a verb', () => {
+    expect(cardPrimaryAction(goal({ column: 0, nodes: [] }), TODAY)).toBe('define');
+    expect(cardPrimaryAction(goal({ column: 0, nodes: [{ id: 'a', title: 'A', done: true }] }), TODAY)).toBe('complete');
+    expect(cardPrimaryAction(goal({ column: 0, nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY)).toBe('plan');
+  });
+
+  it('gives Someday projects no plan nag, and completed projects none', () => {
+    expect(cardPrimaryAction(goal({ column: 3, nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY)).toBe('none');
+    expect(cardPrimaryAction(goal({ column: 0, completedAt: '2026-07-01', nodes: [] }), TODAY)).toBe('none');
   });
 });

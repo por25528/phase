@@ -342,7 +342,7 @@ export const actions = {
 
   removeGoal(goalId: string) {
     const goal = state.goals.find((g) => g.id === goalId);
-    const title = goal?.title ?? 'goal';
+    const title = goal?.title ?? 'project';
     const goals = state.goals.filter((g) => g.id !== goalId);
     withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
   },
