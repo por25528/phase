@@ -8,6 +8,7 @@ import { clampScale } from '../lib/timeline';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import { weekOf, plannedLeaves } from '../lib/plan';
+import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import {
   type Theme,
@@ -171,6 +172,22 @@ function withUndo<K extends keyof AppState>(label: string, key: K, next: AppStat
   setAndPersist({ [key]: next } as Partial<AppState>);
 }
 
+// The four commitment horizons (Now / Next / Later / Someday).
+const HORIZON_COUNT = 4;
+
+// A completed project is frozen for structural edits (spec §2.5). These guards
+// are the single store-level gate, so Today, the planner, and a stale drawer all
+// refuse the same set; metadata and horizon moves stay allowed.
+function goalOfNode(nodeId: string): Goal | undefined {
+  return state.goals.find((g) => findNode(g.nodes, nodeId) != null);
+}
+function isActiveGoal(goalId: string): boolean {
+  return !state.goals.find((g) => g.id === goalId)?.completedAt;
+}
+function isActiveNode(nodeId: string): boolean {
+  return !goalOfNode(nodeId)?.completedAt;
+}
+
 // Snapshot the outgoing week's commitments exactly once per rollover. Entries
 // are immutable after creation; a week with no commitments needs no review.
 function ensureWeekRollover(): void {
@@ -188,6 +205,7 @@ function ensureWeekRollover(): void {
 export const actions = {
   // Goals / nodes
   toggleLeaf(nodeId: string) {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node) return;
@@ -209,6 +227,7 @@ export const actions = {
   },
 
   addChild(nodeId: string, title = 'New item') {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = state.goals.map((g) => ({ ...g, nodes: [...g.nodes] }));
     const node = findInAll(goals, nodeId);
     if (!node) return;
@@ -223,6 +242,7 @@ export const actions = {
   },
 
   addRootNode(goalId: string, title: string) {
+    if (!isActiveGoal(goalId)) return; // frozen on a completed project
     const goals = state.goals.map((g) =>
       g.id === goalId
         ? { ...g, nodes: [...g.nodes, { id: uid(), title, done: false }] }
@@ -239,6 +259,7 @@ export const actions = {
   },
 
   removeNode(nodeId: string) {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const node = findInAll(state.goals, nodeId);
     const title = node?.title ?? 'item';
     const goals = state.goals.map((g) => {
@@ -270,10 +291,14 @@ export const actions = {
   // list of goal ids in column c (0 = leftmost/highest). Rebuilds the goals
   // array in column-major order and stamps each goal's `column`.
   setGoalBoard(columns: string[][]) {
+    // Weave completed projects (hidden from the board, so absent from `columns`)
+    // back into their column at the position they held, before the rebuild — so a
+    // drag never appends them to the end and loses their place (spec §2.5).
+    const woven = weaveCompleted(state.goals, columns);
     const byId = new Map(state.goals.map((g) => [g.id, g]));
     const seen = new Set<string>();
     const goals: Goal[] = [];
-    columns.forEach((ids, col) => {
+    woven.forEach((ids, col) => {
       ids.forEach((id) => {
         const g = byId.get(id);
         if (g && !seen.has(id)) {
@@ -287,6 +312,22 @@ export const actions = {
       if (!seen.has(g.id)) goals.push({ ...g, column: g.column ?? 0 });
     }
     setAndPersist({ goals });
+  },
+
+  // Accessible equivalent of dragging a card between horizons: move one project
+  // to `column`, appended after that column's active projects. setGoalBoard weaves
+  // completed projects back into place, so unrelated order stays put.
+  moveGoalToColumn(goalId: string, column: number): void {
+    if (!state.goals.some((g) => g.id === goalId)) return;
+    const target = Math.min(Math.max(column, 0), HORIZON_COUNT - 1);
+    const cols: string[][] = Array.from({ length: HORIZON_COUNT }, () => []);
+    for (const g of state.goals) {
+      if (g.completedAt || g.id === goalId) continue;
+      const c = Math.min(Math.max(g.column ?? 0, 0), HORIZON_COUNT - 1);
+      cols[c].push(g.id);
+    }
+    cols[target].push(goalId);
+    actions.setGoalBoard(cols);
   },
 
   renameGoal(goalId: string, title: string) {
@@ -304,6 +345,28 @@ export const actions = {
     const title = goal?.title ?? 'goal';
     const goals = state.goals.filter((g) => g.id !== goalId);
     withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
+  },
+
+  // Completion lifecycle — explicit and reversible (spec §2.5). Completing removes
+  // the project from the active board, so it is undo-aware; reopen is its exact
+  // inverse and needs no undo. Both preserve the project's horizon and position.
+  completeGoal(goalId: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    if (!goal || goal.completedAt) return;
+    const goals = state.goals.map((g) => (g.id === goalId ? { ...g, completedAt: todayStr() } : g));
+    withUndo(`Completed "${goal.title}" · Undo`, 'goals', goals);
+  },
+
+  reopenGoal(goalId: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    if (!goal || !goal.completedAt) return;
+    const goals = state.goals.map((g) => {
+      if (g.id !== goalId) return g;
+      const copy = { ...g };
+      delete copy.completedAt;
+      return copy;
+    });
+    setAndPersist({ goals });
   },
 
   // Habits
@@ -339,6 +402,7 @@ export const actions = {
 
   // Structural reorder / indent / outdent
   indentNode(nodeId: string): void {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = treeIndentNode(state.goals, nodeId);
     const nodePath = findNodePath(goals, nodeId);
     const expanded = new Set(state.expanded);
@@ -349,6 +413,7 @@ export const actions = {
   },
 
   outdentNode(nodeId: string): void {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const oldPath = findNodePath(state.goals, nodeId);
     const goals = treeOutdentNode(state.goals, nodeId);
     const expanded = new Set(state.expanded);
@@ -363,6 +428,7 @@ export const actions = {
   },
 
   reorderSiblingNodes(activeId: string, overId: string): void {
+    if (!isActiveNode(activeId)) return; // frozen on a completed project
     const goals = reorderSiblings(state.goals, activeId, overId);
     setAndPersist({ goals });
   },
@@ -430,6 +496,7 @@ export const actions = {
   // A provided day derives the week (they can never disagree); containers
   // and unknown ids are no-ops.
   planNode(goalId: string, nodeId: string, week: string, day?: string): void {
+    if (!isActiveGoal(goalId)) return; // frozen on a completed project
     const goals = cloneGoals(state.goals);
     const goal = goals.find((g) => g.id === goalId);
     if (!goal) return;
@@ -442,6 +509,7 @@ export const actions = {
   },
 
   unplanNode(goalId: string, nodeId: string): void {
+    if (!isActiveGoal(goalId)) return; // frozen on a completed project
     const goal = state.goals.find((g) => g.id === goalId);
     const node = goal ? findNode(goal.nodes, nodeId) : null;
     if (!goal || !node || !node.plannedWeek) return;

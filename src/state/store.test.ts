@@ -580,4 +580,71 @@ describe('store actions', () => {
       }, 13, planReview);
     });
   });
+
+  describe('completion lifecycle', () => {
+    it('completeGoal sets completedAt and is undo-aware; reopen is its inverse', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('A', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.completeGoal(gid);
+      expect(getState().goals[0].completedAt).toBeTruthy();
+      actions.undoLastDelete();
+      expect(getState().goals[0].completedAt).toBeUndefined();
+      actions.completeGoal(gid);
+      actions.reopenGoal(gid);
+      expect(getState().goals[0].completedAt).toBeUndefined();
+    });
+
+    it('preserves horizon and position across complete → reorder actives → reopen', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('A', '2026-12-31');
+      actions.addGoal('B', '2026-12-31');
+      actions.addGoal('C', '2026-12-31');
+      const [a, b, c] = getState().goals;
+      actions.completeGoal(b.id);
+      // Board shows actives [A, C]; user reorders to [C, A].
+      actions.setGoalBoard([[c.id, a.id], [], [], []]);
+      // Completed B stays woven at its within-column index, not appended to the end.
+      expect(getState().goals.map((g) => g.id)).toEqual([c.id, b.id, a.id]);
+      actions.reopenGoal(b.id);
+      expect(getState().goals.map((g) => g.id)).toEqual([c.id, b.id, a.id]);
+      expect(getState().goals.every((g) => (g.column ?? 0) === 0)).toBe(true);
+    });
+
+    it('freezes structural edits on a completed project but allows metadata and moves', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('A', '2026-12-31');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'Step');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.completeGoal(gid);
+
+      // Frozen: nothing that changes progress or actionable structure.
+      actions.toggleLeaf(nid);
+      expect(getState().goals[0].nodes[0].done).toBe(false);
+      actions.addRootNode(gid, 'Another');
+      expect(getState().goals[0].nodes).toHaveLength(1);
+      actions.planNode(gid, nid, '2026-07-13');
+      expect(getState().goals[0].nodes[0].plannedWeek).toBeUndefined();
+      actions.removeNode(nid);
+      expect(getState().goals[0].nodes).toHaveLength(1);
+
+      // Allowed: metadata + horizon move.
+      actions.renameGoal(gid, 'Renamed');
+      expect(getState().goals[0].title).toBe('Renamed');
+      actions.moveGoalToColumn(gid, 2);
+      expect(getState().goals.find((g) => g.id === gid)?.column).toBe(2);
+    });
+
+    it('moveGoalToColumn matches drag order and leaves others in place', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('A', '2026-12-31');
+      actions.addGoal('B', '2026-12-31');
+      actions.addGoal('C', '2026-12-31');
+      const [a, b, c] = getState().goals;
+      actions.moveGoalToColumn(b.id, 2);
+      expect(getState().goals.map((g) => g.id)).toEqual([a.id, c.id, b.id]);
+      expect(getState().goals.map((g) => g.column)).toEqual([0, 0, 2]);
+    });
+  });
 });
