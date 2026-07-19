@@ -3,6 +3,8 @@ import type { Goal, PlanReview } from '../db/types';
 import {
   weekOf, plannedLeaves, nextUp, carryOvers, paceStatus, attentionRank,
   weekRecap, pinnedDayCounts, planOpeningStep, PACE_THRESHOLD_PTS,
+  projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
+  DUE_SOON_DAYS, MILESTONE_SOON_DAYS,
 } from './plan';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
@@ -161,6 +163,131 @@ describe('attentionRank', () => {
     // Board order deliberately different from attention order:
     const out = attentionRank([done, dueSoon, behind, overdue], TODAY);
     expect(out.map((g) => g.id)).toEqual(['over', 'beh', 'due']);
+  });
+});
+
+describe('projectAttention', () => {
+  it('completed wins when completedAt is set', () => {
+    const g = goal({ completedAt: '2026-07-10', nodes: [{ id: 'a', title: 'A', done: false }] });
+    expect(projectAttention(g, TODAY)).toBe('completed');
+  });
+
+  it('ready-to-complete when all leaves done but not archived', () => {
+    const g = goal({ nodes: [{ id: 'a', title: 'A', done: true }] });
+    expect(projectAttention(g, TODAY)).toBe('ready-to-complete');
+  });
+
+  it('overdue on a past project deadline', () => {
+    const g = goal({ start: '2026-06-01', deadline: '2026-07-01', nodes: [{ id: 'a', title: 'A', done: false }] });
+    expect(projectAttention(g, TODAY)).toBe('overdue');
+  });
+
+  it('overdue on an incomplete scheduled leaf past its deadline', () => {
+    const g = goal({ nodes: [{ id: 'a', title: 'A', done: false, start: '2026-06-01', deadline: '2026-07-01' }] });
+    expect(projectAttention(g, TODAY)).toBe('overdue');
+  });
+
+  it('needs-breakdown for a Now project with no leaves', () => {
+    expect(projectAttention(goal({ nodes: [] }), TODAY)).toBe('needs-breakdown');
+  });
+
+  it('behind when pace trails and nothing more urgent applies', () => {
+    // Jan–Dec goal, 0% mid-July ⇒ paceStatus behind
+    expect(projectAttention(goal({ nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY)).toBe('behind');
+  });
+
+  it('due-soon when on pace with a deadline inside the window', () => {
+    const g = goal({ start: '2026-07-01', deadline: '2026-07-25', nodes: [
+      { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: false },
+    ]});
+    expect(paceStatus(g, TODAY)).toBe('on-pace'); // guard the fixture's premise
+    expect(projectAttention(g, TODAY)).toBe('due-soon');
+  });
+
+  it('milestone-soon when a near milestone has nothing planned this week', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
+      { id: 'c', title: 'C', done: true }, { id: 'd', title: 'D', done: false },
+    ], milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] });
+    expect(projectAttention(g, TODAY)).toBe('milestone-soon');
+  });
+
+  it('milestone-soon yields once the week has an unfinished planned leaf', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
+      { id: 'c', title: 'C', done: true }, { id: 'd', title: 'D', done: false, plannedWeek: WEEK },
+    ], milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] });
+    expect(projectAttention(g, TODAY)).toBe('on-track');
+  });
+
+  it('not-planned for a Now project with an open, unplanned leaf', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
+      { id: 'c', title: 'C', done: true }, { id: 'd', title: 'D', done: false },
+    ]});
+    expect(projectAttention(g, TODAY)).toBe('not-planned');
+  });
+
+  it('on-track once the open leaf is planned this week', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
+      { id: 'c', title: 'C', done: true }, { id: 'd', title: 'D', done: false, plannedWeek: WEEK },
+    ]});
+    expect(projectAttention(g, TODAY)).toBe('on-track');
+  });
+});
+
+describe('projectAttention — horizon gating', () => {
+  const behindNodes = [{ id: 'a', title: 'A', done: false }] as Goal['nodes']; // Jan–Dec 0% ⇒ behind on Now
+  const readyNodes = [
+    { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
+    { id: 'c', title: 'C', done: true }, { id: 'd', title: 'D', done: false },
+  ] as Goal['nodes'];
+
+  it('suppresses active-work signals on Later and Someday', () => {
+    expect(projectAttention(goal({ column: 0, nodes: behindNodes }), TODAY)).toBe('behind');
+    expect(projectAttention(goal({ column: 1, nodes: behindNodes }), TODAY)).toBe('behind');
+    expect(projectAttention(goal({ column: 2, nodes: behindNodes }), TODAY)).toBe('on-track');
+    expect(projectAttention(goal({ column: 3, nodes: [] }), TODAY)).toBe('on-track'); // needs-breakdown suppressed
+  });
+
+  it('keeps factual/terminal signals on every horizon', () => {
+    const over = goal({ column: 3, start: '2026-06-01', deadline: '2026-07-01', nodes: behindNodes });
+    expect(projectAttention(over, TODAY)).toBe('overdue');
+    const ready = goal({ column: 2, nodes: [{ id: 'a', title: 'A', done: true }] });
+    expect(projectAttention(ready, TODAY)).toBe('ready-to-complete');
+    const archived = goal({ column: 2, completedAt: '2026-07-01', nodes: behindNodes });
+    expect(projectAttention(archived, TODAY)).toBe('completed');
+  });
+
+  it('not-planned is Now-only; Next with an unplanned open leaf is on-track', () => {
+    expect(projectAttention(goal({ column: 0, nodes: readyNodes }), TODAY)).toBe('not-planned');
+    expect(projectAttention(goal({ column: 1, nodes: readyNodes }), TODAY)).toBe('on-track');
+  });
+});
+
+describe('shared predicates', () => {
+  it('deadlineBefore is a strict past comparison', () => {
+    expect(deadlineBefore('2026-07-14', TODAY)).toBe(true);
+    expect(deadlineBefore('2026-07-15', TODAY)).toBe(false);
+  });
+
+  it('milestoneWithin is inclusive of the window edge', () => {
+    const g = goal({ milestones: [{ id: 'm', title: 'M', date: '2026-07-29' }] }); // exactly +14
+    expect(milestoneWithin(g, 14, TODAY)).toBe(true);
+    expect(milestoneWithin(g, 13, TODAY)).toBe(false);
+    expect(milestoneWithin(goal({}), 14, TODAY)).toBe(false);
+  });
+
+  it('hasUnplannedOpenLeafThisWeek needs an open, unplanned leaf', () => {
+    expect(hasUnplannedOpenLeafThisWeek(goal({ nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY)).toBe(true);
+    expect(hasUnplannedOpenLeafThisWeek(goal({ nodes: [{ id: 'a', title: 'A', done: false, plannedWeek: WEEK }] }), TODAY)).toBe(false);
+    expect(hasUnplannedOpenLeafThisWeek(goal({ nodes: [{ id: 'a', title: 'A', done: true }] }), TODAY)).toBe(false);
+  });
+
+  it('DUE_SOON_DAYS and MILESTONE_SOON_DAYS are 14', () => {
+    expect(DUE_SOON_DAYS).toBe(14);
+    expect(MILESTONE_SOON_DAYS).toBe(14);
   });
 });
 

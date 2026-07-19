@@ -143,24 +143,98 @@ export function paceStatus(g: Goal, today: string): PaceState {
   return 'on-pace';
 }
 
-// Planner sort: overdue scheduled leaves → behind pace → due within 14 days →
-// board priority (the goals array is already column-major). Complete goals are
-// dropped — nothing to plan.
+// ── Shared date predicates ────────────────────────────────────────────────────
+// One source of truth for the thresholds the board and the Timeline roadmap both
+// lean on, so a card badge and a roadmap warning can never drift apart.
+export const DUE_SOON_DAYS = 14;
+export const MILESTONE_SOON_DAYS = 14; // separate constant, same value — tunable apart
+
+export function deadlineBefore(date: string, today: string): boolean {
+  return date < today;
+}
+
+// A milestone falls within today..today+days, inclusive.
+export function milestoneWithin(g: Goal, days: number, today: string): boolean {
+  const end = addDays(today, days);
+  return (g.milestones ?? []).some((m) => m.date >= today && m.date <= end);
+}
+
+function hasOpenLeaf(g: Goal): boolean {
+  let open = false;
+  walkLeaves(g, (n) => { if (!n.done) open = true; });
+  return open;
+}
+
+function hasPlannedOpenLeafThisWeek(g: Goal, today: string): boolean {
+  const week = weekOf(today);
+  let planned = false;
+  walkLeaves(g, (n) => { if (!n.done && n.plannedWeek === week) planned = true; });
+  return planned;
+}
+
+function hasOverdueLeaf(g: Goal, today: string): boolean {
+  let overdue = false;
+  walkLeaves(g, (n) => { if (!n.done && n.deadline && deadlineBefore(n.deadline, today)) overdue = true; });
+  return overdue;
+}
+
+// An open leaf exists, but nothing unfinished is planned for this week — the
+// shared condition behind `not-planned` and (given open leaves) `milestone-soon`.
+export function hasUnplannedOpenLeafThisWeek(g: Goal, today: string): boolean {
+  return hasOpenLeaf(g) && !hasPlannedOpenLeafThisWeek(g, today);
+}
+
+// ── Project attention ─────────────────────────────────────────────────────────
+// The single project-level authority (spec §2.4), layered over paceStatus.
+export type ProjectAttention =
+  | 'completed'
+  | 'ready-to-complete'
+  | 'overdue'
+  | 'needs-breakdown'
+  | 'behind'
+  | 'due-soon'
+  | 'milestone-soon'
+  | 'not-planned'
+  | 'on-track';
+
+// States 3–7 (precedence order). `not-planned` is Now-only; the others apply to
+// any committed horizon — the caller has already screened out Later/Someday.
+function activeWorkState(g: Goal, today: string, pace: PaceState, col: number): ProjectAttention {
+  if (pace === 'needs-breakdown') return 'needs-breakdown';
+  if (pace === 'behind') return 'behind';
+  if (g.deadline <= addDays(today, DUE_SOON_DAYS)) return 'due-soon';
+  if (milestoneWithin(g, MILESTONE_SOON_DAYS, today) && !hasPlannedOpenLeafThisWeek(g, today)) return 'milestone-soon';
+  if (col === 0 && hasUnplannedOpenLeafThisWeek(g, today)) return 'not-planned';
+  return 'on-track';
+}
+
+export function projectAttention(g: Goal, today: string): ProjectAttention {
+  if (g.completedAt) return 'completed';
+  const pace = paceStatus(g, today);
+  if (pace === 'complete') return 'ready-to-complete';
+  if (deadlineBefore(g.deadline, today) || hasOverdueLeaf(g, today)) return 'overdue';
+  // Horizon gating: active-work signals surface only on Now (0) and Next (1);
+  // Later/Someday stay quiet.
+  const col = g.column ?? 0;
+  if (col > 1) return 'on-track';
+  return activeWorkState(g, today, pace, col);
+}
+
+// Planner sort: projects ordered by projectAttention precedence (the single
+// authority), board order breaking ties. Completed and ready-to-complete
+// projects are dropped — nothing to plan.
+const ATTENTION_ORDER: ProjectAttention[] = [
+  'overdue', 'needs-breakdown', 'behind', 'due-soon', 'milestone-soon', 'not-planned', 'on-track',
+];
+const ATTENTION_RANK = Object.fromEntries(
+  ATTENTION_ORDER.map((s, i) => [s, i]),
+) as Record<ProjectAttention, number>;
+
 export function attentionRank(goals: Goal[], today: string): Goal[] {
-  function score(g: Goal): number {
-    let overdue = false;
-    walkLeaves(g, (n) => {
-      if (!n.done && n.deadline && n.deadline < today) overdue = true;
-    });
-    if (overdue) return 0;
-    if (paceStatus(g, today) === 'behind') return 1;
-    if (g.deadline >= today && g.deadline <= addDays(today, 14)) return 2;
-    return 3;
-  }
   return goals
-    .filter((g) => paceStatus(g, today) !== 'complete')
-    .map((g, i) => ({ g, s: score(g), i }))
-    .sort((a, b) => a.s - b.s || a.i - b.i)
+    .map((g, i) => ({ g, a: projectAttention(g, today), i }))
+    .filter((x) => x.a !== 'completed' && x.a !== 'ready-to-complete')
+    .sort((a, b) => (ATTENTION_RANK[a.a] - ATTENTION_RANK[b.a]) || (a.i - b.i))
     .map((x) => x.g);
 }
 
