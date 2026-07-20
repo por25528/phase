@@ -7,9 +7,24 @@ import { InlineEdit } from './InlineEdit';
 import { SubtaskAiModal } from './SubtaskAiModal';
 import { firstOpenLeaf } from '../lib/tree';
 import { goalPct } from '../lib/pct';
+import { leafCount } from '../lib/board';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel, fmtD } from '../lib/dates';
 import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
+
+// Shared uppercase section label — Steps / Milestones / Notes all use it so the
+// two columns read as one system.
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[.7rem] font-[550] uppercase tracking-[0.08em] text-muted mb-[9px]">
+      {children}
+    </div>
+  );
+}
+
+function Dot() {
+  return <span className="text-faint-2" aria-hidden="true">·</span>;
+}
 
 function MilestonesSection({
   goal: g,
@@ -35,10 +50,8 @@ function MilestonesSection({
   }
 
   return (
-    <div className="mt-[22px]">
-      <div className="text-[.72rem] font-[550] uppercase tracking-[0.07em] text-muted mb-[8px]">
-        Milestones
-      </div>
+    <div>
+      <SectionLabel>Milestones</SectionLabel>
 
       {sorted.length === 0 && (
         <div className="text-[.78rem] text-faint mb-[6px] px-[2px]">No milestones yet — add one below.</div>
@@ -114,18 +127,17 @@ function MilestonesSection({
   );
 }
 
-function DrawerBody({
+// ── Header ────────────────────────────────────────────────────────────────────
+// Title, dates, and the progress strip — the always-visible summary that anchors
+// the window while the body below scrolls.
+function DrawerHeader({
   goal: g,
   actions,
-  focusNodeId,
 }: {
   goal: Goal;
   actions: ReturnType<typeof useAppStore>['actions'];
-  focusNodeId?: string | null;
 }) {
-  const addRootRef = useRef<HTMLInputElement>(null);
   const [editingTitle, setEditingTitle] = useState(false);
-  const [subtaskOpen, setSubtaskOpen] = useState(false);
   const today = todayStr();
   const pct = Math.round(goalPct(g));
   const expected = Math.round(expectedPct(g.start, g.deadline, today));
@@ -135,64 +147,65 @@ function DrawerBody({
   const wkDone = wk.filter((l) => l.done).length;
   const next = firstOpenLeaf(g.nodes);
   const isCompleted = !!g.completedAt;
+
+  const paceLine =
+    pace === 'behind'
+      ? `${behind} pts behind pace · expected ${expected}% by today`
+      : pace === 'needs-breakdown'
+        ? `define next step · expected ${expected}% by today`
+        : pace === 'complete'
+          ? 'every step done — ready to complete'
+          : `on pace · expected ${expected}% by today`;
+
   return (
-    <>
-      <div className="mb-[4px]">
+    <div className="flex-none px-[30px] pt-[26px] pb-[18px] border-b border-line">
+      {/* Title + dates (right padding leaves room for the ✕) */}
+      <div className="pr-[40px]">
         {editingTitle ? (
           <InlineEdit
             value={g.title}
-            className="font-disp text-[1.3rem] font-semibold tracking-[-0.01em]"
+            className="font-disp text-[1.4rem] font-semibold tracking-[-0.01em]"
             onCommit={(v) => { actions.renameGoal(g.id, v); setEditingTitle(false); }}
             onCancel={() => setEditingTitle(false)}
           />
         ) : (
           <div
-            className="font-disp text-[1.3rem] font-semibold tracking-[-0.01em] cursor-default"
+            className="font-disp text-[1.4rem] font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit"
             onClick={() => setEditingTitle(true)}
+            title="Click to rename"
           >
             {g.title}
           </div>
         )}
+        <div className="flex items-center gap-[6px] mt-[9px]">
+          <input type="date" value={g.start} aria-label="Start date"
+            onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, e.target.value, g.deadline); }}
+            className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
+          <span className="text-[.78rem] text-muted">→</span>
+          <input type="date" value={g.deadline} aria-label="Deadline"
+            onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, g.start, e.target.value); }}
+            className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
+          <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
+        </div>
       </div>
-      <div className="flex items-center gap-[6px] mt-[4px] mb-[14px]">
-        <input type="date" value={g.start} aria-label="Start date"
-          onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, e.target.value, g.deadline); }}
-          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
-        <span className="text-[.78rem] text-muted">→</span>
-        <input type="date" value={g.deadline} aria-label="Deadline"
-          onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, g.start, e.target.value); }}
-          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
-        <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
-      </div>
-      <div className="flex items-center gap-[11px]">
-        <span className="font-disp text-[1.05rem] font-semibold tabular-nums min-w-[46px]">{pct}%</span>
+
+      {/* Progress */}
+      <div className="mt-[16px] flex items-center gap-[11px]">
+        <span className="font-disp text-[1.15rem] font-semibold tabular-nums min-w-[50px]">{pct}%</span>
         <ProgressBar pct={pct} />
       </div>
-      <div className="text-[.74rem] text-muted mt-[6px] tabular-nums">
-        {pace === 'behind'
-          ? `${behind} pts behind pace · expected ${expected}% by today`
-          : pace === 'needs-breakdown'
-            ? `define next step · expected ${expected}% by today`
-            : pace === 'complete'
-              ? 'complete'
-              : `on pace · expected ${expected}% by today`}
+      <div className="mt-[7px] flex flex-wrap items-center gap-x-[10px] gap-y-[3px] text-[.75rem] text-muted tabular-nums">
+        <span className={pace === 'behind' ? 'text-warn' : ''}>{paceLine}</span>
+        {wk.length > 0 && (<><Dot /><span>{wkDone}/{wk.length} planned this week</span></>)}
+        {next && !isCompleted && (
+          <><Dot /><span className="truncate max-w-[320px] text-ink-soft">Next: {next.title}</span></>
+        )}
       </div>
-      {wk.length > 0 && (
-        <div className="text-[.74rem] text-muted mt-[2px] tabular-nums">
-          {wkDone}/{wk.length} planned this week
-        </div>
-      )}
-      {next && !isCompleted && (
-        <div className="text-[.76rem] text-muted truncate mt-[2px]">
-          Next: <span className="text-ink-soft">{next.title}</span>
-        </div>
-      )}
 
       {/* Completion lifecycle (spec §2.5). A completed project is frozen for
-          structural edits (the store guards enforce it); metadata below stays
-          editable. Complete is offered once every step is done. */}
+          structural edits (store guards enforce it); metadata stays editable. */}
       {isCompleted ? (
-        <div className="flex items-center gap-[10px] mt-[14px] px-[11px] py-[9px] rounded-card border border-line bg-hover">
+        <div className="flex items-center gap-[10px] mt-[16px] px-[11px] py-[9px] rounded-card border border-line bg-hover">
           <span className="text-accent text-[.9rem]" aria-hidden="true">✓</span>
           <span className="text-[.8rem] text-ink-soft flex-1">Completed {fmtD(g.completedAt!)}</span>
           <button
@@ -205,21 +218,59 @@ function DrawerBody({
       ) : pace === 'complete' ? (
         <button
           onClick={() => actions.completeGoal(g.id)}
-          className="mt-[14px] w-full text-[.82rem] font-semibold text-accent-contrast bg-accent px-[13px] py-[8px] rounded-field hover:bg-accent-deep"
+          className="mt-[16px] text-[.82rem] font-semibold text-accent-contrast bg-accent px-[15px] py-[8px] rounded-field hover:bg-accent-deep"
         >
           Complete project
         </button>
       ) : null}
+    </div>
+  );
+}
 
-      <div className={`mt-[14px] ${isCompleted ? 'opacity-70 pointer-events-none' : ''}`} aria-disabled={isCompleted}>
+// ── Steps column (the working area) ───────────────────────────────────────────
+function StepsSection({
+  goal: g,
+  actions,
+  focusNodeId,
+}: {
+  goal: Goal;
+  actions: ReturnType<typeof useAppStore>['actions'];
+  focusNodeId?: string | null;
+}) {
+  const addRootRef = useRef<HTMLInputElement>(null);
+  const [subtaskOpen, setSubtaskOpen] = useState(false);
+  const isCompleted = !!g.completedAt;
+  const hasSteps = g.nodes.length > 0;
+  const { total, done } = leafCount(g.nodes);
+
+  return (
+    <section>
+      <div className="flex items-baseline justify-between mb-[9px]">
+        <div className="text-[.7rem] font-[550] uppercase tracking-[0.08em] text-muted">Steps</div>
+        {total > 0 && (
+          <span className="font-mono text-[.68rem] text-faint tabular-nums">{done}/{total} done</span>
+        )}
+      </div>
+
+      {!hasSteps && (
+        <div className="rounded-card border border-dashed border-line-2 px-[14px] py-[16px] text-center mb-[8px]">
+          <div className="text-[.82rem] text-ink-soft">No steps yet</div>
+          <div className="text-[.74rem] text-muted mt-[3px] leading-[1.5]">
+            Break this project into the actions that move it forward.
+          </div>
+        </div>
+      )}
+
+      <div className={isCompleted ? 'opacity-70 pointer-events-none' : ''} aria-disabled={isCompleted}>
         <GoalTree nodes={g.nodes} />
       </div>
+
       {!isCompleted && (
-        <div className="px-[6px] py-[2px]">
+        <div className="mt-[4px] px-[6px] py-[2px]">
           <input
             ref={addRootRef}
             className="ghost-in w-full text-[.85rem]"
-            placeholder="+ add sub-goal…"
+            placeholder={hasSteps ? '+ add step…' : '+ add the first step…'}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && addRootRef.current) {
                 const v = addRootRef.current.value.trim();
@@ -233,7 +284,7 @@ function DrawerBody({
           <button
             type="button"
             onClick={() => setSubtaskOpen(true)}
-            className="mt-[6px] text-[.78rem] font-medium text-accent-deep hover:bg-accent-tint px-[7px] py-[4px] rounded-[7px]"
+            className="mt-[8px] text-[.78rem] font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[7px] -ml-[1px]"
           >
             ✦ Break a step into daily tasks with AI
           </button>
@@ -247,23 +298,31 @@ function DrawerBody({
         defaultStepId={focusNodeId}
         actions={actions}
       />
-      <MilestonesSection goal={g} actions={actions} />
+    </section>
+  );
+}
 
-      <div className="mt-[22px]">
-        <div className="text-[.72rem] font-[550] uppercase tracking-[0.07em] text-muted mb-[8px]">
-          Notes
-        </div>
-        <textarea
-          defaultValue={g.notes ?? ''}
-          key={g.id}
-          placeholder="Working notes — strategy, links, blockers…"
-          aria-label="Goal notes"
-          rows={5}
-          onBlur={(e) => { if (e.target.value !== (g.notes ?? '')) actions.setGoalNotes(g.id, e.target.value); }}
-          className="w-full mt-[6px] border border-line-2 rounded-[7px] bg-transparent px-[9px] py-[7px] text-[.85rem] leading-[1.5] text-ink placeholder:text-faint outline-none focus-visible:border-accent resize-y"
-        />
-      </div>
-    </>
+// ── Notes ─────────────────────────────────────────────────────────────────────
+function NotesSection({
+  goal: g,
+  actions,
+}: {
+  goal: Goal;
+  actions: ReturnType<typeof useAppStore>['actions'];
+}) {
+  return (
+    <div>
+      <SectionLabel>Notes</SectionLabel>
+      <textarea
+        defaultValue={g.notes ?? ''}
+        key={g.id}
+        placeholder="Working notes — strategy, links, blockers…"
+        aria-label="Goal notes"
+        rows={6}
+        onBlur={(e) => { if (e.target.value !== (g.notes ?? '')) actions.setGoalNotes(g.id, e.target.value); }}
+        className="w-full border border-line-2 rounded-[7px] bg-transparent px-[9px] py-[7px] text-[.85rem] leading-[1.5] text-ink placeholder:text-faint outline-none focus-visible:border-accent resize-y"
+      />
+    </div>
   );
 }
 
@@ -275,10 +334,40 @@ interface GoalDrawerProps {
 
 export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const open = goal != null;
 
+  // Open behaviour: focus the close button, lock background scroll, and trap Tab
+  // inside the dialog (Escape is handled globally in App → closeDrawer).
   useEffect(() => {
-    if (open) closeBtnRef.current?.focus();
+    if (!open) return;
+    closeBtnRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open]);
 
   // Node focus (Q10 / T8): once the drawer is open and the tree has rendered
@@ -309,33 +398,46 @@ export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
   }, [open, focusNodeId]);
 
   return (
-    <>
-      {/* Drawer scrim */}
+    <div
+      className={`fixed inset-0 z-50 grid place-items-center px-[16px] py-[24px] bg-[rgba(20,20,18,0.28)] transition-opacity duration-[180ms] ${
+        open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}
+      onClick={() => actions.closeDrawer()}
+    >
       <div
-        className={`fixed inset-0 bg-[rgba(20,20,18,0.18)] z-40 transition-opacity duration-[180ms] ${
-          open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={goal ? `${goal.title} — project` : 'Project'}
+        className={`relative w-full max-w-[960px] max-h-[88vh] flex flex-col bg-panel border border-line-2 rounded-card shadow-card transition-[opacity,transform] duration-[200ms] ease-out ${
+          open ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[8px] scale-[.985] pointer-events-none'
         }`}
-        onClick={() => actions.closeDrawer()}
-      />
-
-      {/* Drawer */}
-      <aside
-        className={`fixed top-0 right-0 h-screen w-[420px] max-w-[90vw] bg-panel border-l border-line-2 z-50 overflow-y-auto px-[26px] pt-[28px] pb-[60px] transition-transform duration-[200ms] ease-in-out ${
-          open ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        onClick={(e) => e.stopPropagation()}
       >
         <button
           ref={closeBtnRef}
           aria-label="Close goal drawer"
-          className="absolute top-[18px] right-[20px] text-muted text-[18px] px-[8px] py-[4px] rounded-[6px] hover:bg-hover"
+          className="absolute top-[16px] right-[18px] z-10 text-muted text-[18px] px-[8px] py-[4px] rounded-[6px] hover:bg-hover"
           onClick={() => actions.closeDrawer()}
         >
           ✕
         </button>
-        <div id="drawerBody">
-          {goal && <DrawerBody goal={goal} actions={actions} focusNodeId={focusNodeId} />}
-        </div>
-      </aside>
-    </>
+
+        {goal && (
+          <>
+            <DrawerHeader goal={goal} actions={actions} />
+            <div id="drawerBody" className="flex-1 min-h-0 overflow-y-auto px-[30px] py-[24px]">
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-[30px] md:gap-[34px]">
+                <StepsSection goal={goal} actions={actions} focusNodeId={focusNodeId} />
+                <div className="flex flex-col gap-[26px]">
+                  <MilestonesSection goal={goal} actions={actions} />
+                  <NotesSection goal={goal} actions={actions} />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
