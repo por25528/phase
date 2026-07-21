@@ -243,9 +243,10 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col gap-[14px]">
         <p className="text-[.82rem] text-muted leading-[1.5]">
-          Drag a step from the left onto a day to plan it — or onto{' '}
-          <span className="text-ink-soft font-medium">Any day</span> to commit it to the week without a date. Drag a
-          planned step back to the left to unplan it.
+          Drag a step onto a day to plan it — or onto{' '}
+          <span className="text-ink-soft font-medium">Any day</span> to commit it to the week without a date. Too big
+          for one day? Hit <span className="text-ink-soft font-medium">Break</span> on a step to split it into
+          day-sized tasks. Drag a planned step back to the left to unplan it.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
@@ -288,12 +289,13 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                       </button>
                     ) : (
                       steps.map((n) => (
-                        <RailChip
+                        <RailStep
                           key={n.id}
                           goalId={goal.id}
                           node={n}
                           focus={n.id === focusNodeId}
-                          onClick={() => actions.planNode(goal.id, n.id, week)}
+                          week={week}
+                          actions={actions}
                         />
                       ))
                     )}
@@ -419,30 +421,111 @@ function DayContent({ leaves, onRemove }: { leaves: PlannedLeaf[]; onRemove: (l:
   );
 }
 
-function RailChip({
-  goalId, node, focus, onClick,
+// A rail step: click/drag to plan it, or "Break" to split a too-big step into
+// day-sized child tasks inline. Breaking down runs actions.addChildren, so the
+// step stops being a leaf and its children take its place in the rail (they are
+// the new unplanned open leaves) — no manual refresh, no leaving the overlay.
+function RailStep({
+  goalId, node, focus, week, actions,
 }: {
-  goalId: string; node: GoalNode; focus: boolean; onClick: () => void;
+  goalId: string;
+  node: GoalNode;
+  focus: boolean;
+  week: string;
+  actions: ReturnType<typeof useAppStore>['actions'];
 }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: node.id,
     data: { goalId, nodeId: node.id, title: node.title },
   });
+
+  function close() {
+    setText('');
+    setEditing(false);
+  }
+  function commit() {
+    // addChildren re-trims and drops blanks; count the clean lines for the toast.
+    const lines = text.split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
+    if (lines.length > 0) {
+      actions.addChildren(node.id, lines);
+      actions.showToast(`Added ${lines.length} task${lines.length === 1 ? '' : 's'}`);
+    }
+    close();
+  }
+
   return (
-    <button
+    <div
       ref={setNodeRef}
-      type="button"
-      {...attributes}
-      {...listeners}
-      onClick={onClick}
       data-step={node.id}
-      className={`flex items-center gap-[7px] w-full text-left px-[9px] py-[6px] my-[5px] rounded-[9px] border bg-panel shadow-card text-[.8rem] text-ink-soft cursor-grab hover:shadow-today ${
+      className={`my-[5px] rounded-[9px] border bg-panel shadow-card ${
         focus ? 'border-accent ring-2 ring-accent-tint' : 'border-line-2'
       } ${isDragging ? 'opacity-40' : ''}`}
     >
-      <span className="text-faint text-[.7rem] flex-none">⠿</span>
-      <span className="flex-1 min-w-0 truncate">{node.title}</span>
-    </button>
+      <div className="flex items-center gap-[6px] px-[9px] py-[6px]">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          onClick={() => actions.planNode(goalId, node.id, week)}
+          className="flex items-center gap-[7px] flex-1 min-w-0 text-left text-[.8rem] text-ink-soft cursor-grab hover:text-ink"
+        >
+          <span className="text-faint text-[.7rem] flex-none">⠿</span>
+          <span className="flex-1 min-w-0 truncate">{node.title}</span>
+        </button>
+        <button
+          type="button"
+          aria-label={`Break "${node.title}" into daily tasks`}
+          aria-expanded={editing}
+          onClick={() => (editing ? close() : setEditing(true))}
+          className={`flex-none font-mono text-[.56rem] tracking-[.08em] uppercase px-[5px] py-[3px] rounded-[6px] transition-colors ${
+            editing ? 'text-accent-deep bg-accent-tint' : 'text-faint hover:text-ink hover:bg-hover'
+          }`}
+        >
+          Break
+        </button>
+      </div>
+      {editing && (
+        <div className="px-[9px] pb-[8px] pt-[1px] flex flex-col gap-[6px]">
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                commit();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+              }
+            }}
+            rows={3}
+            placeholder="One task per line…"
+            className="w-full resize-y rounded-field border border-line-2 bg-transparent px-[7px] py-[5px] text-[.76rem] leading-[1.5] text-ink outline-none focus-visible:border-accent"
+          />
+          <div className="flex items-center gap-[8px]">
+            <button
+              type="button"
+              onClick={commit}
+              disabled={!text.trim()}
+              className="text-[.74rem] font-semibold text-paper bg-ink px-[10px] py-[4px] rounded-field hover:bg-ink-hover disabled:opacity-40"
+            >
+              Add tasks
+            </button>
+            <button
+              type="button"
+              onClick={close}
+              className="text-[.74rem] text-muted px-[6px] py-[4px] rounded-field hover:bg-hover"
+            >
+              Cancel
+            </button>
+            <span className="text-[.64rem] text-faint ml-auto tabular-nums">⌘↵ to add</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
