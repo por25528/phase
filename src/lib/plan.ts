@@ -156,6 +156,34 @@ export function unplannedOpenLeaves(g: Goal, week: string): GoalNode[] {
   return out;
 }
 
+export interface RailTreeNode {
+  id: string;
+  title: string;
+  isLeaf: boolean;
+  children: RailTreeNode[];
+}
+
+// The planner rail's display tree for a project: the same open, not-yet-this-week
+// leaves as `unplannedOpenLeaves` (whose flat count powers the section header), but
+// with their container ancestors kept as sub-headings so subgoals show in context.
+// A container with no visible descendant is dropped, so an all-done or fully-planned
+// branch never leaves an empty heading behind.
+export function railTree(g: Goal, week: string): RailTreeNode[] {
+  function build(nodes: GoalNode[]): RailTreeNode[] {
+    const out: RailTreeNode[] = [];
+    for (const n of nodes) {
+      if (n.children && n.children.length) {
+        const children = build(n.children);
+        if (children.length > 0) out.push({ id: n.id, title: n.title, isLeaf: false, children });
+      } else if (!n.done && n.plannedWeek !== week) {
+        out.push({ id: n.id, title: n.title, isLeaf: true, children: [] });
+      }
+    }
+    return out;
+  }
+  return build(g.nodes);
+}
+
 // Unchecked leaves whose plan slipped past its week — the "Needs a decision" list.
 export function carryOvers(goals: Goal[], today: string): PlannedLeaf[] {
   const week = weekOf(today);

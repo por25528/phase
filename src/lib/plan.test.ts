@@ -6,7 +6,7 @@ import {
   projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
   DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
   nearestMeaningfulDate, nextOpenAction, attentionBadge, cardPrimaryAction,
-  unplannedOpenLeaves, groupPlannedByGoal,
+  unplannedOpenLeaves, groupPlannedByGoal, railTree,
 } from './plan';
 import type { PlannedLeaf } from './plan';
 
@@ -552,6 +552,64 @@ describe('unplannedOpenLeaves', () => {
 
   it('is empty for a project with no leaves', () => {
     expect(unplannedOpenLeaves(goal({ nodes: [] }), WEEK)).toEqual([]);
+  });
+});
+
+describe('railTree', () => {
+  it('keeps flat open leaves, dropping done and already-planned ones', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false },
+      { id: 'b', title: 'B', done: true },                        // done → out
+      { id: 'c', title: 'C', done: false, plannedWeek: WEEK },    // this week → out
+      { id: 'd', title: 'D', done: false, plannedWeek: LAST_WEEK }, // carry-over → in
+    ]});
+    const tree = railTree(g, WEEK);
+    expect(tree.map((n) => n.id)).toEqual(['a', 'd']);
+    expect(tree.every((n) => n.isLeaf)).toBe(true);
+  });
+
+  it('keeps containers as sub-headings with their open leaves nested', () => {
+    const g = goal({ nodes: [
+      { id: 'grp', title: 'Subgoal', children: [
+        { id: 'x', title: 'X', done: false },
+        { id: 'y', title: 'Y', done: true },                     // done → out of the group
+      ]},
+      { id: 'z', title: 'Z', done: false },
+    ]});
+    const tree = railTree(g, WEEK);
+    expect(tree.map((n) => n.id)).toEqual(['grp', 'z']);
+    const grp = tree[0];
+    expect(grp.isLeaf).toBe(false);
+    expect(grp.children.map((n) => n.id)).toEqual(['x']);
+  });
+
+  it('drops a container whose descendants are all done or planned', () => {
+    const g = goal({ nodes: [
+      { id: 'grp', title: 'Subgoal', children: [
+        { id: 'x', title: 'X', done: true },
+        { id: 'y', title: 'Y', done: false, plannedWeek: WEEK },
+      ]},
+    ]});
+    expect(railTree(g, WEEK)).toEqual([]);
+  });
+
+  it('nests deeply, preserving structure', () => {
+    const g = goal({ nodes: [
+      { id: 'outer', title: 'Outer', children: [
+        { id: 'inner', title: 'Inner', children: [
+          { id: 'leaf', title: 'Leaf', done: false },
+        ]},
+      ]},
+    ]});
+    const tree = railTree(g, WEEK);
+    expect(tree[0].id).toBe('outer');
+    expect(tree[0].children[0].id).toBe('inner');
+    expect(tree[0].children[0].children[0].id).toBe('leaf');
+    expect(tree[0].children[0].children[0].isLeaf).toBe(true);
+  });
+
+  it('is empty for a project with no leaves', () => {
+    expect(railTree(goal({ nodes: [] }), WEEK)).toEqual([]);
   });
 });
 

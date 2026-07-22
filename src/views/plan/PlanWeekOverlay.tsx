@@ -12,7 +12,6 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { Modal } from '../../components/Modal';
-import { BehindChip } from '../../components/BehindChip';
 import { getState, useAppStore } from '../../state/store';
 import { todayStr, addDays, fmtD, weekDates, parseD } from '../../lib/dates';
 import { goalPct } from '../../lib/pct';
@@ -20,9 +19,9 @@ import { behindPaceBy } from '../../lib/timeline';
 import { firstOpenLeaf } from '../../lib/tree';
 import {
   weekOf, plannedLeaves, attentionRank, paceStatus, weekRecap, planOpeningStep,
-  PACE_THRESHOLD_PTS, unplannedOpenLeaves, groupPlannedByGoal, type PlannedLeaf,
+  PACE_THRESHOLD_PTS, unplannedOpenLeaves, railTree, groupPlannedByGoal,
+  type PlannedLeaf, type RailTreeNode,
 } from '../../lib/plan';
-import type { GoalNode } from '../../db/types';
 
 const SOFT_CAPACITY = 7;
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -179,11 +178,17 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
   const week = weekOf(today);
   const days = weekDates(today); // Mon … Sun (ISO)
 
-  // Rail: unplanned open steps, project-grouped in attention order. A project
-  // with no steps at all (needs-breakdown) prompts a first step instead.
+  // Rail: each active project (attention order) as a collapsible section, its open,
+  // not-yet-planned steps shown as a subgoal tree. `count` (flat leaves) powers the
+  // header; a project with no steps (needs-breakdown) collapses to a first-step prompt.
   const railGroups = attentionRank(goals, today)
-    .map((goal) => ({ goal, steps: unplannedOpenLeaves(goal, week), pace: paceStatus(goal, today) }))
-    .filter((g) => g.steps.length > 0 || g.pace === 'needs-breakdown');
+    .map((goal) => ({
+      goal,
+      tree: railTree(goal, week),
+      count: unplannedOpenLeaves(goal, week).length,
+      pace: paceStatus(goal, today),
+    }))
+    .filter((g) => g.count > 0 || g.pace === 'needs-breakdown');
 
   // Grid: everything committed to the week, bucketed by day (undated → Any day).
   const placed = plannedLeaves(goals, week);
@@ -198,6 +203,16 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
   const focusNodeId = focusGoalId
     ? firstOpenLeaf(goals.find((g) => g.id === focusGoalId)?.nodes ?? [])?.id
     : undefined;
+
+  // Accordion: one project open at a time, so the rail shows one project's steps
+  // instead of every project's at once. Defaults to the focused project, else the
+  // top of attention order; clicking the open header collapses it.
+  const [openId, setOpenId] = useState<string | null>(() =>
+    focusGoalId && railGroups.some((g) => g.goal.id === focusGoalId)
+      ? focusGoalId
+      : railGroups[0]?.goal.id ?? null,
+  );
+  const toggleProject = (id: string) => setOpenId((cur) => (cur === id ? null : id));
 
   const [dragTitle, setDragTitle] = useState<string | null>(null);
   const sensors = useSensors(
@@ -242,17 +257,16 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col gap-[14px]">
-        <p className="text-[.82rem] text-muted leading-[1.5]">
-          Drag a step onto a day to plan it — or onto{' '}
-          <span className="text-ink-soft font-medium">Any day</span> to commit it to the week without a date. Too big
-          for one day? Hit <span className="text-ink-soft font-medium">Break</span> on a step to split it into
-          day-sized tasks. Drag a planned step back to the left to unplan it.
+        <p className="text-[.8rem] text-muted leading-[1.5]">
+          Drag a step onto a day — or <span className="text-ink-soft font-medium">Any day</span> to commit it without a
+          date. Hover a step and hit <span className="text-ink-soft font-medium">Break</span> to split it into
+          day-sized tasks.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
           {/* Rail */}
           <RailZone>
-            <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold mb-[10px]">
+            <h3 className="sticky top-0 z-[1] bg-panel font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold py-[2px] mb-[6px]">
               To plan
             </h3>
             {railGroups.length === 0 ? (
@@ -262,42 +276,57 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                   : 'No projects yet — add one on the Goals board first.'}
               </div>
             ) : (
-              railGroups.map(({ goal, steps, pace }) => {
+              railGroups.map(({ goal, tree, count, pace }) => {
+                const isOpen = openId === goal.id;
                 const pct = Math.round(goalPct(goal));
                 const behind = Math.round(behindPaceBy(pct, goal.start, goal.deadline, today));
+                const isBehind = pace === 'behind' && behind >= PACE_THRESHOLD_PTS;
                 return (
-                  <div
-                    key={goal.id}
-                    data-project={goal.id}
-                    className="mb-[14px] pb-[12px] border-b border-line-soft last:border-b-0"
-                  >
-                    <div className="flex items-baseline gap-[7px] mb-[6px]">
-                      <span className="font-disp text-[.86rem] font-semibold flex-1 min-w-0 truncate">{goal.title}</span>
-                      {pace === 'behind' && behind >= PACE_THRESHOLD_PTS && <BehindChip pts={behind} className="flex-none" />}
-                      <span className="font-mono text-[.62rem] text-ink-soft tabular-nums flex-none">{pct}%</span>
-                    </div>
-                    {steps.length === 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onClose();
-                          actions.openDrawer(goal.id);
-                        }}
-                        className="text-[.76rem] text-muted italic text-left hover:text-ink"
+                  <div key={goal.id} data-project={goal.id} className="border-b border-line-soft last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleProject(goal.id)}
+                      aria-expanded={isOpen}
+                      className="flex items-center gap-[8px] w-full text-left px-[4px] py-[8px] rounded-[8px] hover:bg-hover transition-colors"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`text-faint text-[.6rem] flex-none transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
                       >
-                        No steps yet — <span className="not-italic font-semibold text-accent-deep">define a first step</span>
-                      </button>
-                    ) : (
-                      steps.map((n) => (
-                        <RailStep
-                          key={n.id}
-                          goalId={goal.id}
-                          node={n}
-                          focus={n.id === focusNodeId}
-                          week={week}
-                          actions={actions}
+                        ▶
+                      </span>
+                      <span className="font-disp text-[.9rem] font-semibold flex-1 min-w-0 truncate">{goal.title}</span>
+                      {isBehind && (
+                        <span
+                          className="flex-none w-[7px] h-[7px] rounded-full bg-warn"
+                          title={`${behind} pts behind pace · ${pct}% done`}
+                          aria-label={`${behind} points behind pace`}
                         />
-                      ))
+                      )}
+                      <span className="font-mono text-[.56rem] text-faint tabular-nums flex-none">
+                        {count > 0 ? `${count} step${count === 1 ? '' : 's'}` : 'no steps'}
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div className="pb-[10px] pl-[6px] pr-[2px]">
+                        {count === 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => { onClose(); actions.openDrawer(goal.id); }}
+                            className="text-[.76rem] text-muted italic text-left hover:text-ink px-[3px] py-[2px]"
+                          >
+                            No steps yet — <span className="not-italic font-semibold text-accent-deep">define a first step</span>
+                          </button>
+                        ) : (
+                          <RailTreeView
+                            nodes={tree}
+                            goalId={goal.id}
+                            week={week}
+                            actions={actions}
+                            focusNodeId={focusNodeId}
+                          />
+                        )}
+                      </div>
                     )}
                   </div>
                 );
@@ -364,7 +393,9 @@ function RailZone({ children }: { children: React.ReactNode }) {
   return (
     <div
       ref={setNodeRef}
-      className={`min-w-0 rounded-card p-[8px] -m-[8px] transition-colors ${isOver ? 'bg-hover' : ''}`}
+      className={`min-w-0 rounded-card px-[8px] pb-[8px] max-h-[440px] overflow-y-auto transition-colors ${
+        isOver ? 'bg-hover' : ''
+      }`}
     >
       {children}
     </div>
@@ -380,7 +411,7 @@ function DayZone({
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col gap-[5px] min-h-[168px] px-[7px] py-[8px] rounded-[11px] border transition-colors ${
+      className={`flex flex-col gap-[5px] min-h-[300px] px-[7px] py-[8px] rounded-[11px] border transition-colors ${
         anyday ? 'border-dashed border-line-2' : 'bg-panel border-line'
       } ${today ? 'border-accent' : ''} ${isOver ? 'bg-accent-tint border-accent' : ''}`}
     >
@@ -421,24 +452,75 @@ function DayContent({ leaves, onRemove }: { leaves: PlannedLeaf[]; onRemove: (l:
   );
 }
 
-// A rail step: click/drag to plan it, or "Break" to split a too-big step into
-// day-sized child tasks inline. Breaking down runs actions.addChildren, so the
-// step stops being a leaf and its children take its place in the rail (they are
-// the new unplanned open leaves) — no manual refresh, no leaving the overlay.
+// Renders a project's rail tree: leaves as draggable steps, containers as subgoal
+// sub-headings with their children nested and indented. Recurses, so a step broken
+// into subtasks shows those subtasks in place beneath it. Indentation is absolute
+// (depth × 10px per item), so nesting never compounds.
+function RailTreeView({
+  nodes, goalId, week, actions, focusNodeId, depth = 0,
+}: {
+  nodes: RailTreeNode[];
+  goalId: string;
+  week: string;
+  actions: ReturnType<typeof useAppStore>['actions'];
+  focusNodeId?: string;
+  depth?: number;
+}) {
+  return (
+    <>
+      {nodes.map((n) =>
+        n.isLeaf ? (
+          <RailStep
+            key={n.id}
+            goalId={goalId}
+            nodeId={n.id}
+            title={n.title}
+            focus={n.id === focusNodeId}
+            week={week}
+            actions={actions}
+            depth={depth}
+          />
+        ) : (
+          <div key={n.id} className="mt-[7px]">
+            <div style={{ marginLeft: depth * 10 }} className="flex items-center gap-[6px] px-[2px] mb-[1px]">
+              <span className="font-mono text-[.52rem] tracking-[.09em] uppercase text-faint truncate">{n.title}</span>
+              <span className="h-px flex-1 bg-line-soft" />
+            </div>
+            <RailTreeView
+              nodes={n.children}
+              goalId={goalId}
+              week={week}
+              actions={actions}
+              focusNodeId={focusNodeId}
+              depth={depth + 1}
+            />
+          </div>
+        ),
+      )}
+    </>
+  );
+}
+
+// A rail step: click/drag to plan it, or "Break" (revealed on hover/focus) to split
+// a too-big step into day-sized child tasks inline. Breaking down runs
+// actions.addChildren, so the step stops being a leaf and its children take its
+// place in the rail — no manual refresh, no leaving the overlay.
 function RailStep({
-  goalId, node, focus, week, actions,
+  goalId, nodeId, title, focus, week, actions, depth,
 }: {
   goalId: string;
-  node: GoalNode;
+  nodeId: string;
+  title: string;
   focus: boolean;
   week: string;
   actions: ReturnType<typeof useAppStore>['actions'];
+  depth: number;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: node.id,
-    data: { goalId, nodeId: node.id, title: node.title },
+    id: nodeId,
+    data: { goalId, nodeId, title },
   });
 
   function close() {
@@ -449,7 +531,7 @@ function RailStep({
     // addChildren re-trims and drops blanks; count the clean lines for the toast.
     const lines = text.split(/\r?\n/).map((t) => t.trim()).filter(Boolean);
     if (lines.length > 0) {
-      actions.addChildren(node.id, lines);
+      actions.addChildren(nodeId, lines);
       actions.showToast(`Added ${lines.length} task${lines.length === 1 ? '' : 's'}`);
     }
     close();
@@ -458,29 +540,32 @@ function RailStep({
   return (
     <div
       ref={setNodeRef}
-      data-step={node.id}
-      className={`my-[5px] rounded-[9px] border bg-panel shadow-card ${
+      data-step={nodeId}
+      style={{ marginLeft: depth * 10 }}
+      className={`group my-[4px] rounded-[9px] border bg-panel shadow-card ${
         focus ? 'border-accent ring-2 ring-accent-tint' : 'border-line-2'
       } ${isDragging ? 'opacity-40' : ''}`}
     >
-      <div className="flex items-center gap-[6px] px-[9px] py-[6px]">
+      <div className="flex items-center gap-[4px] px-[8px] py-[5px]">
         <button
           type="button"
           {...attributes}
           {...listeners}
-          onClick={() => actions.planNode(goalId, node.id, week)}
-          className="flex items-center gap-[7px] flex-1 min-w-0 text-left text-[.8rem] text-ink-soft cursor-grab hover:text-ink"
+          onClick={() => actions.planNode(goalId, nodeId, week)}
+          className="flex items-center gap-[7px] flex-1 min-w-0 text-left text-[.79rem] text-ink-soft cursor-grab hover:text-ink"
         >
           <span className="text-faint text-[.7rem] flex-none">⠿</span>
-          <span className="flex-1 min-w-0 truncate">{node.title}</span>
+          <span className="flex-1 min-w-0 truncate">{title}</span>
         </button>
         <button
           type="button"
-          aria-label={`Break "${node.title}" into daily tasks`}
+          aria-label={`Break "${title}" into daily tasks`}
           aria-expanded={editing}
           onClick={() => (editing ? close() : setEditing(true))}
-          className={`flex-none font-mono text-[.56rem] tracking-[.08em] uppercase px-[5px] py-[3px] rounded-[6px] transition-colors ${
-            editing ? 'text-accent-deep bg-accent-tint' : 'text-faint hover:text-ink hover:bg-hover'
+          className={`flex-none font-mono text-[.54rem] tracking-[.08em] uppercase px-[5px] py-[3px] rounded-[6px] transition-opacity ${
+            editing
+              ? 'text-accent-deep bg-accent-tint opacity-100'
+              : 'text-faint hover:text-ink hover:bg-hover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
           }`}
         >
           Break
