@@ -11,6 +11,7 @@ import { BehindChip } from '../../components/BehindChip';
 import { useReducedMotion } from '../today/useReducedMotion';
 import { paceStatus } from '../../lib/plan';
 import { roadmapWarnings } from '../../lib/roadmap';
+import { hasTrustedSchedule } from '../../lib/schedule';
 
 interface GoalRowProps {
   goal: Goal;
@@ -49,7 +50,10 @@ export const GoalRow = memo(function GoalRow({
   const flagX = dateToX(flagDeadline, rangeStart, pxPerDay);
   const today = todayStr();
   const p = Math.round(goalPct(g));
-  const behind = Math.round(behindPaceBy(p, g.start, g.deadline, today));
+  const trustedSchedule = hasTrustedSchedule(g);
+  const behind = trustedSchedule
+    ? Math.round(behindPaceBy(p, g.start, g.deadline, today))
+    : 0;
   const pace = paceStatus(g, today);
   const warnings = roadmapWarnings(g, today);
   const projectOverdue = warnings.some((w) => w.kind === 'project-overdue');
@@ -178,6 +182,7 @@ export const GoalRow = memo(function GoalRow({
           <div className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</div>
           <div className="text-[.72rem] text-muted tabular-nums">
             {(() => {
+              if (!trustedSchedule) return 'Dates unconfirmed';
               const expected = Math.round(expectedPct(g.start, g.deadline, today));
               if (pace === 'behind') {
                 return `${behind} pts behind pace · expected ${expected}% by today`;

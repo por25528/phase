@@ -40,7 +40,7 @@ export function roadmapWarnings(goal: Goal, today: string): RoadmapWarning[] {
   const out: RoadmapWarning[] = [];
   const phases = goal.nodes; // first-level nodes
 
-  if (deadlineBefore(goal.deadline, today)) {
+  if (goal.datesConfirmed === true && deadlineBefore(goal.deadline, today)) {
     out.push({ kind: 'project-overdue', message: 'Project deadline has passed' });
   }
 

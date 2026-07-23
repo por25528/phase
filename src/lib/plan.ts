@@ -4,6 +4,7 @@ import { goalPct } from './pct';
 import { expectedPct, behindPaceBy, daysBetween } from './timeline';
 import { leafCount } from './board';
 import { findInAll } from './tree';
+import { hasTrustedSchedule, needsDateConfirmation } from './schedule';
 
 // One shared threshold so cards, the insight bar, and the planner never
 // disagree about what "behind" means.
@@ -197,7 +198,7 @@ export function carryOvers(goals: Goal[], today: string): PlannedLeaf[] {
   return out;
 }
 
-export type PaceState = 'behind' | 'quiet-ahead' | 'on-pace' | 'needs-breakdown' | 'complete';
+export type PaceState = 'behind' | 'quiet-ahead' | 'on-pace' | 'no-schedule' | 'needs-breakdown' | 'complete';
 
 // Schedule pace is an ATTENTION signal, not a performance score: pct averages
 // unweighted nodes, so treat the verdict as "worth a look", never "the truth".
@@ -206,6 +207,7 @@ export function paceStatus(g: Goal, today: string): PaceState {
   const leaves = leafCount(g.nodes);
   if (leaves.total === 0) return 'needs-breakdown';
   if (leaves.done === leaves.total) return 'complete';
+  if (!hasTrustedSchedule(g)) return 'no-schedule';
   // Round pct first, then the diff — mirrors the card badge derivation exactly.
   const pct = Math.round(goalPct(g));
   const diff = Math.round(expectedPct(g.start, g.deadline, today) - pct);
@@ -273,7 +275,7 @@ export type ProjectAttention =
 function activeWorkState(g: Goal, today: string, pace: PaceState, col: number): ProjectAttention {
   if (pace === 'needs-breakdown') return 'needs-breakdown';
   if (pace === 'behind') return 'behind';
-  if (g.deadline <= addDays(today, DUE_SOON_DAYS)) return 'due-soon';
+  if (g.datesConfirmed === true && g.deadline <= addDays(today, DUE_SOON_DAYS)) return 'due-soon';
   if (milestoneWithin(g, MILESTONE_SOON_DAYS, today) && !hasPlannedOpenLeafThisWeek(g, today)) return 'milestone-soon';
   if (col === 0 && hasUnplannedOpenLeafThisWeek(g, today)) return 'not-planned';
   return 'on-track';
@@ -283,7 +285,7 @@ export function projectAttention(g: Goal, today: string): ProjectAttention {
   if (g.completedAt) return 'completed';
   const pace = paceStatus(g, today);
   if (pace === 'complete') return 'ready-to-complete';
-  if (deadlineBefore(g.deadline, today) || hasOverdueLeaf(g, today)) return 'overdue';
+  if ((g.datesConfirmed === true && deadlineBefore(g.deadline, today)) || hasOverdueLeaf(g, today)) return 'overdue';
   // Horizon gating: active-work signals surface only on Now (0) and Next (1);
   // Later/Someday stay quiet.
   const col = g.column ?? 0;
@@ -361,10 +363,19 @@ export interface MeaningfulDate {
   past: boolean;
 }
 
-// The one date a card leads with: the soonest upcoming milestone that still
-// lands before the deadline, else the deadline itself. `past` flags an overdue
-// deadline (nothing upcoming and the deadline already behind us).
-export function nearestMeaningfulDate(g: Goal, today: string): MeaningfulDate {
+// The one date a card leads with: for trusted schedules, the soonest upcoming
+// milestone before the deadline or the deadline itself. Unconfirmed schedules
+// may surface an upcoming milestone, but never their legacy project deadline.
+export function nearestMeaningfulDate(g: Goal, today: string): MeaningfulDate | null {
+  if (!hasTrustedSchedule(g)) {
+    const upcomingMilestone = (g.milestones ?? [])
+      .filter((m) => m.date >= today)
+      .map((m) => m.date)
+      .sort()[0];
+    return upcomingMilestone
+      ? { date: upcomingMilestone, kind: 'milestone', past: false }
+      : null;
+  }
   const upcoming = (g.milestones ?? [])
     .filter((m) => m.date >= today && m.date < g.deadline)
     .map((m) => m.date)
@@ -401,7 +412,12 @@ export interface AttentionBadge {
 // The single badge a card shows, straight off projectAttention. `on-track`
 // (and the terminal states, which never render as board cards) carry no badge.
 export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
-  switch (projectAttention(g, today)) {
+  const attention = projectAttention(g, today);
+  if (attention === 'completed') return null;
+  if (attention === 'ready-to-complete') return { label: 'Ready to complete', tone: 'accent' };
+  if (needsDateConfirmation(g)) return { label: 'Dates unconfirmed', tone: 'step' };
+
+  switch (attention) {
     case 'overdue':
       return { label: 'Overdue', tone: 'warn-strong' };
     case 'needs-breakdown':
@@ -422,8 +438,6 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
     }
     case 'not-planned':
       return { label: 'Not planned this week', tone: 'plan' };
-    case 'ready-to-complete':
-      return { label: 'Ready to complete', tone: 'accent' };
     default:
       return null; // on-track, completed
   }

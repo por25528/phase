@@ -11,6 +11,7 @@ import { leafCount } from '../lib/board';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel, fmtD } from '../lib/dates';
 import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
+import { hasTrustedSchedule } from '../lib/schedule';
 
 // Shared uppercase section label — Steps / Milestones / Notes all use it so the
 // two columns read as one system.
@@ -140,8 +141,13 @@ function DrawerHeader({
   const [editingTitle, setEditingTitle] = useState(false);
   const today = todayStr();
   const pct = Math.round(goalPct(g));
-  const expected = Math.round(expectedPct(g.start, g.deadline, today));
-  const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, today));
+  const trustedSchedule = hasTrustedSchedule(g);
+  const expected = trustedSchedule
+    ? Math.round(expectedPct(g.start, g.deadline, today))
+    : 0;
+  const behind = trustedSchedule
+    ? Math.round(behindPaceBy(pct, g.start, g.deadline, today))
+    : 0;
   const pace = paceStatus(g, today);
   const wk = plannedLeaves([g], weekOf(today));
   const wkDone = wk.filter((l) => l.done).length;
@@ -149,13 +155,15 @@ function DrawerHeader({
   const isCompleted = !!g.completedAt;
 
   const paceLine =
-    pace === 'behind'
-      ? `${behind} pts behind pace · expected ${expected}% by today`
-      : pace === 'needs-breakdown'
-        ? `define next step · expected ${expected}% by today`
-        : pace === 'complete'
-          ? 'every step done — ready to complete'
-          : `on pace · expected ${expected}% by today`;
+    pace === 'complete'
+      ? 'every step done — ready to complete'
+      : !trustedSchedule
+        ? 'Dates unconfirmed'
+        : pace === 'behind'
+          ? `${behind} pts behind pace · expected ${expected}% by today`
+          : pace === 'needs-breakdown'
+            ? `define next step · expected ${expected}% by today`
+            : `on pace · expected ${expected}% by today`;
 
   return (
     <div className="flex-none px-[30px] pt-[26px] pb-[18px] border-b border-line">

@@ -51,13 +51,15 @@ function CardFace({ goal, today }: { goal: Goal; today: string }) {
         <h3 className="font-disp text-[.98rem] font-semibold tracking-[-0.01em] leading-[1.24] flex-1 min-w-0 line-clamp-2">
           {goal.title}
         </h3>
-        <span
-          className={`font-mono text-[.6rem] tracking-[.02em] px-[6px] py-[3px] rounded-[6px] whitespace-nowrap tabular-nums flex-none mt-[1px] ${
-            dateInfo.past ? 'text-warn bg-warn-tint' : 'text-chip-ink bg-chip'
-          }`}
-        >
-          {dateInfo.kind === 'milestone' ? 'Milestone' : 'Due'} · {fmtD(dateInfo.date)}
-        </span>
+        {dateInfo && (
+          <span
+            className={`font-mono text-[.6rem] tracking-[.02em] px-[6px] py-[3px] rounded-[6px] whitespace-nowrap tabular-nums flex-none mt-[1px] ${
+              dateInfo.past ? 'text-warn bg-warn-tint' : 'text-chip-ink bg-chip'
+            }`}
+          >
+            {dateInfo.kind === 'milestone' ? 'Milestone' : 'Due'} · {fmtD(dateInfo.date)}
+          </span>
+        )}
       </div>
 
       <p

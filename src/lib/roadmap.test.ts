@@ -7,7 +7,16 @@ const TODAY = '2026-07-15';
 const WEEK = '2026-07-13'; // Monday of TODAY's week
 
 function goal(over: Partial<Goal>): Goal {
-  return { id: 'g', title: 'G', start: '2026-01-01', deadline: '2026-12-31', nodes: [], column: 0, ...over };
+  return {
+    id: 'g',
+    title: 'G',
+    start: '2026-01-01',
+    deadline: '2026-12-31',
+    datesConfirmed: true,
+    nodes: [],
+    column: 0,
+    ...over,
+  };
 }
 
 const kinds = (g: Goal) => roadmapWarnings(g, TODAY).map((w) => w.kind);
@@ -18,6 +27,14 @@ describe('roadmapWarnings', () => {
   it('project-overdue when an active project deadline has passed', () => {
     expect(kinds(goal({ column: 1, deadline: '2026-07-01' }))).toContain('project-overdue');
     expect(kinds(goal({ column: 1, deadline: '2026-08-01' }))).not.toContain('project-overdue');
+  });
+
+  it('does not warn that an unconfirmed project deadline is overdue', () => {
+    expect(kinds(goal({
+      column: 1,
+      deadline: '2026-07-01',
+      datesConfirmed: undefined,
+    }))).not.toContain('project-overdue');
   });
 
   it('is silent for a completed project', () => {

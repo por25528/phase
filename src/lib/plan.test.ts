@@ -16,7 +16,15 @@ const WEEK = '2026-07-13';
 const LAST_WEEK = '2026-07-06';
 
 function goal(over: Partial<Goal>): Goal {
-  return { id: 'g1', title: 'Goal', start: '2026-01-01', deadline: '2026-12-31', nodes: [], ...over };
+  return {
+    id: 'g1',
+    title: 'Goal',
+    start: '2026-01-01',
+    deadline: '2026-12-31',
+    datesConfirmed: true,
+    nodes: [],
+    ...over,
+  };
 }
 
 describe('planOpeningStep', () => {
@@ -151,6 +159,17 @@ describe('paceStatus', () => {
   it('threshold constant is 10', () => {
     expect(PACE_THRESHOLD_PTS).toBe(10);
   });
+
+  it('does not derive pace or behind attention from unconfirmed legacy dates', () => {
+    const g = goal({
+      datesConfirmed: undefined,
+      nodes: [{ id: 'a', title: 'A', done: false }],
+    });
+
+    expect(paceStatus(g, TODAY)).toBe('no-schedule');
+    expect(projectAttention(g, TODAY)).not.toBe('behind');
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Dates unconfirmed', tone: 'step' });
+  });
 });
 
 describe('attentionRank', () => {
@@ -186,8 +205,22 @@ describe('projectAttention', () => {
   });
 
   it('overdue on an incomplete scheduled leaf past its deadline', () => {
-    const g = goal({ nodes: [{ id: 'a', title: 'A', done: false, start: '2026-06-01', deadline: '2026-07-01' }] });
+    const g = goal({
+      datesConfirmed: undefined,
+      nodes: [{ id: 'a', title: 'A', done: false, start: '2026-06-01', deadline: '2026-07-01' }],
+    });
     expect(projectAttention(g, TODAY)).toBe('overdue');
+  });
+
+  it('does not treat an unconfirmed project deadline as overdue', () => {
+    const g = goal({
+      datesConfirmed: undefined,
+      start: '2026-06-01',
+      deadline: '2026-07-01',
+      nodes: [{ id: 'a', title: 'A', done: false }],
+    });
+
+    expect(projectAttention(g, TODAY)).not.toBe('overdue');
   });
 
   it('needs-breakdown for a Now project with no leaves', () => {
@@ -205,6 +238,20 @@ describe('projectAttention', () => {
     ]});
     expect(paceStatus(g, TODAY)).toBe('on-pace'); // guard the fixture's premise
     expect(projectAttention(g, TODAY)).toBe('due-soon');
+  });
+
+  it('does not derive due-soon from an unconfirmed project deadline', () => {
+    const g = goal({
+      datesConfirmed: undefined,
+      start: '2026-07-01',
+      deadline: '2026-07-25',
+      nodes: [
+        { id: 'a', title: 'A', done: true },
+        { id: 'b', title: 'B', done: false, plannedWeek: WEEK },
+      ],
+    });
+
+    expect(projectAttention(g, TODAY)).toBe('on-track');
   });
 
   it('milestone-soon when a near milestone has nothing planned this week', () => {
@@ -433,6 +480,18 @@ describe('nearestMeaningfulDate', () => {
       .toEqual({ date: '2026-12-31', kind: 'deadline', past: false });
     expect(nearestMeaningfulDate(goal({ deadline: '2026-07-01' }), TODAY))
       .toEqual({ date: '2026-07-01', kind: 'deadline', past: true });
+  });
+
+  it('uses an upcoming milestone but never a legacy deadline when dates are unconfirmed', () => {
+    const legacy = goal({
+      datesConfirmed: undefined,
+      deadline: '2026-12-31',
+      milestones: [{ id: 'm', title: 'Milestone', date: '2026-08-01' }],
+    });
+
+    expect(nearestMeaningfulDate(legacy, TODAY))
+      .toEqual({ date: '2026-08-01', kind: 'milestone', past: false });
+    expect(nearestMeaningfulDate({ ...legacy, milestones: [] }, TODAY)).toBeNull();
   });
 });
 

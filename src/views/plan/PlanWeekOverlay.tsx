@@ -17,6 +17,7 @@ import { todayStr, addDays, fmtD, weekDates, parseD } from '../../lib/dates';
 import { goalPct } from '../../lib/pct';
 import { behindPaceBy } from '../../lib/timeline';
 import { firstOpenLeaf } from '../../lib/tree';
+import { hasTrustedSchedule } from '../../lib/schedule';
 import {
   weekOf, plannedLeaves, attentionRank, paceStatus, weekRecap, planOpeningStep,
   PACE_THRESHOLD_PTS, unplannedOpenLeaves, railTree, groupPlannedByGoal,
@@ -279,7 +280,9 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
               railGroups.map(({ goal, tree, count, pace }) => {
                 const isOpen = openId === goal.id;
                 const pct = Math.round(goalPct(goal));
-                const behind = Math.round(behindPaceBy(pct, goal.start, goal.deadline, today));
+                const behind = hasTrustedSchedule(goal)
+                  ? Math.round(behindPaceBy(pct, goal.start, goal.deadline, today))
+                  : 0;
                 const isBehind = pace === 'behind' && behind >= PACE_THRESHOLD_PTS;
                 return (
                   <div key={goal.id} data-project={goal.id} className="border-b border-line-soft last:border-b-0">

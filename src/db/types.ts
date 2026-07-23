@@ -41,6 +41,7 @@ export interface Goal {
   title: string;
   start: string;    // 'YYYY-MM-DD'
   deadline: string; // 'YYYY-MM-DD'
+  datesConfirmed?: boolean;
   nodes: GoalNode[];
   milestones?: Milestone[]; // markers only — never used in pct roll-up
   notes?: string;           // free-form working notes — rides along in the goal object

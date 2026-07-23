@@ -7,6 +7,7 @@ import { todayStr } from '../../lib/dates';
 import { behindPaceBy } from '../../lib/timeline';
 import { weekOf, paceStatus } from '../../lib/plan';
 import { BehindChip } from '../../components/BehindChip';
+import { hasTrustedSchedule } from '../../lib/schedule';
 
 export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
   const { goals, actions } = useAppStore();
@@ -33,7 +34,10 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
       {goals.map((g) => {
         const pct = Math.round(goalPct(g));
         const next = firstOpenLeaf(g.nodes);
-        const behind = Math.round(behindPaceBy(pct, g.start, g.deadline, today));
+        const trustedSchedule = hasTrustedSchedule(g);
+        const behind = trustedSchedule
+          ? Math.round(behindPaceBy(pct, g.start, g.deadline, today))
+          : 0;
         const pace = paceStatus(g, today);
         const alreadyPlanned = !!next && next.plannedWeek === week && next.plannedDay === today;
 
@@ -60,7 +64,11 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
           >
             <span className="flex items-baseline gap-[10px]">
               <span className="font-disp text-[.98rem] font-semibold flex-1 min-w-0 truncate">{g.title}</span>
-              {pace === 'behind' && <BehindChip pts={behind} className="flex-none" />}
+              {!trustedSchedule ? (
+                <span className="text-[.66rem] text-muted italic flex-none">Dates unconfirmed</span>
+              ) : pace === 'behind' ? (
+                <BehindChip pts={behind} className="flex-none" />
+              ) : null}
               <span className="font-mono text-[.62rem] tracking-[.05em] text-muted flex-none tabular-nums">
                 {deadlineChip(g.deadline, today)}
               </span>
