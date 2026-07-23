@@ -12,8 +12,10 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { Modal } from '../../components/Modal';
+import type { Task } from '../../db/types';
 import { getState, useAppStore } from '../../state/store';
 import { todayStr, addDays, fmtD, weekDates, parseD } from '../../lib/dates';
+import { tasksForWeek } from '../../lib/dailyWork';
 import { goalPct } from '../../lib/pct';
 import { behindPaceBy } from '../../lib/timeline';
 import { firstOpenLeaf } from '../../lib/tree';
@@ -23,6 +25,12 @@ import {
   PACE_THRESHOLD_PTS, unplannedOpenLeaves, railTree, groupPlannedByGoal,
   type PlannedLeaf, type RailTreeNode,
 } from '../../lib/plan';
+import {
+  canDragTask,
+  plannerOpenCount,
+  resolvePlannerDrop,
+  type PlannerDragData,
+} from './planner';
 
 const SOFT_CAPACITY = 7;
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -174,7 +182,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
 // ── Step 2: plan — the week grid ──────────────────────────────────────────────
 
 function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: string | null }) {
-  const { goals, actions } = useAppStore();
+  const { goals, tasks, actions } = useAppStore();
   const today = todayStr();
   const week = weekOf(today);
   const days = weekDates(today); // Mon … Sun (ISO)
@@ -199,7 +207,11 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
     if (l.plannedDay && byDay.has(l.plannedDay)) byDay.get(l.plannedDay)!.push(l);
     else anyDay.push(l);
   }
-  const openCount = placed.filter((l) => !l.done).length;
+  const weekTasks = tasksForWeek(tasks, week);
+  const tasksByDay = new Map<string, Task[]>(days.map((day) => [day, []]));
+  for (const task of weekTasks) tasksByDay.get(task.date)?.push(task);
+  const goalTitleById = new Map(goals.map((goal) => [goal.id, goal.title]));
+  const openCount = plannerOpenCount(placed, weekTasks);
 
   const focusNodeId = focusGoalId
     ? firstOpenLeaf(goals.find((g) => g.id === focusGoalId)?.nodes ?? [])?.id
@@ -246,22 +258,26 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
   }
   function handleDragEnd(e: DragEndEvent) {
     setDragTitle(null);
-    if (!e.over) return;
-    const data = e.active.data.current as { goalId: string; nodeId: string } | undefined;
-    if (!data) return;
-    const zone = String(e.over.id);
-    if (zone === 'rail') actions.unplanNode(data.goalId, data.nodeId);
-    else if (zone === 'anyday') actions.planNode(data.goalId, data.nodeId, week);
-    else if (zone.startsWith('day:')) actions.planNode(data.goalId, data.nodeId, week, zone.slice(4));
+    const command = resolvePlannerDrop(e.active.data.current, e.over?.id, week);
+    if (!command) return;
+    if (command.kind === 'reschedule-task') {
+      actions.rescheduleTask(command.taskId, command.date);
+      return;
+    }
+    if (command.kind === 'unplan-step') {
+      actions.unplanNode(command.goalId, command.nodeId);
+      return;
+    }
+    actions.planNode(command.goalId, command.nodeId, command.week, command.day);
   }
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col gap-[14px]">
         <p className="text-[.8rem] text-muted leading-[1.5]">
-          Drag a step onto a day — or <span className="text-ink-soft font-medium">Any day</span> to commit it without a
-          date. Hover a step and hit <span className="text-ink-soft font-medium">Break</span> to split it into
-          day-sized tasks.
+          Drag a step or task onto a day. Steps can also go to{' '}
+          <span className="text-ink-soft font-medium">Any day</span> without a date. Hover a step and hit{' '}
+          <span className="text-ink-soft font-medium">Break</span> to split it into day-sized tasks.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
@@ -351,11 +367,23 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
             <div className="overflow-x-auto pb-[6px]">
               <div className="grid gap-[8px]" style={{ gridTemplateColumns: '1.2fr repeat(7, minmax(66px, 1fr))' }}>
                 <DayZone id="anyday" label="Any day" sub="this wk" anyday>
-                  <DayContent leaves={anyDay} onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)} />
+                  <DayContent
+                    leaves={anyDay}
+                    tasks={[]}
+                    goalTitleById={goalTitleById}
+                    onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
+                    onToggleTask={actions.toggleTask}
+                  />
                 </DayZone>
                 {days.map((iso, i) => (
                   <DayZone key={iso} id={`day:${iso}`} label={DOW[i]} sub={String(parseD(iso).getDate())} today={iso === today}>
-                    <DayContent leaves={byDay.get(iso)!} onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)} />
+                    <DayContent
+                      leaves={byDay.get(iso)!}
+                      tasks={tasksByDay.get(iso)!}
+                      goalTitleById={goalTitleById}
+                      onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
+                      onToggleTask={actions.toggleTask}
+                    />
                   </DayZone>
                 ))}
               </div>
@@ -363,7 +391,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
 
             <div className="flex items-center gap-[12px] mt-[16px] pt-[14px] border-t border-line">
               <span className="text-[.82rem] text-ink-soft">
-                <span className="font-disp font-semibold">{openCount}</span> step{openCount === 1 ? '' : 's'} committed this week
+                <span className="font-disp font-semibold">{openCount}</span> open item{openCount === 1 ? '' : 's'} committed this week
               </span>
               <span className="flex-1" />
               <button
@@ -433,14 +461,41 @@ function DayZone({
   );
 }
 
-// A day's steps, stacked under a per-project heading so several projects sharing
-// a day never blur together (the "group by project in a day" rule).
-function DayContent({ leaves, onRemove }: { leaves: PlannedLeaf[]; onRemove: (l: PlannedLeaf) => void }) {
-  if (leaves.length === 0) {
+// Dated tasks stay in their own group above project steps. Steps remain grouped
+// per project so several projects sharing a day never blur together.
+export function DayContent({
+  leaves,
+  tasks,
+  goalTitleById,
+  onRemove,
+  onToggleTask,
+}: {
+  leaves: PlannedLeaf[];
+  tasks: Task[];
+  goalTitleById: Map<string, string>;
+  onRemove: (leaf: PlannedLeaf) => void;
+  onToggleTask: (taskId: string) => void;
+}) {
+  if (leaves.length === 0 && tasks.length === 0) {
     return <div className="flex-1 grid place-items-center text-faint text-[.62rem] italic min-h-[40px]">—</div>;
   }
   return (
     <>
+      {tasks.length > 0 && (
+        <div className={`flex flex-col gap-[3px] ${leaves.length > 0 ? 'pb-[5px] mb-[1px] border-b border-line-soft' : ''}`}>
+          <span className="font-mono text-[.5rem] tracking-[.08em] uppercase text-faint truncate px-[1px]">
+            Tasks
+          </span>
+          {tasks.map((task) => (
+            <TaskChip
+              key={task.id}
+              task={task}
+              goalTitle={task.goalId ? goalTitleById.get(task.goalId) : undefined}
+              onToggle={onToggleTask}
+            />
+          ))}
+        </div>
+      )}
       {groupPlannedByGoal(leaves).map((grp) => (
         <div key={grp.goalId} className="flex flex-col gap-[3px]">
           <span className="font-mono text-[.5rem] tracking-[.08em] uppercase text-faint truncate px-[1px]">
@@ -523,7 +578,7 @@ function RailStep({
   const [text, setText] = useState('');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: nodeId,
-    data: { goalId, nodeId, title },
+    data: { kind: 'step', goalId, nodeId, title } satisfies PlannerDragData,
   });
 
   function close() {
@@ -620,7 +675,12 @@ function RailStep({
 function PlacedChip({ leaf, onRemove }: { leaf: PlannedLeaf; onRemove: () => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: leaf.nodeId,
-    data: { goalId: leaf.goalId, nodeId: leaf.nodeId, title: leaf.title },
+    data: {
+      kind: 'step',
+      goalId: leaf.goalId,
+      nodeId: leaf.nodeId,
+      title: leaf.title,
+    } satisfies PlannerDragData,
     disabled: leaf.done,
   });
   if (leaf.done) {
@@ -649,6 +709,68 @@ function PlacedChip({ leaf, onRemove }: { leaf: PlannedLeaf; onRemove: () => voi
         className="text-faint text-[.66rem] flex-none opacity-0 group-hover:opacity-100 hover:text-ink"
       >
         ✕
+      </button>
+    </div>
+  );
+}
+
+export function TaskChip({
+  task,
+  goalTitle,
+  onToggle,
+}: {
+  task: Task;
+  goalTitle?: string;
+  onToggle: (taskId: string) => void;
+}) {
+  const draggable = canDragTask(task);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `task:${task.id}`,
+    data: {
+      kind: 'task',
+      taskId: task.id,
+      title: task.title,
+    } satisfies PlannerDragData,
+    disabled: !draggable,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-task={task.id}
+      className={`flex items-center gap-[4px] px-[5px] py-[5px] rounded-[7px] bg-hover text-[.7rem] ${
+        task.done ? 'opacity-60' : ''
+      } ${isDragging ? 'opacity-40' : ''}`}
+    >
+      <input
+        type="checkbox"
+        checked={task.done}
+        onChange={() => onToggle(task.id)}
+        onPointerDown={(event) => event.stopPropagation()}
+        aria-label={`Mark "${task.title}" ${task.done ? 'incomplete' : 'complete'}`}
+        className="h-[12px] w-[12px] flex-none accent-accent"
+      />
+      <span className={`min-w-0 flex-1 truncate text-ink ${task.done ? 'line-through text-muted' : ''}`}>
+        {task.title}
+      </span>
+      {goalTitle && (
+        <span
+          data-task-context="true"
+          title={goalTitle}
+          className="max-w-[42px] truncate font-mono text-[.48rem] uppercase tracking-[.05em] text-faint"
+        >
+          {goalTitle}
+        </span>
+      )}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        disabled={!draggable}
+        aria-label={`Drag "${task.title}"`}
+        className="flex-none px-[2px] text-faint cursor-grab hover:text-ink disabled:cursor-default disabled:opacity-40"
+      >
+        ⠿
       </button>
     </div>
   );
