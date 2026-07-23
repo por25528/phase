@@ -3,7 +3,6 @@ import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, daysLeftLabel } from '../../lib/dates';
 import { expectedPct, behindPaceBy, dateToX } from '../../lib/timeline';
 import type { GridTick, DayBand } from '../../lib/timeline';
-import type { Goal } from '../../db/types';
 import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
 import { NodeLane, CanvasGrid } from './NodeLane';
@@ -11,10 +10,10 @@ import { BehindChip } from '../../components/BehindChip';
 import { useReducedMotion } from '../today/useReducedMotion';
 import { paceStatus } from '../../lib/plan';
 import { roadmapWarnings } from '../../lib/roadmap';
-import { hasTrustedSchedule } from '../../lib/schedule';
+import { hasTrustedSchedule, type GoalWithSpan } from '../../lib/schedule';
 
 interface GoalRowProps {
-  goal: Goal;
+  goal: GoalWithSpan;
   index: number;
   rangeStart: string;
   pxPerDay: number;

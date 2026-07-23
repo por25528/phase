@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Goal } from '../../db/types';
 import { Modal } from '../../components/Modal';
-import { todayStr } from '../../lib/dates';
-import { buildManualGoal, priorityToColumn, PRIORITY_WORDS, defaultDeadline } from '../../lib/goalImport';
+import { buildManualGoal, priorityToColumn, PRIORITY_WORDS } from '../../lib/goalImport';
+import { projectDateError } from '../../lib/schedule';
 import { fieldCls, labelCls, primaryBtn, ghostBtn } from './styles';
 
 export function NewGoalModal({
@@ -18,8 +18,8 @@ export function NewGoalModal({
 }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<(typeof PRIORITY_WORDS)[number]>('now');
-  const [start, setStart] = useState(todayStr());
-  const [deadline, setDeadline] = useState(defaultDeadline(todayStr()));
+  const [start, setStart] = useState('');
+  const [deadline, setDeadline] = useState('');
   const [subgoals, setSubgoals] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
   const [notes, setNotes] = useState('');
@@ -30,8 +30,8 @@ export function NewGoalModal({
     if (!open) return;
     setTitle('');
     setPriority('now');
-    setStart(todayStr());
-    setDeadline(defaultDeadline(todayStr()));
+    setStart('');
+    setDeadline('');
     setSubgoals([]);
     setDraft('');
     setNotes('');
@@ -48,18 +48,20 @@ export function NewGoalModal({
 
   function submit() {
     const t = title.trim();
-    if (!t) return;
+    if (!t || dateError) return;
     const pending = draft.trim();
     const goal = buildManualGoal({
       title: t,
-      start,
-      deadline,
+      start: start || undefined,
+      deadline: deadline || undefined,
       column: priorityToColumn(priority),
       notes,
       subgoalTitles: pending ? [...subgoals, pending] : subgoals,
     });
     onAdd(goal);
   }
+
+  const dateError = projectDateError(start || undefined, deadline || undefined);
 
   return (
     <Modal open={open} onClose={onClose} title="New project">
@@ -77,7 +79,6 @@ export function NewGoalModal({
             }}
           />
         </div>
-
         <div className="flex flex-wrap gap-[14px]">
           <div className="flex flex-col gap-[5px]">
             <label className={labelCls}>Horizon</label>
@@ -102,6 +103,7 @@ export function NewGoalModal({
             <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={fieldCls} />
           </div>
         </div>
+        {dateError && <div className="text-[.76rem] text-warn">{dateError}</div>}
 
         <div className="flex flex-col gap-[6px]">
           <label className={labelCls}>First steps <span className="text-faint font-normal">(optional)</span></label>
@@ -145,7 +147,7 @@ export function NewGoalModal({
         </div>
 
         <div className="flex items-center gap-[8px] mt-[2px]">
-          <button className={primaryBtn} onClick={submit} disabled={!title.trim()}>
+          <button className={primaryBtn} onClick={submit} disabled={!title.trim() || !!dateError}>
             Add project
           </button>
           <button className={ghostBtn} onClick={onClose}>Cancel</button>

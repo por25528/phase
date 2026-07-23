@@ -30,6 +30,7 @@ import { GoalRow } from './timeline/GoalRow';
 import { DaysLane } from './timeline/DaysLane';
 import { Ruler } from './timeline/Ruler';
 import { useReducedMotion } from './today/useReducedMotion';
+import { hasGoalSpan } from '../lib/schedule';
 
 type Scope = 'focus' | 'all' | string; // 'focus' | 'all' | a project id
 
@@ -86,6 +87,7 @@ export function Timeline() {
   // store keeps `goals` column-major after edits, but a fresh hydration returns
   // them in id order (Dexie `toArray`), so order explicitly here.
   const orderedGoals = useMemo(() => byPriority(goals), [goals]);
+  const drawableGoals = useMemo(() => orderedGoals.filter(hasGoalSpan), [orderedGoals]);
 
   // Scope + completed toggle are view-local (unpersisted, spec §3.1).
   const [scope, setScope] = useState<Scope>('focus');
@@ -95,13 +97,13 @@ export function Timeline() {
   // while completed are hidden) falls back to Focus (spec §5).
   const singleValid =
     scope !== 'focus' && scope !== 'all' &&
-    orderedGoals.some((g) => g.id === scope && (includeCompleted || !g.completedAt));
+    drawableGoals.some((g) => g.id === scope && (includeCompleted || !g.completedAt));
 
   const visibleGoals = useMemo(() => {
-    if (singleValid) return orderedGoals.filter((g) => g.id === scope);
-    const base = orderedGoals.filter((g) => includeCompleted || !g.completedAt);
+    if (singleValid) return drawableGoals.filter((g) => g.id === scope);
+    const base = drawableGoals.filter((g) => includeCompleted || !g.completedAt);
     return scope === 'all' ? base : base.filter((g) => (g.column ?? 0) <= 1); // Focus = Now + Next
-  }, [orderedGoals, scope, includeCompleted, singleValid]);
+  }, [drawableGoals, scope, includeCompleted, singleValid]);
 
   // Group visible rows by horizon in board order, omitting empty groups (§3.1).
   const horizonGroups = useMemo(() => {
@@ -122,7 +124,7 @@ export function Timeline() {
   // NodeLane renders; deeper nodes are never plotted).
   const allDates = useMemo(() => {
     const ds: string[] = [];
-    for (const g of goals) {
+    for (const g of goals.filter(hasGoalSpan)) {
       ds.push(g.start, g.deadline);
       for (const m of g.milestones ?? []) ds.push(m.date);
       for (const n of g.nodes) {
@@ -259,7 +261,7 @@ export function Timeline() {
   // 5. Pinch / ctrl+wheel / cmd+wheel zoom, rAF-coalesced and cursor-anchored.
   // Native listeners: React registers wheel as passive, which would forbid
   // preventDefault (the browser would page-zoom instead).
-  const hasCanvas = goals.length > 0;
+  const hasCanvas = visibleGoals.length > 0 || drawableGoals.some((g) => !g.completedAt);
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -491,7 +493,7 @@ export function Timeline() {
       {/* Empty state — no canvas needed */}
       {!hasCanvas ? (
         <div className="mt-[6px] border border-line rounded-[10px] bg-panel px-[12px] py-[32px] text-center text-faint text-[.85rem] italic">
-          Nothing on your year yet — add a project in Goals › + New project to see it here.
+          Add both a start and deadline to show a project on the Timeline.
         </div>
       ) : (
         <div

@@ -39,8 +39,8 @@ export interface PlanReview {
 export interface Goal {
   id: string;
   title: string;
-  start: string;    // 'YYYY-MM-DD'
-  deadline: string; // 'YYYY-MM-DD'
+  start?: string;    // 'YYYY-MM-DD'
+  deadline?: string; // 'YYYY-MM-DD'
   datesConfirmed?: boolean;
   nodes: GoalNode[];
   milestones?: Milestone[]; // markers only — never used in pct roll-up

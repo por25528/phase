@@ -493,6 +493,27 @@ describe('nearestMeaningfulDate', () => {
       .toEqual({ date: '2026-08-01', kind: 'milestone', past: false });
     expect(nearestMeaningfulDate({ ...legacy, milestones: [] }, TODAY)).toBeNull();
   });
+
+  it('keeps milestones eligible when the project has no deadline', () => {
+    const g = goal({
+      deadline: undefined,
+      datesConfirmed: true,
+      milestones: [{ id: 'm', title: 'Milestone', date: '2026-08-01' }],
+    });
+    expect(nearestMeaningfulDate(g, TODAY))
+      .toEqual({ date: '2026-08-01', kind: 'milestone', past: false });
+  });
+
+  it('uses a confirmed partial deadline as the milestone boundary and fallback', () => {
+    const g = goal({
+      start: undefined,
+      deadline: '2026-08-01',
+      datesConfirmed: true,
+      milestones: [{ id: 'm', title: 'Later milestone', date: '2026-09-01' }],
+    });
+    expect(nearestMeaningfulDate(g, TODAY))
+      .toEqual({ date: '2026-08-01', kind: 'deadline', past: false });
+  });
 });
 
 describe('nextOpenAction', () => {

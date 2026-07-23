@@ -1,6 +1,7 @@
 import type { Goal, GoalNode } from '../db/types';
 import { uid } from './tree';
 import { clampSpan } from './timeline';
+import { projectDateError } from './schedule';
 
 // ── Horizon ↔ column ──────────────────────────────────────────────────────────
 // The Goals board has 4 commitment horizons, column 0 = Now. The AI-facing
@@ -29,11 +30,6 @@ export function priorityToColumn(word?: unknown): number {
 
 export function columnToPriority(column?: number): PriorityWord {
   return PRIORITY_WORDS[Math.min(Math.max(column ?? 0, 0), PRIORITY_WORDS.length - 1)];
-}
-
-/** End of the year `today` falls in — the default deadline when none is given. */
-export function defaultDeadline(today: string): string {
-  return `${today.slice(0, 4)}-12-31`;
 }
 
 // ── Node construction from the simplified spec ────────────────────────────────
@@ -90,8 +86,8 @@ export function buildNode(spec: SubgoalSpec): GoalNode | null {
 
 export interface ManualGoalInput {
   title: string;
-  start: string;
-  deadline: string;
+  start?: string;
+  deadline?: string;
   column: number;
   notes: string;
   subgoalTitles: string[];
@@ -99,7 +95,8 @@ export interface ManualGoalInput {
 
 /** Build a Goal from the manual New Goal form. Subgoals are flat leaf steps. */
 export function buildManualGoal(input: ManualGoalInput): Goal {
-  const clamped = clampSpan(input.start, input.deadline);
+  const dateError = projectDateError(input.start, input.deadline);
+  if (dateError) throw new Error(dateError);
   const nodes: GoalNode[] = input.subgoalTitles
     .map((t) => t.trim())
     .filter(Boolean)
@@ -107,11 +104,12 @@ export function buildManualGoal(input: ManualGoalInput): Goal {
   const goal: Goal = {
     id: uid(),
     title: input.title.trim(),
-    start: clamped.start,
-    deadline: clamped.deadline,
     nodes,
     column: input.column,
+    datesConfirmed: true,
   };
+  if (input.start) goal.start = input.start;
+  if (input.deadline) goal.deadline = input.deadline;
   const notes = input.notes.trim();
   if (notes) goal.notes = notes;
   return goal;
@@ -128,21 +126,19 @@ type GoalSpec = {
   subgoals?: unknown;
 };
 
-function buildImportedGoal(spec: GoalSpec, today: string): Goal {
-  const start = isDateStr(spec.start) ? spec.start : today;
-  const deadline = isDateStr(spec.deadline) ? spec.deadline : defaultDeadline(today);
-  const clamped = clampSpan(start, deadline);
+function buildImportedGoal(spec: GoalSpec): Goal {
   const nodes = Array.isArray(spec.subgoals)
     ? (spec.subgoals as SubgoalSpec[]).map(buildNode).filter((n): n is GoalNode => n !== null)
     : [];
   const goal: Goal = {
     id: uid(),
     title: (spec.title as string).trim(),
-    start: clamped.start,
-    deadline: clamped.deadline,
     nodes,
     column: priorityToColumn(spec.priority),
+    datesConfirmed: true,
   };
+  if (isDateStr(spec.start)) goal.start = spec.start;
+  if (isDateStr(spec.deadline)) goal.deadline = spec.deadline;
   if (typeof spec.notes === 'string' && spec.notes.trim()) goal.notes = spec.notes.trim();
   return goal;
 }
@@ -167,7 +163,7 @@ export function sanitizeBackupGoal(goal: Goal): Goal {
  */
 export function parseGoalImport(
   raw: string,
-  today: string,
+  _today: string,
 ): { goals: Goal[] } | { error: string } {
   const text = raw.trim();
   if (!text) return { error: 'Paste some JSON first.' };
@@ -192,7 +188,13 @@ export function parseGoalImport(
     if (typeof title !== 'string' || !title.trim()) {
       return { error: `Goal #${i + 1} is missing a title.` };
     }
-    goals.push(buildImportedGoal(spec as GoalSpec, today));
+    const goalSpec = spec as GoalSpec;
+    const dateError = projectDateError(
+      isDateStr(goalSpec.start) ? goalSpec.start : undefined,
+      isDateStr(goalSpec.deadline) ? goalSpec.deadline : undefined,
+    );
+    if (dateError) return { error: `Goal #${i + 1}: ${dateError}` };
+    goals.push(buildImportedGoal(goalSpec));
   }
   return { goals };
 }
@@ -202,8 +204,8 @@ export function parseGoalImport(
 /** Compact, human-readable schema shown inside the Import modal. */
 export const FORMAT_HINT = `{
   "title": "Project name",              // required
-  "start": "YYYY-MM-DD",                // optional → today
-  "deadline": "YYYY-MM-DD",             // optional → end of year
+  "start": "YYYY-MM-DD",                // optional; omit when unknown
+  "deadline": "YYYY-MM-DD",             // optional; omit when unknown
   "priority": "now|next|later|someday", // optional → now
   "notes": "context…",                  // optional
   "subgoals": [
@@ -220,8 +222,8 @@ Output ONLY valid JSON — no prose, no markdown code fences — matching this e
 
 {
   "title": "string (required) — the project name",
-  "start": "YYYY-MM-DD (optional, defaults to today)",
-  "deadline": "YYYY-MM-DD (optional, defaults to end of the year)",
+  "start": "YYYY-MM-DD (optional; omit when unknown)",
+  "deadline": "YYYY-MM-DD (optional; omit when unknown)",
   "priority": "now | next | later | someday (optional, default now) — the commitment horizon",
   "notes": "string (optional) — strategy, context, links",
   "subgoals": [
@@ -237,13 +239,12 @@ Output ONLY valid JSON — no prose, no markdown code fences — matching this e
 Rules:
 - Break the project into 3–7 concrete subgoals; nest a group only when a step needs its own sub-steps.
 - Keep every leaf step small and actionable.
-- Today's date is ${today}. Make all dates realistic relative to today.
+- Today's date is ${today}. Make explicit dates realistic relative to today; omit project dates you cannot infer.
 - Output a single project object, or an array of project objects if I ask for several.
 
 Example:
 {
   "title": "Launch my side project",
-  "deadline": "${today.slice(0, 4)}-12-31",
   "priority": "now",
   "subgoals": [
     "Pick one idea",

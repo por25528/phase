@@ -111,7 +111,7 @@ export function nextUp(goals: Goal[], today: string, limit = 7): NextUpItem[] {
   for (const g of goals) {
     if (suggested.length >= limit) break;
     if (g.completedAt) continue;
-    if (g.start > today) continue;
+    if (g.start && g.start > today) continue;
     walkLeaves(g, (n) => {
       if (suggested.length >= limit) return;
       if (n.done || n.plannedWeek) return;
@@ -275,7 +275,7 @@ export type ProjectAttention =
 function activeWorkState(g: Goal, today: string, pace: PaceState, col: number): ProjectAttention {
   if (pace === 'needs-breakdown') return 'needs-breakdown';
   if (pace === 'behind') return 'behind';
-  if (g.datesConfirmed === true && g.deadline <= addDays(today, DUE_SOON_DAYS)) return 'due-soon';
+  if (g.datesConfirmed === true && g.deadline && g.deadline <= addDays(today, DUE_SOON_DAYS)) return 'due-soon';
   if (milestoneWithin(g, MILESTONE_SOON_DAYS, today) && !hasPlannedOpenLeafThisWeek(g, today)) return 'milestone-soon';
   if (col === 0 && hasUnplannedOpenLeafThisWeek(g, today)) return 'not-planned';
   return 'on-track';
@@ -285,7 +285,7 @@ export function projectAttention(g: Goal, today: string): ProjectAttention {
   if (g.completedAt) return 'completed';
   const pace = paceStatus(g, today);
   if (pace === 'complete') return 'ready-to-complete';
-  if ((g.datesConfirmed === true && deadlineBefore(g.deadline, today)) || hasOverdueLeaf(g, today)) return 'overdue';
+  if ((g.datesConfirmed === true && g.deadline && deadlineBefore(g.deadline, today)) || hasOverdueLeaf(g, today)) return 'overdue';
   // Horizon gating: active-work signals surface only on Now (0) and Next (1);
   // Later/Someday stay quiet.
   const col = g.column ?? 0;
@@ -367,21 +367,16 @@ export interface MeaningfulDate {
 // milestone before the deadline or the deadline itself. Unconfirmed schedules
 // may surface an upcoming milestone, but never their legacy project deadline.
 export function nearestMeaningfulDate(g: Goal, today: string): MeaningfulDate | null {
-  if (!hasTrustedSchedule(g)) {
-    const upcomingMilestone = (g.milestones ?? [])
-      .filter((m) => m.date >= today)
-      .map((m) => m.date)
-      .sort()[0];
-    return upcomingMilestone
-      ? { date: upcomingMilestone, kind: 'milestone', past: false }
-      : null;
-  }
+  const confirmedDeadline = g.datesConfirmed === true ? g.deadline : undefined;
   const upcoming = (g.milestones ?? [])
-    .filter((m) => m.date >= today && m.date < g.deadline)
+    .filter((m) => m.date >= today && (!confirmedDeadline || m.date < confirmedDeadline))
     .map((m) => m.date)
     .sort();
   if (upcoming.length > 0) return { date: upcoming[0], kind: 'milestone', past: false };
-  return { date: g.deadline, kind: 'deadline', past: deadlineBefore(g.deadline, today) };
+  if (confirmedDeadline) {
+    return { date: confirmedDeadline, kind: 'deadline', past: deadlineBefore(confirmedDeadline, today) };
+  }
+  return null;
 }
 
 export interface NextAction {
@@ -422,10 +417,12 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
     case 'needs-breakdown':
       return { label: 'Needs a first step', tone: 'step' };
     case 'behind': {
+      if (!hasTrustedSchedule(g)) return null;
       const pts = Math.round(behindPaceBy(Math.round(goalPct(g)), g.start, g.deadline, today));
       return { label: `Behind ${pts}%`, tone: 'warn' };
     }
     case 'due-soon':
+      if (!g.deadline) return null;
       return { label: `Due in ${daysBetween(today, g.deadline)}d`, tone: 'warn' };
     case 'milestone-soon': {
       const soon = (g.milestones ?? [])

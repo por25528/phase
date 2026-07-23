@@ -1,6 +1,5 @@
 import type { KeyboardEvent, RefObject } from 'react';
 import { useAppStore } from '../../state/store';
-import { todayStr } from '../../lib/dates';
 
 export type QuickType = 'habit' | 'goal';
 
@@ -28,7 +27,7 @@ export function QuickAdd({
     const val = el.value.trim();
     if (!val) { el.focus(); return; }
     if (type === 'habit') actions.addHabit(val, 'daily', 4);
-    if (type === 'goal') actions.addGoal(val, `${todayStr().slice(0, 4)}-12-31`);
+    if (type === 'goal') actions.addGoal(val);
     el.value = '';
     el.focus();
   }

@@ -11,7 +11,7 @@ import { leafCount } from '../lib/board';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel, fmtD } from '../lib/dates';
 import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
-import { hasTrustedSchedule } from '../lib/schedule';
+import { hasTrustedSchedule, needsDateConfirmation } from '../lib/schedule';
 
 // Shared uppercase section label — Steps / Milestones / Notes all use it so the
 // two columns read as one system.
@@ -142,6 +142,7 @@ function DrawerHeader({
   const today = todayStr();
   const pct = Math.round(goalPct(g));
   const trustedSchedule = hasTrustedSchedule(g);
+  const datesUnconfirmed = needsDateConfirmation(g);
   const expected = trustedSchedule
     ? Math.round(expectedPct(g.start, g.deadline, today))
     : 0;
@@ -157,13 +158,15 @@ function DrawerHeader({
   const paceLine =
     pace === 'complete'
       ? 'every step done — ready to complete'
-      : !trustedSchedule
+      : datesUnconfirmed
         ? 'Dates unconfirmed'
-        : pace === 'behind'
-          ? `${behind} pts behind pace · expected ${expected}% by today`
-          : pace === 'needs-breakdown'
-            ? `define next step · expected ${expected}% by today`
-            : `on pace · expected ${expected}% by today`;
+        : !trustedSchedule
+          ? 'No project schedule'
+          : pace === 'behind'
+            ? `${behind} pts behind pace · expected ${expected}% by today`
+            : pace === 'needs-breakdown'
+              ? `define next step · expected ${expected}% by today`
+              : `on pace · expected ${expected}% by today`;
 
   return (
     <div className="flex-none px-[30px] pt-[26px] pb-[18px] border-b border-line">
@@ -186,14 +189,14 @@ function DrawerHeader({
           </div>
         )}
         <div className="flex items-center gap-[6px] mt-[9px]">
-          <input type="date" value={g.start} aria-label="Start date"
-            onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, e.target.value, g.deadline); }}
+          <input type="date" value={g.start ?? ''} aria-label="Start date"
+            onChange={(e) => { actions.setGoalDates(g.id, e.target.value || undefined, g.deadline); }}
             className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
           <span className="text-[.78rem] text-muted">→</span>
-          <input type="date" value={g.deadline} aria-label="Deadline"
-            onChange={(e) => { if (e.target.value) actions.setGoalDates(g.id, g.start, e.target.value); }}
+          <input type="date" value={g.deadline ?? ''} aria-label="Deadline"
+            onChange={(e) => { actions.setGoalDates(g.id, g.start, e.target.value || undefined); }}
             className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
-          <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
+          {g.deadline && <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>}
         </div>
       </div>
 

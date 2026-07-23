@@ -3,9 +3,10 @@ import { useAppStore } from '../../state/store';
 import { todayStr, fmtD } from '../../lib/dates';
 import { defaultNodeSpan, spanOutside, dateToX, daysBetween } from '../../lib/timeline';
 import type { GridTick, DayBand } from '../../lib/timeline';
-import type { Goal, GoalNode } from '../../db/types';
+import type { GoalNode } from '../../db/types';
 import { nodePct } from '../../lib/pct';
 import { SpanBar } from './SpanBar';
+import type { GoalWithSpan } from '../../lib/schedule';
 
 /** Shared segment-divider + today-line backdrop for a canvas plot area.
  * Optional weekend `bands` shade Sat+Sun behind everything; dividers sit at
@@ -46,7 +47,7 @@ export function CanvasGrid({
 }
 
 interface NodeLaneProps {
-  goal: Goal;
+  goal: GoalWithSpan;
   rangeStart: string;
   pxPerDay: number;
   labelW: number;

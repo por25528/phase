@@ -7,6 +7,7 @@ import {
 import { clampScale } from '../lib/timeline';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
+import { projectDateError } from '../lib/schedule';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
@@ -305,8 +306,10 @@ export const actions = {
   },
 
   // Convenience wrapper (QuickAdd, tests): a bare goal in the highest column.
-  addGoal(title: string, deadline: string) {
-    actions.addGoals([{ id: uid(), title, start: todayStr(), deadline, nodes: [], column: 0 }]);
+  addGoal(title: string) {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    actions.addGoals([{ id: uid(), title: trimmed, nodes: [], column: 0, datesConfirmed: true }]);
   },
 
   // Priority board: commit an entire column layout. `columns[c]` is the ordered
@@ -476,14 +479,17 @@ export const actions = {
   },
 
   // Goal date editing
-  setGoalDates(goalId: string, start: string, deadline: string): void {
+  setGoalDates(goalId: string, start?: string, deadline?: string): boolean {
     const goal = state.goals.find((g) => g.id === goalId);
-    if (!goal) return;
-    const clamped = clampSpan(start, deadline);
-    const goals = state.goals.map((g) =>
-      g.id === goalId ? { ...g, start: clamped.start, deadline: clamped.deadline } : g,
-    );
+    if (!goal || projectDateError(start, deadline)) return false;
+    const updated = { ...goal, datesConfirmed: true };
+    if (start) updated.start = start;
+    else delete updated.start;
+    if (deadline) updated.deadline = deadline;
+    else delete updated.deadline;
+    const goals = state.goals.map((g) => g.id === goalId ? updated : g);
     withUndo(`Updated dates for "${goal.title}" · Undo`, 'goals', goals);
+    return true;
   },
 
   // Node scheduling — start/deadline are scheduling metadata only, never affect pct

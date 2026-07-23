@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   priorityToColumn,
   columnToPriority,
-  defaultDeadline,
   buildNode,
   buildManualGoal,
   parseGoalImport,
@@ -77,13 +76,6 @@ describe('priorityToColumn', () => {
     expect(columnToPriority(3)).toBe('someday');
     expect(columnToPriority(99)).toBe('someday');
     expect(columnToPriority(undefined)).toBe('now');
-  });
-});
-
-describe('defaultDeadline', () => {
-  it('is Dec 31 of the year in `today`', () => {
-    expect(defaultDeadline('2026-07-05')).toBe('2026-12-31');
-    expect(defaultDeadline('2030-01-01')).toBe('2030-12-31');
   });
 });
 
@@ -164,25 +156,45 @@ describe('buildManualGoal', () => {
       .toBe('hi');
   });
 
-  it('clamps a reversed goal span', () => {
+  it('keeps each optional project date independently and marks it confirmed', () => {
     const g = buildManualGoal({
-      title: 'a', start: '2026-12-31', deadline: TODAY, column: 0, notes: '', subgoalTitles: [],
+      title: 'a', deadline: TODAY, column: 0, notes: '', subgoalTitles: [],
     });
-    expect(g.start).toBe(TODAY);
-    expect(g.deadline).toBe('2026-12-31');
+    expect(g.start).toBeUndefined();
+    expect(g.deadline).toBe(TODAY);
+    expect(g.datesConfirmed).toBe(true);
+  });
+
+  it('rejects a reversed explicit project span', () => {
+    expect(() => buildManualGoal({
+      title: 'a', start: '2026-12-31', deadline: TODAY, column: 0, notes: '', subgoalTitles: [],
+    })).toThrow(/start must be/i);
   });
 });
 
 // ---- parseGoalImport ----
 
 describe('parseGoalImport', () => {
-  it('parses a single goal object with defaults', () => {
+  it('keeps omitted project dates omitted and marks the choice confirmed', () => {
     const [g] = ok(parseGoalImport('{ "title": "Solo" }', TODAY));
     expect(g.title).toBe('Solo');
-    expect(g.start).toBe(TODAY);
-    expect(g.deadline).toBe('2026-12-31');
+    expect(g.start).toBeUndefined();
+    expect(g.deadline).toBeUndefined();
+    expect(g.datesConfirmed).toBe(true);
     expect(g.column).toBe(0);
     expect(g.nodes).toEqual([]);
+  });
+
+  it('preserves a deadline-only import without inventing a start', () => {
+    const [g] = ok(parseGoalImport('{ "title": "Solo", "deadline": "2026-09-01" }', TODAY));
+    expect(g.start).toBeUndefined();
+    expect(g.deadline).toBe('2026-09-01');
+    expect(g.datesConfirmed).toBe(true);
+  });
+
+  it('rejects a reversed explicit project span without swapping it', () => {
+    const raw = '{ "title": "Solo", "start": "2026-10-01", "deadline": "2026-09-01" }';
+    expect(err(parseGoalImport(raw, TODAY))).toMatch(/Goal #1: Start must be/i);
   });
 
   it('parses an array of goals', () => {
@@ -228,13 +240,6 @@ describe('parseGoalImport', () => {
 
   it('rejects a non-object goal entry', () => {
     expect(err(parseGoalImport('["just a string"]', TODAY))).toMatch(/#1/);
-  });
-
-  it('clamps a reversed goal span on import', () => {
-    const json = JSON.stringify({ title: 'g', start: '2026-12-31', deadline: '2026-01-01' });
-    const [g] = ok(parseGoalImport(json, TODAY));
-    expect(g.start).toBe('2026-01-01');
-    expect(g.deadline).toBe('2026-12-31');
   });
 
   it('mints unique ids across goals and nodes', () => {

@@ -4,6 +4,7 @@ import {
   daysBetween, spanOutside, clampScale, PX_PER_DAY,
 } from './timeline';
 import { deadlineBefore, milestoneWithin, hasUnplannedOpenLeafThisWeek, MILESTONE_SOON_DAYS } from './plan';
+import { hasGoalSpan, type GoalWithSpan } from './schedule';
 
 // Pure roadmap logic for the Timeline (spec §3.4 / §3.2). Warnings derive from a
 // project + today alone; the portfolio overlap is one sweep over the Now set;
@@ -40,7 +41,7 @@ export function roadmapWarnings(goal: Goal, today: string): RoadmapWarning[] {
   const out: RoadmapWarning[] = [];
   const phases = goal.nodes; // first-level nodes
 
-  if (goal.datesConfirmed === true && deadlineBefore(goal.deadline, today)) {
+  if (goal.datesConfirmed === true && goal.deadline && deadlineBefore(goal.deadline, today)) {
     out.push({ kind: 'project-overdue', message: 'Project deadline has passed' });
   }
 
@@ -49,7 +50,9 @@ export function roadmapWarnings(goal: Goal, today: string): RoadmapWarning[] {
     out.push({ kind: 'phase-overdue', message: `${overdue.length} phase${plural(overdue.length)} past due`, nodeIds: overdue.map((n) => n.id) });
   }
 
-  const outside = phases.filter((n) => isScheduled(n) && spanOutside({ start: n.start!, deadline: n.deadline! }, goal));
+  const outside = hasGoalSpan(goal)
+    ? phases.filter((n) => isScheduled(n) && spanOutside({ start: n.start!, deadline: n.deadline! }, goal))
+    : [];
   if (outside.length) {
     out.push({ kind: 'phase-outside-project', message: `${outside.length} phase${plural(outside.length)} outside the project span`, nodeIds: outside.map((n) => n.id) });
   }
@@ -85,7 +88,7 @@ const OVERLAP_MIN_DAYS = 7;
 // Among qualifying windows returns the earliest by start (tie-break longest),
 // after merging touching runs. Null when nothing qualifies (spec §3.4).
 export function focusOverlap(nowGoals: Goal[]): OverlapWindow | null {
-  const spans = nowGoals.filter((g) => !g.completedAt);
+  const spans = nowGoals.filter((g): g is GoalWithSpan => !g.completedAt && hasGoalSpan(g));
 
   // Day deltas: +1 at a span's start, -1 the day after its (inclusive) deadline.
   const byDate = new Map<string, number>();
@@ -130,7 +133,7 @@ export interface FitResult {
 // phase dates, milestones.
 function collectDates(goals: Goal[]): string[] {
   const out: string[] = [];
-  for (const g of goals) {
+  for (const g of goals.filter(hasGoalSpan)) {
     out.push(g.start, g.deadline);
     for (const n of g.nodes) if (isScheduled(n)) out.push(n.start!, n.deadline!);
     for (const m of g.milestones ?? []) out.push(m.date);

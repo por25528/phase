@@ -87,6 +87,11 @@ describe('roadmapWarnings', () => {
 const span = (id: string, start: string, deadline: string): Goal => ({ id, title: id, start, deadline, nodes: [], column: 0 });
 
 describe('focusOverlap', () => {
+  it('ignores projects without a complete drawable span', () => {
+    const gs = ['a', 'b', 'c', 'd'].map((id) => span(id, '2026-07-01', '2026-07-31'));
+    expect(focusOverlap([...gs, goal({ id: 'undated', start: undefined, deadline: undefined })])?.goalIds)
+      .toEqual(['a', 'b', 'c', 'd']);
+  });
   it('is null with three or fewer overlapping spans', () => {
     expect(focusOverlap([span('a', '2026-07-01', '2026-07-31'), span('b', '2026-07-01', '2026-07-31'), span('c', '2026-07-01', '2026-07-31')])).toBeNull();
   });
@@ -153,5 +158,9 @@ describe('fitRoadmapRange', () => {
   it('considers milestone dates when framing', () => {
     const r = fitRoadmapRange([goal({ start: '2026-07-01', deadline: '2026-07-10', milestones: [{ id: 'm', title: 'M', date: '2026-09-01' }] })], 4000)!;
     expect(r.scrollToCenterDate).toBe('2026-08-01'); // midpoint of 07-01…09-01
+  });
+
+  it('ignores projects without a complete drawable span', () => {
+    expect(fitRoadmapRange([goal({ start: undefined, deadline: '2026-09-01' })], 800)).toBeNull();
   });
 });

@@ -49,7 +49,7 @@ describe('store actions', () => {
 
   it('addGoal → addRootNode → toggleLeaf round-trip', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('Ship it', '2026-12-31');
+    actions.addGoal('Ship it');
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'Step 1');
     const nid = getState().goals[0].nodes[0].id;
@@ -60,15 +60,15 @@ describe('store actions', () => {
 
   it('new goals default to column 0 and sort ahead of higher columns', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('A', '2026-12-31');
-    actions.addGoal('B', '2026-12-31');
+    actions.addGoal('A');
+    actions.addGoal('B');
     const [a, b] = getState().goals;
     // both column 0, insertion order preserved
     expect(a.column).toBe(0);
     expect(b.column).toBe(0);
     // push B to column 2 via the board, then add C — C (col 0) must sort before B
     actions.setGoalBoard([[a.id], [], [b.id], []]);
-    actions.addGoal('C', '2026-12-31');
+    actions.addGoal('C');
     const order = getState().goals.map((g) => g.title);
     const cols = getState().goals.map((g) => g.column);
     expect(order).toEqual(['A', 'C', 'B']); // column-major: col0 (A, C) then col2 (B)
@@ -77,9 +77,9 @@ describe('store actions', () => {
 
   it('setGoalBoard rebuilds goals in column-major order and stamps columns', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('one', '2026-12-31');
-    actions.addGoal('two', '2026-12-31');
-    actions.addGoal('three', '2026-12-31');
+    actions.addGoal('one');
+    actions.addGoal('two');
+    actions.addGoal('three');
     const [g1, g2, g3] = getState().goals.map((g) => g.id);
     // three across columns: g3 highest (col0), g1 col1 top, g2 col1 below
     actions.setGoalBoard([[g3], [g1, g2], [], []]);
@@ -90,8 +90,8 @@ describe('store actions', () => {
 
   it('setGoalBoard never drops a goal missing from the layout', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('keep', '2026-12-31');
-    actions.addGoal('orphan', '2026-12-31');
+    actions.addGoal('keep');
+    actions.addGoal('orphan');
     const [keep, orphan] = getState().goals.map((g) => g.id);
     actions.setGoalBoard([[keep], [], [], []]); // orphan omitted
     const ids = getState().goals.map((g) => g.id);
@@ -102,7 +102,7 @@ describe('store actions', () => {
 
   it('addChild converts a leaf into a container (done removed, parent expanded)', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'leaf');
     const nid = getState().goals[0].nodes[0].id;
@@ -116,7 +116,7 @@ describe('store actions', () => {
   describe('addChild clears planning fields', () => {
     it('a planned leaf that gains a child loses done/plannedWeek/plannedDay', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('G', '2026-12-31');
+      actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
@@ -134,7 +134,7 @@ describe('store actions', () => {
 
   it('removeNode schedules undo; undoLastDelete restores', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'Step 1');
     const nid = getState().goals[0].nodes[0].id;
@@ -148,7 +148,7 @@ describe('store actions', () => {
 
   it('removeGoal schedules undo; undoLastDelete restores', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     actions.removeGoal(getState().goals[0].id);
     expect(getState().goals).toHaveLength(0);
     expect(getState().pendingUndo).not.toBeNull();
@@ -159,7 +159,7 @@ describe('store actions', () => {
 
   it('undo window expires after 5s', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     actions.removeGoal(getState().goals[0].id);
     vi.advanceTimersByTime(5000);
     expect(getState().pendingUndo).toBeNull();
@@ -167,18 +167,29 @@ describe('store actions', () => {
     expect(getState().goals).toHaveLength(0); // nothing restored
   });
 
-  it('setGoalDates clamps inverted spans', async () => {
+  it('addGoal creates a confirmed project without fake dates', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('No fake deadline');
+    expect(getState().goals[0]).toMatchObject({
+      title: 'No fake deadline',
+      datesConfirmed: true,
+    });
+    expect(getState().goals[0].start).toBeUndefined();
+    expect(getState().goals[0].deadline).toBeUndefined();
+  });
+
+  it('setGoalDates rejects inverted spans atomically', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
-    actions.setGoalDates(gid, '2026-10-01', '2026-02-01');
-    expect(getState().goals[0].start).toBe('2026-02-01');
-    expect(getState().goals[0].deadline).toBe('2026-10-01');
+    expect(actions.setGoalDates(gid, '2026-10-01', '2026-02-01')).toBe(false);
+    expect(getState().goals[0].start).toBeUndefined();
+    expect(getState().goals[0].deadline).toBeUndefined();
   });
 
   it('setNodeDates sets both dates, ordered via clampSpan', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'Step 1');
     const nid = getState().goals[0].nodes[0].id;
@@ -190,7 +201,7 @@ describe('store actions', () => {
 
   it('setNodeDates schedules a deeply nested node', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'parent');
     const parentId = getState().goals[0].nodes[0].id;
@@ -204,7 +215,7 @@ describe('store actions', () => {
 
   it('setNodeDates is a no-op when the goal or node is missing', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.setNodeDates(gid, 'nope', '2026-03-01', '2026-03-15');
     expect(getState().goals[0].nodes).toHaveLength(0);
@@ -214,7 +225,7 @@ describe('store actions', () => {
 
   it('clearNodeDates removes both start and deadline', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'Step 1');
     const nid = getState().goals[0].nodes[0].id;
@@ -227,7 +238,7 @@ describe('store actions', () => {
 
   it('scheduling a node never affects pct roll-up', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'Step 1');
     actions.addRootNode(gid, 'Step 2');
@@ -282,7 +293,7 @@ describe('store actions', () => {
 
   it('removeMilestone schedules undo; undoLastDelete restores', async () => {
     const { actions, getState } = await freshStore();
-    actions.addGoal('G', '2026-12-31');
+    actions.addGoal('G');
     const gid = getState().goals[0].id;
     actions.addMilestone(gid, 'Launch', '2026-08-01');
     const mid = getState().goals[0].milestones![0].id;
@@ -297,7 +308,7 @@ describe('store actions', () => {
   describe('addGoals (import path)', () => {
     it('appends, re-sorts column-major, and auto-expands imported containers', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('existing', '2026-12-31'); // lands in column 0
+      actions.addGoal('existing'); // lands in column 0
       const imported: Goal[] = [
         {
           id: 'gi_later', title: 'Imported later', start: '2026-07-05', deadline: '2026-12-31',
@@ -324,7 +335,7 @@ describe('store actions', () => {
   describe('planNode / unplanNode', () => {
     it('plans a leaf into a week, normalizing week and day together', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('G', '2026-12-31');
+      actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
@@ -344,7 +355,7 @@ describe('store actions', () => {
 
     it('is a no-op on containers and unknown ids', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('G', '2026-12-31');
+      actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
@@ -356,7 +367,7 @@ describe('store actions', () => {
 
     it('unplanNode clears both fields with an undo window', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('G', '2026-12-31');
+      actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
@@ -373,7 +384,7 @@ describe('store actions', () => {
   describe('toggleLeaf completion undo', () => {
     it('completing arms an undo that restores the unchecked state', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('G', '2026-12-31');
+      actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'Draft introduction');
       const nid = getState().goals[0].nodes[0].id;
@@ -387,7 +398,7 @@ describe('store actions', () => {
 
     it('unchecking is direct — no undo toast', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('G', '2026-12-31');
+      actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
@@ -412,7 +423,7 @@ describe('store actions', () => {
       const { weekOf } = await import('../lib/plan');
       const { todayStr, addDays } = await import('../lib/dates');
       const prevWeek = addDays(weekOf(todayStr()), -7);
-      actions.addGoal('G', '2026-12-31');
+      actions.addGoal('G');
       const goalId = getState().goals[0].id;
       actions.addRootNode(goalId, 'Outgoing commitment');
       const nodeId = getState().goals[0].nodes[0].id;
@@ -556,7 +567,7 @@ describe('store actions', () => {
       const { persist } = await import('../db/db');
       vi.mocked(persist).mockClear();
 
-      store.actions.addGoal('New goal', '2026-12-31');
+      store.actions.addGoal('New goal');
 
       expect(persist).toHaveBeenCalledOnce();
       expect(persist).toHaveBeenCalledWith(expect.objectContaining({
@@ -584,7 +595,7 @@ describe('store actions', () => {
   describe('completion lifecycle', () => {
     it('completeGoal sets completedAt and is undo-aware; reopen is its inverse', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('A', '2026-12-31');
+      actions.addGoal('A');
       const gid = getState().goals[0].id;
       actions.completeGoal(gid);
       expect(getState().goals[0].completedAt).toBeTruthy();
@@ -597,9 +608,9 @@ describe('store actions', () => {
 
     it('preserves horizon and position across complete → reorder actives → reopen', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('A', '2026-12-31');
-      actions.addGoal('B', '2026-12-31');
-      actions.addGoal('C', '2026-12-31');
+      actions.addGoal('A');
+      actions.addGoal('B');
+      actions.addGoal('C');
       const [a, b, c] = getState().goals;
       actions.completeGoal(b.id);
       // Board shows actives [A, C]; user reorders to [C, A].
@@ -613,7 +624,7 @@ describe('store actions', () => {
 
     it('freezes structural edits on a completed project but allows metadata and moves', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('A', '2026-12-31');
+      actions.addGoal('A');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'Step');
       const nid = getState().goals[0].nodes[0].id;
@@ -638,9 +649,9 @@ describe('store actions', () => {
 
     it('moveGoalToColumn matches drag order and leaves others in place', async () => {
       const { actions, getState } = await freshStore();
-      actions.addGoal('A', '2026-12-31');
-      actions.addGoal('B', '2026-12-31');
-      actions.addGoal('C', '2026-12-31');
+      actions.addGoal('A');
+      actions.addGoal('B');
+      actions.addGoal('C');
       const [a, b, c] = getState().goals;
       actions.moveGoalToColumn(b.id, 2);
       expect(getState().goals.map((g) => g.id)).toEqual([a.id, c.id, b.id]);
