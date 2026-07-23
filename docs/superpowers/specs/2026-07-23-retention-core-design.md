@@ -35,6 +35,11 @@ behind-pace warning.
   most four items and two items per project.
 - Existing project dates remain stored but are untrusted until the user confirms
   them. Untrusted dates never generate pace or behind claims.
+- Legacy dates are never auto-confirmed, and there is no Confirm all action.
+  Confirmation always records a per-project user decision.
+- The Goals board provides a session-dismissible count of unconfirmed projects
+  and per-card Confirm/Edit controls, so explicit review does not require
+  opening every drawer.
 - New projects may be undated. A deadline without a start may show a countdown,
   but it cannot produce a pace claim.
 - The existing uncommitted `src/components/GoalTree.tsx` work is outside this
@@ -53,6 +58,7 @@ behind-pace warning.
 - automatic surfacing of due project steps
 - completion timestamps needed by a collapsed Done today group
 - optional project dates and explicit legacy-date confirmation
+- Goals-board review banner and per-card date confirmation
 - pace gating across the board, drawer, planner, and timeline
 - backward-compatible loading and import of existing records
 
@@ -302,12 +308,27 @@ New Goal starts with blank Start and Deadline inputs. The manual goal builder
 marks the resulting date state confirmed whether the user supplies zero, one,
 or two dates.
 
-The existing Goal drawer header is the single edit surface for legacy
-confirmation:
+The existing Goal drawer header remains the only surface for changing legacy
+date values:
 
 - Confirm accepts the displayed dates and sets `datesConfirmed = true`;
 - Edit keeps the date fields available and confirms the submitted values;
 - Clear dates removes both values and marks the undated state confirmed.
+
+The Goals board provides the faster review path:
+
+- while unconfirmed projects remain, a quiet banner says
+  `N projects have unconfirmed dates`;
+- Review focuses the first unconfirmed board card;
+- each unconfirmed card displays its stored date range with Confirm and Edit;
+- Confirm marks only that project confirmed;
+- Edit opens that project's drawer, where its dates can be changed or cleared;
+- dismissing the banner hides it for the current App session only; the
+  per-card status remains and the banner returns after an App restart if
+  unconfirmed projects still exist.
+
+There is no Confirm all action and no migration heuristic. A non-December-31
+deadline is still untrusted until the user explicitly confirms that project.
 
 Board cards and the drawer show the quiet status `Dates unconfirmed`. The
 planner and timeline omit pace-derived warnings for that project. None of these
@@ -431,5 +452,8 @@ Manual smoke paths:
 - No new project receives an automatic December 31 deadline.
 - No missing, partial, or unconfirmed project schedule produces a pace or behind
   claim.
+- Legacy schedules are never auto-confirmed; each confirmation applies to one
+  project, and all unconfirmed projects can be reviewed from the Goals board
+  without opening every drawer.
 - Existing persisted data loads without destructive migration.
 - The complete automated test suite and TypeScript production build pass.
