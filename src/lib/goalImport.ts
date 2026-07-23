@@ -1,7 +1,7 @@
 import type { Goal, GoalNode } from '../db/types';
 import { uid } from './tree';
 import { clampSpan } from './timeline';
-import { projectDateError } from './schedule';
+import { isValidLocalDate, projectDateError } from './schedule';
 
 // ── Horizon ↔ column ──────────────────────────────────────────────────────────
 // The Goals board has 4 commitment horizons, column 0 = Now. The AI-facing
@@ -45,9 +45,6 @@ type SubgoalSpec =
       deadline?: unknown;
     };
 
-const isDateStr = (v: unknown): v is string =>
-  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
-
 /**
  * Build a GoalNode tree from a subgoal spec, minting fresh ids. Enforces the
  * leaf-XOR-container invariant: a spec with a non-empty `subgoals` array becomes
@@ -74,7 +71,7 @@ export function buildNode(spec: SubgoalSpec): GoalNode | null {
 
   // Leaf — carry scheduling dates only when both are present.
   const node: GoalNode = { id: uid(), title, done: false };
-  if (isDateStr(spec.start) && isDateStr(spec.deadline)) {
+  if (isValidLocalDate(spec.start) && isValidLocalDate(spec.deadline)) {
     const clamped = clampSpan(spec.start, spec.deadline);
     node.start = clamped.start;
     node.deadline = clamped.deadline;
@@ -137,8 +134,8 @@ function buildImportedGoal(spec: GoalSpec): Goal {
     column: priorityToColumn(spec.priority),
     datesConfirmed: true,
   };
-  if (isDateStr(spec.start)) goal.start = spec.start;
-  if (isDateStr(spec.deadline)) goal.deadline = spec.deadline;
+  if (isValidLocalDate(spec.start)) goal.start = spec.start;
+  if (isValidLocalDate(spec.deadline)) goal.deadline = spec.deadline;
   if (typeof spec.notes === 'string' && spec.notes.trim()) goal.notes = spec.notes.trim();
   return goal;
 }
@@ -150,7 +147,7 @@ function buildImportedGoal(spec: GoalSpec): Goal {
  */
 export function sanitizeBackupGoal(goal: Goal): Goal {
   const c = (goal as { completedAt?: unknown }).completedAt;
-  if (c === undefined || (typeof c === 'string' && isDateStr(c))) return goal;
+  if (c === undefined || isValidLocalDate(c)) return goal;
   const copy = { ...goal };
   delete (copy as { completedAt?: unknown }).completedAt;
   return copy;
@@ -189,10 +186,7 @@ export function parseGoalImport(
       return { error: `Goal #${i + 1} is missing a title.` };
     }
     const goalSpec = spec as GoalSpec;
-    const dateError = projectDateError(
-      isDateStr(goalSpec.start) ? goalSpec.start : undefined,
-      isDateStr(goalSpec.deadline) ? goalSpec.deadline : undefined,
-    );
+    const dateError = projectDateError(goalSpec.start, goalSpec.deadline);
     if (dateError) return { error: `Goal #${i + 1}: ${dateError}` };
     goals.push(buildImportedGoal(goalSpec));
   }

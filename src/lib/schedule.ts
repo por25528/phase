@@ -5,11 +5,16 @@ export type TrustedGoalSchedule = GoalWithSpan & { datesConfirmed: true };
 
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+export function isValidLocalDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !LOCAL_DATE.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function hasGoalSpan(goal: Goal): goal is GoalWithSpan {
-  return typeof goal.start === 'string'
-    && LOCAL_DATE.test(goal.start)
-    && typeof goal.deadline === 'string'
-    && LOCAL_DATE.test(goal.deadline);
+  return isValidLocalDate(goal.start)
+    && isValidLocalDate(goal.deadline)
+    && goal.start <= goal.deadline;
 }
 
 export function needsDateConfirmation(goal: Goal): boolean {
@@ -20,7 +25,11 @@ export function hasTrustedSchedule(goal: Goal): goal is TrustedGoalSchedule {
   return goal.datesConfirmed === true && hasGoalSpan(goal);
 }
 
-export function projectDateError(start?: string, deadline?: string): string | null {
-  if (start && deadline && start > deadline) return 'Start must be on or before the deadline.';
+export function projectDateError(start?: unknown, deadline?: unknown): string | null {
+  if (start !== undefined && !isValidLocalDate(start)) return 'Start must be a valid date.';
+  if (deadline !== undefined && !isValidLocalDate(deadline)) return 'Deadline must be a valid date.';
+  if (start !== undefined && deadline !== undefined && start > deadline) {
+    return 'Start must be on or before the deadline.';
+  }
   return null;
 }

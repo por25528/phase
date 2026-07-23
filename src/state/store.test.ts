@@ -187,6 +187,44 @@ describe('store actions', () => {
     expect(getState().goals[0].deadline).toBeUndefined();
   });
 
+  it('setGoalDates rejects invalid supplied values atomically without persisting', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    dbMocks.persist.mockClear();
+
+    expect(actions.setGoalDates(gid, '2026-02-30', '2026-12-31')).toBe(false);
+    expect(actions.setGoalDates(gid, undefined, 'tomorrow')).toBe(false);
+    expect(getState().goals[0].start).toBeUndefined();
+    expect(getState().goals[0].deadline).toBeUndefined();
+    expect(getState().pendingUndo).toBeNull();
+    expect(dbMocks.persist).not.toHaveBeenCalled();
+  });
+
+  it('setGoalDates independently sets and deletes dates, confirms, persists, and supports undo', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    dbMocks.persist.mockClear();
+
+    expect(actions.setGoalDates(gid, undefined, '2026-09-01')).toBe(true);
+    expect(getState().goals[0]).toMatchObject({
+      deadline: '2026-09-01',
+      datesConfirmed: true,
+    });
+    expect(getState().goals[0].start).toBeUndefined();
+
+    expect(actions.setGoalDates(gid, '2026-08-01', undefined)).toBe(true);
+    expect(getState().goals[0].start).toBe('2026-08-01');
+    expect(getState().goals[0].deadline).toBeUndefined();
+    expect(getState().pendingUndo?.label).toBe('Updated dates for "G" · Undo');
+    expect(dbMocks.persist).toHaveBeenCalledTimes(2);
+
+    actions.undoLastDelete();
+    expect(getState().goals[0].start).toBeUndefined();
+    expect(getState().goals[0].deadline).toBe('2026-09-01');
+  });
+
   it('setNodeDates sets both dates, ordered via clampSpan', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('G');

@@ -197,6 +197,13 @@ describe('parseGoalImport', () => {
     expect(err(parseGoalImport(raw, TODAY))).toMatch(/Goal #1: Start must be/i);
   });
 
+  it('rejects explicit malformed and calendar-invalid project dates instead of omitting them', () => {
+    expect(err(parseGoalImport('{ "title": "Solo", "start": "tomorrow" }', TODAY)))
+      .toBe('Goal #1: Start must be a valid date.');
+    expect(err(parseGoalImport('{ "title": "Solo", "deadline": "2026-02-30" }', TODAY)))
+      .toBe('Goal #1: Deadline must be a valid date.');
+  });
+
   it('parses an array of goals', () => {
     const goals = ok(parseGoalImport('[{ "title": "A" }, { "title": "B" }]', TODAY));
     expect(goals.map((g) => g.title)).toEqual(['A', 'B']);

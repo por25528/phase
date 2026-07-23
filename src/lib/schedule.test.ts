@@ -3,6 +3,7 @@ import type { Goal } from '../db/types';
 import {
   hasGoalSpan,
   hasTrustedSchedule,
+  isValidLocalDate,
   needsDateConfirmation,
   projectDateError,
 } from './schedule';
@@ -40,6 +41,17 @@ describe('schedule provenance', () => {
     expect(hasGoalSpan(goal({ deadline: 'not-a-date' }))).toBe(false);
     expect(hasTrustedSchedule(goal({ start: '', datesConfirmed: true }))).toBe(false);
   });
+
+  it('rejects semantic calendar errors and reversed persisted spans', () => {
+    expect(hasGoalSpan(goal({ start: '2026-02-30' }))).toBe(false);
+    expect(hasGoalSpan(goal({ deadline: '2026-13-01' }))).toBe(false);
+    expect(hasGoalSpan(goal({ start: '2026-12-01', deadline: '2026-11-30' }))).toBe(false);
+    expect(hasTrustedSchedule(goal({
+      start: '2026-12-01',
+      deadline: '2026-11-30',
+      datesConfirmed: true,
+    }))).toBe(false);
+  });
 });
 
 describe('projectDateError', () => {
@@ -52,5 +64,21 @@ describe('projectDateError', () => {
     expect(projectDateError('2026-07-31', '2026-07-31')).toBeNull();
     expect(projectDateError('2026-07-01', '2026-07-31')).toBeNull();
     expect(projectDateError('2026-07-01')).toBeNull();
+  });
+
+  it('rejects each supplied malformed or calendar-invalid date', () => {
+    expect(projectDateError('2026-02-30', '2026-12-31')).toBe('Start must be a valid date.');
+    expect(projectDateError('tomorrow', '2026-12-31')).toBe('Start must be a valid date.');
+    expect(projectDateError('2026-01-01', '2026-13-01')).toBe('Deadline must be a valid date.');
+  });
+});
+
+describe('isValidLocalDate', () => {
+  it('round-trips real YYYY-MM-DD calendar dates', () => {
+    expect(isValidLocalDate('2024-02-29')).toBe(true);
+    expect(isValidLocalDate('2026-02-29')).toBe(false);
+    expect(isValidLocalDate('2026-02-30')).toBe(false);
+    expect(isValidLocalDate('2026-13-01')).toBe(false);
+    expect(isValidLocalDate('2026-7-01')).toBe(false);
   });
 });
