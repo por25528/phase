@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { Hero } from './today/Hero';
 import { WeekStrip } from './today/WeekStrip';
 import { HabitsCard } from './today/HabitsCard';
@@ -8,8 +8,17 @@ import { GoalsCard } from './today/GoalsCard';
 import { MiniCalendar } from './today/MiniCalendar';
 import { QuickAdd } from './today/QuickAdd';
 import type { QuickType } from './today/QuickAdd';
+import { useAppStore } from '../state/store';
+import { useLocalDate } from '../hooks/useLocalDate';
+import { buildDailyWork } from '../lib/dailyWork';
 
 export function Today() {
+  const { goals, tasks } = useAppStore();
+  const today = useLocalDate();
+  const dailyWork = useMemo(
+    () => buildDailyWork(goals, tasks, today),
+    [goals, tasks, today],
+  );
   const quickRef = useRef<HTMLInputElement>(null);
   const [quickType, setQuickType] = useState<QuickType>('goal');
   function focusQuick(t: QuickType) {
@@ -31,8 +40,8 @@ export function Today() {
       <div className="today-main grid gap-[20px] items-start mt-[14px]">
         <div className="flex flex-col gap-[14px] min-w-0">
           <HabitsCard />
-          <TodayWorkCard />
-          <WorthConsideringCard />
+          <TodayWorkCard sections={dailyWork} today={today} />
+          <WorthConsideringCard sections={dailyWork} today={today} />
         </div>
         <div className="flex flex-col gap-[14px] min-w-0">
           <GoalsCard onAddGoal={() => focusQuick('goal')} />

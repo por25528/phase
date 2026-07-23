@@ -1,8 +1,10 @@
 import type { KeyboardEvent, RefObject } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr } from '../../lib/dates';
+import { dispatchQuickAdd } from './workActions';
+import type { QuickAddType } from './workActions';
 
-export type QuickType = 'habit' | 'goal' | 'task';
+export type QuickType = QuickAddType;
 
 const PLACEHOLDER: Record<QuickType, string> = {
   habit: 'New habit name…',
@@ -26,11 +28,10 @@ export function QuickAdd({
   function submit() {
     const el = inputRef.current;
     if (!el) return;
-    const val = el.value.trim();
-    if (!val) { el.focus(); return; }
-    if (type === 'habit') actions.addHabit(val, 'daily', 4);
-    if (type === 'goal') actions.addGoal(val);
-    if (type === 'task') actions.addTask(val, todayStr());
+    if (!dispatchQuickAdd(type, el.value, actions, todayStr)) {
+      el.focus();
+      return;
+    }
     el.value = '';
     el.focus();
   }

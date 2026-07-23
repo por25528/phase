@@ -14,6 +14,7 @@ function item(overrides: Partial<DailyWorkItem> = {}): DailyWorkItem {
     goalTitle: 'Launch',
     due: false,
     done: true,
+    editable: true,
     source: 'task-today',
     scheduledDate: '2026-07-23',
     ...overrides,
@@ -56,5 +57,16 @@ describe('DailyWorkRow', () => {
 
     expect(html).toContain('Tomorrow');
     expect(html).toContain('aria-label="Complete &quot;Send the draft&quot;"');
+  });
+
+  it('renders archived project completion as disabled read-only evidence', () => {
+    const html = renderToStaticMarkup(createElement(DailyWorkRow, {
+      item: item({ kind: 'step', editable: false }),
+      onToggle: vi.fn(),
+    }));
+
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('Completed in archived project');
   });
 });

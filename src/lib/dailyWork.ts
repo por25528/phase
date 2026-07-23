@@ -20,6 +20,7 @@ export interface DailyWorkItem {
   goalTitle?: string;
   due: boolean;
   done: boolean;
+  editable: boolean;
   source: DailyWorkSource;
   plannedWeek?: string;
   plannedDay?: string;
@@ -74,6 +75,7 @@ function taskItem(
     ...(goal ? { goalTitle: goal.title } : {}),
     due: false,
     done: task.done,
+    editable: true,
     source,
     ...(isValidLocalDate(task.date) ? { scheduledDate: task.date } : {}),
   };
@@ -90,6 +92,7 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
     goalTitle: goal.title,
     due: source === 'due',
     done: Boolean(node.done),
+    editable: !goal.completedAt,
     source,
     ...(isValidLocalDate(node.plannedWeek) ? { plannedWeek: node.plannedWeek } : {}),
     ...(isValidLocalDate(node.plannedDay) ? { plannedDay: node.plannedDay } : {}),

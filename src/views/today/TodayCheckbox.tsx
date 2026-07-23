@@ -2,21 +2,25 @@ export function TodayCheckbox({
   checked,
   onToggle,
   ariaLabel,
+  disabled = false,
 }: {
   checked: boolean;
   onToggle: () => void;
   ariaLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
+      aria-disabled={disabled || undefined}
       aria-label={ariaLabel}
-      onClick={onToggle}
+      disabled={disabled}
+      onClick={disabled ? undefined : onToggle}
       className={`w-[22px] h-[22px] border-[1.5px] rounded-[7px] flex-shrink-0 grid place-items-center transition-colors duration-100 ${
         checked ? 'bg-accent border-accent' : 'bg-field border-line-2 hover:border-muted'
-      }`}
+      } ${disabled ? 'cursor-default opacity-70' : ''}`}
     >
       <svg
         viewBox="0 0 12 12"

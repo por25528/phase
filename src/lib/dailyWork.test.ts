@@ -93,6 +93,7 @@ describe('buildDailyWork commitments', () => {
         goalTitle: 'Goal known',
         due: true,
         done: false,
+        editable: true,
         source: 'due',
         plannedWeek: WEEK,
         plannedDay: TODAY,
@@ -107,6 +108,7 @@ describe('buildDailyWork commitments', () => {
         goalTitle: 'Goal known',
         due: false,
         done: false,
+        editable: true,
         source: 'task-today',
         scheduledDate: TODAY,
       },
@@ -118,6 +120,7 @@ describe('buildDailyWork commitments', () => {
         goalId: null,
         due: false,
         done: false,
+        editable: true,
         source: 'task-today',
         scheduledDate: TODAY,
       },
@@ -214,6 +217,7 @@ describe('buildDailyWork carryovers and completion', () => {
       'step:nested',
     ]);
     expect(result.completedToday.every((item) => item.source === 'completed-today')).toBe(true);
+    expect(result.completedToday.every((item) => item.editable)).toBe(true);
   });
 
   it('requires done state but keeps same-day leaves from archived projects', () => {
@@ -241,11 +245,13 @@ describe('buildDailyWork carryovers and completion', () => {
         goalId: 'archived',
         goalTitle: 'Goal archived',
         done: true,
+        editable: true,
       }),
       expect.objectContaining({
         goalId: 'archived',
         goalTitle: 'Goal archived',
         done: true,
+        editable: false,
       }),
     ]);
   });

@@ -26,7 +26,14 @@ export function DailyWorkRow({
       <TodayCheckbox
         checked={item.done}
         onToggle={() => onToggle(item)}
-        ariaLabel={item.done ? `Mark "${item.title}" not done` : `Complete "${item.title}"`}
+        disabled={!item.editable}
+        ariaLabel={
+          item.editable
+            ? item.done
+              ? `Mark "${item.title}" not done`
+              : `Complete "${item.title}"`
+            : `Completed in archived project: "${item.title}"`
+        }
       />
       <span className={`flex-1 min-w-0 truncate text-[.88rem] ${item.done ? 'line-through text-muted' : ''}`}>
         {item.title}

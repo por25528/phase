@@ -1,15 +1,18 @@
 import { CardSection } from '../../components/CardSection';
 import { Tag } from '../../components/Tag';
-import { buildDailyWork } from '../../lib/dailyWork';
-import { weekOf } from '../../lib/plan';
-import { useLocalDate } from '../../hooks/useLocalDate';
+import type { DailyWorkSections } from '../../lib/dailyWork';
 import { useAppStore } from '../../state/store';
+import { scheduleSuggestionForToday } from './workActions';
 
-export function WorthConsideringCard() {
-  const { goals, tasks, actions } = useAppStore();
-  const today = useLocalDate();
-  const week = weekOf(today);
-  const { suggestions } = buildDailyWork(goals, tasks, today);
+export function WorthConsideringCard({
+  sections,
+  today,
+}: {
+  sections: DailyWorkSections;
+  today: string;
+}) {
+  const { actions } = useAppStore();
+  const { suggestions } = sections;
 
   return (
     <CardSection label="Worth considering">
@@ -28,7 +31,7 @@ export function WorthConsideringCard() {
           {item.goalId && (
             <button
               type="button"
-              onClick={() => actions.planNode(item.goalId!, item.id, week, today)}
+              onClick={() => scheduleSuggestionForToday(item, today, actions)}
               className="flex-none text-[.7rem] font-semibold text-accent hover:text-accent-deep px-[3px]"
               aria-label={`Plan "${item.title}" for today`}
             >
