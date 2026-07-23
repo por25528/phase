@@ -42,6 +42,7 @@ interface UIState {
   pxPerDay: number; // timeline scale — continuous, gesture-driven
   hydration: 'loading' | 'ready' | 'error';
   secondTab: boolean;
+  dateReviewDismissed: boolean;
   theme: Theme; // per-device UI preference (localStorage, not Dexie)
   planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
 }
@@ -63,6 +64,7 @@ let state: FullState = {
   pxPerDay: 13, // quarter preset until the persisted scale loads
   hydration: 'loading',
   secondTab: false,
+  dateReviewDismissed: false,
   planReview: null,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
@@ -479,6 +481,19 @@ export const actions = {
   },
 
   // Goal date editing
+  confirmGoalDates(goalId: string): void {
+    const goal = state.goals.find((g) => g.id === goalId);
+    if (!goal || goal.datesConfirmed === true || projectDateError(goal.start, goal.deadline)) return;
+    const goals = state.goals.map((g) => (
+      g.id === goalId ? { ...g, datesConfirmed: true } : g
+    ));
+    setAndPersist({ goals });
+  },
+
+  dismissDateReview(): void {
+    set({ dateReviewDismissed: true });
+  },
+
   setGoalDates(goalId: string, start?: string, deadline?: string): boolean {
     const goal = state.goals.find((g) => g.id === goalId);
     if (!goal || projectDateError(start, deadline)) return false;

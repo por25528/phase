@@ -11,7 +11,7 @@ import { leafCount } from '../lib/board';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel, fmtD } from '../lib/dates';
 import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
-import { hasTrustedSchedule, needsDateConfirmation } from '../lib/schedule';
+import { hasTrustedSchedule, needsDateConfirmation, projectDateError } from '../lib/schedule';
 
 // Shared uppercase section label — Steps / Milestones / Notes all use it so the
 // two columns read as one system.
@@ -139,10 +139,19 @@ function DrawerHeader({
   actions: ReturnType<typeof useAppStore>['actions'];
 }) {
   const [editingTitle, setEditingTitle] = useState(false);
+  const [draftStart, setDraftStart] = useState(g.start ?? '');
+  const [draftDeadline, setDraftDeadline] = useState(g.deadline ?? '');
+  useEffect(() => {
+    setDraftStart(g.start ?? '');
+    setDraftDeadline(g.deadline ?? '');
+  }, [g.id, g.start, g.deadline]);
+
   const today = todayStr();
   const pct = Math.round(goalPct(g));
   const trustedSchedule = hasTrustedSchedule(g);
   const datesUnconfirmed = needsDateConfirmation(g);
+  const dateError = projectDateError(draftStart || undefined, draftDeadline || undefined);
+  const storedDateError = projectDateError(g.start, g.deadline);
   const expected = trustedSchedule
     ? Math.round(expectedPct(g.start, g.deadline, today))
     : 0;
@@ -188,15 +197,68 @@ function DrawerHeader({
             {g.title}
           </div>
         )}
-        <div className="flex items-center gap-[6px] mt-[9px]">
-          <input type="date" value={g.start ?? ''} aria-label="Start date"
-            onChange={(e) => { actions.setGoalDates(g.id, e.target.value || undefined, g.deadline); }}
-            className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
-          <span className="text-[.78rem] text-muted">→</span>
-          <input type="date" value={g.deadline ?? ''} aria-label="Deadline"
-            onChange={(e) => { actions.setGoalDates(g.id, g.start, e.target.value || undefined); }}
-            className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none" />
-          {g.deadline && <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>}
+        <div className="mt-[9px]">
+          <div className="flex flex-wrap items-center gap-[6px]">
+            <input
+              type="date"
+              value={draftStart}
+              aria-label="Start date"
+              onChange={(e) => setDraftStart(e.target.value)}
+              className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
+            />
+            <span className="text-[.78rem] text-muted">→</span>
+            <input
+              type="date"
+              value={draftDeadline}
+              aria-label="Deadline"
+              onChange={(e) => setDraftDeadline(e.target.value)}
+              className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
+            />
+            <button
+              type="button"
+              disabled={dateError !== null}
+              onClick={() => actions.setGoalDates(
+                g.id,
+                draftStart || undefined,
+                draftDeadline || undefined,
+              )}
+              className="text-[.7rem] font-semibold text-accent-deep px-[7px] py-[3px] rounded-[7px] hover:bg-accent-tint disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Save dates
+            </button>
+            {datesUnconfirmed && (
+              <button
+                type="button"
+                disabled={storedDateError !== null}
+                title={storedDateError ?? undefined}
+                onClick={() => actions.confirmGoalDates(g.id)}
+                className="text-[.7rem] font-semibold text-warn px-[7px] py-[3px] rounded-[7px] hover:bg-warn-tint disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirm
+              </button>
+            )}
+            {(g.start || g.deadline || draftStart || draftDeadline) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftStart('');
+                  setDraftDeadline('');
+                  actions.setGoalDates(g.id, undefined, undefined);
+                }}
+                className="text-[.7rem] font-medium text-muted px-[7px] py-[3px] rounded-[7px] hover:bg-hover hover:text-ink"
+              >
+                Clear dates
+              </button>
+            )}
+            {g.deadline && (
+              <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
+            )}
+          </div>
+          {dateError && (
+            <p className="mt-[5px] text-[.7rem] text-warn" role="alert">
+              {dateError}
+            </p>
+          )}
         </div>
       </div>
 

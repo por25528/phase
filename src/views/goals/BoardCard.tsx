@@ -15,6 +15,7 @@ import {
   weekOf,
   type AttentionBadge,
 } from '../../lib/plan';
+import { needsDateConfirmation, projectDateError } from '../../lib/schedule';
 import { HORIZON_LABELS } from './styles';
 
 const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
@@ -133,6 +134,8 @@ export function BoardCard({
   onComplete,
   onMove,
   onDelete,
+  onConfirmDates,
+  onEditDates,
   reducedMotion,
   dimmed,
   matched,
@@ -145,6 +148,8 @@ export function BoardCard({
   onComplete: (id: string) => void;
   onMove: (id: string, column: number) => void;
   onDelete: (id: string) => void;
+  onConfirmDates: (id: string) => void;
+  onEditDates: (id: string) => void;
   reducedMotion: boolean;
   dimmed: boolean;
   matched: boolean;
@@ -178,6 +183,15 @@ export function BoardCard({
 
   const primary = cardPrimaryAction(goal, today);
   const currentCol = goal.column ?? 0;
+  const datesUnconfirmed = needsDateConfirmation(goal);
+  const storedDateError = projectDateError(goal.start, goal.deadline);
+  const storedRange = goal.start && goal.deadline
+    ? `${fmtD(goal.start)} → ${fmtD(goal.deadline)}`
+    : goal.start
+      ? `Starts ${fmtD(goal.start)}`
+      : goal.deadline
+        ? `Due ${fmtD(goal.deadline)}`
+        : '';
 
   // Action buttons live inside the drag activator, so each swallows the pointer
   // (no drag) and the click (no drawer-open) before running its own handler.
@@ -191,6 +205,7 @@ export function BoardCard({
 
   return (
     <div
+      id={`goal-card-${goal.id}`}
       ref={setNodeRef}
       style={style}
       {...attributes}
@@ -209,6 +224,32 @@ export function BoardCard({
       }`}
     >
       <CardFace goal={goal} today={today} />
+
+      {datesUnconfirmed && (
+        <div className="flex flex-wrap items-center gap-x-[8px] gap-y-[5px] rounded-[8px] bg-warn-tint px-[8px] py-[6px]">
+          <span className="flex-1 min-w-[130px] text-[.68rem] text-warn">
+            Dates unconfirmed · <span className="tabular-nums">{storedRange}</span>
+          </span>
+          <button
+            type="button"
+            disabled={storedDateError !== null}
+            title={storedDateError ?? undefined}
+            onPointerDown={stopPointer}
+            onClick={act(() => onConfirmDates(goal.id))}
+            className="text-[.7rem] font-semibold text-warn px-[6px] py-[3px] rounded-[7px] hover:bg-panel disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Confirm
+          </button>
+          <button
+            type="button"
+            onPointerDown={stopPointer}
+            onClick={act(() => onEditDates(goal.id))}
+            className="text-[.7rem] font-medium text-ink-soft px-[6px] py-[3px] rounded-[7px] hover:bg-panel"
+          >
+            Edit
+          </button>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-[4px] mt-[2px] pt-[9px] border-t border-line-soft">

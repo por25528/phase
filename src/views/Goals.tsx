@@ -26,6 +26,7 @@ import { Column } from './goals/Column';
 import { HORIZON_LABELS } from './goals/styles';
 import { PlanWeekOverlay } from './plan/PlanWeekOverlay';
 import type { Goal } from '../db/types';
+import { needsDateConfirmation } from '../lib/schedule';
 
 // Commitment horizons, left → right = Now … Someday. Column order IS the model:
 // a project's column is its horizon; height within a column is rank in-horizon.
@@ -35,7 +36,7 @@ const COL_COUNT = COLUMNS.length;
 // ── Goals view ────────────────────────────────────────────────────────────────
 
 export function Goals() {
-  const { goals, actions } = useAppStore();
+  const { goals, dateReviewDismissed, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [planFocusId, setPlanFocusId] = useState<string | null>(null);
@@ -54,6 +55,7 @@ export function Goals() {
 
   const goalById = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals]);
   const active = useMemo(() => goals.filter((g) => !g.completedAt), [goals]);
+  const unconfirmed = useMemo(() => active.filter(needsDateConfirmation), [active]);
   const completed = useMemo(
     () => goals.filter((g) => g.completedAt).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
     [goals],
@@ -166,6 +168,15 @@ export function Goals() {
     setPlanOpen(true);
   }
 
+  function reviewUnconfirmedDates() {
+    const goal = unconfirmed[0];
+    if (!goal) return;
+    if (!wide) setActiveHorizon(goal.column ?? 0);
+    requestAnimationFrame(() => {
+      document.getElementById(`goal-card-${goal.id}`)?.focus();
+    });
+  }
+
   return (
     <div>
       {/* Header */}
@@ -212,6 +223,29 @@ export function Goals() {
               Import project
             </button>
           </div>
+        </div>
+      )}
+
+      {unconfirmed.length > 0 && !dateReviewDismissed && (
+        <div className="mt-[16px] flex items-center gap-[10px] rounded-card border border-line-2 bg-panel px-[13px] py-[10px] shadow-card">
+          <p className="flex-1 text-[.8rem] text-ink-soft">
+            {unconfirmed.length} {unconfirmed.length === 1 ? 'project has' : 'projects have'} unconfirmed dates
+          </p>
+          <button
+            type="button"
+            onClick={reviewUnconfirmedDates}
+            className="text-[.76rem] font-semibold text-accent-deep px-[9px] py-[5px] rounded-[8px] hover:bg-accent-tint"
+          >
+            Review
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss date review"
+            onClick={actions.dismissDateReview}
+            className="text-[.82rem] text-muted px-[6px] py-[4px] rounded-[8px] hover:bg-hover hover:text-ink"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -275,6 +309,8 @@ export function Goals() {
                       onComplete={actions.completeGoal}
                       onMove={actions.moveGoalToColumn}
                       onDelete={actions.removeGoal}
+                      onConfirmDates={actions.confirmGoalDates}
+                      onEditDates={actions.openDrawer}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id)}
                       matched={filtering && matchIds!.has(id)}

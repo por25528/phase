@@ -178,6 +178,62 @@ describe('store actions', () => {
     expect(getState().goals[0].deadline).toBeUndefined();
   });
 
+  it('confirms only the selected legacy project dates', async () => {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [
+        {
+          id: 'a', title: 'Legacy A', start: '2026-07-01', deadline: '2026-12-31',
+          nodes: [],
+        },
+        {
+          id: 'b', title: 'Legacy B', start: '2026-07-02', deadline: '2026-12-31',
+          nodes: [],
+        },
+      ],
+      habits: [], tasks: [], sessions: [],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.persist.mockClear();
+
+    store.actions.confirmGoalDates('a');
+
+    expect(store.getState().goals.find((g) => g.id === 'a')?.datesConfirmed).toBe(true);
+    expect(store.getState().goals.find((g) => g.id === 'b')?.datesConfirmed).toBeUndefined();
+    expect(dbMocks.persist).toHaveBeenCalledOnce();
+  });
+
+  it('does not confirm or persist invalid legacy project dates', async () => {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [{
+        id: 'bad', title: 'Bad legacy dates', start: '2026-12-31', deadline: '2026-01-01',
+        nodes: [],
+      }],
+      habits: [], tasks: [], sessions: [],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.persist.mockClear();
+
+    store.actions.confirmGoalDates('bad');
+
+    expect(store.getState().goals[0].datesConfirmed).toBeUndefined();
+    expect(dbMocks.persist).not.toHaveBeenCalled();
+  });
+
+  it('dismisses date review only for the current session', async () => {
+    const { actions, getState } = await freshStore();
+    expect(getState().dateReviewDismissed).toBe(false);
+    dbMocks.persist.mockClear();
+
+    actions.dismissDateReview();
+
+    expect(getState().dateReviewDismissed).toBe(true);
+    expect(dbMocks.persist).not.toHaveBeenCalled();
+  });
+
   it('setGoalDates rejects inverted spans atomically', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('G');
