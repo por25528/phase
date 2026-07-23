@@ -82,6 +82,7 @@ export function App() {
           current,
           hydration,
           modalRegistry.hasOpenModal(),
+          openGoalId !== null,
         ));
         return;
       }
@@ -100,7 +101,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [actions, hydration]);
+  }, [actions, hydration, openGoalId]);
 
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
 
