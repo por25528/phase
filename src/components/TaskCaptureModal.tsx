@@ -5,6 +5,7 @@ import {
   buildTaskCaptureSubmission,
   createTaskCaptureDraft,
   resolveTaskCaptureDate,
+  shouldRefocusTaskCaptureTitle,
   type TaskCaptureDateChoice,
 } from '../lib/taskCapture';
 import { useAppStore } from '../state/store';
@@ -16,14 +17,17 @@ const choiceCls = 'px-[12px] py-[6px] rounded-full text-[.78rem] font-semibold b
 export function TaskCaptureModal({
   open,
   onClose,
+  focusRequest = 0,
 }: {
   open: boolean;
   onClose: () => void;
+  focusRequest?: number;
 }) {
   const { goals, actions } = useAppStore();
   const [draft, setDraft] = useState(() => createTaskCaptureDraft(todayStr()));
   const titleRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
+  const handledFocusRequestRef = useRef(focusRequest);
   const projects = useMemo(() => activeProjectOptions(goals), [goals]);
   const resolvedDate = resolveTaskCaptureDate(draft, todayStr());
 
@@ -34,6 +38,16 @@ export function TaskCaptureModal({
     const timer = setTimeout(() => titleRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, [open]);
+
+  useEffect(() => {
+    if (!shouldRefocusTaskCaptureTitle(
+      open,
+      focusRequest,
+      handledFocusRequestRef.current,
+    )) return;
+    handledFocusRequestRef.current = focusRequest;
+    titleRef.current?.focus();
+  }, [open, focusRequest]);
 
   function chooseDate(dateChoice: TaskCaptureDateChoice) {
     setDraft((current) => ({ ...current, dateChoice }));

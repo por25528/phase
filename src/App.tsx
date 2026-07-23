@@ -8,6 +8,11 @@ import { TaskCaptureModal } from './components/TaskCaptureModal';
 import { useLocalDate } from './hooks/useLocalDate';
 import { resolveAppKeyCommand } from './lib/appKeyboard';
 import {
+  closeTaskCapture,
+  requestTaskCapture,
+  type TaskCaptureHostState,
+} from './lib/taskCapture';
+import {
   type Theme,
   resolveTheme,
   readStoredTheme,
@@ -40,7 +45,10 @@ export function App() {
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
-  const [taskCaptureOpen, setTaskCaptureOpen] = useState(false);
+  const [taskCapture, setTaskCapture] = useState<TaskCaptureHostState>({
+    open: false,
+    focusRequest: 0,
+  });
 
   useEffect(() => {
     initStore();
@@ -66,7 +74,7 @@ export function App() {
       const command = resolveAppKeyCommand(e);
       if (command === 'capture-task') {
         e.preventDefault();
-        setTaskCaptureOpen(true);
+        setTaskCapture((current) => requestTaskCapture(current));
         return;
       }
       if (command === 'blur-target') {
@@ -189,7 +197,11 @@ export function App() {
       </main>
 
       <GoalDrawer goal={openGoal ?? null} actions={actions} focusNodeId={drawerFocusNodeId} />
-      <TaskCaptureModal open={taskCaptureOpen} onClose={() => setTaskCaptureOpen(false)} />
+      <TaskCaptureModal
+        open={taskCapture.open}
+        focusRequest={taskCapture.focusRequest}
+        onClose={() => setTaskCapture((current) => closeTaskCapture(current))}
+      />
 
       {/* Undo toast */}
       <div

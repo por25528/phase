@@ -3,8 +3,11 @@ import type { Goal } from '../db/types';
 import {
   activeProjectOptions,
   buildTaskCaptureSubmission,
+  closeTaskCapture,
   createTaskCaptureDraft,
+  requestTaskCapture,
   resolveTaskCaptureDate,
+  shouldRefocusTaskCaptureTitle,
 } from './taskCapture';
 
 const TODAY = '2026-07-23';
@@ -45,6 +48,42 @@ describe('task capture draft', () => {
       dateChoice: 'pick',
       pickedDate: '2026-02-30',
     }, TODAY)).toBeNull();
+  });
+});
+
+describe('task capture host requests', () => {
+  it('opens capture and advances its focus request', () => {
+    expect(requestTaskCapture({ open: false, focusRequest: 0 })).toEqual({
+      open: true,
+      focusRequest: 1,
+    });
+  });
+
+  it('advances focus without closing or replacing already-open state', () => {
+    const openState = {
+      open: true,
+      focusRequest: 4,
+      draftSentinel: 'keep the current draft',
+    };
+
+    expect(requestTaskCapture(openState)).toEqual({
+      open: true,
+      focusRequest: 5,
+      draftSentinel: 'keep the current draft',
+    });
+  });
+
+  it('closes without consuming the focus request', () => {
+    expect(closeTaskCapture({ open: true, focusRequest: 3 })).toEqual({
+      open: false,
+      focusRequest: 3,
+    });
+  });
+
+  it('refocuses only for an unhandled request while capture is open', () => {
+    expect(shouldRefocusTaskCaptureTitle(true, 5, 4)).toBe(true);
+    expect(shouldRefocusTaskCaptureTitle(true, 5, 5)).toBe(false);
+    expect(shouldRefocusTaskCaptureTitle(false, 5, 4)).toBe(false);
   });
 });
 

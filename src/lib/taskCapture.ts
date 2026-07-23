@@ -18,6 +18,38 @@ export interface TaskCaptureSubmission {
   goalId: string | null;
 }
 
+export interface TaskCaptureHostState {
+  open: boolean;
+  focusRequest: number;
+}
+
+type WithTaskCaptureHost<T extends TaskCaptureHostState> =
+  Omit<T, keyof TaskCaptureHostState> & TaskCaptureHostState;
+
+export function requestTaskCapture<T extends TaskCaptureHostState>(
+  state: T,
+): WithTaskCaptureHost<T> {
+  return {
+    ...state,
+    open: true,
+    focusRequest: state.focusRequest + 1,
+  };
+}
+
+export function closeTaskCapture<T extends TaskCaptureHostState>(
+  state: T,
+): WithTaskCaptureHost<T> {
+  return { ...state, open: false };
+}
+
+export function shouldRefocusTaskCaptureTitle(
+  open: boolean,
+  focusRequest: number,
+  lastHandledFocusRequest: number,
+): boolean {
+  return open && focusRequest !== lastHandledFocusRequest;
+}
+
 export function createTaskCaptureDraft(today: string): TaskCaptureDraft {
   return {
     title: '',
