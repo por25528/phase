@@ -677,6 +677,30 @@ describe('store actions', () => {
       expect(dbMocks.persist).not.toHaveBeenCalled();
     });
 
+    it('treats children: [] as a leaf for completion and reopening', async () => {
+      vi.setSystemTime(new Date(2026, 6, 23, 12));
+      const { actions, getState } = await freshStore();
+      actions.addGoals([{
+        id: 'g',
+        title: 'G',
+        nodes: [{ id: 'leaf', title: 'Leaf', children: [], done: false }],
+      }]);
+
+      actions.toggleLeaf('leaf');
+      expect(getState().goals[0].nodes[0]).toMatchObject({
+        done: true,
+        doneAt: '2026-07-23',
+        children: [],
+      });
+
+      actions.toggleLeaf('leaf');
+      expect(getState().goals[0].nodes[0]).toMatchObject({
+        done: false,
+        children: [],
+      });
+      expect(getState().goals[0].nodes[0].doneAt).toBeUndefined();
+    });
+
     it('completing arms an undo that restores the unchecked state', async () => {
       const { actions, getState } = await freshStore();
       actions.addGoal('G');

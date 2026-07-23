@@ -180,6 +180,30 @@ describe('indentNode', () => {
       expect(next[0].nodes[0].done).toBeUndefined();
       expect(next[0].nodes[0].doneAt).toBeUndefined();
     });
+
+    it('treats children: [] as a leaf and clears completion when indent makes it a container', () => {
+      const goals: Goal[] = [{
+        id: 'g1',
+        title: 'G',
+        nodes: [
+          {
+            id: 'a',
+            title: 'A',
+            children: [],
+            done: true,
+            doneAt: '2026-07-22',
+          },
+          { id: 'b', title: 'B', done: false },
+        ],
+      }];
+
+      const next = indentNode(goals, 'b');
+      const a = next[0].nodes[0];
+
+      expect(a.children?.map((node) => node.id)).toEqual(['b']);
+      expect(a.done).toBeUndefined();
+      expect(a.doneAt).toBeUndefined();
+    });
   });
 });
 

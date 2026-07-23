@@ -213,7 +213,7 @@ export const actions = {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
-    if (!node || node.children !== undefined) return;
+    if (!node || node.children?.length) return;
     if (node.done) {
       // Unchecking is self-inverse and the row stays visible — no undo toast.
       node.done = false;

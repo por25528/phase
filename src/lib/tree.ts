@@ -128,14 +128,13 @@ export function indentNode(goals: Goal[], nodeId: string): Goal[] {
     if (idx === 0) return next; // no preceding sibling — no-op
     const node = list.splice(idx, 1)[0];
     const prev = list[idx - 1];
-    if (!prev.children) {
+    if (!prev.children?.length) {
       delete prev.done;
       delete prev.doneAt;
       delete prev.plannedWeek;
       delete prev.plannedDay;
-      prev.children = [];
     }
-    prev.children.push(node);
+    (prev.children ??= []).push(node);
     return next;
   }
   return cloneGoals(goals);
