@@ -117,9 +117,8 @@ function milestoneWithin14Days(goal: Goal, today: string): boolean {
   )));
 }
 
-function hasValidPlan(node: GoalNode): node is GoalNodeWithValidPlan {
-  return isValidLocalDate(node.plannedWeek)
-    && (!node.plannedDay || isValidLocalDate(node.plannedDay));
+function hasValidPlannedWeek(node: GoalNode): node is GoalNodeWithValidPlan {
+  return isValidLocalDate(node.plannedWeek);
 }
 
 export function buildDailyWork(
@@ -179,8 +178,9 @@ export function buildDailyWork(
     const { node } = leaf;
     if (
       !node.done
-      && hasValidPlan(node)
+      && hasValidPlannedWeek(node)
       && node.plannedWeek === currentWeek
+      && isValidLocalDate(node.plannedDay)
       && node.plannedDay === today
     ) {
       addCommitment(stepItem(leaf, 'pinned-today'));
@@ -190,9 +190,9 @@ export function buildDailyWork(
     const { node } = leaf;
     if (
       !node.done
-      && hasValidPlan(node)
+      && hasValidPlannedWeek(node)
       && node.plannedWeek === currentWeek
-      && (!node.plannedDay || node.plannedDay < today)
+      && (!isValidLocalDate(node.plannedDay) || node.plannedDay < today)
     ) {
       addCommitment(stepItem(leaf, 'this-week'));
     }
@@ -213,7 +213,7 @@ export function buildDailyWork(
   for (const leaf of activeLeaves) {
     const { node } = leaf;
     const stale = Boolean(
-      hasValidPlan(node) && node.plannedWeek < currentWeek,
+      hasValidPlannedWeek(node) && node.plannedWeek < currentWeek,
     );
     const key = `step:${node.id}`;
     if (!node.done && stale && !committedKeys.has(key)) {
@@ -245,7 +245,7 @@ export function buildDailyWork(
         .filter(({ goal: owner, node }) => (
           owner.id === goal.id
           && !node.done
-          && !hasValidPlan(node)
+          && !hasValidPlannedWeek(node)
           && (!isValidLocalDate(node.deadline) || node.deadline > today)
           && (!isValidLocalDate(node.start) || node.start <= latestSuggestionStart)
         ))

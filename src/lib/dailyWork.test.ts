@@ -155,6 +155,35 @@ describe('buildDailyWork carryovers and completion', () => {
     expect(result.carryOvers.some((item) => item.id === 'slipped')).toBe(false);
   });
 
+  it('treats an invalid day as unpinned while preserving an older valid planned week', () => {
+    const goals = [
+      goal('g', [
+        {
+          id: 'stale-invalid-day',
+          title: 'Stale with malformed pin',
+          plannedWeek: '2026-07-13',
+          plannedDay: 'not-a-date',
+        },
+      ]),
+    ];
+
+    const result = buildDailyWork(goals, [], TODAY);
+
+    expect(result.commitments).toEqual([]);
+    expect(result.carryOvers.map(({ key, source, plannedDay }) => ({
+      key,
+      source,
+      plannedDay,
+    }))).toEqual([
+      {
+        key: 'step:stale-invalid-day',
+        source: 'carry-over',
+        plannedDay: undefined,
+      },
+    ]);
+    expect(result.suggestions).toEqual([]);
+  });
+
   it('uses doneAt exactly and does not infer legacy completion dates', () => {
     const goals = [
       goal('g', [
@@ -335,7 +364,12 @@ describe('buildDailyWork suggestions', () => {
         { id: 'bad-deadline', title: 'Bad deadline', deadline: 'not-a-date' },
       ]),
       goal('bad-week-goal', [
-        { id: 'bad-week', title: 'Bad week', plannedWeek: 'not-a-date' },
+        {
+          id: 'bad-week',
+          title: 'Bad week',
+          plannedWeek: 'not-a-date',
+          plannedDay: TODAY,
+        },
       ]),
       goal('bad-day-goal', [
         {
@@ -357,12 +391,21 @@ describe('buildDailyWork suggestions', () => {
       'plain',
       'bad-project-start',
     ]);
-    expect(stepResult.commitments).toEqual([]);
+    expect(stepResult.commitments.map(({ key, source, plannedDay }) => ({
+      key,
+      source,
+      plannedDay,
+    }))).toEqual([
+      {
+        key: 'step:bad-day',
+        source: 'this-week',
+        plannedDay: undefined,
+      },
+    ]);
     expect(stepResult.carryOvers).toEqual([]);
     expect(stepResult.suggestions.map((item) => item.id)).toEqual([
       'bad-deadline',
       'bad-week',
-      'bad-day',
       'bad-start',
     ]);
   });
