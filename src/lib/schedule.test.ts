@@ -32,6 +32,14 @@ describe('schedule provenance', () => {
     expect(hasTrustedSchedule(goal({ datesConfirmed: false }))).toBe(false);
     expect(needsDateConfirmation(goal({ datesConfirmed: false }))).toBe(true);
   });
+
+  it('rejects empty or malformed local-date strings as a goal span', () => {
+    expect(hasGoalSpan(goal({ start: '' }))).toBe(false);
+    expect(hasGoalSpan(goal({ deadline: '' }))).toBe(false);
+    expect(hasGoalSpan(goal({ start: '2026-7-01' }))).toBe(false);
+    expect(hasGoalSpan(goal({ deadline: 'not-a-date' }))).toBe(false);
+    expect(hasTrustedSchedule(goal({ start: '', datesConfirmed: true }))).toBe(false);
+  });
 });
 
 describe('projectDateError', () => {

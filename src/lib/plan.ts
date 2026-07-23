@@ -415,11 +415,10 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
   const attention = projectAttention(g, today);
   if (attention === 'completed') return null;
   if (attention === 'ready-to-complete') return { label: 'Ready to complete', tone: 'accent' };
+  if (attention === 'overdue') return { label: 'Overdue', tone: 'warn-strong' };
   if (needsDateConfirmation(g)) return { label: 'Dates unconfirmed', tone: 'step' };
 
   switch (attention) {
-    case 'overdue':
-      return { label: 'Overdue', tone: 'warn-strong' };
     case 'needs-breakdown':
       return { label: 'Needs a first step', tone: 'step' };
     case 'behind': {

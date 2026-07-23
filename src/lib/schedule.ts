@@ -3,8 +3,13 @@ import type { Goal } from '../db/types';
 export type GoalWithSpan = Goal & { start: string; deadline: string };
 export type TrustedGoalSchedule = GoalWithSpan & { datesConfirmed: true };
 
+const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function hasGoalSpan(goal: Goal): goal is GoalWithSpan {
-  return typeof goal.start === 'string' && typeof goal.deadline === 'string';
+  return typeof goal.start === 'string'
+    && LOCAL_DATE.test(goal.start)
+    && typeof goal.deadline === 'string'
+    && LOCAL_DATE.test(goal.deadline);
 }
 
 export function needsDateConfirmation(goal: Goal): boolean {

@@ -556,6 +556,18 @@ describe('attentionBadge', () => {
     expect(attentionBadge(g, TODAY)).toEqual({ label: 'Overdue', tone: 'warn-strong' });
   });
 
+  it('preserves an overdue leaf badge when project dates are unconfirmed', () => {
+    const g = goal({
+      datesConfirmed: undefined,
+      nodes: [
+        { id: 'a', title: 'A', done: false, start: '2026-06-01', deadline: '2026-07-01' },
+      ],
+    });
+
+    expect(projectAttention(g, TODAY)).toBe('overdue');
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Overdue', tone: 'warn-strong' });
+  });
+
   it('renders a "Milestone in Nd" badge', () => {
     const g = goal({ column: 1, deadline: '2026-12-31', nodes: twoLeaves(),
       milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] });
