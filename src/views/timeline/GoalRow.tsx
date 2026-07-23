@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { todayStr, fmtD, daysLeftLabel } from '../../lib/dates';
-import { expectedPct, behindPaceBy, dateToX } from '../../lib/timeline';
+import { expectedPct, behindPaceBy, dateToX, daysBetween } from '../../lib/timeline';
 import type { GridTick, DayBand } from '../../lib/timeline';
 import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
@@ -27,6 +27,10 @@ interface GoalRowProps {
   isLast: boolean;
 }
 
+export function canEditProjectSpan(goal: GoalWithSpan): boolean {
+  return hasTrustedSchedule(goal);
+}
+
 /**
  * One goal's Timeline row: the sticky lane-label column (chevron + `#n` kicker +
  * title), the canvas plot area (segment grid + today line + goal SpanBar +
@@ -49,7 +53,7 @@ export const GoalRow = memo(function GoalRow({
   const flagX = dateToX(flagDeadline, rangeStart, pxPerDay);
   const today = todayStr();
   const p = Math.round(goalPct(g));
-  const trustedSchedule = hasTrustedSchedule(g);
+  const trustedSchedule = canEditProjectSpan(g);
   const behind = trustedSchedule
     ? Math.round(behindPaceBy(p, g.start, g.deadline, today))
     : 0;
@@ -109,21 +113,48 @@ export const GoalRow = memo(function GoalRow({
         <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
           <CanvasGrid segs={segs} bands={bands} rangeStart={rangeStart} pxPerDay={pxPerDay} todayX={todayX} />
 
-          {/* Goal bar — keyboard-accessible draggable/resizable span */}
-          <SpanBar
-            span={{ start: g.start, deadline: g.deadline }}
-            rangeStart={rangeStart}
-            pxPerDay={pxPerDay}
-            pct={p}
-            label={`${p}%`}
-            ariaLabel={`${g.title}: ${p}% complete, ${fmtD(g.start)}–${fmtD(g.deadline)}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
-            height={22}
-            warn={projectOverdue}
-            onCommit={(next) => actions.setGoalDates(g.id, next.start, next.deadline)}
-            onOpen={() => actions.openDrawer(g.id)}
-            onHover={(pos) => setBarTip(pos)}
-            onPreview={(s) => setPreview(s)}
-          />
+          {/* Only user-confirmed project dates can be adjusted here. Legacy
+              spans stay visible, but open the drawer for review/editing. */}
+          {trustedSchedule ? (
+            <SpanBar
+              span={{ start: g.start, deadline: g.deadline }}
+              rangeStart={rangeStart}
+              pxPerDay={pxPerDay}
+              pct={p}
+              label={`${p}%`}
+              ariaLabel={`${g.title}: ${p}% complete, ${fmtD(g.start)}–${fmtD(g.deadline)}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
+              height={22}
+              warn={projectOverdue}
+              onCommit={(next) => actions.setGoalDates(g.id, next.start, next.deadline)}
+              onOpen={() => actions.openDrawer(g.id)}
+              onHover={(pos) => setBarTip(pos)}
+              onPreview={(s) => setPreview(s)}
+            />
+          ) : (
+            <button
+              type="button"
+              aria-label={`${g.title}: dates unconfirmed, ${fmtD(g.start)}–${fmtD(g.deadline)}. Open project to review dates.`}
+              onClick={() => actions.openDrawer(g.id)}
+              onMouseMove={(e) => setBarTip({ x: e.clientX, y: e.clientY })}
+              onMouseLeave={() => setBarTip(null)}
+              onFocus={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setBarTip({ x: rect.left + rect.width / 2, y: rect.top });
+              }}
+              onBlur={() => setBarTip(null)}
+              className="absolute top-1/2 -translate-y-1/2 rounded-[6px] bg-track border border-line-2 cursor-pointer overflow-hidden flex items-center z-[2] transition-[border-color,box-shadow] hover:border-accent hover:ring-2 hover:ring-accent-tint focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-tint"
+              style={{
+                left: `${dateToX(g.start, rangeStart, pxPerDay)}px`,
+                width: `${Math.max(daysBetween(g.start, g.deadline) * pxPerDay, 8)}px`,
+                height: '22px',
+              }}
+            >
+              <i className="tl-bar-fill" style={{ width: `${p}%` }} />
+              <b className="relative text-[.7rem] font-semibold text-white pl-[8px] [mix-blend-mode:difference] tabular-nums z-[2]">
+                {p}%
+              </b>
+            </button>
+          )}
 
           {/* Deadline flag — hover reveals date tooltip */}
           <div
