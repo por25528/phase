@@ -5,6 +5,7 @@ import {
   hasTrustedSchedule,
   isValidLocalDate,
   needsDateConfirmation,
+  goalDateDraftIsDirty,
   projectDateError,
 } from './schedule';
 
@@ -70,6 +71,23 @@ describe('projectDateError', () => {
     expect(projectDateError('2026-02-30', '2026-12-31')).toBe('Start must be a valid date.');
     expect(projectDateError('tomorrow', '2026-12-31')).toBe('Start must be a valid date.');
     expect(projectDateError('2026-01-01', '2026-13-01')).toBe('Deadline must be a valid date.');
+  });
+});
+
+describe('goalDateDraftIsDirty', () => {
+  it('requires draft dates to match the stored values before provenance-only confirmation', () => {
+    const legacy = goal();
+
+    expect(goalDateDraftIsDirty(legacy, '2026-01-01', '2026-12-31')).toBe(false);
+    expect(goalDateDraftIsDirty(legacy, '2026-02-01', '2026-12-31')).toBe(true);
+    expect(goalDateDraftIsDirty(legacy, '2026-01-01', '')).toBe(true);
+  });
+
+  it('normalizes absent stored dates to empty draft values', () => {
+    const undated = goal({ start: undefined, deadline: undefined });
+
+    expect(goalDateDraftIsDirty(undated, '', '')).toBe(false);
+    expect(goalDateDraftIsDirty(undated, '', '2026-12-31')).toBe(true);
   });
 });
 

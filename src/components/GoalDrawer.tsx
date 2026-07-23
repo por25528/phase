@@ -11,7 +11,12 @@ import { leafCount } from '../lib/board';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel, fmtD } from '../lib/dates';
 import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
-import { hasTrustedSchedule, needsDateConfirmation, projectDateError } from '../lib/schedule';
+import {
+  goalDateDraftIsDirty,
+  hasTrustedSchedule,
+  needsDateConfirmation,
+  projectDateError,
+} from '../lib/schedule';
 
 // Shared uppercase section label — Steps / Milestones / Notes all use it so the
 // two columns read as one system.
@@ -141,6 +146,7 @@ function DrawerHeader({
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftStart, setDraftStart] = useState(g.start ?? '');
   const [draftDeadline, setDraftDeadline] = useState(g.deadline ?? '');
+  const startDateRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setDraftStart(g.start ?? '');
     setDraftDeadline(g.deadline ?? '');
@@ -152,6 +158,7 @@ function DrawerHeader({
   const datesUnconfirmed = needsDateConfirmation(g);
   const dateError = projectDateError(draftStart || undefined, draftDeadline || undefined);
   const storedDateError = projectDateError(g.start, g.deadline);
+  const datesDirty = goalDateDraftIsDirty(g, draftStart, draftDeadline);
   const expected = trustedSchedule
     ? Math.round(expectedPct(g.start, g.deadline, today))
     : 0;
@@ -200,6 +207,7 @@ function DrawerHeader({
         <div className="mt-[9px]">
           <div className="flex flex-wrap items-center gap-[6px]">
             <input
+              ref={startDateRef}
               type="date"
               value={draftStart}
               aria-label="Start date"
@@ -229,9 +237,12 @@ function DrawerHeader({
             {datesUnconfirmed && (
               <button
                 type="button"
-                disabled={storedDateError !== null}
-                title={storedDateError ?? undefined}
-                onClick={() => actions.confirmGoalDates(g.id)}
+                disabled={storedDateError !== null || datesDirty}
+                title={storedDateError ?? (datesDirty ? 'Save changes before confirming these dates.' : undefined)}
+                onClick={() => {
+                  actions.confirmGoalDates(g.id);
+                  requestAnimationFrame(() => startDateRef.current?.focus());
+                }}
                 className="text-[.7rem] font-semibold text-warn px-[7px] py-[3px] rounded-[7px] hover:bg-warn-tint disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Confirm
@@ -244,6 +255,7 @@ function DrawerHeader({
                   setDraftStart('');
                   setDraftDeadline('');
                   actions.setGoalDates(g.id, undefined, undefined);
+                  requestAnimationFrame(() => startDateRef.current?.focus());
                 }}
                 className="text-[.7rem] font-medium text-muted px-[7px] py-[3px] rounded-[7px] hover:bg-hover hover:text-ink"
               >
@@ -257,6 +269,11 @@ function DrawerHeader({
           {dateError && (
             <p className="mt-[5px] text-[.7rem] text-warn" role="alert">
               {dateError}
+            </p>
+          )}
+          {datesUnconfirmed && datesDirty && (
+            <p className="mt-[5px] text-[.7rem] text-muted">
+              Save changes before confirming these dates.
             </p>
           )}
         </div>

@@ -15,7 +15,7 @@ import {
   weekOf,
   type AttentionBadge,
 } from '../../lib/plan';
-import { needsDateConfirmation, projectDateError } from '../../lib/schedule';
+import { isValidLocalDate, needsDateConfirmation, projectDateError } from '../../lib/schedule';
 import { HORIZON_LABELS } from './styles';
 
 const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
@@ -31,6 +31,19 @@ const PRIMARY_LABEL: Record<'plan' | 'define' | 'complete', string> = {
   define: 'Define first step',
   complete: 'Complete project',
 };
+
+export function storedDateRangeLabel(goal: Pick<Goal, 'start' | 'deadline'>): string {
+  if (
+    (goal.start !== undefined && !isValidLocalDate(goal.start))
+    || (goal.deadline !== undefined && !isValidLocalDate(goal.deadline))
+  ) {
+    return 'Invalid stored date';
+  }
+  if (goal.start && goal.deadline) return `${fmtD(goal.start)} → ${fmtD(goal.deadline)}`;
+  if (goal.start) return `Starts ${fmtD(goal.start)}`;
+  if (goal.deadline) return `Due ${fmtD(goal.deadline)}`;
+  return '';
+}
 
 // ── Card face (shared by the sortable card + the drag overlay) ─────────────────
 // Title + dated-with-kind → next open action → this-week commitment (Now only) →
@@ -185,13 +198,7 @@ export function BoardCard({
   const currentCol = goal.column ?? 0;
   const datesUnconfirmed = needsDateConfirmation(goal);
   const storedDateError = projectDateError(goal.start, goal.deadline);
-  const storedRange = goal.start && goal.deadline
-    ? `${fmtD(goal.start)} → ${fmtD(goal.deadline)}`
-    : goal.start
-      ? `Starts ${fmtD(goal.start)}`
-      : goal.deadline
-        ? `Due ${fmtD(goal.deadline)}`
-        : '';
+  const storedRange = storedDateRangeLabel(goal);
 
   // Action buttons live inside the drag activator, so each swallows the pointer
   // (no drag) and the click (no drawer-open) before running its own handler.

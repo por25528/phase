@@ -177,6 +177,13 @@ export function Goals() {
     });
   }
 
+  function confirmDatesFromCard(goalId: string) {
+    actions.confirmGoalDates(goalId);
+    requestAnimationFrame(() => {
+      document.getElementById(`goal-card-${goalId}`)?.focus();
+    });
+  }
+
   return (
     <div>
       {/* Header */}
@@ -309,7 +316,7 @@ export function Goals() {
                       onComplete={actions.completeGoal}
                       onMove={actions.moveGoalToColumn}
                       onDelete={actions.removeGoal}
-                      onConfirmDates={actions.confirmGoalDates}
+                      onConfirmDates={confirmDatesFromCard}
                       onEditDates={actions.openDrawer}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id)}

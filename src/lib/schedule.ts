@@ -25,6 +25,14 @@ export function hasTrustedSchedule(goal: Goal): goal is TrustedGoalSchedule {
   return goal.datesConfirmed === true && hasGoalSpan(goal);
 }
 
+export function goalDateDraftIsDirty(
+  goal: Pick<Goal, 'start' | 'deadline'>,
+  draftStart: string,
+  draftDeadline: string,
+): boolean {
+  return draftStart !== (goal.start ?? '') || draftDeadline !== (goal.deadline ?? '');
+}
+
 export function projectDateError(start?: unknown, deadline?: unknown): string | null {
   if (start !== undefined && !isValidLocalDate(start)) return 'Start must be a valid date.';
   if (deadline !== undefined && !isValidLocalDate(deadline)) return 'Deadline must be a valid date.';
