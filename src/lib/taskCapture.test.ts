@@ -6,6 +6,7 @@ import {
   closeTaskCapture,
   createTaskCaptureDraft,
   requestTaskCapture,
+  requestTaskCaptureForCommand,
   resolveTaskCaptureDate,
   shouldRefocusTaskCaptureTitle,
 } from './taskCapture';
@@ -84,6 +85,34 @@ describe('task capture host requests', () => {
     expect(shouldRefocusTaskCaptureTitle(true, 5, 4)).toBe(true);
     expect(shouldRefocusTaskCaptureTitle(true, 5, 5)).toBe(false);
     expect(shouldRefocusTaskCaptureTitle(false, 5, 4)).toBe(false);
+  });
+
+  it('does not open during deferred or failed hydration', () => {
+    const closed = { open: false, focusRequest: 0 };
+
+    expect(requestTaskCaptureForCommand(closed, 'loading', false)).toEqual(closed);
+    expect(requestTaskCaptureForCommand(closed, 'error', false)).toEqual(closed);
+  });
+
+  it('opens only when ready and no other shared modal is open', () => {
+    const closed = { open: false, focusRequest: 0 };
+
+    expect(requestTaskCaptureForCommand(closed, 'ready', true)).toEqual(closed);
+    expect(requestTaskCaptureForCommand(closed, 'ready', false)).toEqual({
+      open: true,
+      focusRequest: 1,
+    });
+  });
+
+  it('still refocuses capture itself without opening another modal', () => {
+    expect(requestTaskCaptureForCommand(
+      { open: true, focusRequest: 2 },
+      'error',
+      true,
+    )).toEqual({
+      open: true,
+      focusRequest: 3,
+    });
   });
 });
 

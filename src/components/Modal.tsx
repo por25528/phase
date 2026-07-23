@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
+import { modalRegistry } from '../lib/modalRegistry';
 
 /**
  * Centered modal dialog — mirrors the goal drawer's scrim/panel styling.
@@ -21,17 +22,20 @@ export function Modal({
 }) {
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const modalId = useId();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
+    const unregister = modalRegistry.register(modalId);
     const opener = document.activeElement as HTMLElement | null;
     closeBtnRef.current?.focus();
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     function onKey(e: KeyboardEvent) {
+      if (!modalRegistry.isTopmost(modalId)) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
@@ -57,10 +61,11 @@ export function Modal({
     window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('keydown', onKey, true);
+      unregister();
       document.body.style.overflow = prevOverflow;
       opener?.focus();
     };
-  }, [open]);
+  }, [open, modalId]);
 
   if (!open) return null;
 

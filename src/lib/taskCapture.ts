@@ -23,6 +23,8 @@ export interface TaskCaptureHostState {
   focusRequest: number;
 }
 
+export type TaskCaptureHydration = 'loading' | 'ready' | 'error';
+
 type WithTaskCaptureHost<T extends TaskCaptureHostState> =
   Omit<T, keyof TaskCaptureHostState> & TaskCaptureHostState;
 
@@ -40,6 +42,16 @@ export function closeTaskCapture<T extends TaskCaptureHostState>(
   state: T,
 ): WithTaskCaptureHost<T> {
   return { ...state, open: false };
+}
+
+export function requestTaskCaptureForCommand(
+  state: TaskCaptureHostState,
+  hydration: TaskCaptureHydration,
+  anotherModalOpen: boolean,
+): TaskCaptureHostState {
+  if (state.open) return requestTaskCapture(state);
+  if (hydration !== 'ready' || anotherModalOpen) return state;
+  return requestTaskCapture(state);
 }
 
 export function shouldRefocusTaskCaptureTitle(

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { todayStr } from '../lib/dates';
 import {
   activeProjectOptions,
-  buildTaskCaptureSubmission,
   createTaskCaptureDraft,
   resolveTaskCaptureDate,
   shouldRefocusTaskCaptureTitle,
@@ -10,6 +9,7 @@ import {
 } from '../lib/taskCapture';
 import { useAppStore } from '../state/store';
 import { Modal } from './Modal';
+import { dispatchTaskCapture } from './taskCaptureActions';
 
 const fieldCls = 'bg-field border border-line-2 rounded-field px-[10px] py-[7px] text-[.86rem] text-ink outline-none focus:border-accent';
 const choiceCls = 'px-[12px] py-[6px] rounded-full text-[.78rem] font-semibold border';
@@ -18,10 +18,12 @@ export function TaskCaptureModal({
   open,
   onClose,
   focusRequest = 0,
+  enabled,
 }: {
   open: boolean;
   onClose: () => void;
   focusRequest?: number;
+  enabled: boolean;
 }) {
   const { goals, actions } = useAppStore();
   const [draft, setDraft] = useState(() => createTaskCaptureDraft(todayStr()));
@@ -56,11 +58,18 @@ export function TaskCaptureModal({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submittingRef.current) return;
-    const submission = buildTaskCaptureSubmission(draft, goals, todayStr());
-    if (!submission) return;
     submittingRef.current = true;
-    actions.addTask(submission.title, submission.date, submission.goalId);
-    actions.showToast('Task added');
+    const dispatched = dispatchTaskCapture({
+      enabled,
+      draft,
+      goals,
+      today: todayStr(),
+      actions,
+    });
+    if (!dispatched) {
+      submittingRef.current = false;
+      return;
+    }
     onClose();
   }
 
@@ -160,7 +169,7 @@ export function TaskCaptureModal({
         <div className="flex items-center gap-[8px] mt-[2px]">
           <button
             type="submit"
-            disabled={!draft.title.trim() || !resolvedDate}
+            disabled={!enabled || !draft.title.trim() || !resolvedDate}
             className="px-[14px] py-[8px] rounded-field bg-ink text-paper text-[.84rem] font-semibold hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
           >
             Add task

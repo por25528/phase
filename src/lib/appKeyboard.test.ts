@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAppKeyCommand } from './appKeyboard';
+import {
+  resolveAppKeyCommand,
+  shouldConsumeTaskCaptureShortcut,
+} from './appKeyboard';
 
 const inputTarget = { tagName: 'INPUT', isContentEditable: false };
 
@@ -17,19 +20,38 @@ describe('resolveAppKeyCommand', () => {
     })).toBe('capture-task');
   });
 
-  it('does not capture Alt combinations or repeated keydown events', () => {
-    expect(resolveAppKeyCommand({
-      key: 'n',
-      metaKey: true,
-      altKey: true,
-      target: inputTarget,
-    })).toBeNull();
-    expect(resolveAppKeyCommand({
+  it('consumes exact repeated capture chords without issuing another command', () => {
+    const repeat = {
       key: 'n',
       ctrlKey: true,
       repeat: true,
       target: inputTarget,
+    };
+
+    expect(shouldConsumeTaskCaptureShortcut(repeat)).toBe(true);
+    expect(resolveAppKeyCommand(repeat)).toBeNull();
+  });
+
+  it('does not intercept Alt or Shift variants', () => {
+    const alt = {
+      key: 'n',
+      metaKey: true,
+      altKey: true,
+      target: inputTarget,
+    };
+    const shift = {
+      key: 'n',
+      ctrlKey: true,
+      shiftKey: true,
+      target: inputTarget,
+    };
+
+    expect(shouldConsumeTaskCaptureShortcut(alt)).toBe(false);
+    expect(resolveAppKeyCommand({
+      ...alt,
     })).toBeNull();
+    expect(shouldConsumeTaskCaptureShortcut(shift)).toBe(false);
+    expect(resolveAppKeyCommand(shift)).toBeNull();
   });
 
   it('preserves editable-target Escape and suppresses other view shortcuts', () => {

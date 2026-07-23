@@ -8,6 +8,7 @@ describe('TaskCaptureModal', () => {
     const html = renderToStaticMarkup(createElement(TaskCaptureModal, {
       open: true,
       onClose: () => {},
+      enabled: true,
     }));
 
     expect(html).toContain('aria-label="Task title"');
@@ -25,6 +26,7 @@ describe('TaskCaptureModal', () => {
     const html = renderToStaticMarkup(createElement(TaskCaptureModal, {
       open: true,
       onClose: () => {},
+      enabled: true,
     }));
 
     expect(html).not.toContain('type="date"');
@@ -35,6 +37,7 @@ describe('TaskCaptureModal', () => {
     expect(renderToStaticMarkup(createElement(TaskCaptureModal, {
       open: false,
       onClose: () => {},
+      enabled: true,
     }))).toBe('');
   });
 });

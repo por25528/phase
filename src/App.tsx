@@ -6,10 +6,14 @@ import { Timeline } from './views/Timeline';
 import { GoalDrawer } from './components/GoalDrawer';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
 import { useLocalDate } from './hooks/useLocalDate';
-import { resolveAppKeyCommand } from './lib/appKeyboard';
+import {
+  resolveAppKeyCommand,
+  shouldConsumeTaskCaptureShortcut,
+} from './lib/appKeyboard';
+import { modalRegistry } from './lib/modalRegistry';
 import {
   closeTaskCapture,
-  requestTaskCapture,
+  requestTaskCaptureForCommand,
   type TaskCaptureHostState,
 } from './lib/taskCapture';
 import {
@@ -71,10 +75,14 @@ export function App() {
 
   useEffect(() => {
     function onKey(e: globalThis.KeyboardEvent) {
+      if (shouldConsumeTaskCaptureShortcut(e)) e.preventDefault();
       const command = resolveAppKeyCommand(e);
       if (command === 'capture-task') {
-        e.preventDefault();
-        setTaskCapture((current) => requestTaskCapture(current));
+        setTaskCapture((current) => requestTaskCaptureForCommand(
+          current,
+          hydration,
+          modalRegistry.hasOpenModal(),
+        ));
         return;
       }
       if (command === 'blur-target') {
@@ -92,7 +100,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [actions]);
+  }, [actions, hydration]);
 
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
 
@@ -200,6 +208,7 @@ export function App() {
       <TaskCaptureModal
         open={taskCapture.open}
         focusRequest={taskCapture.focusRequest}
+        enabled={hydration === 'ready'}
         onClose={() => setTaskCapture((current) => closeTaskCapture(current))}
       />
 
@@ -225,6 +234,8 @@ export function App() {
 
       {/* Toast */}
       <div
+        role="status"
+        aria-live="polite"
         className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-[8px] text-[.84rem] z-[60] transition-all duration-[220ms] ${
           toast
             ? 'opacity-100 translate-y-0'

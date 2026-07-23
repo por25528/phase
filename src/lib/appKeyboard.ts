@@ -12,6 +12,7 @@ interface AppKeyEvent {
   metaKey?: boolean;
   ctrlKey?: boolean;
   altKey?: boolean;
+  shiftKey?: boolean;
   repeat?: boolean;
   target?: unknown;
 }
@@ -27,13 +28,8 @@ function isEditableTarget(target: unknown): boolean {
 }
 
 export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
-  if (
-    (event.metaKey || event.ctrlKey)
-    && !event.altKey
-    && !event.repeat
-    && event.key.toLowerCase() === 'n'
-  ) {
-    return 'capture-task';
+  if (shouldConsumeTaskCaptureShortcut(event)) {
+    return event.repeat ? null : 'capture-task';
   }
 
   if (isEditableTarget(event.target)) {
@@ -46,4 +42,13 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
   if (event.key === '3') return 'view-timeline';
   if (event.key === 't') return 'go-today';
   return null;
+}
+
+export function shouldConsumeTaskCaptureShortcut(event: AppKeyEvent): boolean {
+  return Boolean(
+    (event.metaKey || event.ctrlKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.key.toLowerCase() === 'n'
+  );
 }
