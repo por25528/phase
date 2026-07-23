@@ -130,6 +130,7 @@ export function indentNode(goals: Goal[], nodeId: string): Goal[] {
     const prev = list[idx - 1];
     if (!prev.children) {
       delete prev.done;
+      delete prev.doneAt;
       delete prev.plannedWeek;
       delete prev.plannedDay;
       prev.children = [];

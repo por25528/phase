@@ -7,7 +7,7 @@ import {
 import { clampScale } from '../lib/timeline';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
-import { projectDateError } from '../lib/schedule';
+import { isValidLocalDate, projectDateError } from '../lib/schedule';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
@@ -213,7 +213,7 @@ export const actions = {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
-    if (!node) return;
+    if (!node || node.children !== undefined) return;
     if (node.done) {
       // Unchecking is self-inverse and the row stays visible — no undo toast.
       node.done = false;
@@ -434,7 +434,7 @@ export const actions = {
   // Tasks
   addTask(title: string, date = todayStr(), goalId: string | null = null): void {
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed || !isValidLocalDate(date)) return;
     const task: Task = { id: uid(), title: trimmed, date, done: false, goalId };
     setAndPersist({ tasks: [...state.tasks, task] });
   },
@@ -457,7 +457,8 @@ export const actions = {
   },
 
   rescheduleTask(taskId: string, date: string): void {
-    if (!state.tasks.some((task) => task.id === taskId)) return;
+    const task = state.tasks.find((item) => item.id === taskId);
+    if (!task || !isValidLocalDate(date) || task.date === date) return;
     const tasks = state.tasks.map((task) => (
       task.id === taskId ? { ...task, date } : task
     ));
@@ -467,11 +468,15 @@ export const actions = {
   removeTask(taskId: string): void {
     const task = state.tasks.find((item) => item.id === taskId);
     if (!task) return;
-    withUndo(
-      `Deleted "${task.title}" · Undo`,
-      'tasks',
-      state.tasks.filter((item) => item.id !== taskId),
-    );
+    const originalIndex = state.tasks.indexOf(task);
+    const deletedTask = structuredClone(task);
+    scheduleUndo(`Deleted "${task.title}" · Undo`, () => {
+      if (state.tasks.some((item) => item.id === deletedTask.id)) return;
+      const tasks = [...state.tasks];
+      tasks.splice(Math.min(originalIndex, tasks.length), 0, deletedTask);
+      setAndPersist({ tasks });
+    });
+    setAndPersist({ tasks: state.tasks.filter((item) => item.id !== taskId) });
   },
 
   // Structural reorder / indent / outdent

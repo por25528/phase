@@ -75,6 +75,18 @@ describe('store actions', () => {
       expect(getState().tasks[0].id).toBeTruthy();
     });
 
+    it('defaults to today and no project', async () => {
+      vi.setSystemTime(new Date(2026, 6, 23, 12));
+      const { actions, getState } = await freshStore();
+
+      actions.addTask('Draft outline');
+
+      expect(getState().tasks[0]).toMatchObject({
+        date: '2026-07-23',
+        goalId: null,
+      });
+    });
+
     it('ignores an empty task title', async () => {
       const { actions, getState } = await freshStore();
 
@@ -82,6 +94,19 @@ describe('store actions', () => {
 
       expect(getState().tasks).toEqual([]);
     });
+
+    it.each(['not-a-date', '2026-02-30', '2026-7-23'])(
+      'ignores a task with invalid date %s without persisting',
+      async (date) => {
+        const { actions, getState } = await freshStore();
+        dbMocks.persist.mockClear();
+
+        actions.addTask('Draft outline', date);
+
+        expect(getState().tasks).toEqual([]);
+        expect(dbMocks.persist).not.toHaveBeenCalled();
+      },
+    );
 
     it('records the local completion date and removes it when reopened', async () => {
       vi.setSystemTime(new Date(2026, 6, 23, 12));
@@ -107,6 +132,33 @@ describe('store actions', () => {
       expect(getState().tasks[0].date).toBe('2026-07-25');
     });
 
+    it.each(['not-a-date', '2026-02-30', '2026-7-23'])(
+      'ignores invalid reschedule date %s without persisting',
+      async (date) => {
+        const { actions, getState } = await freshStore();
+        actions.addTask('File notes', '2026-07-23');
+        const taskId = getState().tasks[0].id;
+        dbMocks.persist.mockClear();
+
+        actions.rescheduleTask(taskId, date);
+
+        expect(getState().tasks[0].date).toBe('2026-07-23');
+        expect(dbMocks.persist).not.toHaveBeenCalled();
+      },
+    );
+
+    it('does not persist unchanged or missing task reschedules', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addTask('File notes', '2026-07-23');
+      const taskId = getState().tasks[0].id;
+      dbMocks.persist.mockClear();
+
+      actions.rescheduleTask(taskId, '2026-07-23');
+      actions.rescheduleTask('missing', '2026-07-24');
+
+      expect(dbMocks.persist).not.toHaveBeenCalled();
+    });
+
     it('removes a task with undo support and restores the same id', async () => {
       const { actions, getState } = await freshStore();
       actions.addTask('File notes');
@@ -119,6 +171,41 @@ describe('store actions', () => {
       actions.undoLastDelete();
       expect(getState().tasks).toHaveLength(1);
       expect(getState().tasks[0].id).toBe(taskId);
+    });
+
+    it('undoes only the deleted task while preserving intervening task mutations', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addTask('A', '2026-07-23');
+      actions.addTask('B', '2026-07-23');
+      const [aId, bId] = getState().tasks.map((task) => task.id);
+
+      actions.removeTask(aId);
+      actions.toggleTask(bId);
+      actions.rescheduleTask(bId, '2026-07-26');
+      actions.addTask('C', '2026-07-25');
+      actions.undoLastDelete();
+
+      expect(getState().tasks.map((task) => task.id)).toEqual([
+        aId,
+        bId,
+        expect.any(String),
+      ]);
+      expect(getState().tasks[1]).toMatchObject({
+        id: bId,
+        done: true,
+        date: '2026-07-26',
+      });
+      expect(getState().tasks[2].title).toBe('C');
+    });
+
+    it('unknown task actions are no-ops without persistence', async () => {
+      const { actions } = await freshStore();
+      dbMocks.persist.mockClear();
+
+      actions.toggleTask('missing');
+      actions.removeTask('missing');
+
+      expect(dbMocks.persist).not.toHaveBeenCalled();
     });
   });
 
@@ -573,6 +660,21 @@ describe('store actions', () => {
       actions.toggleLeaf(nid);
       expect(getState().goals[0].nodes[0].done).toBe(false);
       expect(getState().goals[0].nodes[0].doneAt).toBeUndefined();
+    });
+
+    it('ignores a stale completion toggle for a container without persisting', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'container');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.addChild(nid, 'child');
+      dbMocks.persist.mockClear();
+
+      actions.toggleLeaf(nid);
+
+      expect(getState().goals[0].nodes[0].done).toBeUndefined();
+      expect(dbMocks.persist).not.toHaveBeenCalled();
     });
 
     it('completing arms an undo that restores the unchecked state', async () => {

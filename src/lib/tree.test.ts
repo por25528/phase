@@ -164,6 +164,22 @@ describe('indentNode', () => {
       expect(a.plannedWeek).toBeUndefined();
       expect(a.plannedDay).toBeUndefined();
     });
+
+    it('drops doneAt when a completed preceding leaf becomes a container', () => {
+      const goals: Goal[] = [{
+        id: 'g1',
+        title: 'G',
+        nodes: [
+          { id: 'a', title: 'A', done: true, doneAt: '2026-07-22' },
+          { id: 'b', title: 'B', done: false },
+        ],
+      }];
+
+      const next = indentNode(goals, 'b');
+
+      expect(next[0].nodes[0].done).toBeUndefined();
+      expect(next[0].nodes[0].doneAt).toBeUndefined();
+    });
   });
 });
 
