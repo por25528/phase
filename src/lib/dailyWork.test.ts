@@ -184,6 +184,40 @@ describe('buildDailyWork carryovers and completion', () => {
     ]);
     expect(result.completedToday.every((item) => item.source === 'completed-today')).toBe(true);
   });
+
+  it('requires done state but keeps same-day leaves from archived projects', () => {
+    const goals = [
+      goal('active', [
+        { id: 'open-stale', title: 'Open with stale timestamp', done: false, doneAt: TODAY },
+      ]),
+      goal('archived', [
+        { id: 'archived-done', title: 'Archived completion', done: true, doneAt: TODAY },
+      ], { completedAt: TODAY }),
+    ];
+    const tasks = [
+      task('open-stale', TODAY, { done: false, doneAt: TODAY, goalId: 'archived' }),
+      task('done', TODAY, { done: true, doneAt: TODAY, goalId: 'archived' }),
+    ];
+
+    const result = buildDailyWork(goals, tasks, TODAY);
+
+    expect(result.completedToday.map((item) => item.key)).toEqual([
+      'task:done',
+      'step:archived-done',
+    ]);
+    expect(result.completedToday).toEqual([
+      expect.objectContaining({
+        goalId: 'archived',
+        goalTitle: 'Goal archived',
+        done: true,
+      }),
+      expect.objectContaining({
+        goalId: 'archived',
+        goalTitle: 'Goal archived',
+        done: true,
+      }),
+    ]);
+  });
 });
 
 describe('buildDailyWork suggestions', () => {
@@ -287,6 +321,51 @@ describe('buildDailyWork suggestions', () => {
       'past-milestone',
     ]);
   });
+
+  it('treats malformed legacy step and project dates as absent scheduling metadata', () => {
+    const projectDates = [
+      goal('plain-first', [{ id: 'plain', title: 'Plain' }]),
+      goal('bad-project', [{ id: 'bad-project-start', title: 'Bad project start' }], {
+        start: 'not-a-date',
+        milestones: [{ id: 'bad', title: 'Bad milestone', date: 'not-a-date' }],
+      }),
+    ];
+    const stepDates = [
+      goal('bad-deadline-goal', [
+        { id: 'bad-deadline', title: 'Bad deadline', deadline: 'not-a-date' },
+      ]),
+      goal('bad-week-goal', [
+        { id: 'bad-week', title: 'Bad week', plannedWeek: 'not-a-date' },
+      ]),
+      goal('bad-day-goal', [
+        {
+          id: 'bad-day',
+          title: 'Bad day',
+          plannedWeek: WEEK,
+          plannedDay: 'not-a-date',
+        },
+      ]),
+      goal('bad-start-goal', [
+        { id: 'bad-start', title: 'Bad start', start: 'not-a-date' },
+      ]),
+    ];
+
+    const projectResult = buildDailyWork(projectDates, [], TODAY);
+    const stepResult = buildDailyWork(stepDates, [], TODAY);
+
+    expect(projectResult.suggestions.map((item) => item.id)).toEqual([
+      'plain',
+      'bad-project-start',
+    ]);
+    expect(stepResult.commitments).toEqual([]);
+    expect(stepResult.carryOvers).toEqual([]);
+    expect(stepResult.suggestions.map((item) => item.id)).toEqual([
+      'bad-deadline',
+      'bad-week',
+      'bad-day',
+      'bad-start',
+    ]);
+  });
 });
 
 describe('tasksForWeek', () => {
@@ -304,5 +383,30 @@ describe('tasksForWeek', () => {
     expect(result.map((item) => item.id)).toEqual(['mon-a', 'mon-b', 'sun-z']);
     expect(result).not.toBe(tasks);
     expect(tasks.map((item) => item.id)).toEqual(['sun-z', 'before', 'mon-b', 'after', 'mon-a']);
+  });
+
+  it('ignores malformed task dates and returns no placements for an invalid week', () => {
+    const tasks = [
+      task('invalid', 'not-a-date'),
+      task('valid', TODAY),
+    ];
+
+    expect(tasksForWeek(tasks, WEEK).map((item) => item.id)).toEqual(['valid']);
+    expect(tasksForWeek(tasks, 'not-a-date')).toEqual([]);
+  });
+});
+
+describe('buildDailyWork malformed task dates', () => {
+  it('does not schedule malformed tasks but retains valid same-day completion history', () => {
+    const tasks = [
+      task('open-invalid', 'not-a-date'),
+      task('done-invalid', 'not-a-date', { done: true, doneAt: TODAY }),
+    ];
+
+    const result = buildDailyWork([], tasks, TODAY);
+
+    expect(result.commitments).toEqual([]);
+    expect(result.carryOvers).toEqual([]);
+    expect(result.completedToday.map((item) => item.key)).toEqual(['task:done-invalid']);
   });
 });

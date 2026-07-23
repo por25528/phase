@@ -1,5 +1,6 @@
 import type { Goal, GoalNode, Task } from '../db/types';
 import { addDays, weekDates } from './dates';
+import { isValidLocalDate } from './schedule';
 
 export type DailyWorkSource =
   | 'due'
@@ -43,6 +44,8 @@ interface SuggestionQueue {
   items: GoalLeaf[];
 }
 
+type GoalNodeWithValidPlan = GoalNode & { plannedWeek: string };
+
 // The one tree traversal used by every step-based section. An empty children
 // array is a legacy leaf, while a non-empty array identifies a container.
 function walkLeaves(nodes: GoalNode[], visit: (node: GoalNode) => void): void {
@@ -71,7 +74,7 @@ function taskItem(
     due: false,
     done: task.done,
     source,
-    scheduledDate: task.date,
+    ...(isValidLocalDate(task.date) ? { scheduledDate: task.date } : {}),
   };
 }
 
@@ -87,29 +90,36 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
     due: source === 'due',
     done: Boolean(node.done),
     source,
-    ...(node.plannedDay ? { plannedDay: node.plannedDay } : {}),
-    ...(node.deadline ? { scheduledDate: node.deadline } : {}),
+    ...(isValidLocalDate(node.plannedDay) ? { plannedDay: node.plannedDay } : {}),
+    ...(isValidLocalDate(node.deadline) ? { scheduledDate: node.deadline } : {}),
   };
 }
 
 function suggestionTier(node: GoalNode, today: string): number {
   if (
-    node.start
-    && node.deadline
+    isValidLocalDate(node.start)
+    && isValidLocalDate(node.deadline)
     && node.start <= today
     && node.deadline >= today
   ) {
     return 0;
   }
-  if (node.start && node.start > today) return 2;
+  if (isValidLocalDate(node.start) && node.start > today) return 2;
   return 1;
 }
 
 function milestoneWithin14Days(goal: Goal, today: string): boolean {
   const end = addDays(today, 14);
   return Boolean(goal.milestones?.some((milestone) => (
-    milestone.date >= today && milestone.date <= end
+    isValidLocalDate(milestone.date)
+    && milestone.date >= today
+    && milestone.date <= end
   )));
+}
+
+function hasValidPlan(node: GoalNode): node is GoalNodeWithValidPlan {
+  return isValidLocalDate(node.plannedWeek)
+    && (!node.plannedDay || isValidLocalDate(node.plannedDay));
 }
 
 export function buildDailyWork(
@@ -117,18 +127,27 @@ export function buildDailyWork(
   tasks: Task[],
   today: string,
 ): DailyWorkSections {
+  if (!isValidLocalDate(today)) {
+    return {
+      commitments: [],
+      suggestions: [],
+      carryOvers: [],
+      completedToday: [],
+    };
+  }
+
   const currentWeek = weekDates(today)[0];
   const goalById = new Map(goals.map((goal) => [goal.id, goal]));
-  const leaves: GoalLeaf[] = [];
+  const allLeaves: GoalLeaf[] = [];
 
   for (const goal of goals) {
-    if (goal.completedAt) continue;
     let order = 0;
     walkLeaves(goal.nodes, (node) => {
-      leaves.push({ goal, node, order });
+      allLeaves.push({ goal, node, order });
       order += 1;
     });
   }
+  const activeLeaves = allLeaves.filter(({ goal }) => !goal.completedAt);
 
   const commitments: DailyWorkItem[] = [];
   const committedKeys = new Set<string>();
@@ -138,30 +157,40 @@ export function buildDailyWork(
     commitments.push(item);
   };
 
-  for (const leaf of leaves) {
-    if (!leaf.node.done && leaf.node.deadline && leaf.node.deadline <= today) {
+  for (const leaf of activeLeaves) {
+    if (
+      !leaf.node.done
+      && isValidLocalDate(leaf.node.deadline)
+      && leaf.node.deadline <= today
+    ) {
       addCommitment(stepItem(leaf, 'due'));
     }
   }
   for (const task of tasks) {
-    if (!task.done && task.date === today) {
+    if (
+      !task.done
+      && isValidLocalDate(task.date)
+      && task.date === today
+    ) {
       addCommitment(taskItem(task, 'task-today', goalById));
     }
   }
-  for (const leaf of leaves) {
+  for (const leaf of activeLeaves) {
     const { node } = leaf;
     if (
       !node.done
+      && hasValidPlan(node)
       && node.plannedWeek === currentWeek
       && node.plannedDay === today
     ) {
       addCommitment(stepItem(leaf, 'pinned-today'));
     }
   }
-  for (const leaf of leaves) {
+  for (const leaf of activeLeaves) {
     const { node } = leaf;
     if (
       !node.done
+      && hasValidPlan(node)
       && node.plannedWeek === currentWeek
       && (!node.plannedDay || node.plannedDay < today)
     ) {
@@ -172,32 +201,34 @@ export function buildDailyWork(
   const carryOvers: DailyWorkItem[] = [];
   for (const task of tasks) {
     const key = `task:${task.id}`;
-    if (!task.done && task.date < today && !committedKeys.has(key)) {
+    if (
+      !task.done
+      && isValidLocalDate(task.date)
+      && task.date < today
+      && !committedKeys.has(key)
+    ) {
       carryOvers.push(taskItem(task, 'carry-over', goalById));
     }
   }
-  for (const leaf of leaves) {
+  for (const leaf of activeLeaves) {
     const { node } = leaf;
-    const stale = Boolean(node.plannedWeek && node.plannedWeek < currentWeek);
-    const slipped = (
-      node.plannedWeek === currentWeek
-      && Boolean(node.plannedDay)
-      && node.plannedDay! < today
+    const stale = Boolean(
+      hasValidPlan(node) && node.plannedWeek < currentWeek,
     );
     const key = `step:${node.id}`;
-    if (!node.done && (stale || slipped) && !committedKeys.has(key)) {
+    if (!node.done && stale && !committedKeys.has(key)) {
       carryOvers.push(stepItem(leaf, 'carry-over'));
     }
   }
 
   const completedToday: DailyWorkItem[] = [];
   for (const task of tasks) {
-    if (task.doneAt === today) {
+    if (task.done && task.doneAt === today) {
       completedToday.push(taskItem(task, 'completed-today', goalById));
     }
   }
-  for (const leaf of leaves) {
-    if (leaf.node.doneAt === today) {
+  for (const leaf of allLeaves) {
+    if (leaf.node.done === true && leaf.node.doneAt === today) {
       completedToday.push(stepItem(leaf, 'completed-today'));
     }
   }
@@ -207,16 +238,16 @@ export function buildDailyWork(
     .filter((goal) => (
       !goal.completedAt
       && (goal.column ?? 0) === 0
-      && (!goal.start || goal.start <= today)
+      && (!isValidLocalDate(goal.start) || goal.start <= today)
     ))
     .map((goal) => {
-      const candidates = leaves
+      const candidates = activeLeaves
         .filter(({ goal: owner, node }) => (
           owner.id === goal.id
           && !node.done
-          && !node.plannedWeek
-          && (!node.deadline || node.deadline > today)
-          && (!node.start || node.start <= latestSuggestionStart)
+          && !hasValidPlan(node)
+          && (!isValidLocalDate(node.deadline) || node.deadline > today)
+          && (!isValidLocalDate(node.start) || node.start <= latestSuggestionStart)
         ))
         .sort((a, b) => (
           suggestionTier(a.node, today) - suggestionTier(b.node, today)
@@ -249,9 +280,14 @@ export function buildDailyWork(
 }
 
 export function tasksForWeek(tasks: Task[], week: string): Task[] {
+  if (!isValidLocalDate(week)) return [];
   const start = weekDates(week)[0];
   const end = addDays(start, 6);
   return tasks
-    .filter((task) => task.date >= start && task.date <= end)
+    .filter((task) => (
+      isValidLocalDate(task.date)
+      && task.date >= start
+      && task.date <= end
+    ))
     .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
 }
