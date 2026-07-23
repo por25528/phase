@@ -58,6 +58,70 @@ describe('store actions', () => {
     expect(getState().goals[0].nodes[0].done).toBe(true);
   });
 
+  describe('persistent tasks', () => {
+    it('adds a trimmed task with its supplied date and optional project', async () => {
+      const { actions, getState } = await freshStore();
+
+      actions.addTask('  Draft outline  ', '2026-07-28', 'goal-1');
+
+      expect(getState().tasks).toEqual([
+        expect.objectContaining({
+          title: 'Draft outline',
+          date: '2026-07-28',
+          done: false,
+          goalId: 'goal-1',
+        }),
+      ]);
+      expect(getState().tasks[0].id).toBeTruthy();
+    });
+
+    it('ignores an empty task title', async () => {
+      const { actions, getState } = await freshStore();
+
+      actions.addTask('   ');
+
+      expect(getState().tasks).toEqual([]);
+    });
+
+    it('records the local completion date and removes it when reopened', async () => {
+      vi.setSystemTime(new Date(2026, 6, 23, 12));
+      const { actions, getState } = await freshStore();
+      actions.addTask('File notes');
+      const taskId = getState().tasks[0].id;
+
+      actions.toggleTask(taskId);
+      expect(getState().tasks[0]).toMatchObject({ done: true, doneAt: '2026-07-23' });
+
+      actions.toggleTask(taskId);
+      expect(getState().tasks[0].done).toBe(false);
+      expect(getState().tasks[0].doneAt).toBeUndefined();
+    });
+
+    it('reschedules a task', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addTask('File notes', '2026-07-23');
+      const taskId = getState().tasks[0].id;
+
+      actions.rescheduleTask(taskId, '2026-07-25');
+
+      expect(getState().tasks[0].date).toBe('2026-07-25');
+    });
+
+    it('removes a task with undo support and restores the same id', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addTask('File notes');
+      const taskId = getState().tasks[0].id;
+
+      actions.removeTask(taskId);
+      expect(getState().tasks).toEqual([]);
+      expect(getState().pendingUndo?.label).toBe('Deleted "File notes" · Undo');
+
+      actions.undoLastDelete();
+      expect(getState().tasks).toHaveLength(1);
+      expect(getState().tasks[0].id).toBe(taskId);
+    });
+  });
+
   it('new goals default to column 0 and sort ahead of higher columns', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('A');
@@ -111,6 +175,22 @@ describe('store actions', () => {
     expect(node.done).toBeUndefined();
     expect(node.children).toHaveLength(1);
     expect(getState().expanded.has(nid)).toBe(true);
+  });
+
+  it('addChild clears a completed leaf completion timestamp', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12));
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'leaf');
+    const nid = getState().goals[0].nodes[0].id;
+    actions.toggleLeaf(nid);
+
+    actions.addChild(nid, 'child');
+
+    const node = getState().goals[0].nodes[0];
+    expect(node.done).toBeUndefined();
+    expect(node.doneAt).toBeUndefined();
   });
 
   describe('addChild clears planning fields', () => {
@@ -476,6 +556,25 @@ describe('store actions', () => {
   });
 
   describe('toggleLeaf completion undo', () => {
+    it('records the local completion date and removes it when unchecked', async () => {
+      vi.setSystemTime(new Date(2026, 6, 23, 12));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.toggleLeaf(nid);
+      expect(getState().goals[0].nodes[0]).toMatchObject({
+        done: true,
+        doneAt: '2026-07-23',
+      });
+
+      actions.toggleLeaf(nid);
+      expect(getState().goals[0].nodes[0].done).toBe(false);
+      expect(getState().goals[0].nodes[0].doneAt).toBeUndefined();
+    });
+
     it('completing arms an undo that restores the unchecked state', async () => {
       const { actions, getState } = await freshStore();
       actions.addGoal('G');
@@ -821,6 +920,20 @@ describe('addChildren (AI daily subtasks)', () => {
     expect(node.plannedWeek).toBeUndefined();
     expect(node.plannedDay).toBeUndefined();
     expect(getState().expanded.has('n')).toBe(true);
+  });
+
+  it('clears completion timestamps when converting a completed leaf into a container', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([{
+      ...withStep,
+      nodes: [{ ...withStep.nodes[0], done: true, doneAt: '2026-07-22' }],
+    }]);
+
+    actions.addChildren('n', ['Sub A']);
+
+    const node = getState().goals[0].nodes[0];
+    expect(node.done).toBeUndefined();
+    expect(node.doneAt).toBeUndefined();
   });
 
   it('is a no-op for an all-blank list and for a completed (frozen) project', async () => {

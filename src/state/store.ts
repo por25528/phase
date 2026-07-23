@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, AppState, PlanReview } from '../db/types';
+import type { Goal, Habit, AppState, PlanReview, Task } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview,
@@ -217,10 +217,12 @@ export const actions = {
     if (node.done) {
       // Unchecking is self-inverse and the row stays visible — no undo toast.
       node.done = false;
+      delete node.doneAt;
       setAndPersist({ goals });
     } else {
       // Completion makes the row vanish from Next up — arm the undo window.
       node.done = true;
+      node.doneAt = todayStr();
       withUndo(`Completed "${node.title}" · Undo`, 'goals', goals);
     }
   },
@@ -239,6 +241,7 @@ export const actions = {
     if (!node.children) node.children = [];
     node.children.push({ id: uid(), title });
     delete node.done;
+    delete node.doneAt;
     delete node.plannedWeek;
     delete node.plannedDay;
     const expanded = new Set(state.expanded);
@@ -259,6 +262,7 @@ export const actions = {
     if (!node.children) node.children = [];
     for (const title of clean) node.children.push({ id: uid(), title, done: false });
     delete node.done;
+    delete node.doneAt;
     delete node.plannedWeek;
     delete node.plannedDay;
     const expanded = new Set(state.expanded);
@@ -425,6 +429,49 @@ export const actions = {
     const habit = state.habits.find((h) => h.id === habitId);
     const title = habit?.title ?? 'habit';
     withUndo(`Deleted "${title}" · Undo`, 'habits', state.habits.filter((h) => h.id !== habitId));
+  },
+
+  // Tasks
+  addTask(title: string, date = todayStr(), goalId: string | null = null): void {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    const task: Task = { id: uid(), title: trimmed, date, done: false, goalId };
+    setAndPersist({ tasks: [...state.tasks, task] });
+  },
+
+  toggleTask(taskId: string): void {
+    if (!state.tasks.some((task) => task.id === taskId)) return;
+    const tasks = state.tasks.map((task) => {
+      if (task.id !== taskId) return task;
+      const updated = { ...task };
+      if (updated.done) {
+        updated.done = false;
+        delete updated.doneAt;
+      } else {
+        updated.done = true;
+        updated.doneAt = todayStr();
+      }
+      return updated;
+    });
+    setAndPersist({ tasks });
+  },
+
+  rescheduleTask(taskId: string, date: string): void {
+    if (!state.tasks.some((task) => task.id === taskId)) return;
+    const tasks = state.tasks.map((task) => (
+      task.id === taskId ? { ...task, date } : task
+    ));
+    setAndPersist({ tasks });
+  },
+
+  removeTask(taskId: string): void {
+    const task = state.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    withUndo(
+      `Deleted "${task.title}" · Undo`,
+      'tasks',
+      state.tasks.filter((item) => item.id !== taskId),
+    );
   },
 
   // Structural reorder / indent / outdent

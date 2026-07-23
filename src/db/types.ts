@@ -2,9 +2,10 @@ export interface GoalNode {
   id: string;
   title: string;
   done?: boolean;       // present on LEAVES only
+  doneAt?: string;      // local 'YYYY-MM-DD' completion date; optional for legacy data
   children?: GoalNode[]; // present on CONTAINERS only
   // INVARIANT: a node is a leaf XOR a container.
-  // Adding a child to a leaf deletes its `done`.
+  // Adding a child to a leaf deletes its `done` and `doneAt`.
   // A node with children[].length > 0 is a container.
   start?: string;    // 'YYYY-MM-DD' — scheduling metadata only, never affects pct
   deadline?: string; // both present or both absent
@@ -68,6 +69,7 @@ export interface Task {
   title: string;
   date: string;  // 'YYYY-MM-DD'
   done: boolean;
+  doneAt?: string; // local 'YYYY-MM-DD' completion date; optional for legacy data
   goalId: string | null; // tag FOR CONTEXT ONLY
 }
 
