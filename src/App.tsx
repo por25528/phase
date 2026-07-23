@@ -4,7 +4,9 @@ import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { GoalDrawer } from './components/GoalDrawer';
+import { TaskCaptureModal } from './components/TaskCaptureModal';
 import { useLocalDate } from './hooks/useLocalDate';
+import { resolveAppKeyCommand } from './lib/appKeyboard';
 import {
   type Theme,
   resolveTheme,
@@ -38,6 +40,7 @@ export function App() {
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
+  const [taskCaptureOpen, setTaskCaptureOpen] = useState(false);
 
   useEffect(() => {
     initStore();
@@ -60,17 +63,24 @@ export function App() {
 
   useEffect(() => {
     function onKey(e: globalThis.KeyboardEvent) {
-      const el = e.target as HTMLElement;
-      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable) {
-        if (e.key === 'Escape') el.blur();
+      const command = resolveAppKeyCommand(e);
+      if (command === 'capture-task') {
+        e.preventDefault();
+        setTaskCaptureOpen(true);
         return;
       }
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === 'Escape') { actions.closeDrawer(); return; }
-      if (e.key === '1') actions.setView('today');
-      if (e.key === '2') actions.setView('goals');
-      if (e.key === '3') actions.setView('timeline');
-      if (e.key === 't') { actions.setView('today'); actions.goToToday(); }
+      if (command === 'blur-target') {
+        (e.target as HTMLElement).blur();
+        return;
+      }
+      if (command === 'close-drawer') actions.closeDrawer();
+      if (command === 'view-today') actions.setView('today');
+      if (command === 'view-goals') actions.setView('goals');
+      if (command === 'view-timeline') actions.setView('timeline');
+      if (command === 'go-today') {
+        actions.setView('today');
+        actions.goToToday();
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -179,6 +189,7 @@ export function App() {
       </main>
 
       <GoalDrawer goal={openGoal ?? null} actions={actions} focusNodeId={drawerFocusNodeId} />
+      <TaskCaptureModal open={taskCaptureOpen} onClose={() => setTaskCaptureOpen(false)} />
 
       {/* Undo toast */}
       <div

@@ -1,0 +1,165 @@
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { todayStr } from '../lib/dates';
+import {
+  activeProjectOptions,
+  buildTaskCaptureSubmission,
+  createTaskCaptureDraft,
+  resolveTaskCaptureDate,
+  type TaskCaptureDateChoice,
+} from '../lib/taskCapture';
+import { useAppStore } from '../state/store';
+import { Modal } from './Modal';
+
+const fieldCls = 'bg-field border border-line-2 rounded-field px-[10px] py-[7px] text-[.86rem] text-ink outline-none focus:border-accent';
+const choiceCls = 'px-[12px] py-[6px] rounded-full text-[.78rem] font-semibold border';
+
+export function TaskCaptureModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { goals, actions } = useAppStore();
+  const [draft, setDraft] = useState(() => createTaskCaptureDraft(todayStr()));
+  const titleRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
+  const projects = useMemo(() => activeProjectOptions(goals), [goals]);
+  const resolvedDate = resolveTaskCaptureDate(draft, todayStr());
+
+  useEffect(() => {
+    if (!open) return;
+    setDraft(createTaskCaptureDraft(todayStr()));
+    submittingRef.current = false;
+    const timer = setTimeout(() => titleRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [open]);
+
+  function chooseDate(dateChoice: TaskCaptureDateChoice) {
+    setDraft((current) => ({ ...current, dateChoice }));
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submittingRef.current) return;
+    const submission = buildTaskCaptureSubmission(draft, goals, todayStr());
+    if (!submission) return;
+    submittingRef.current = true;
+    actions.addTask(submission.title, submission.date, submission.goalId);
+    actions.showToast('Task added');
+    onClose();
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add task">
+      <form className="flex flex-col gap-[16px]" onSubmit={submit}>
+        <div className="flex flex-col gap-[5px]">
+          <label htmlFor="task-capture-title" className="text-[.72rem] font-semibold text-ink-soft">
+            Task
+          </label>
+          <input
+            ref={titleRef}
+            id="task-capture-title"
+            aria-label="Task title"
+            value={draft.title}
+            onChange={(event) => setDraft((current) => ({
+              ...current,
+              title: event.target.value,
+            }))}
+            placeholder="What needs doing?"
+            autoComplete="off"
+            className={`${fieldCls} w-full`}
+          />
+        </div>
+
+        <fieldset className="flex flex-col gap-[7px]">
+          <legend className="text-[.72rem] font-semibold text-ink-soft mb-[7px]">When</legend>
+          <div className="flex flex-wrap gap-[7px]">
+            {([
+              ['today', 'Today'],
+              ['tomorrow', 'Tomorrow'],
+              ['pick', 'Pick day'],
+            ] as const).map(([choice, label]) => (
+              <button
+                key={choice}
+                type="button"
+                aria-pressed={draft.dateChoice === choice}
+                onClick={() => chooseDate(choice)}
+                className={`${choiceCls} ${
+                  draft.dateChoice === choice
+                    ? 'bg-ink text-paper border-ink'
+                    : 'text-ink-soft border-line-2 hover:bg-hover'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {draft.dateChoice === 'pick' && (
+            <input
+              type="date"
+              aria-label="Task date"
+              value={draft.pickedDate}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                pickedDate: event.target.value,
+              }))}
+              className={`${fieldCls} self-start`}
+            />
+          )}
+        </fieldset>
+
+        <div className="flex flex-col gap-[8px]">
+          <button
+            type="button"
+            aria-pressed={draft.chooseProject}
+            onClick={() => setDraft((current) => ({
+              ...current,
+              chooseProject: !current.chooseProject,
+            }))}
+            className={`${choiceCls} self-start ${
+              draft.chooseProject
+                ? 'bg-ink text-paper border-ink'
+                : 'text-ink-soft border-line-2 hover:bg-hover'
+            }`}
+          >
+            Choose project
+          </button>
+          {draft.chooseProject && (
+            <select
+              aria-label="Project"
+              value={projects.some((project) => project.id === draft.goalId) ? draft.goalId : ''}
+              onChange={(event) => setDraft((current) => ({
+                ...current,
+                goalId: event.target.value,
+              }))}
+              className={`${fieldCls} w-full`}
+            >
+              <option value="">No project</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.title}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="flex items-center gap-[8px] mt-[2px]">
+          <button
+            type="submit"
+            disabled={!draft.title.trim() || !resolvedDate}
+            className="px-[14px] py-[8px] rounded-field bg-ink text-paper text-[.84rem] font-semibold hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
+          >
+            Add task
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-[12px] py-[8px] rounded-field text-[.84rem] text-ink-soft hover:bg-hover"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
