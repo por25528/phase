@@ -21,6 +21,7 @@ export interface DailyWorkItem {
   due: boolean;
   done: boolean;
   source: DailyWorkSource;
+  plannedWeek?: string;
   plannedDay?: string;
   scheduledDate?: string;
 }
@@ -90,6 +91,7 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
     due: source === 'due',
     done: Boolean(node.done),
     source,
+    ...(isValidLocalDate(node.plannedWeek) ? { plannedWeek: node.plannedWeek } : {}),
     ...(isValidLocalDate(node.plannedDay) ? { plannedDay: node.plannedDay } : {}),
     ...(isValidLocalDate(node.deadline) ? { scheduledDate: node.deadline } : {}),
   };

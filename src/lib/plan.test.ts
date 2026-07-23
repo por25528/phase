@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Goal, PlanReview } from '../db/types';
 import {
-  weekOf, plannedLeaves, nextUp, carryOvers, paceStatus, attentionRank,
+  weekOf, plannedLeaves, paceStatus, attentionRank,
   weekRecap, pinnedDayCounts, planOpeningStep, PACE_THRESHOLD_PTS,
   projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
   DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
@@ -61,70 +61,6 @@ describe('plannedLeaves', () => {
     expect(out.map((l) => l.nodeId)).toEqual(['b', 'a']);
     expect(out[0].done).toBe(true);
     expect(out[0].goalTitle).toBe('Goal');
-  });
-});
-
-describe('nextUp', () => {
-  const goals: Goal[] = [
-    goal({ id: 'g1', title: 'First', column: 0, nodes: [
-      { id: 'today', title: 'Pinned today', done: false, plannedWeek: WEEK, plannedDay: TODAY },
-      { id: 'friday', title: 'Pinned Friday', done: false, plannedWeek: WEEK, plannedDay: '2026-07-17' },
-      { id: 'pool', title: 'Week pool', done: false, plannedWeek: WEEK },
-      { id: 'carry', title: 'Old plan', done: false, plannedWeek: LAST_WEEK },
-      { id: 'free', title: 'Never planned', done: false },
-      { id: 'futs', title: 'Starts later', done: false, start: '2026-08-01', deadline: '2026-08-10' },
-    ]}),
-    goal({ id: 'g2', title: 'Second', column: 1, nodes: [
-      { id: 'free2', title: 'Second next', done: false },
-    ]}),
-  ];
-
-  it('orders pinned-today → week pool → suggestions', () => {
-    const out = nextUp(goals, TODAY, 7);
-    expect(out.map((i) => i.nodeId)).toEqual(['today', 'pool', 'free', 'free2']);
-    expect(out[0].tier).toBe('pinned-today');
-    expect(out[1].tier).toBe('week');
-    expect(out[2].tier).toBe('suggested');
-  });
-
-  it('hides future-day pins entirely and never re-suggests any planned leaf', () => {
-    const ids = nextUp(goals, TODAY, 7).map((i) => i.nodeId);
-    expect(ids).not.toContain('friday'); // hidden until Friday
-    expect(ids).not.toContain('carry');  // carry-over, separate section
-  });
-
-  it('excludes future-start leaves from suggestions', () => {
-    const ids = nextUp(goals, TODAY, 7).map((i) => i.nodeId);
-    expect(ids).not.toContain('futs');
-  });
-
-  it('a past-day pin this week is still shown as a week commitment', () => {
-    const g = goal({ nodes: [
-      { id: 'mon', title: 'Slipped Monday pin', done: false, plannedWeek: WEEK, plannedDay: '2026-07-13' },
-    ]});
-    const out = nextUp([g], TODAY, 7);
-    expect(out[0].nodeId).toBe('mon');
-    expect(out[0].tier).toBe('week');
-  });
-
-  it('limit bounds suggestions only, never commitments', () => {
-    const many = goal({ nodes: (Array.from({ length: 9 }, (_, i) => (
-      { id: `p${i}`, title: `P${i}`, done: false, plannedWeek: WEEK }
-    )) as Goal['nodes']).concat([{ id: 's1', title: 'S1', done: false }]) });
-    const out = nextUp([many], TODAY, 3);
-    expect(out.filter((i) => i.tier === 'week')).toHaveLength(9); // all commitments
-    expect(out.filter((i) => i.tier === 'suggested').length).toBeLessThanOrEqual(3);
-  });
-});
-
-describe('carryOvers', () => {
-  it('returns unchecked leaves planned for past weeks only', () => {
-    const g = goal({ nodes: [
-      { id: 'old', title: 'Old', done: false, plannedWeek: LAST_WEEK },
-      { id: 'olddone', title: 'Old done', done: true, plannedWeek: LAST_WEEK },
-      { id: 'now', title: 'Now', done: false, plannedWeek: WEEK },
-    ]});
-    expect(carryOvers([g], TODAY).map((l) => l.nodeId)).toEqual(['old']);
   });
 });
 
@@ -355,13 +291,6 @@ describe('lifecycle filtering', () => {
     expect(plannedLeaves([completed, active], WEEK).map((l) => l.nodeId)).toEqual(['ap']);
   });
 
-  it('nextUp skips completed projects', () => {
-    expect(nextUp([completed, active], TODAY, 7).map((i) => i.nodeId)).toEqual(['ap']);
-  });
-
-  it('carryOvers skips completed projects', () => {
-    expect(carryOvers([completed, active], TODAY)).toEqual([]);
-  });
 });
 
 describe('focusSummary', () => {

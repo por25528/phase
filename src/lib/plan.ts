@@ -72,59 +72,6 @@ export function plannedLeaves(goals: Goal[], week: string): PlannedLeaf[] {
   return out.sort((a, b) => (a.plannedDay ?? '9999').localeCompare(b.plannedDay ?? '9999'));
 }
 
-export interface NextUpItem {
-  goalId: string;
-  goalTitle: string;
-  nodeId: string;
-  title: string;
-  tier: 'pinned-today' | 'week' | 'suggested';
-  plannedDay?: string;
-}
-
-// Today's list: today's pins, then this week's other visible commitments
-// (unpinned, or pinned to a day that already slipped), then suggestions.
-// - Future-day pins are hidden until their day.
-// - Suggestions come only from NEVER-planned leaves (any plannedWeek —
-//   future pin, future week, or carry-over — excludes a leaf), never repeat
-//   an emitted node, and skip leaves/goals whose start is in the future.
-// - `limit` bounds SUGGESTIONS only; commitments always render in full.
-export function nextUp(goals: Goal[], today: string, limit = 7): NextUpItem[] {
-  const week = weekOf(today);
-  const pinnedToday: NextUpItem[] = [];
-  const weekPool: NextUpItem[] = [];
-  const suggested: NextUpItem[] = [];
-
-  for (const g of goals) {
-    if (g.completedAt) continue;
-    walkLeaves(g, (n) => {
-      if (n.done || n.plannedWeek !== week) return;
-      const item: NextUpItem = {
-        goalId: g.id, goalTitle: g.title, nodeId: n.id, title: n.title,
-        tier: 'week', plannedDay: n.plannedDay,
-      };
-      if (n.plannedDay === today) pinnedToday.push({ ...item, tier: 'pinned-today' });
-      else if (!n.plannedDay || n.plannedDay < today) weekPool.push(item);
-      // else: future-day pin — hidden until its day
-    });
-  }
-
-  for (const g of goals) {
-    if (suggested.length >= limit) break;
-    if (g.completedAt) continue;
-    if (g.start && g.start > today) continue;
-    walkLeaves(g, (n) => {
-      if (suggested.length >= limit) return;
-      if (n.done || n.plannedWeek) return;
-      if (n.start && n.start > today) return;
-      suggested.push({
-        goalId: g.id, goalTitle: g.title, nodeId: n.id, title: n.title, tier: 'suggested',
-      });
-    });
-  }
-
-  return [...pinnedToday, ...weekPool, ...suggested];
-}
-
 export interface PlannedGoalGroup {
   goalId: string;
   goalTitle: string;
@@ -183,19 +130,6 @@ export function railTree(g: Goal, week: string): RailTreeNode[] {
     return out;
   }
   return build(g.nodes);
-}
-
-// Unchecked leaves whose plan slipped past its week — the "Needs a decision" list.
-export function carryOvers(goals: Goal[], today: string): PlannedLeaf[] {
-  const week = weekOf(today);
-  const out: PlannedLeaf[] = [];
-  for (const g of goals) {
-    if (g.completedAt) continue;
-    walkLeaves(g, (n) => {
-      if (!n.done && n.plannedWeek && n.plannedWeek < week) out.push(asPlanned(g, n));
-    });
-  }
-  return out;
 }
 
 export type PaceState = 'behind' | 'quiet-ahead' | 'on-pace' | 'no-schedule' | 'needs-breakdown' | 'complete';

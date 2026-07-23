@@ -94,6 +94,7 @@ describe('buildDailyWork commitments', () => {
         due: true,
         done: false,
         source: 'due',
+        plannedWeek: WEEK,
         plannedDay: TODAY,
         scheduledDate: TODAY,
       },
@@ -153,6 +154,7 @@ describe('buildDailyWork carryovers and completion', () => {
     ]);
     expect(result.carryOvers.some((item) => item.id === 'stale-due')).toBe(false);
     expect(result.carryOvers.some((item) => item.id === 'slipped')).toBe(false);
+    expect(result.carryOvers[1].plannedWeek).toBe('2026-07-13');
   });
 
   it('treats an invalid day as unpinned while preserving an older valid planned week', () => {

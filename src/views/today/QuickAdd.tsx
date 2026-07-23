@@ -1,14 +1,16 @@
 import type { KeyboardEvent, RefObject } from 'react';
 import { useAppStore } from '../../state/store';
+import { todayStr } from '../../lib/dates';
 
-export type QuickType = 'habit' | 'goal';
+export type QuickType = 'habit' | 'goal' | 'task';
 
 const PLACEHOLDER: Record<QuickType, string> = {
   habit: 'New habit name…',
   goal: 'New goal or project…',
+  task: 'Task for today…',
 };
 
-const LABEL: Record<QuickType, string> = { habit: 'Habit', goal: 'Goal' };
+const LABEL: Record<QuickType, string> = { habit: 'Habit', goal: 'Goal', task: 'Task' };
 
 export function QuickAdd({
   type,
@@ -28,6 +30,7 @@ export function QuickAdd({
     if (!val) { el.focus(); return; }
     if (type === 'habit') actions.addHabit(val, 'daily', 4);
     if (type === 'goal') actions.addGoal(val);
+    if (type === 'task') actions.addTask(val, todayStr());
     el.value = '';
     el.focus();
   }
@@ -44,6 +47,7 @@ export function QuickAdd({
           className="flex-1 min-w-0 bg-field border border-line-2 rounded-field px-[12px] py-[8px] text-[.9rem] text-ink outline-none placeholder:text-faint"
         />
         <button
+          type="button"
           onClick={submit}
           aria-label="Add"
           className="w-[36px] h-[36px] rounded-field bg-accent text-accent-contrast text-[17px] font-semibold flex-none grid place-items-center hover:bg-accent-deep"
@@ -52,8 +56,9 @@ export function QuickAdd({
         </button>
       </div>
       <div className="flex items-center gap-[6px] mt-[8px]">
-        {(['habit', 'goal'] as QuickType[]).map((t) => (
+        {(['habit', 'goal', 'task'] as QuickType[]).map((t) => (
           <button
+            type="button"
             key={t}
             onClick={() => onType(t)}
             aria-pressed={type === t}

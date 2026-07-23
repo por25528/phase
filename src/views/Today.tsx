@@ -2,7 +2,8 @@ import { useState, useRef } from 'react';
 import { Hero } from './today/Hero';
 import { WeekStrip } from './today/WeekStrip';
 import { HabitsCard } from './today/HabitsCard';
-import { NextUpCard } from './today/NextUpCard';
+import { TodayWorkCard } from './today/TodayWorkCard';
+import { WorthConsideringCard } from './today/WorthConsideringCard';
 import { GoalsCard } from './today/GoalsCard';
 import { MiniCalendar } from './today/MiniCalendar';
 import { QuickAdd } from './today/QuickAdd';
@@ -30,7 +31,8 @@ export function Today() {
       <div className="today-main grid gap-[20px] items-start mt-[14px]">
         <div className="flex flex-col gap-[14px] min-w-0">
           <HabitsCard />
-          <NextUpCard />
+          <TodayWorkCard />
+          <WorthConsideringCard />
         </div>
         <div className="flex flex-col gap-[14px] min-w-0">
           <GoalsCard onAddGoal={() => focusQuick('goal')} />
