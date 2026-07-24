@@ -1201,3 +1201,45 @@ describe('addSampleProject', () => {
     expect(getState().expanded.has(container.id)).toBe(true);
   });
 });
+
+describe('toggleHabitOn (backfill)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function storeWithHabit() {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [], sessions: [], tasks: [],
+      habits: [{
+        id: 'h', title: 'Read', cadence: 'daily', weeklyTarget: 4,
+        goalId: null, checkins: [], createdAt: '2026-07-01',
+      }],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    return store;
+  }
+
+  it('backfills and clears a past day, but refuses future and pre-creation days', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12)); // 2026-07-23
+    const { actions, getState } = await storeWithHabit();
+
+    actions.toggleHabitOn('h', '2026-07-22');
+    expect(getState().habits[0].checkins).toContain('2026-07-22');
+
+    actions.toggleHabitOn('h', '2026-07-22'); // toggling again clears it
+    expect(getState().habits[0].checkins).not.toContain('2026-07-22');
+
+    actions.toggleHabitOn('h', '2026-07-24'); // future — refused
+    actions.toggleHabitOn('h', '2026-06-30'); // before it began — refused
+    expect(getState().habits[0].checkins).toEqual([]);
+  });
+
+  it('toggleHabit still toggles today through the same path', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12));
+    const { actions, getState } = await storeWithHabit();
+
+    actions.toggleHabit('h');
+    expect(getState().habits[0].checkins).toEqual(['2026-07-23']);
+  });
+});

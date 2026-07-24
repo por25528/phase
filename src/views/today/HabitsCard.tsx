@@ -124,6 +124,7 @@ function SortableHabitRow({
   today,
   goal,
   onToggle,
+  onToggleDay,
   onRemove,
   onRename,
   reducedMotion,
@@ -132,6 +133,7 @@ function SortableHabitRow({
   today: string;
   goal: { id: string; title: string } | null | undefined;
   onToggle: () => void;
+  onToggleDay: (date: string) => void;
   onRemove: () => void;
   onRename: (title: string) => void;
   reducedMotion: boolean;
@@ -258,7 +260,7 @@ function SortableHabitRow({
         </span>
       )}
       {goal && <Tag label={goal.title} />}
-      <HabitDots hb={hb} today={today} />
+      <HabitDots hb={hb} today={today} onToggleDay={onToggleDay} />
       <span className="font-mono text-[.7rem] text-muted w-[76px] text-right flex-none tabular-nums">{stat}</span>
       <button
         type="button"
@@ -333,6 +335,7 @@ export function HabitsCard() {
               today={today}
               goal={hb.goalId ? goals.find((g) => g.id === hb.goalId) : null}
               onToggle={() => actions.toggleHabit(hb.id)}
+              onToggleDay={(date) => actions.toggleHabitOn(hb.id, date)}
               onRemove={() => actions.removeHabit(hb.id)}
               onRename={(title) => actions.renameHabit(hb.id, title)}
               reducedMotion={reducedMotion}

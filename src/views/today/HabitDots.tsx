@@ -1,9 +1,27 @@
 import type { Habit } from '../../db/types';
 import { lastNDays } from '../../lib/today';
+import { fmtD } from '../../lib/dates';
 
-export function HabitDots({ hb, today }: { hb: Habit; today: string }) {
+// The 15-day trail. Decorative by default; when `onToggleDay` is supplied each
+// day the habit already existed on becomes a click target so a missed day can be
+// backfilled (or an accidental check cleared) straight from the trail. Kept out
+// of the tab order — 15 stops per habit would drown keyboard nav — so it's a
+// mouse/pointer affordance layered over the always-available today checkbox.
+export function HabitDots({
+  hb,
+  today,
+  onToggleDay,
+}: {
+  hb: Habit;
+  today: string;
+  onToggleDay?: (date: string) => void;
+}) {
   return (
-    <div className="hb-dots flex gap-[2.5px] flex-none" aria-hidden="true">
+    <div
+      className="hb-dots flex gap-[2.5px] flex-none"
+      aria-hidden={onToggleDay ? undefined : true}
+      onPointerDown={onToggleDay ? (e) => e.stopPropagation() : undefined}
+    >
       {lastNDays(today, 15).map((d) => {
         const hit = hb.checkins.includes(d);
         const isToday = d === today;
@@ -14,6 +32,21 @@ export function HabitDots({ hb, today }: { hb: Habit; today: string }) {
           : hit
             ? 'bg-dot'
             : 'bg-dot-off';
+        const editable = onToggleDay && (!hb.createdAt || d >= hb.createdAt);
+        if (editable) {
+          const when = isToday ? 'today' : fmtD(d);
+          return (
+            <button
+              key={d}
+              type="button"
+              tabIndex={-1}
+              title={`${hit ? 'Clear' : 'Mark'} ${when}`}
+              aria-label={`${hit ? 'Clear' : 'Mark'} "${hb.title}" ${isToday ? 'today' : `on ${when}`}`}
+              onClick={(e) => { e.stopPropagation(); onToggleDay(d); }}
+              className={`w-[7px] h-[7px] rounded-[2px] ${cls} hover:ring-2 hover:ring-accent/40`}
+            />
+          );
+        }
         return <span key={d} className={`w-[7px] h-[7px] rounded-[2px] ${cls}`} />;
       })}
     </div>

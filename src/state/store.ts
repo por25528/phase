@@ -411,14 +411,22 @@ export const actions = {
 
   // Habits
   toggleHabit(habitId: string) {
-    const today = todayStr();
+    actions.toggleHabitOn(habitId, todayStr());
+  },
+
+  // Backfill (or clear) a check-in on any past-or-present day — a missed tap
+  // yesterday shouldn't permanently dent the streak. Guarded so a future day and
+  // any day before the habit began can never be checked, keeping streaks honest.
+  toggleHabitOn(habitId: string, date: string) {
+    if (!isValidLocalDate(date) || date > todayStr()) return;
     const habits = state.habits.map((h) => {
       if (h.id !== habitId) return h;
-      const i = h.checkins.indexOf(today);
+      if (h.createdAt && date < h.createdAt) return h;
+      const i = h.checkins.indexOf(date);
       const checkins =
         i >= 0
           ? [...h.checkins.slice(0, i), ...h.checkins.slice(i + 1)]
-          : [...h.checkins, today];
+          : [...h.checkins, date];
       return { ...h, checkins };
     });
     setAndPersist({ habits });
