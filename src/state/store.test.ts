@@ -1183,3 +1183,21 @@ describe('confirmAllGoalDates', () => {
     expect(getState().pendingUndo).toBeNull();
   });
 });
+
+describe('addSampleProject', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('seeds one confirmed example onto the board with its container expanded', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12));
+    const { actions, getState } = await freshStore();
+
+    actions.addSampleProject();
+
+    const goals = getState().goals;
+    expect(goals).toHaveLength(1);
+    expect(goals[0].datesConfirmed).toBe(true);
+    const container = goals[0].nodes.find((n) => n.children && n.children.length > 0)!;
+    expect(getState().expanded.has(container.id)).toBe(true);
+  });
+});

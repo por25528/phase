@@ -10,6 +10,7 @@ import { clampSpan } from '../lib/timeline';
 import { isValidLocalDate, projectDateError, confirmableDateGoalIds } from '../lib/schedule';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { deferOpenWork } from '../lib/deferWork';
+import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import {
@@ -310,6 +311,13 @@ export const actions = {
     const expanded = new Set(state.expanded);
     collectContainers(newGoals).forEach((id) => expanded.add(id));
     setAndPersist({ goals }, { expanded });
+  },
+
+  // Cold-start teaching aid: drop the seeded example onto the board. Routes
+  // through addGoals so it normalizes by column and auto-expands its container —
+  // and is deletable like any project.
+  addSampleProject() {
+    actions.addGoals([sampleProject(todayStr(), uid)]);
   },
 
   // Convenience wrapper (QuickAdd, tests): a bare goal in the highest column.

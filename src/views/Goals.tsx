@@ -214,15 +214,26 @@ export function Goals() {
       {/* Empty state */}
       {isEmpty && (
         <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
-          <p className="text-muted text-[.9rem] mb-[14px]">
-            No projects yet — create one by hand, or import a plan an AI made for you.
+          <p className="text-ink-soft text-[.9rem] max-w-[440px] mb-[16px] leading-[1.6]">
+            No projects yet. A project is one outcome you can finish — a pset, a paper, a
+            launch — split into a few steps you check off. Start one, or drop in the example
+            to see how a good one decomposes.
           </p>
-          <div className="flex items-center gap-[10px]">
+          <div className="flex flex-wrap items-center justify-center gap-[10px]">
             <button
               className="text-[.84rem] font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
               onClick={() => setModal('new')}
             >
               + New project
+            </button>
+            <button
+              className="text-[.84rem] font-semibold text-accent-deep border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-accent-tint"
+              onClick={() => {
+                actions.addSampleProject();
+                actions.showToast('Example project added — delete it anytime');
+              }}
+            >
+              Load example
             </button>
             <button
               className="text-[.84rem] font-medium text-ink-soft border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-hover"
@@ -231,6 +242,9 @@ export function Goals() {
               Import project
             </button>
           </div>
+          <p className="text-faint text-[.74rem] mt-[13px]">
+            New here? Load the example, poke around, then delete it.
+          </p>
         </div>
       )}
 
