@@ -55,6 +55,20 @@ export function resolvePlannerDrop(
   return null;
 }
 
+// Keyboard planning: map a digit pressed while a rail step is focused to a target
+// within `days` (Mon..Sun). '1'–'7' pick that weekday; '0' means "any day this
+// week" (planned to the week, no day pin). Anything else isn't a planning key, so
+// the caller leaves the event alone.
+export function plannerKeyTarget(
+  key: string,
+  days: string[],
+): { day: string | null } | null {
+  if (key === '0') return { day: null };
+  const n = Number(key);
+  if (Number.isInteger(n) && n >= 1 && n <= days.length) return { day: days[n - 1] };
+  return null;
+}
+
 export function plannerOpenCount(leaves: PlannedLeaf[], tasks: Task[]): number {
   return leaves.filter((leaf) => !leaf.done).length
     + tasks.filter((task) => !task.done).length;

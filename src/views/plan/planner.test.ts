@@ -4,6 +4,7 @@ import type { Task } from '../../db/types';
 import {
   canDragTask,
   canRescheduleDraggedTask,
+  plannerKeyTarget,
   plannerOpenCount,
   resolvePlannerDrop,
   type PlannerDragData,
@@ -104,5 +105,26 @@ describe('planner task presentation', () => {
     expect(canRescheduleDraggedTask([task()], 't1')).toBe(true);
     expect(canRescheduleDraggedTask([task(true)], 't1')).toBe(false);
     expect(canRescheduleDraggedTask([task()], 'deleted')).toBe(false);
+  });
+});
+
+describe('plannerKeyTarget', () => {
+  const days = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'];
+
+  it('maps 1–7 to the matching weekday', () => {
+    expect(plannerKeyTarget('1', days)).toEqual({ day: '2026-07-20' });
+    expect(plannerKeyTarget('3', days)).toEqual({ day: '2026-07-22' });
+    expect(plannerKeyTarget('7', days)).toEqual({ day: '2026-07-26' });
+  });
+
+  it('maps 0 to "any day" (no day pin)', () => {
+    expect(plannerKeyTarget('0', days)).toEqual({ day: null });
+  });
+
+  it('ignores non-planning keys and out-of-range digits', () => {
+    expect(plannerKeyTarget('8', days)).toBeNull();
+    expect(plannerKeyTarget('a', days)).toBeNull();
+    expect(plannerKeyTarget('', days)).toBeNull();
+    expect(plannerKeyTarget(' ', days)).toBeNull();
   });
 });

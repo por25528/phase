@@ -107,6 +107,9 @@ export function App() {
         return;
       }
       if (command === 'close-drawer') actions.closeDrawer();
+      // View/navigation shortcuts must not fire underneath an open dialog — inside
+      // the planner, 1–7 mean "plan this step on that weekday", not "switch view".
+      if (modalRegistry.hasOpenModal()) return;
       if (command === 'view-today') actions.setView('today');
       if (command === 'view-goals') actions.setView('goals');
       if (command === 'view-timeline') actions.setView('timeline');
