@@ -1,5 +1,6 @@
 import { parseD, addDays } from './dates';
-import type { Habit } from '../db/types';
+import type { Goal, Habit } from '../db/types';
+import { hasTrustedSchedule, needsDateConfirmation } from './schedule';
 
 export function greeting(hour: number): string {
   if (hour < 12) return 'Good morning.';
@@ -42,4 +43,14 @@ export function deadlineChip(deadline: string, today: string): string {
   const diff = Math.round((d.getTime() - parseD(today).getTime()) / 86_400_000);
   const rel = diff >= 0 ? `${diff}D` : `${-diff}D OVER`;
   return `${mo} ${d.getDate()} · ${rel}`;
+}
+
+// The Today goal-rail deadline chip. Only a user-confirmed (trusted) schedule
+// earns a countdown; an unconfirmed legacy deadline must never surface an
+// overdue claim, so it returns null and the rail shows its "Dates unconfirmed"
+// badge instead. A project with no dates reads "No deadline".
+export function railDeadlineChip(goal: Goal, today: string): string | null {
+  if (hasTrustedSchedule(goal)) return deadlineChip(goal.deadline, today);
+  if (needsDateConfirmation(goal)) return null;
+  return 'No deadline';
 }

@@ -52,4 +52,38 @@ describe('Timeline project span editing', () => {
     expect(confirmed).toContain('Arrow keys move by day');
     expect(confirmed).toContain('cursor-grab');
   });
+
+  it('never labels an unconfirmed past-deadline project as overdue', () => {
+    const shared = {
+      index: 0,
+      rangeStart: '2026-01-01',
+      pxPerDay: 10,
+      labelW: 200,
+      segs: [],
+      bands: [],
+      todayX: 0,
+      canvasW: 2000,
+      isExpanded: false,
+      onToggle: () => {},
+      isLast: true,
+    };
+    // A deadline safely in the past so daysLeftLabel would say "… days overdue".
+    const past = (datesConfirmed?: boolean): GoalWithSpan => ({
+      id: 'g',
+      title: 'Project',
+      start: '2026-01-01',
+      deadline: '2026-06-27',
+      datesConfirmed,
+      nodes: [],
+    });
+
+    const unconfirmed = renderToStaticMarkup(createElement(GoalRow, { ...shared, goal: past() }));
+    const confirmed = renderToStaticMarkup(createElement(GoalRow, { ...shared, goal: past(true) }));
+
+    // Unconfirmed: no overdue/pace claim, just the neutral "dates unconfirmed" note.
+    expect(unconfirmed).not.toContain('overdue');
+    expect(unconfirmed).toContain('dates unconfirmed');
+    // Confirmed (trusted): the factual overdue countdown is allowed.
+    expect(confirmed).toContain('overdue');
+  });
 });

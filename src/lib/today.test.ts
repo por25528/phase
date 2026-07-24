@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { greeting, dateKicker, daysLeftInYear, lastNDays, habitHitPct, deadlineChip } from './today';
-import type { Habit } from '../db/types';
+import { greeting, dateKicker, daysLeftInYear, lastNDays, habitHitPct, deadlineChip, railDeadlineChip } from './today';
+import type { Goal, Habit } from '../db/types';
 
 describe('greeting', () => {
   it('morning before noon', () => expect(greeting(8)).toBe('Good morning.'));
@@ -43,4 +43,30 @@ describe('deadlineChip', () => {
   it('future deadline', () => expect(deadlineChip('2026-12-31', '2026-07-02')).toBe('DEC 31 · 182D'));
   it('due today', () => expect(deadlineChip('2026-07-02', '2026-07-02')).toBe('JUL 2 · 0D'));
   it('overdue', () => expect(deadlineChip('2026-06-27', '2026-07-02')).toBe('JUN 27 · 5D OVER'));
+});
+
+describe('railDeadlineChip', () => {
+  const goal = (patch: Partial<Goal> = {}): Goal => ({ id: 'g', title: 'G', nodes: [], ...patch });
+
+  it('shows a countdown only for a user-confirmed schedule', () => {
+    const g = goal({ start: '2026-01-01', deadline: '2026-12-31', datesConfirmed: true });
+    expect(railDeadlineChip(g, '2026-07-02')).toBe(deadlineChip('2026-12-31', '2026-07-02'));
+  });
+
+  it('suppresses the chip for an unconfirmed legacy deadline — even a past one — so no false OVER shows', () => {
+    const g = goal({ start: '2026-01-01', deadline: '2026-06-27' });
+    // The raw chip would claim overdue for this past date...
+    expect(deadlineChip('2026-06-27', '2026-07-02')).toContain('OVER');
+    // ...but the rail must not, because the schedule is unconfirmed.
+    expect(railDeadlineChip(g, '2026-07-02')).toBeNull();
+  });
+
+  it('does not trust a confirmed but reversed span', () => {
+    const g = goal({ start: '2026-12-31', deadline: '2026-01-01', datesConfirmed: true });
+    expect(railDeadlineChip(g, '2026-07-02')).toBe('No deadline');
+  });
+
+  it('reads "No deadline" when the project has no dates', () => {
+    expect(railDeadlineChip(goal(), '2026-07-02')).toBe('No deadline');
+  });
 });

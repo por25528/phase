@@ -2,7 +2,7 @@ import { useAppStore } from '../../state/store';
 import { CardSection } from '../../components/CardSection';
 import { goalPct } from '../../lib/pct';
 import { firstOpenLeaf } from '../../lib/tree';
-import { deadlineChip } from '../../lib/today';
+import { railDeadlineChip } from '../../lib/today';
 import { todayStr } from '../../lib/dates';
 import { behindPaceBy } from '../../lib/timeline';
 import { weekOf, paceStatus } from '../../lib/plan';
@@ -40,6 +40,9 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
           ? Math.round(behindPaceBy(pct, g.start, g.deadline, today))
           : 0;
         const pace = paceStatus(g, today);
+        // Only a trusted schedule earns a deadline countdown; an unconfirmed
+        // legacy deadline returns null so the rail makes no overdue claim.
+        const deadlineText = railDeadlineChip(g, today);
         const alreadyPlanned = !!next && next.plannedWeek === week && next.plannedDay === today;
 
         function openDrawer() {
@@ -70,9 +73,11 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
               ) : pace === 'behind' ? (
                 <BehindChip pts={behind} className="flex-none" />
               ) : null}
-              <span className="font-mono text-[.62rem] tracking-[.05em] text-muted flex-none tabular-nums">
-                {g.deadline ? deadlineChip(g.deadline, today) : 'No deadline'}
-              </span>
+              {deadlineText !== null && (
+                <span className="font-mono text-[.62rem] tracking-[.05em] text-muted flex-none tabular-nums">
+                  {deadlineText}
+                </span>
+              )}
             </span>
             <span className="block h-[4px] rounded-full bg-track overflow-hidden">
               <span

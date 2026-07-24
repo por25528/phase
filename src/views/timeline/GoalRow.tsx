@@ -89,7 +89,7 @@ export const GoalRow = memo(function GoalRow({
             <span className="text-[.84rem] font-medium text-ink leading-[1.25]">{g.title}</span>
             <span className="flex items-center gap-[5px] min-w-0">
               <span className="text-[.68rem] text-muted tabular-nums truncate">
-                {p}% · {daysLeftLabel(g.deadline)}
+                {p}%{trustedSchedule ? ` · ${daysLeftLabel(g.deadline)}` : ' · dates unconfirmed'}
               </span>
               {pace === 'behind' && <BehindChip pts={behind} className="flex-none" />}
               {pace === 'needs-breakdown' && (
