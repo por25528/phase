@@ -67,4 +67,9 @@ describe('resolveAppKeyCommand', () => {
     expect(resolveAppKeyCommand({ key: 't' })).toBe('go-today');
     expect(resolveAppKeyCommand({ key: 'T' })).toBeNull();
   });
+
+  it('toggles the shortcut cheat sheet on ? (Shift+/), but not while typing', () => {
+    expect(resolveAppKeyCommand({ key: '?', shiftKey: true })).toBe('toggle-shortcuts');
+    expect(resolveAppKeyCommand({ key: '?', shiftKey: true, target: inputTarget })).toBeNull();
+  });
 });

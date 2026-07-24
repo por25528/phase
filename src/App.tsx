@@ -5,6 +5,7 @@ import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { GoalDrawer } from './components/GoalDrawer';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
+import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { useLocalDate } from './hooks/useLocalDate';
 import {
   resolveAppKeyCommand,
@@ -53,6 +54,14 @@ export function App() {
     open: false,
     focusRequest: 0,
   });
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  const openTaskCapture = () => setTaskCapture((current) => requestTaskCaptureForCommand(
+    current,
+    hydration,
+    modalRegistry.hasOpenModal(),
+    openGoalId !== null,
+  ));
 
   useEffect(() => {
     initStore();
@@ -77,13 +86,20 @@ export function App() {
     function onKey(e: globalThis.KeyboardEvent) {
       if (shouldConsumeTaskCaptureShortcut(e)) e.preventDefault();
       const command = resolveAppKeyCommand(e);
+      // While the cheat sheet is up it owns the keyboard: ? or Esc dismiss it,
+      // everything else is swallowed so nothing fires behind the overlay.
+      if (showShortcuts) {
+        if (command === 'toggle-shortcuts' || command === 'close-drawer') {
+          setShowShortcuts(false);
+        }
+        return;
+      }
+      if (command === 'toggle-shortcuts') {
+        setShowShortcuts(true);
+        return;
+      }
       if (command === 'capture-task') {
-        setTaskCapture((current) => requestTaskCaptureForCommand(
-          current,
-          hydration,
-          modalRegistry.hasOpenModal(),
-          openGoalId !== null,
-        ));
+        openTaskCapture();
         return;
       }
       if (command === 'blur-target') {
@@ -101,7 +117,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [actions, hydration, openGoalId]);
+  }, [actions, hydration, openGoalId, showShortcuts]);
 
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
 
@@ -114,7 +130,7 @@ export function App() {
             Phase<span className="text-accent">.</span>
           </span>
         </div>
-        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · T jumps to today · Esc closes">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · T today · ⌘N add task · ? shortcuts · Esc closes">
           {(
             [
               ['today', 'Today'],
@@ -137,7 +153,27 @@ export function App() {
           ))}
         </nav>
         <div className="flex-1" />
+        <button
+          type="button"
+          onClick={openTaskCapture}
+          disabled={hydration !== 'ready'}
+          title="Add a task (⌘N)"
+          className="flex items-center gap-[7px] rounded-field bg-ink text-paper text-[.8rem] font-semibold pl-[12px] pr-[10px] py-[6px] hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
+        >
+          <span aria-hidden="true">＋</span>
+          Task
+          <kbd className="font-mono text-[.62rem] tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
+        </button>
         <div className="flex items-center gap-[16px] font-mono text-[.72rem] tracking-[.06em] text-muted">
+          <button
+            type="button"
+            onClick={() => setShowShortcuts(true)}
+            aria-label="Keyboard shortcuts (?)"
+            title="Keyboard shortcuts (?)"
+            className="w-[24px] h-[24px] grid place-items-center rounded-full border border-line-2 text-[.78rem] hover:text-ink hover:border-muted"
+          >
+            ?
+          </button>
           <button
             onClick={() => actions.setTheme(NEXT_THEME[theme])}
             aria-label={`Theme: ${THEME_LABEL[theme]}${theme === 'system' ? ` (${effectiveTheme})` : ''} — switch to ${THEME_LABEL[NEXT_THEME[theme]]}`}
@@ -212,6 +248,7 @@ export function App() {
         enabled={hydration === 'ready'}
         onClose={() => setTaskCapture((current) => closeTaskCapture(current))}
       />
+      <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 
       {/* Undo toast */}
       <div

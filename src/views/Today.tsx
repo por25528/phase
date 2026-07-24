@@ -20,7 +20,9 @@ export function Today() {
     [goals, tasks, today],
   );
   const quickRef = useRef<HTMLInputElement>(null);
-  const [quickType, setQuickType] = useState<QuickType>('goal');
+  // Default the quick box to Task — the thing captured most; the GoalsCard's
+  // "add goal" affordance still flips it to Goal on demand.
+  const [quickType, setQuickType] = useState<QuickType>('task');
   function focusQuick(t: QuickType) {
     setQuickType(t);
     quickRef.current?.focus();
