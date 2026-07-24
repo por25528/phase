@@ -7,7 +7,7 @@ import {
 import { clampScale } from '../lib/timeline';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
-import { isValidLocalDate, projectDateError } from '../lib/schedule';
+import { isValidLocalDate, projectDateError, confirmableDateGoalIds } from '../lib/schedule';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { deferOpenWork } from '../lib/deferWork';
 import { weaveCompleted } from '../lib/board';
@@ -558,6 +558,21 @@ export const actions = {
       g.id === goalId ? { ...g, datesConfirmed: true } : g
     ));
     setAndPersist({ goals });
+  },
+
+  // Clear the whole unconfirmed-dates banner in one pass (AI-import leaves every
+  // project unconfirmed). Only stamps projects with a valid span — an inverted
+  // start/deadline stays behind for manual review. Undoable as one batch.
+  confirmAllGoalDates(): void {
+    const ids = confirmableDateGoalIds(state.goals);
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const goals = state.goals.map((g) => (idSet.has(g.id) ? { ...g, datesConfirmed: true } : g));
+    withUndo(
+      `Confirmed dates for ${ids.length} project${ids.length === 1 ? '' : 's'} · Undo`,
+      'goals',
+      goals,
+    );
   },
 
   dismissDateReview(): void {

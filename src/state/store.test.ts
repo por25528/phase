@@ -1149,3 +1149,37 @@ describe('deferOpenToNextWeek', () => {
     expect(getState().tasks[0].date).toBe('2026-07-23');
   });
 });
+
+describe('confirmAllGoalDates', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('confirms every valid unconfirmed project, leaving inverted spans for review', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([
+      { id: 'a', title: 'A', column: 0, nodes: [], start: '2026-01-01', deadline: '2026-06-01' },
+      { id: 'b', title: 'B', column: 0, nodes: [], start: '2026-02-01', deadline: '2026-07-01' },
+      { id: 'bad', title: 'Bad', column: 0, nodes: [], start: '2026-08-01', deadline: '2026-01-01' },
+    ]);
+
+    actions.confirmAllGoalDates();
+
+    const byId = new Map(getState().goals.map((g) => [g.id, g.datesConfirmed]));
+    expect(byId.get('a')).toBe(true);
+    expect(byId.get('b')).toBe(true);
+    expect(byId.get('bad')).toBeUndefined();
+    expect(getState().pendingUndo).not.toBeNull();
+
+    actions.undoLastDelete();
+    expect(getState().goals.find((g) => g.id === 'a')!.datesConfirmed).toBeUndefined();
+  });
+
+  it('is a no-op when nothing is confirmable', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('plain'); // datesConfirmed already true, no dates
+
+    actions.confirmAllGoalDates();
+
+    expect(getState().pendingUndo).toBeNull();
+  });
+});

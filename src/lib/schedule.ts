@@ -33,6 +33,20 @@ export function goalDateDraftIsDirty(
   return draftStart !== (goal.start ?? '') || draftDeadline !== (goal.deadline ?? '');
 }
 
+// Active projects whose unconfirmed dates are internally valid — the set a single
+// "Confirm all" pass can safely stamp. A project whose start is after its deadline
+// is left out so it still surfaces for manual review. Mirrors the per-project guard
+// in confirmGoalDates, so the bulk action can never confirm what a single click won't.
+export function confirmableDateGoalIds(goals: Goal[]): string[] {
+  return goals
+    .filter((g) => (
+      !g.completedAt
+      && needsDateConfirmation(g)
+      && projectDateError(g.start, g.deadline) === null
+    ))
+    .map((g) => g.id);
+}
+
 export function projectDateError(start?: unknown, deadline?: unknown): string | null {
   if (start !== undefined && !isValidLocalDate(start)) return 'Start must be a valid date.';
   if (deadline !== undefined && !isValidLocalDate(deadline)) return 'Deadline must be a valid date.';

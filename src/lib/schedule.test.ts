@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal } from '../db/types';
 import {
+  confirmableDateGoalIds,
   hasGoalSpan,
   hasTrustedSchedule,
   isValidLocalDate,
@@ -88,6 +89,21 @@ describe('goalDateDraftIsDirty', () => {
 
     expect(goalDateDraftIsDirty(undated, '', '')).toBe(false);
     expect(goalDateDraftIsDirty(undated, '', '2026-12-31')).toBe(true);
+  });
+});
+
+describe('confirmableDateGoalIds', () => {
+  it('collects only active, unconfirmed projects with valid spans', () => {
+    const goals: Goal[] = [
+      goal({ id: 'ok' }),                                          // unconfirmed, valid span
+      goal({ id: 'confirmed', datesConfirmed: true }),             // already confirmed
+      goal({ id: 'undated', start: undefined, deadline: undefined }), // nothing to confirm
+      goal({ id: 'inverted', start: '2026-12-31', deadline: '2026-01-01' }), // start after deadline
+      goal({ id: 'archived', completedAt: '2026-07-01' }),         // completed → excluded
+      goal({ id: 'start-only', deadline: undefined }),             // one-sided but valid
+    ];
+
+    expect(confirmableDateGoalIds(goals)).toEqual(['ok', 'start-only']);
   });
 });
 
