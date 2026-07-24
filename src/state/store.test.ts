@@ -1107,3 +1107,45 @@ describe('addChildren (AI daily subtasks)', () => {
     expect(getState().goals[0].nodes[0].children).toBeUndefined();
   });
 });
+
+describe('deferOpenToNextWeek', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('pushes overdue tasks and slipped steps to next week, undoably', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12)); // Thu 2026-07-23 → week 07-20, next 07-27
+    const { actions, getState } = await freshStore();
+    actions.addGoals([{
+      id: 'g', title: 'G', column: 0, datesConfirmed: true,
+      nodes: [{ id: 'slipped', title: 'Slipped', plannedWeek: '2026-07-13', plannedDay: '2026-07-15' }],
+    }]);
+    actions.addTask('Overdue', '2026-07-21');
+    actions.addTask('Future', '2026-07-30');
+    const overdueId = getState().tasks.find((t) => t.title === 'Overdue')!.id;
+
+    actions.deferOpenToNextWeek();
+
+    expect(getState().tasks.find((t) => t.id === overdueId)!.date).toBe('2026-07-27');
+    expect(getState().tasks.find((t) => t.title === 'Future')!.date).toBe('2026-07-30');
+    const step = getState().goals[0].nodes[0];
+    expect(step.plannedWeek).toBe('2026-07-27');
+    expect(step.plannedDay).toBeUndefined();
+    expect(getState().pendingUndo).not.toBeNull();
+
+    actions.undoLastDelete();
+    expect(getState().tasks.find((t) => t.id === overdueId)!.date).toBe('2026-07-21');
+    expect(getState().goals[0].nodes[0].plannedWeek).toBe('2026-07-13');
+    expect(getState().goals[0].nodes[0].plannedDay).toBe('2026-07-15');
+  });
+
+  it('is a no-op when nothing is open (no undo armed)', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12));
+    const { actions, getState } = await freshStore();
+    actions.addTask('Today', '2026-07-23');
+
+    actions.deferOpenToNextWeek();
+
+    expect(getState().pendingUndo).toBeNull();
+    expect(getState().tasks[0].date).toBe('2026-07-23');
+  });
+});

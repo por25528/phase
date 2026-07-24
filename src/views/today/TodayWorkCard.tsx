@@ -102,8 +102,19 @@ export function TodayWorkCard({
 
       {sections.carryOvers.length > 0 && (
         <div className="mt-[10px]">
-          <div className="font-mono text-[.62rem] tracking-[.1em] uppercase text-warn font-semibold mb-[4px]">
-            Needs a decision
+          <div className="flex items-center justify-between gap-[8px] mb-[4px]">
+            <div className="font-mono text-[.62rem] tracking-[.1em] uppercase text-warn font-semibold">
+              Needs a decision
+            </div>
+            {sections.carryOvers.length > 1 && (
+              <button
+                type="button"
+                onClick={() => actions.deferOpenToNextWeek()}
+                className="text-[.68rem] font-semibold text-ink-soft hover:text-ink px-[6px] py-[2px] rounded-[6px] hover:bg-hover"
+              >
+                Push all to next week →
+              </button>
+            )}
           </div>
           {sections.carryOvers.map((item) => {
             const pickerId = `${pickerPrefix}-${item.id}`;

@@ -9,6 +9,7 @@ import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import { isValidLocalDate, projectDateError } from '../lib/schedule';
 import { weekOf, plannedLeaves } from '../lib/plan';
+import { deferOpenWork } from '../lib/deferWork';
 import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import {
@@ -477,6 +478,23 @@ export const actions = {
       setAndPersist({ tasks });
     });
     setAndPersist({ tasks: state.tasks.filter((item) => item.id !== taskId) });
+  },
+
+  // Bulk-triage the "Needs a decision" pile onto next week in one keystroke — the
+  // exam-week escape valve. Spans tasks and steps, so it snapshots both slices for
+  // a single undo instead of routing through withUndo's one-key helper.
+  deferOpenToNextWeek(): void {
+    const today = todayStr();
+    const target = addDays(weekOf(today), 7);
+    const { goals, tasks, count } = deferOpenWork(state.goals, state.tasks, today, target);
+    if (count === 0) return;
+    const snapGoals = structuredClone(state.goals);
+    const snapTasks = structuredClone(state.tasks);
+    scheduleUndo(
+      `Pushed ${count} item${count === 1 ? '' : 's'} to next week · Undo`,
+      () => setAndPersist({ goals: snapGoals, tasks: snapTasks }),
+    );
+    setAndPersist({ goals, tasks });
   },
 
   // Structural reorder / indent / outdent
