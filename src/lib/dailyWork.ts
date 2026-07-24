@@ -22,6 +22,7 @@ export interface DailyWorkItem {
   done: boolean;
   editable: boolean;
   source: DailyWorkSource;
+  reason?: string; // why a 'suggested' item surfaced — shown in "Worth considering"
   plannedWeek?: string;
   plannedDay?: string;
   scheduledDate?: string;
@@ -111,6 +112,15 @@ function suggestionTier(node: GoalNode, today: string): number {
   }
   if (isValidLocalDate(node.start) && node.start > today) return 2;
   return 1;
+}
+
+// The short "why this surfaced" line for a suggestion, so the list is steerable
+// instead of opaque. Mirrors the same signals that ordered the queue: a soon
+// milestone floats the whole project, an in-window step beats an undated one.
+function suggestionReason(queue: SuggestionQueue, node: GoalNode, today: string): string {
+  if (queue.milestoneSoon) return 'Milestone soon';
+  if (suggestionTier(node, today) === 0) return 'In its window';
+  return 'Next open step';
 }
 
 function milestoneWithin14Days(goal: Goal, today: string): boolean {
@@ -271,7 +281,12 @@ export function buildDailyWork(
   for (let round = 0; round < 2 && suggestions.length < 4; round += 1) {
     for (const queue of suggestionQueues) {
       const leaf = queue.items[round];
-      if (leaf) suggestions.push(stepItem(leaf, 'suggested'));
+      if (leaf) {
+        suggestions.push({
+          ...stepItem(leaf, 'suggested'),
+          reason: suggestionReason(queue, leaf.node, today),
+        });
+      }
       if (suggestions.length === 4) break;
     }
   }

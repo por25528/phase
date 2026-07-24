@@ -283,6 +283,34 @@ describe('buildDailyWork suggestions', () => {
     expect(result.suggestions.map((item) => item.key)).toEqual(['step:eligible']);
   });
 
+  it('labels each suggestion with why it surfaced', () => {
+    const goals = [
+      goal('a', [
+        { id: 'undated', title: 'Undated' },
+        { id: 'inwindow', title: 'In window', start: '2026-07-01', deadline: '2026-08-01' },
+      ]),
+    ];
+
+    const byId = new Map(
+      buildDailyWork(goals, [], TODAY).suggestions.map((s) => [s.id, s.reason]),
+    );
+
+    expect(byId.get('inwindow')).toBe('In its window');
+    expect(byId.get('undated')).toBe('Next open step');
+  });
+
+  it('flags a soon milestone as the reason across that project', () => {
+    const goals = [
+      goal('m', [{ id: 'leaf', title: 'Leaf' }], {
+        milestones: [{ id: 'ms', title: 'Demo', date: '2026-07-30' }],
+      }),
+    ];
+
+    const result = buildDailyWork(goals, [], TODAY);
+
+    expect(result.suggestions[0].reason).toBe('Milestone soon');
+  });
+
   it('ranks active spans, then undated leaves, then starts within 30 days, preserving tree order', () => {
     const activeThenUndated = [
       goal('ranked', [

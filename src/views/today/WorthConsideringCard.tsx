@@ -27,6 +27,11 @@ export function WorthConsideringCard({
           className="flex items-center gap-[10px] py-[8px] border-b border-line-soft last:border-b-0"
         >
           <span className="flex-1 min-w-0 truncate text-[.88rem]">{item.title}</span>
+          {item.reason && (
+            <span className="flex-none text-[.62rem] font-medium text-muted bg-hover px-[6px] py-[1px] rounded-full whitespace-nowrap">
+              {item.reason}
+            </span>
+          )}
           {item.goalTitle && <Tag label={item.goalTitle} />}
           {item.goalId && (
             <button
