@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Goal, PlanReview } from '../db/types';
+import type { Goal, PlanReview, Session } from '../db/types';
 import {
   weekOf, plannedLeaves, paceStatus, attentionRank,
   weekRecap, pinnedDayCounts, planOpeningStep, PACE_THRESHOLD_PTS,
@@ -7,6 +7,7 @@ import {
   DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
   nearestMeaningfulDate, nextOpenAction, attentionBadge, cardPrimaryAction,
   unplannedOpenLeaves, groupPlannedByGoal, railTree,
+  loggedTimeForWeek, formatLoggedMinutes,
 } from './plan';
 import type { PlannedLeaf } from './plan';
 
@@ -644,5 +645,37 @@ describe('cardPrimaryAction', () => {
   it('gives Someday projects no plan nag, and completed projects none', () => {
     expect(cardPrimaryAction(goal({ column: 3, nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY)).toBe('none');
     expect(cardPrimaryAction(goal({ column: 0, completedAt: '2026-07-01', nodes: [] }), TODAY)).toBe('none');
+  });
+});
+
+describe('loggedTimeForWeek', () => {
+  function session(date: string, minutes: number): Session {
+    return { id: `s-${date}-${minutes}`, goalId: null, date, minutes, note: '' };
+  }
+
+  it('sums minutes and counts sessions inside the week, ignoring others', () => {
+    const sessions = [
+      session('2026-07-13', 60),   // Mon of WEEK
+      session('2026-07-19', 45),   // Sun of WEEK
+      session('2026-07-12', 30),   // day before the week
+      session('2026-07-20', 90),   // day after the week
+      session('2026-07-15', 0),    // zero-minute log ignored
+      session('not-a-date', 25),   // invalid date ignored
+    ];
+
+    expect(loggedTimeForWeek(sessions, WEEK)).toEqual({ minutes: 105, sessions: 2 });
+  });
+
+  it('returns an empty summary for an invalid week', () => {
+    expect(loggedTimeForWeek([session('2026-07-13', 60)], 'nope')).toEqual({ minutes: 0, sessions: 0 });
+  });
+});
+
+describe('formatLoggedMinutes', () => {
+  it('renders compact hour/minute durations', () => {
+    expect(formatLoggedMinutes(0)).toBe('0m');
+    expect(formatLoggedMinutes(45)).toBe('45m');
+    expect(formatLoggedMinutes(60)).toBe('1h');
+    expect(formatLoggedMinutes(200)).toBe('3h 20m');
   });
 });

@@ -1,10 +1,10 @@
-import type { Goal, GoalNode, PlanReview, PlanReviewEntry } from '../db/types';
+import type { Goal, GoalNode, PlanReview, PlanReviewEntry, Session } from '../db/types';
 import { weekDates, addDays } from './dates';
 import { goalPct } from './pct';
 import { expectedPct, behindPaceBy, daysBetween } from './timeline';
 import { leafCount } from './board';
 import { findInAll } from './tree';
-import { hasTrustedSchedule, needsDateConfirmation } from './schedule';
+import { hasTrustedSchedule, needsDateConfirmation, isValidLocalDate } from './schedule';
 
 // One shared threshold so cards, the insight bar, and the planner never
 // disagree about what "behind" means.
@@ -406,6 +406,37 @@ export function weekRecap(review: PlanReview, goals: Goal[]): WeekRecapResult {
     else unfinished.push(e);
   }
   return { planned: review.entries.length, nowComplete, unfinished, removed };
+}
+
+export interface LoggedTime {
+  minutes: number;
+  sessions: number;
+}
+
+// Total logged minutes and session count within the week starting `weekMonday`.
+// The weekly recap uses it to set the plan against reality ("you planned N and
+// logged Xh"), bridging the deliberate gap that time never touches the pct.
+export function loggedTimeForWeek(sessions: Session[], weekMonday: string): LoggedTime {
+  if (!isValidLocalDate(weekMonday)) return { minutes: 0, sessions: 0 };
+  const start = weekDates(weekMonday)[0];
+  const end = addDays(start, 6);
+  let minutes = 0;
+  let count = 0;
+  for (const s of sessions) {
+    if (isValidLocalDate(s.date) && s.date >= start && s.date <= end && s.minutes > 0) {
+      minutes += s.minutes;
+      count += 1;
+    }
+  }
+  return { minutes, sessions: count };
+}
+
+// "3h 20m" / "45m" / "2h" — compact duration for the recap line.
+export function formatLoggedMinutes(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
 // Unchecked day-pinned leaves per day — powers MiniCalendar dots and the

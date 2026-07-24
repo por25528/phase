@@ -23,6 +23,7 @@ import { hasTrustedSchedule } from '../../lib/schedule';
 import {
   weekOf, plannedLeaves, attentionRank, paceStatus, weekRecap, planOpeningStep,
   PACE_THRESHOLD_PTS, unplannedOpenLeaves, railTree, groupPlannedByGoal,
+  loggedTimeForWeek, formatLoggedMinutes,
   type PlannedLeaf, type RailTreeNode,
 } from '../../lib/plan';
 import {
@@ -84,11 +85,12 @@ export function PlanWeekOverlay({
 // ── Step 1: recap ─────────────────────────────────────────────────────────────
 
 function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () => void }) {
-  const { goals, planReview, actions } = useAppStore();
+  const { goals, sessions, planReview, actions } = useAppStore();
   const today = todayStr();
   const week = weekOf(today);
   if (!planReview) return null;
   const r = weekRecap(planReview, goals);
+  const logged = loggedTimeForWeek(sessions, planReview.week);
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -97,6 +99,13 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
           {r.nowComplete.length} of {r.planned}
         </span>{' '}
         of last week's commitments are now complete.
+        {logged.sessions > 0 && (
+          <span className="text-muted">
+            {' '}You logged{' '}
+            <span className="font-semibold text-ink-soft">{formatLoggedMinutes(logged.minutes)}</span>
+            {' '}across {logged.sessions} session{logged.sessions === 1 ? '' : 's'}.
+          </span>
+        )}
       </p>
 
       {r.nowComplete.length > 0 && (
