@@ -27,6 +27,7 @@ import {
 } from '../../lib/plan';
 import {
   canDragTask,
+  canRescheduleDraggedTask,
   plannerOpenCount,
   resolvePlannerDrop,
   type PlannerDragData,
@@ -261,6 +262,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
     const command = resolvePlannerDrop(e.active.data.current, e.over?.id, week);
     if (!command) return;
     if (command.kind === 'reschedule-task') {
+      if (!canRescheduleDraggedTask(getState().tasks, command.taskId)) return;
       actions.rescheduleTask(command.taskId, command.date);
       return;
     }
@@ -724,7 +726,13 @@ export function TaskChip({
   onToggle: (taskId: string) => void;
 }) {
   const draggable = canDragTask(task);
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    isDragging,
+  } = useDraggable({
     id: `task:${task.id}`,
     data: {
       kind: 'task',
@@ -764,6 +772,7 @@ export function TaskChip({
       )}
       <button
         type="button"
+        ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
         disabled={!draggable}

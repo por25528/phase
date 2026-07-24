@@ -3,6 +3,7 @@ import type { PlannedLeaf } from '../../lib/plan';
 import type { Task } from '../../db/types';
 import {
   canDragTask,
+  canRescheduleDraggedTask,
   plannerOpenCount,
   resolvePlannerDrop,
   type PlannerDragData,
@@ -97,5 +98,11 @@ describe('planner task presentation', () => {
   it('keeps completed tasks visible but prevents dragging them', () => {
     expect(canDragTask(task())).toBe(true);
     expect(canDragTask(task(true))).toBe(false);
+  });
+
+  it('reschedules only a task that still exists and remains open', () => {
+    expect(canRescheduleDraggedTask([task()], 't1')).toBe(true);
+    expect(canRescheduleDraggedTask([task(true)], 't1')).toBe(false);
+    expect(canRescheduleDraggedTask([task()], 'deleted')).toBe(false);
   });
 });

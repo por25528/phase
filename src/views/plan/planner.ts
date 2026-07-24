@@ -64,6 +64,10 @@ export function canDragTask(task: Task): boolean {
   return !task.done;
 }
 
+export function canRescheduleDraggedTask(tasks: Task[], taskId: string): boolean {
+  return tasks.some((task) => task.id === taskId && !task.done);
+}
+
 function isPlannerDragData(value: unknown): value is PlannerDragData {
   if (typeof value !== 'object' || value == null) return false;
   const candidate = value as Partial<PlannerDragData>;
