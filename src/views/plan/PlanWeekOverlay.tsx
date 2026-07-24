@@ -374,7 +374,15 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                 Your week · {fmtD(week)} – {fmtD(addDays(week, 6))}
               </h3>
               <span className="text-[.78rem] text-muted tabular-nums">
-                {openCount} planned{openCount > SOFT_CAPACITY && <span className="text-warn"> · big week</span>}
+                {openCount} planned
+                {openCount > SOFT_CAPACITY && (
+                  <span
+                    className="text-warn cursor-help"
+                    title={`More than ${SOFT_CAPACITY} items planned — a heavier week than usual`}
+                  >
+                    {' '}· big week
+                  </span>
+                )}
               </span>
             </div>
 
