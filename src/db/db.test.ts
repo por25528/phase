@@ -49,6 +49,42 @@ describe('importStateFromFile', () => {
     });
   });
 
+  it('preserves absent completion and date-confirmation fields in a legacy backup', async () => {
+    const legacyGoal: Goal = {
+      id: 'legacy-goal',
+      title: 'Legacy goal',
+      start: '2026-01-01',
+      deadline: '2026-12-31',
+      nodes: [{ id: 'legacy-leaf', title: 'Already done', done: true }],
+      column: 0,
+    };
+    const legacyTask = {
+      id: 'legacy-task',
+      title: 'Already done',
+      date: '2026-07-05',
+      done: true,
+      goalId: null,
+    };
+
+    const imported = await importStateFromFile(fileOf(JSON.stringify({
+      goals: [legacyGoal],
+      habits: [],
+      tasks: [legacyTask],
+      sessions: [],
+    })));
+
+    expect(imported.goals[0].datesConfirmed).toBeUndefined();
+    expect(imported.goals[0].nodes[0].doneAt).toBeUndefined();
+    expect(imported.tasks[0].doneAt).toBeUndefined();
+    expect(imported.goals[0]).not.toHaveProperty('datesConfirmed');
+    expect(imported.goals[0].nodes[0]).not.toHaveProperty('doneAt');
+    expect(imported.tasks[0]).not.toHaveProperty('doneAt');
+
+    const persisted = await loadState();
+    expect(persisted.goals[0]).toEqual(legacyGoal);
+    expect(persisted.tasks[0]).toEqual(legacyTask);
+  });
+
   it('rejects non-JSON with a JSON-specific message', async () => {
     await expect(importStateFromFile(fileOf('not json {'))).rejects.toThrow(/valid JSON/);
   });
@@ -66,5 +102,34 @@ describe('loadState', () => {
   it('returns an empty state on a fresh database — no demo seed', async () => {
     const s = await loadState();
     expect(s).toEqual({ goals: [], habits: [], tasks: [], sessions: [] });
+  });
+
+  it('loads legacy optional fields on the existing Dexie schema version', async () => {
+    const legacyGoal: Goal = {
+      id: 'legacy-goal',
+      title: 'Legacy goal',
+      start: '2026-01-01',
+      deadline: '2026-12-31',
+      nodes: [{ id: 'legacy-leaf', title: 'Done before timestamps', done: true }],
+      column: 0,
+    };
+    const legacyTask = {
+      id: 'legacy-task',
+      title: 'Done before timestamps',
+      date: '2026-07-05',
+      done: true,
+      goalId: null,
+    };
+
+    expect(db.verno).toBe(4);
+    await db.goals.put(legacyGoal);
+    await db.tasks.put(legacyTask);
+
+    const loaded = await loadState();
+    expect(loaded.goals[0]).toEqual(legacyGoal);
+    expect(loaded.tasks[0]).toEqual(legacyTask);
+    expect(loaded.goals[0].datesConfirmed).toBeUndefined();
+    expect(loaded.goals[0].nodes[0].doneAt).toBeUndefined();
+    expect(loaded.tasks[0].doneAt).toBeUndefined();
   });
 });

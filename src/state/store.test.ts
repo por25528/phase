@@ -863,6 +863,41 @@ describe('store actions', () => {
       expect(store.getState().hydration).toBe('ready');
     });
 
+    it('hydrates legacy goal and task records without inventing optional fields', async () => {
+      const { loadState } = await import('../db/db');
+      vi.mocked(loadState).mockResolvedValueOnce({
+        goals: [{
+          id: 'legacy-goal',
+          title: 'Legacy goal',
+          start: '2026-01-01',
+          deadline: '2026-12-31',
+          nodes: [{ id: 'legacy-leaf', title: 'Done before timestamps', done: true }],
+          column: 0,
+        }],
+        habits: [],
+        tasks: [{
+          id: 'legacy-task',
+          title: 'Done before timestamps',
+          date: '2026-07-05',
+          done: true,
+          goalId: null,
+        }],
+        sessions: [],
+      });
+
+      const store = await freshStore();
+      await store.initStore();
+
+      const [legacyGoal] = store.getState().goals;
+      const [legacyTask] = store.getState().tasks;
+      expect(legacyGoal.datesConfirmed).toBeUndefined();
+      expect(legacyGoal.nodes[0].doneAt).toBeUndefined();
+      expect(legacyTask.doneAt).toBeUndefined();
+      expect(legacyGoal).not.toHaveProperty('datesConfirmed');
+      expect(legacyGoal.nodes[0]).not.toHaveProperty('doneAt');
+      expect(legacyTask).not.toHaveProperty('doneAt');
+    });
+
     it('reports error when the DB cannot load', async () => {
       vi.resetModules();
       const dbMod = await import('../db/db');

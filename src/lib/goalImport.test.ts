@@ -39,6 +39,20 @@ describe('sanitizeBackupGoal', () => {
   it('leaves a goal without completedAt untouched', () => {
     expect('completedAt' in sanitizeBackupGoal(base)).toBe(false);
   });
+
+  it('does not promote legacy backup dates or completion timestamps', () => {
+    const legacy: Goal = {
+      ...base,
+      nodes: [{ id: 'n', title: 'Done before timestamps', done: true }],
+    };
+
+    const sanitized = sanitizeBackupGoal(legacy);
+
+    expect(sanitized.datesConfirmed).toBeUndefined();
+    expect(sanitized.nodes[0].doneAt).toBeUndefined();
+    expect(sanitized).not.toHaveProperty('datesConfirmed');
+    expect(sanitized.nodes[0]).not.toHaveProperty('doneAt');
+  });
 });
 
 // ---- priorityToColumn / columnToPriority ----
@@ -175,6 +189,20 @@ describe('buildManualGoal', () => {
 // ---- parseGoalImport ----
 
 describe('parseGoalImport', () => {
+  it('marks pasted goals confirmed without changing the legacy backup path', () => {
+    const [pasted] = ok(parseGoalImport('{ "title": "Pasted", "deadline": "2026-09-01" }', TODAY));
+    const backup = sanitizeBackupGoal({
+      id: 'legacy',
+      title: 'Legacy backup',
+      deadline: '2026-09-01',
+      nodes: [],
+    });
+
+    expect(pasted.datesConfirmed).toBe(true);
+    expect(backup.datesConfirmed).toBeUndefined();
+    expect(backup).not.toHaveProperty('datesConfirmed');
+  });
+
   it('keeps omitted project dates omitted and marks the choice confirmed', () => {
     const [g] = ok(parseGoalImport('{ "title": "Solo" }', TODAY));
     expect(g.title).toBe('Solo');
