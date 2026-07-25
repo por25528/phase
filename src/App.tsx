@@ -47,7 +47,7 @@ function MoonIcon() {
 }
 
 export function App() {
-  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, hydration, secondTab, theme, planOpen, planFocusGoalId, actions } = useAppStore();
+  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, hydration, secondTab, theme, planOpen, planFocusGoalId, planReview, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -125,6 +125,8 @@ export function App() {
   }, [actions, hydration, openGoalId, showShortcuts]);
 
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
+  // Mirror the Today card's cue: a pending, unreviewed recap flags the nav button.
+  const reviewWaiting = Boolean(planReview && planReview.entries.length > 0 && !planReview.reviewed);
 
   return (
     <>
@@ -135,7 +137,7 @@ export function App() {
             Phase<span className="text-accent">.</span>
           </span>
         </div>
-        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · T today · ⌘N add task · ? shortcuts · Esc closes">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · 4 plan week · T today · ⌘N add task · ? shortcuts · Esc closes">
           {(
             [
               ['today', 'Today'],
@@ -156,6 +158,16 @@ export function App() {
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => actions.openPlan()}
+            aria-haspopup="dialog"
+            title="Plan your week (4)"
+            className="px-[14px] py-[6px] rounded-full text-[.86rem] font-medium text-ink-soft border border-line-2 hover:bg-hover hover:text-ink"
+          >
+            Plan week
+            {reviewWaiting && <span className="text-accent"> · review</span>}
+          </button>
         </nav>
         <div className="flex-1" />
         <button
