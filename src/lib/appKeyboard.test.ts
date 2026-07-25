@@ -68,6 +68,11 @@ describe('resolveAppKeyCommand', () => {
     expect(resolveAppKeyCommand({ key: 'T' })).toBeNull();
   });
 
+  it('routes 4 to the plan overlay, but not while typing', () => {
+    expect(resolveAppKeyCommand({ key: '4' })).toBe('open-plan');
+    expect(resolveAppKeyCommand({ key: '4', target: inputTarget })).toBeNull();
+  });
+
   it('toggles the shortcut cheat sheet on ? (Shift+/), but not while typing', () => {
     expect(resolveAppKeyCommand({ key: '?', shiftKey: true })).toBe('toggle-shortcuts');
     expect(resolveAppKeyCommand({ key: '?', shiftKey: true, target: inputTarget })).toBeNull();
