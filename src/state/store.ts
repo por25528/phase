@@ -38,6 +38,8 @@ interface UIState {
   selDate: string;
   openGoalId: string | null;
   drawerFocusNodeId: string | null; // node the drawer should scroll to + highlight
+  planOpen: boolean; // the weekly Plan modal — a global overlay like the drawer
+  planFocusGoalId: string | null; // board "Plan next step" deep-link target
   expanded: Set<string>;
   toast: string | null;
   pendingUndo: { label: string } | null;
@@ -60,6 +62,8 @@ let state: FullState = {
   selDate: todayStr(),
   openGoalId: null,
   drawerFocusNodeId: null,
+  planOpen: false,
+  planFocusGoalId: null,
   expanded: new Set(),
   toast: null,
   pendingUndo: null,
@@ -773,6 +777,17 @@ export const actions = {
 
   closeDrawer() {
     set({ openGoalId: null, drawerFocusNodeId: null });
+  },
+
+  // The weekly Plan modal is a global overlay (like the drawer): the header
+  // button, the `4` shortcut, and the board "Plan next step" deep-link all open
+  // the single App-level <PlanWeekOverlay> through here.
+  openPlan(focusGoalId?: string | null) {
+    set({ planOpen: true, planFocusGoalId: focusGoalId ?? null });
+  },
+
+  closePlan() {
+    set({ planOpen: false, planFocusGoalId: null });
   },
 
   showToast(msg: string) {

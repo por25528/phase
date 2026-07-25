@@ -1243,3 +1243,29 @@ describe('toggleHabitOn (backfill)', () => {
     expect(getState().habits[0].checkins).toEqual(['2026-07-23']);
   });
 });
+
+describe('plan overlay', () => {
+  it('openPlan opens the overlay and records the focus target', async () => {
+    const { actions, getState } = await freshStore();
+    expect(getState().planOpen).toBe(false);
+    expect(getState().planFocusGoalId).toBeNull();
+    actions.openPlan('g1');
+    expect(getState().planOpen).toBe(true);
+    expect(getState().planFocusGoalId).toBe('g1');
+  });
+
+  it('openPlan with no argument opens the overlay focused on nothing', async () => {
+    const { actions, getState } = await freshStore();
+    actions.openPlan();
+    expect(getState().planOpen).toBe(true);
+    expect(getState().planFocusGoalId).toBeNull();
+  });
+
+  it('closePlan clears both the overlay flag and the focus target', async () => {
+    const { actions, getState } = await freshStore();
+    actions.openPlan('g1');
+    actions.closePlan();
+    expect(getState().planOpen).toBe(false);
+    expect(getState().planFocusGoalId).toBeNull();
+  });
+});
