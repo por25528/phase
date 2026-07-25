@@ -24,7 +24,6 @@ import { GoalCardVisual, BoardCard } from './goals/BoardCard';
 import { FocusSummary, type FocusFilter } from './goals/FocusSummary';
 import { Column } from './goals/Column';
 import { HORIZON_LABELS } from './goals/styles';
-import { PlanWeekOverlay } from './plan/PlanWeekOverlay';
 import type { Goal } from '../db/types';
 import { needsDateConfirmation, confirmableDateGoalIds } from '../lib/schedule';
 
@@ -38,8 +37,6 @@ const COL_COUNT = COLUMNS.length;
 export function Goals() {
   const { goals, dateReviewDismissed, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
-  const [planOpen, setPlanOpen] = useState(false);
-  const [planFocusId, setPlanFocusId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FocusFilter | null>(null);
   const currentDate = useLocalDate();
 
@@ -165,8 +162,7 @@ export function Goals() {
   // Board "Plan next step" opens the planner focused on this project (T9): the
   // planner jumps to planning, scrolls to the project's rail group, and pulses it.
   function onPlan(id: string) {
-    setPlanFocusId(id);
-    setPlanOpen(true);
+    actions.openPlan(id);
   }
 
   function reviewUnconfirmedDates() {
@@ -384,15 +380,6 @@ export function Goals() {
           actions.showToast(`Imported ${imported.length} project${imported.length === 1 ? '' : 's'}`);
           setModal(null);
         }}
-      />
-
-      <PlanWeekOverlay
-        open={planOpen}
-        onClose={() => {
-          setPlanOpen(false);
-          setPlanFocusId(null);
-        }}
-        focusGoalId={planFocusId}
       />
     </div>
   );

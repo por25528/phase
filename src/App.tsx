@@ -6,6 +6,7 @@ import { Timeline } from './views/Timeline';
 import { GoalDrawer } from './components/GoalDrawer';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { PlanWeekOverlay } from './views/plan/PlanWeekOverlay';
 import { useLocalDate } from './hooks/useLocalDate';
 import {
   resolveAppKeyCommand,
@@ -46,7 +47,7 @@ function MoonIcon() {
 }
 
 export function App() {
-  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, hydration, secondTab, theme, actions } = useAppStore();
+  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, hydration, secondTab, theme, planOpen, planFocusGoalId, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -113,6 +114,7 @@ export function App() {
       if (command === 'view-today') actions.setView('today');
       if (command === 'view-goals') actions.setView('goals');
       if (command === 'view-timeline') actions.setView('timeline');
+      if (command === 'open-plan') actions.openPlan();
       if (command === 'go-today') {
         actions.setView('today');
         actions.goToToday();
@@ -252,6 +254,7 @@ export function App() {
         onClose={() => setTaskCapture((current) => closeTaskCapture(current))}
       />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+      <PlanWeekOverlay open={planOpen} focusGoalId={planFocusGoalId} onClose={actions.closePlan} />
 
       {/* Undo toast */}
       <div

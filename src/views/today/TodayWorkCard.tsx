@@ -5,7 +5,6 @@ import type { DailyWorkItem, DailyWorkSections } from '../../lib/dailyWork';
 import { fmtD } from '../../lib/dates';
 import { plannedLeaves, weekOf } from '../../lib/plan';
 import { useAppStore } from '../../state/store';
-import { PlanWeekOverlay } from '../plan/PlanWeekOverlay';
 import { DailyWorkRow } from './DailyWorkRow';
 import {
   rescheduleTaskToPickedDate,
@@ -23,7 +22,6 @@ export function TodayWorkCard({
   today: string;
 }) {
   const { goals, planReview, actions } = useAppStore();
-  const [planOpen, setPlanOpen] = useState(false);
   const [doneOpen, setDoneOpen] = useState(false);
   const [pickingTaskId, setPickingTaskId] = useState<string | null>(null);
   const pickerPrefix = useId();
@@ -83,7 +81,7 @@ export function TodayWorkCard({
       right={
         <button
           type="button"
-          onClick={() => setPlanOpen(true)}
+          onClick={() => actions.openPlan()}
           className="px-[13px] py-[6px] rounded-field bg-ink text-paper text-[.8rem] font-semibold hover:bg-ink-hover"
         >
           {reviewWaiting ? 'Plan week ·' : 'Plan week'}
@@ -246,8 +244,6 @@ export function TodayWorkCard({
           ))}
         </div>
       )}
-
-      <PlanWeekOverlay open={planOpen} onClose={() => setPlanOpen(false)} />
     </CardSection>
   );
 }
