@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { BusyBlock, AvailabilityWindow } from '../db/types';
-import { freeMinutes, mergeIntervals, type Now } from './capacity';
+import type { BusyBlock, AvailabilityWindow, Task } from '../db/types';
+import type { PlannedLeaf } from './plan';
+import { freeMinutes, mergeIntervals, workloadOf, type Now } from './capacity';
 
 // Mon–Fri 09:00–18:00 (540 min window), weekend off.
 const WINDOWS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({
@@ -17,6 +18,17 @@ const EARLY: Now = { date: MON, minute: 0 };
 
 function block(date: string, startMin: number, endMin: number, title = 'x'): BusyBlock {
   return { date, startMin, endMin, title, allDay: false };
+}
+
+function leaf(over: Partial<PlannedLeaf> = {}): PlannedLeaf {
+  return {
+    goalId: 'g1', goalTitle: 'G', nodeId: 'n1', title: 'N',
+    done: false, plannedWeek: MON, ...over,
+  };
+}
+
+function task(over: Partial<Task> = {}): Task {
+  return { id: 't1', title: 'T', date: TUE, done: false, goalId: null, ...over };
 }
 
 describe('mergeIntervals', () => {
@@ -146,5 +158,54 @@ describe('freeMinutes', () => {
     it('is ignored when allDayBlocks is off', () => {
       expect(freeMinutes(TUE, WINDOWS, [allDay], EARLY, false)).toBe(540);
     });
+  });
+});
+
+describe('workloadOf', () => {
+  it('is empty for no commitments', () => {
+    expect(workloadOf([], [])).toEqual({ plannedMin: 0, unestimated: 0 });
+  });
+
+  it('sums estimates across leaves', () => {
+    const out = workloadOf([leaf({ estimateMin: 30 }), leaf({ estimateMin: 45 })], []);
+    expect(out).toEqual({ plannedMin: 75, unestimated: 0 });
+  });
+
+  it('counts unestimated leaves separately, never as a default duration', () => {
+    const out = workloadOf([leaf({ estimateMin: 30 }), leaf()], []);
+    expect(out).toEqual({ plannedMin: 30, unestimated: 1 });
+  });
+
+  it('excludes done leaves from both figures', () => {
+    const out = workloadOf([leaf({ done: true, estimateMin: 30 }), leaf({ done: true })], []);
+    expect(out).toEqual({ plannedMin: 0, unestimated: 0 });
+  });
+
+  it('includes unfinished tasks', () => {
+    const out = workloadOf([], [task({ estimateMin: 20 })]);
+    expect(out).toEqual({ plannedMin: 20, unestimated: 0 });
+  });
+
+  it('counts unfinished tasks with no estimate as unestimated', () => {
+    const out = workloadOf([], [task()]);
+    expect(out).toEqual({ plannedMin: 0, unestimated: 1 });
+  });
+
+  it('excludes done tasks', () => {
+    const out = workloadOf([], [task({ done: true, estimateMin: 20 }), task({ done: true })]);
+    expect(out).toEqual({ plannedMin: 0, unestimated: 0 });
+  });
+
+  it('combines leaves and tasks', () => {
+    const out = workloadOf(
+      [leaf({ estimateMin: 30 }), leaf()],
+      [task({ estimateMin: 20 }), task(), task({ done: true })],
+    );
+    expect(out).toEqual({ plannedMin: 50, unestimated: 2 });
+  });
+
+  it('ignores a non-positive or non-finite estimate as unestimated', () => {
+    const out = workloadOf([leaf({ estimateMin: 0 }), leaf({ estimateMin: -5 })], []);
+    expect(out).toEqual({ plannedMin: 0, unestimated: 2 });
   });
 });

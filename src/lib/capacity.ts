@@ -1,5 +1,6 @@
-import type { AvailabilityWindow, BusyBlock } from '../db/types';
+import type { AvailabilityWindow, BusyBlock, Task } from '../db/types';
 import { windowForDate } from './availability';
+import type { PlannedLeaf } from './plan';
 
 /**
  * The current moment, injected. Capacity is measured from here forward, so this
@@ -77,4 +78,42 @@ export function freeMinutes(
   }, 0);
 
   return Math.max(0, (win.endMin - win.startMin) - busy);
+}
+
+export interface Workload {
+  plannedMin: number;  // Σ estimateMin over unfinished commitments
+  unestimated: number; // unfinished commitments carrying no usable estimate
+}
+
+function usableEstimate(v: number | undefined): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/**
+ * The week's (or day's) unfinished workload, across BOTH kinds of commitment
+ * the planner displays: planned goal leaves and dated tasks. Mirrors
+ * `plannerOpenCount` in views/plan/planner.ts — capacity must not use a
+ * narrower definition of "open work" than the count rendered beside it.
+ *
+ * Unestimated work is counted, never assigned a phantom duration: a blended
+ * number would look authoritative while being partly invented.
+ */
+export function workloadOf(leaves: PlannedLeaf[], tasks: Task[]): Workload {
+  let plannedMin = 0;
+  let unestimated = 0;
+
+  for (const l of leaves) {
+    if (l.done) continue;
+    const est = usableEstimate(l.estimateMin);
+    if (est === null) unestimated++;
+    else plannedMin += est;
+  }
+  for (const t of tasks) {
+    if (t.done) continue;
+    const est = usableEstimate(t.estimateMin);
+    if (est === null) unestimated++;
+    else plannedMin += est;
+  }
+
+  return { plannedMin, unestimated };
 }
