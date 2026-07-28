@@ -1,10 +1,12 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, AppState, PlanReview, Task } from '../db/types';
+import type { Goal, Habit, AppState, PlanReview, Task, AvailabilityWindow } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
-  loadPlanReview, savePlanReview,
+  loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
+  loadAllDayBlocks, saveAllDayBlocks,
 } from '../db/db';
 import { clampScale } from '../lib/timeline';
+import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
 import { todayStr, addDays } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import { isValidLocalDate, projectDateError, confirmableDateGoalIds } from '../lib/schedule';
@@ -49,6 +51,8 @@ interface UIState {
   dateReviewDismissed: boolean;
   theme: Theme; // per-device UI preference (localStorage, not Dexie)
   planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
+  availability: AvailabilityWindow[]; // per-weekday planning window (device preference)
+  allDayBlocks: boolean;              // do all-day calendar events consume the day?
 }
 
 interface FullState extends AppState, UIState {}
@@ -72,6 +76,8 @@ let state: FullState = {
   secondTab: false,
   dateReviewDismissed: false,
   planReview: null,
+  availability: DEFAULT_AVAILABILITY,
+  allDayBlocks: true,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
   // non-DOM contexts (tests).
@@ -137,12 +143,16 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview] = await Promise.all([loadState(), loadScale(), loadPlanReview()]);
+    const [appState, pxPerDay, planReview, availability, allDayBlocks] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(),
+    ]);
     state = {
       ...state,
       ...appState,
       pxPerDay,
       planReview,
+      availability,
+      allDayBlocks,
       hydration: 'ready',
       expanded: collectContainers(appState.goals),
     };
@@ -570,6 +580,21 @@ export const actions = {
     set({ pxPerDay: v });
     if (scaleTimer) clearTimeout(scaleTimer);
     scaleTimer = setTimeout(() => saveScale(state.pxPerDay), 400);
+  },
+
+  // Availability and the all-day preference are device preferences, not app
+  // data: they follow setScale/setTheme's pattern (set + persist directly),
+  // never routed through setAndPersist.
+  setAvailability(windows: AvailabilityWindow[]): void {
+    const next = parseAvailability(windows); // reject a malformed set at the door
+    set({ availability: next });
+    void saveAvailability(next);
+  },
+
+  setAllDayBlocks(value: boolean): void {
+    if (value === state.allDayBlocks) return;
+    set({ allDayBlocks: value });
+    void saveAllDayBlocks(value);
   },
 
   // Goal date editing

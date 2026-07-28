@@ -1,8 +1,9 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState, PlanReview } from './types';
+import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal } from '../lib/goalImport';
+import { parseAvailability, serializeAvailability } from '../lib/availability';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -88,6 +89,25 @@ export async function loadScale(): Promise<number> {
 
 export async function saveScale(pxPerDay: number): Promise<void> {
   await db.settings.put({ key: 'pxPerDay', value: String(pxPerDay) });
+}
+
+export async function loadAvailability(): Promise<AvailabilityWindow[]> {
+  const row = await db.settings.get('availability');
+  return parseAvailability(row?.value);
+}
+
+export async function saveAvailability(windows: AvailabilityWindow[]): Promise<void> {
+  await db.settings.put({ key: 'availability', value: serializeAvailability(windows) });
+}
+
+// Defaults ON: an all-day event usually does consume the day.
+export async function loadAllDayBlocks(): Promise<boolean> {
+  const row = await db.settings.get('allDayBlocks');
+  return row?.value !== 'false';
+}
+
+export async function saveAllDayBlocks(value: boolean): Promise<void> {
+  await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
 // Single-row table: the one previous-week snapshot. clear+put inside a

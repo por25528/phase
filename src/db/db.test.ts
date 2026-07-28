@@ -1,7 +1,11 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { db, persist, importStateFromFile, loadState } from './db';
+import {
+  db, persist, importStateFromFile, loadState,
+  loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
+} from './db';
 import type { AppState, Goal } from './types';
+import { DEFAULT_AVAILABILITY } from '../lib/availability';
 
 function goal(id: string): Goal {
   return { id, title: id, start: '2026-01-01', deadline: '2026-12-31', nodes: [], column: 0 };
@@ -131,5 +135,30 @@ describe('loadState', () => {
     expect(loaded.goals[0].datesConfirmed).toBeUndefined();
     expect(loaded.goals[0].nodes[0].doneAt).toBeUndefined();
     expect(loaded.tasks[0].doneAt).toBeUndefined();
+  });
+});
+
+describe('availability', () => {
+  it('returns the default availability when nothing is stored', async () => {
+    await db.settings.clear();
+    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
+  });
+
+  it('round-trips saved availability', async () => {
+    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
+    await saveAvailability(windows);
+    expect(await loadAvailability()).toEqual(windows);
+  });
+
+  it('falls back to the default when the stored value is corrupt', async () => {
+    await db.settings.put({ key: 'availability', value: '{not json' });
+    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
+  });
+
+  it('defaults allDayBlocks to true and round-trips false', async () => {
+    await db.settings.clear();
+    expect(await loadAllDayBlocks()).toBe(true);
+    await saveAllDayBlocks(false);
+    expect(await loadAllDayBlocks()).toBe(false);
   });
 });

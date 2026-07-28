@@ -6,8 +6,18 @@ const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
+  loadAvailability: vi.fn(async () => [
+    { dow: 0, startMin: 540, endMin: 1080 },
+    { dow: 1, startMin: 540, endMin: 1080 },
+    { dow: 2, startMin: 540, endMin: 1080 },
+    { dow: 3, startMin: 540, endMin: 1080 },
+    { dow: 4, startMin: 540, endMin: 1080 },
+  ]),
+  loadAllDayBlocks: vi.fn(async () => true),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
+  saveAvailability: vi.fn(async () => {}),
+  saveAllDayBlocks: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -1305,5 +1315,62 @@ describe('plan overlay', () => {
       expect(container.children!.length).toBe(2);
       expect(container.estimateMin).toBeUndefined();
     });
+  });
+});
+
+describe('availability and all-day preference (device settings)', () => {
+  it('hydrates availability and allDayBlocks from the db on init', async () => {
+    const { actions: _actions, getState, initStore } = await freshStore();
+    await initStore();
+    expect(getState().availability).toEqual([
+      { dow: 0, startMin: 540, endMin: 1080 },
+      { dow: 1, startMin: 540, endMin: 1080 },
+      { dow: 2, startMin: 540, endMin: 1080 },
+      { dow: 3, startMin: 540, endMin: 1080 },
+      { dow: 4, startMin: 540, endMin: 1080 },
+    ]);
+    expect(getState().allDayBlocks).toBe(true);
+  });
+
+  it('setAvailability updates state and persists the new windows', async () => {
+    const { actions, getState } = await freshStore();
+    dbMocks.saveAvailability.mockClear();
+    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
+
+    actions.setAvailability(windows);
+
+    expect(getState().availability).toEqual(windows);
+    expect(dbMocks.saveAvailability).toHaveBeenCalledWith(windows);
+  });
+
+  it('setAvailability rejects a malformed set at the door, falling back to the default', async () => {
+    const { actions, getState } = await freshStore();
+    dbMocks.saveAvailability.mockClear();
+
+    // Structurally valid AvailabilityWindow[], but semantically malformed (out-of-range dow/minutes).
+    actions.setAvailability([{ dow: 9, startMin: -1, endMin: 5000 }]);
+
+    const { DEFAULT_AVAILABILITY } = await import('../lib/availability');
+    expect(getState().availability).toEqual(DEFAULT_AVAILABILITY);
+    expect(dbMocks.saveAvailability).toHaveBeenCalledWith(DEFAULT_AVAILABILITY);
+  });
+
+  it('setAllDayBlocks updates state and persists the new value', async () => {
+    const { actions, getState } = await freshStore();
+    dbMocks.saveAllDayBlocks.mockClear();
+
+    actions.setAllDayBlocks(false);
+
+    expect(getState().allDayBlocks).toBe(false);
+    expect(dbMocks.saveAllDayBlocks).toHaveBeenCalledWith(false);
+  });
+
+  it('setAllDayBlocks is a no-op when the value is unchanged', async () => {
+    const { actions } = await freshStore();
+    dbMocks.saveAllDayBlocks.mockClear();
+
+    actions.setAllDayBlocks(true); // already true in the initial state literal
+
+    expect(dbMocks.saveAllDayBlocks).not.toHaveBeenCalled();
   });
 });
