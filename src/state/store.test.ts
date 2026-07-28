@@ -1268,4 +1268,42 @@ describe('plan overlay', () => {
     expect(getState().planOpen).toBe(false);
     expect(getState().planFocusGoalId).toBeNull();
   });
+
+  describe('addChild and addChildren clear leaf-only fields when creating a container', () => {
+    it('addChild drops estimateMin when a leaf becomes a container', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('Test Goal');
+      const goalId = getState().goals[0].id;
+      actions.addRootNode(goalId, 'Leaf with estimate');
+      const nodeId = getState().goals[0].nodes[0].id;
+      // Manually set estimateMin on the leaf
+      const goals = getState().goals;
+      goals[0].nodes[0].estimateMin = 120;
+
+      actions.addChild(nodeId, 'New child');
+
+      const container = getState().goals[0].nodes[0];
+      expect(container.children).toBeDefined();
+      expect(container.children!.length).toBe(1);
+      expect(container.estimateMin).toBeUndefined();
+    });
+
+    it('addChildren drops estimateMin when a leaf becomes a container', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('Test Goal');
+      const goalId = getState().goals[0].id;
+      actions.addRootNode(goalId, 'Leaf with estimate');
+      const nodeId = getState().goals[0].nodes[0].id;
+      // Manually set estimateMin on the leaf
+      const goals = getState().goals;
+      goals[0].nodes[0].estimateMin = 150;
+
+      actions.addChildren(nodeId, ['Child 1', 'Child 2']);
+
+      const container = getState().goals[0].nodes[0];
+      expect(container.children).toBeDefined();
+      expect(container.children!.length).toBe(2);
+      expect(container.estimateMin).toBeUndefined();
+    });
+  });
 });

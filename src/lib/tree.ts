@@ -133,6 +133,7 @@ export function indentNode(goals: Goal[], nodeId: string): Goal[] {
       delete prev.doneAt;
       delete prev.plannedWeek;
       delete prev.plannedDay;
+      delete prev.estimateMin;
     }
     (prev.children ??= []).push(node);
     return next;

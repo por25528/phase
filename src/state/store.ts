@@ -250,6 +250,7 @@ export const actions = {
     delete node.doneAt;
     delete node.plannedWeek;
     delete node.plannedDay;
+    delete node.estimateMin;
     const expanded = new Set(state.expanded);
     expanded.add(nodeId);
     setAndPersist({ goals }, { expanded });
@@ -271,6 +272,7 @@ export const actions = {
     delete node.doneAt;
     delete node.plannedWeek;
     delete node.plannedDay;
+    delete node.estimateMin;
     const expanded = new Set(state.expanded);
     expanded.add(nodeId);
     setAndPersist({ goals }, { expanded });
