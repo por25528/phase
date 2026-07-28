@@ -1377,9 +1377,11 @@ git commit -m "feat(capacity): store actions for node and task estimates"
 - Consumes: `DayCapacity`, `WeekCapacity` (Task 6).
 - Produces:
   - `formatMinutes(min: number): string`
-  - `capacityParts(day: DayCapacity): string[]`
-  - `weekCapacityParts(week: WeekCapacity): string[]`
-  - `isOverCommitted(c: { freeMin: number; plannedMin: number; hasData: boolean }): boolean`
+  - `interface CapacityFigures { freeMin: number; plannedMin: number; unestimated: number; hasData: boolean }`
+  - `capacityParts(c: CapacityFigures): string[]` — **one** function, used for both
+    day and week. `DayCapacity` and `WeekCapacity` both structurally satisfy
+    `CapacityFigures`, so a second near-identical formatter would be duplication.
+  - `isOverCommitted(c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'hasData'>): boolean`
 
 Tests run with no DOM, so all display logic lives here as pure functions and the component just renders the strings — the same split as `src/views/today/workActions.ts`.
 
@@ -1392,9 +1394,7 @@ Create `src/views/plan/capacityLabel.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import type { DayCapacity, WeekCapacity } from '../../lib/capacity';
-import {
-  formatMinutes, capacityParts, weekCapacityParts, isOverCommitted,
-} from './capacityLabel';
+import { formatMinutes, capacityParts, isOverCommitted } from './capacityLabel';
 
 function day(over: Partial<DayCapacity> = {}): DayCapacity {
   return {
@@ -1456,13 +1456,15 @@ describe('isOverCommitted', () => {
   });
 });
 
-describe('weekCapacityParts', () => {
+describe('capacityParts over a WeekCapacity', () => {
+  // The same formatter serves the week — WeekCapacity structurally satisfies
+  // CapacityFigures, so no second function is needed.
   const week: WeekCapacity = {
     days: [], freeMin: 2700, plannedMin: 300, unestimated: 3, hasData: true,
   };
 
   it('summarises the week', () => {
-    expect(weekCapacityParts(week)).toEqual(['45h free', '5h planned', '3 unestimated']);
+    expect(capacityParts(week)).toEqual(['45h free', '5h planned', '3 unestimated']);
   });
 });
 ```
@@ -1477,8 +1479,6 @@ Expected: FAIL — cannot resolve `./capacityLabel`.
 Create `src/views/plan/capacityLabel.ts`:
 
 ```ts
-import type { DayCapacity, WeekCapacity } from '../../lib/capacity';
-
 export function formatMinutes(min: number): string {
   const safe = Math.max(0, Math.round(min));
   const h = Math.floor(safe / 60);
@@ -1487,8 +1487,15 @@ export function formatMinutes(min: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-function unestimatedPart(n: number): string {
-  return `${n} unestimated`;
+/**
+ * The shape both DayCapacity and WeekCapacity satisfy. One formatter serves
+ * both — day and week differ in what they aggregate, not in how they read.
+ */
+export interface CapacityFigures {
+  freeMin: number;
+  plannedMin: number;
+  unestimated: number;
+  hasData: boolean;
 }
 
 /**
@@ -1496,17 +1503,10 @@ function unestimatedPart(n: number): string {
  * number. A blended figure would read as authoritative while being partly
  * invented from work that carries no estimate (spec §4.4).
  */
-export function capacityParts(day: DayCapacity): string[] {
-  const parts = [day.hasData ? `${formatMinutes(day.freeMin)} free` : 'no calendar data'];
-  if (day.plannedMin > 0) parts.push(`${formatMinutes(day.plannedMin)} planned`);
-  if (day.unestimated > 0) parts.push(unestimatedPart(day.unestimated));
-  return parts;
-}
-
-export function weekCapacityParts(week: WeekCapacity): string[] {
-  const parts = [week.hasData ? `${formatMinutes(week.freeMin)} free` : 'no calendar data'];
-  if (week.plannedMin > 0) parts.push(`${formatMinutes(week.plannedMin)} planned`);
-  if (week.unestimated > 0) parts.push(unestimatedPart(week.unestimated));
+export function capacityParts(c: CapacityFigures): string[] {
+  const parts = [c.hasData ? `${formatMinutes(c.freeMin)} free` : 'no calendar data'];
+  if (c.plannedMin > 0) parts.push(`${formatMinutes(c.plannedMin)} planned`);
+  if (c.unestimated > 0) parts.push(`${c.unestimated} unestimated`);
   return parts;
 }
 
@@ -1516,7 +1516,7 @@ export function weekCapacityParts(week: WeekCapacity): string[] {
  * fact.
  */
 export function isOverCommitted(
-  c: { freeMin: number; plannedMin: number; hasData: boolean },
+  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'hasData'>,
 ): boolean {
   return c.hasData && c.plannedMin > c.freeMin;
 }
@@ -1543,7 +1543,7 @@ git commit -m "feat(capacity): planner capacity formatting"
 - Test: covered by `capacityLabel.test.ts` and `capacity.test.ts` (no DOM available)
 
 **Interfaces:**
-- Consumes: `weekCapacity`, `Now` (Task 6); `capacityParts`, `weekCapacityParts`, `isOverCommitted` (Task 9); store `availability`, `allDayBlocks` (Task 7).
+- Consumes: `weekCapacity`, `Now` (Task 6); `capacityParts`, `isOverCommitted` (Task 9); store `availability`, `allDayBlocks` (Task 7).
 - Produces: no new exports.
 
 `SOFT_CAPACITY = 7` is deleted, not repurposed. It was a guess at how many steps fit in a week; the week now has a real figure and keeping both would give the planner two disagreeing opinions.
@@ -1562,7 +1562,7 @@ and every reference to it. Add the imports:
 
 ```ts
 import { weekCapacity, type Now } from '../../lib/capacity';
-import { capacityParts, weekCapacityParts, isOverCommitted } from './capacityLabel';
+import { capacityParts, isOverCommitted } from './capacityLabel';
 ```
 
 Pull the new preferences from the store, alongside the existing destructure:
@@ -1627,9 +1627,12 @@ Where `SOFT_CAPACITY` was previously used in the week header, render:
 
 ```tsx
 <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-  {weekCapacityParts(capacity).join(' · ')}
+  {capacityParts(capacity).join(' · ')}
 </span>
 ```
+
+`capacity` is a `WeekCapacity`, which structurally satisfies `CapacityFigures` —
+the same formatter handles both day and week.
 
 - [ ] **Step 4: Verify**
 
