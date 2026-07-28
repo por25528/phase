@@ -1374,3 +1374,66 @@ describe('availability and all-day preference (device settings)', () => {
     expect(dbMocks.saveAllDayBlocks).not.toHaveBeenCalled();
   });
 });
+
+describe('estimates', () => {
+  const goalWithLeaf: Goal = {
+    id: 'g1', title: 'G', nodes: [{ id: 'n1', title: 'N', done: false }],
+  };
+
+  it('sets and clears a node estimate', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+
+    store.actions.setNodeEstimate('n1', 90);
+    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBe(90);
+
+    store.actions.setNodeEstimate('n1', null);
+    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBeUndefined();
+  });
+
+  it('clears a node estimate given a non-positive value', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+
+    store.actions.setNodeEstimate('n1', 60);
+    store.actions.setNodeEstimate('n1', 0);
+    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBeUndefined();
+  });
+
+  it('refuses to estimate a container', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g1', title: 'G',
+      nodes: [{ id: 'c1', title: 'C', children: [{ id: 'n1', title: 'N', done: false }] }],
+    }]);
+
+    store.actions.setNodeEstimate('c1', 90);
+    expect(findInAll(store.getState().goals, 'c1')?.estimateMin).toBeUndefined();
+  });
+
+  it('sets and clears a task estimate', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addTask('T', '2026-07-28', null);
+    const id = store.getState().tasks[0].id;
+
+    store.actions.setTaskEstimate(id, 25);
+    expect(store.getState().tasks[0].estimateMin).toBe(25);
+
+    store.actions.setTaskEstimate(id, null);
+    expect(store.getState().tasks[0].estimateMin).toBeUndefined();
+  });
+
+  it('loads persisted availability into state', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().availability).toHaveLength(5);
+    expect(store.getState().allDayBlocks).toBe(true);
+  });
+});

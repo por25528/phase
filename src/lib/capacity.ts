@@ -86,8 +86,15 @@ export interface Workload {
   unestimated: number; // unfinished commitments carrying no usable estimate
 }
 
+/** The one definition of a usable estimate, shared by the store and the math. */
+export function normalizeEstimate(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0
+    ? Math.round(v)
+    : undefined;
+}
+
 function usableEstimate(v: number | undefined): number | null {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+  return normalizeEstimate(v) ?? null;
 }
 
 /**

@@ -15,6 +15,7 @@ import { deferOpenWork } from '../lib/deferWork';
 import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
+import { normalizeEstimate } from '../lib/capacity';
 import {
   type Theme,
   resolveTheme,
@@ -303,6 +304,29 @@ export const actions = {
     const node = findInAll(goals, nodeId);
     if (node) node.title = title;
     setAndPersist({ goals });
+  },
+
+  setNodeEstimate(nodeId: string, minutes: number | null): void {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
+    const goals = state.goals.map((g) => ({ ...g, nodes: structuredClone(g.nodes) }));
+    const node = findInAll(goals, nodeId);
+    if (!node || node.children) return; // leaves only
+    const next = minutes === null ? undefined : normalizeEstimate(minutes);
+    if (next === undefined) delete node.estimateMin;
+    else node.estimateMin = next;
+    setAndPersist({ goals });
+  },
+
+  setTaskEstimate(taskId: string, minutes: number | null): void {
+    const next = minutes === null ? undefined : normalizeEstimate(minutes);
+    const tasks = state.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const copy = { ...t };
+      if (next === undefined) delete copy.estimateMin;
+      else copy.estimateMin = next;
+      return copy;
+    });
+    setAndPersist({ tasks });
   },
 
   removeNode(nodeId: string) {
