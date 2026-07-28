@@ -37,6 +37,7 @@ import {
 import { weekCapacity, type Now, type DayCapacity } from '../../lib/capacity';
 import { capacityParts, isOverCommitted } from './capacityLabel';
 import { EstimateField } from './EstimateField';
+import { AvailabilitySettings } from '../../components/AvailabilitySettings';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -261,6 +262,8 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
   );
   const toggleProject = (id: string) => setOpenId((cur) => (cur === id ? null : id));
 
+  const [showAvailability, setShowAvailability] = useState(false);
+
   const [dragTitle, setDragTitle] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -402,7 +405,22 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
               <span className="text-[.78rem] text-muted tabular-nums">
                 {capacityParts(capacity).join(' · ')}
               </span>
+              <span className="flex-1" />
+              <button
+                type="button"
+                onClick={() => setShowAvailability((v) => !v)}
+                aria-expanded={showAvailability}
+                className="text-[.72rem] font-semibold text-accent hover:text-accent-deep px-[4px]"
+              >
+                Availability
+              </button>
             </div>
+
+            {showAvailability && (
+              <div className="mb-[12px] p-[10px] rounded-[9px] border border-line-2 bg-panel">
+                <AvailabilitySettings />
+              </div>
+            )}
 
             <div className="overflow-x-auto pb-[6px]">
               <div className="grid gap-[8px]" style={{ gridTemplateColumns: '1.2fr repeat(7, minmax(66px, 1fr))' }}>
