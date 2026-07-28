@@ -28,6 +28,7 @@ export interface PlannedLeaf {
   done: boolean;
   plannedWeek: string;
   plannedDay?: string;
+  estimateMin?: number;
 }
 
 function walkLeaves(g: Goal, visit: (n: GoalNode) => void): void {
@@ -52,6 +53,7 @@ function asPlanned(g: Goal, n: GoalNode): PlannedLeaf {
   return {
     goalId: g.id, goalTitle: g.title, nodeId: n.id, title: n.title,
     done: !!n.done, plannedWeek: n.plannedWeek!, plannedDay: n.plannedDay,
+    estimateMin: n.estimateMin,
   };
 }
 

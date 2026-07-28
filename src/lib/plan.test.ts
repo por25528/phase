@@ -63,6 +63,18 @@ describe('plannedLeaves', () => {
     expect(out[0].done).toBe(true);
     expect(out[0].goalTitle).toBe('Goal');
   });
+
+  it('carries estimateMin onto planned leaves', () => {
+    const goals: Goal[] = [{
+      id: 'g1', title: 'G', nodes: [
+        { id: 'a', title: 'A', done: false, plannedWeek: '2026-07-27', estimateMin: 45 },
+        { id: 'b', title: 'B', done: false, plannedWeek: '2026-07-27' },
+      ],
+    }];
+    const out = plannedLeaves(goals, '2026-07-27');
+    expect(out.find((l) => l.nodeId === 'a')?.estimateMin).toBe(45);
+    expect(out.find((l) => l.nodeId === 'b')?.estimateMin).toBeUndefined();
+  });
 });
 
 describe('paceStatus', () => {
