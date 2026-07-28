@@ -36,6 +36,9 @@ export function EstimateField({
     if (e.key === 'Enter') {
       e.preventDefault();
       commit();
+      // blur() below re-fires onBlur={commit}, but that second call is a
+      // no-op: this commit() already reset draft to null, and commit()
+      // early-returns when draft === null.
       (e.target as HTMLInputElement).blur();
     } else if (e.key === 'Escape') {
       e.preventDefault();

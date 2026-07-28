@@ -1,3 +1,11 @@
+/** A single day of effort. Anything above this wants breaking down instead. */
+const MAX_ESTIMATE_MINUTES = 1440;
+
+/** Shared bound check for every parse branch: 0 is rejected, so is anything over 24h. */
+function withinBounds(minutes: number): number | undefined {
+  return minutes > 0 && minutes <= MAX_ESTIMATE_MINUTES ? minutes : undefined;
+}
+
 /**
  * Parse a human estimate.
  *   number  → minutes
@@ -14,21 +22,23 @@ export function parseEstimateInput(raw: string): number | null | undefined {
   const hm = s.match(/^(\d+)\s*h\s*(\d+)?\s*m?$/);
   if (hm) {
     const minutes = Number(hm[1]) * 60 + Number(hm[2] ?? 0);
-    return minutes > 0 ? minutes : undefined;
+    return withinBounds(minutes);
   }
 
-  // 1.5h, 0.5h
+  // 1.5h, 0.5h — hours may be fractional
   const fractional = s.match(/^(\d*\.?\d+)\s*h$/);
   if (fractional) {
     const minutes = Math.round(Number(fractional[1]) * 60);
-    return minutes > 0 ? minutes : undefined;
+    return withinBounds(minutes);
   }
 
-  // 45, 45m, 90 min
-  const mins = s.match(/^(\d*\.?\d+)\s*(m|min|mins|minutes)?$/);
+  // 45, 45m, 90 min — minutes must be an integer; a bare decimal ('1.5',
+  // '.5') is ambiguous (did they mean minutes or hours?) so it's refused
+  // rather than guessed at.
+  const mins = s.match(/^(\d+)\s*(m|min|mins|minutes)?$/);
   if (mins) {
-    const minutes = Math.round(Number(mins[1]));
-    return minutes > 0 ? minutes : undefined;
+    const minutes = Number(mins[1]);
+    return withinBounds(minutes);
   }
 
   return undefined;
