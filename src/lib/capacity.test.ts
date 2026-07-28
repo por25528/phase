@@ -281,4 +281,34 @@ describe('weekCapacity', () => {
     expect(out.days.every((d) => d.plannedMin === 0)).toBe(true);
     expect(out.plannedMin).toBe(60); // still a commitment for this week
   });
+
+  it('lists both occurrences of a same-titled event at different start times', () => {
+    const blocks = [
+      block(TUE, 600, 660, '1:1'),
+      block(TUE, 900, 960, '1:1'),
+    ];
+    expect(weekCapacity({ ...base, blocks }).days.find((d) => d.date === TUE)?.blockedBy)
+      .toEqual(['1:1', '1:1']);
+  });
+
+  it('collapses a same-titled event at the same start time to one entry', () => {
+    const blocks = [
+      block(TUE, 700, 760, '1:1'),
+      block(TUE, 700, 760, '1:1'),
+    ];
+    expect(weekCapacity({ ...base, blocks }).days.find((d) => d.date === TUE)?.blockedBy)
+      .toEqual(['1:1']);
+  });
+
+  it('does not mutate the caller-owned blocks array', () => {
+    const blocks = [
+      block(TUE, 900, 960, 'b'),
+      block(TUE, 600, 660, 'a'),
+    ];
+    const snapshot = [...blocks];
+    weekCapacity({ ...base, blocks });
+    expect(blocks).toEqual(snapshot);
+    expect(blocks[0]).toBe(snapshot[0]);
+    expect(blocks[1]).toBe(snapshot[1]);
+  });
 });
