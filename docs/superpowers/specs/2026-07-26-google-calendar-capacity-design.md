@@ -1,7 +1,7 @@
 # Google Calendar capacity — design
 
 Date: 2026-07-26
-Status: approved design, not yet planned
+Status: approved design, revised after review
 
 ## 1. Problem
 
@@ -31,235 +31,344 @@ Out of scope, explicitly:
 - Two-way sync
 - Any calendar provider other than Google
 - Meeting creation, editing, or RSVP
+- **Planner week navigation.** The planner is fixed to `weekOf(today)`
+  (`PlanWeekOverlay.tsx:90`). This feature does not add navigation, and does not
+  depend on it.
 
-### 2.1 The load-bearing architectural rule
+### 2.1 The seam
 
-> **No network code lands in `src/`.**
+Two rules, and they must not contradict each other:
 
-The Electron main process owns OAuth and all HTTP. It hands the renderer an
-already-normalized `BusyBlock[]`. Everything in `src/lib/` stays pure and
-side-effect-free, matching the existing convention.
+> **1. All Google I/O and all timezone arithmetic live in the Electron main
+> process.** Main fetches raw Google JSON, normalizes it, and sends only
+> `BusyBlock[]` across IPC.
+>
+> **2. `src/` never sees Google JSON, a token, or a timezone.** It receives
+> normalized blocks and computes capacity from them.
 
-This is not incidental. The part of this feature that can be *wrong* is the
-capacity arithmetic — window math, overlap merging, midnight clipping. Keeping
-it pure means all of it is unit-testable with fixtures, with no network, no
-token, and no mock server.
+The normalizer is therefore a **main-process module** (`electron/busyBlocks.cjs`),
+not a `src/lib` module. It is nonetheless pure — no I/O, no clock, no network —
+so it is fully unit-testable offline. This is a deliberate, narrow exception to
+the "pure logic lives in `src/lib`" convention, made because the code must run
+where the timezone and the HTTP client are. `vitest.config.ts` gains
+`electron/**/*.test.ts` to its `include` so these tests run in the normal suite.
+
+Rationale: the part of this feature that can be *wrong* is arithmetic — window
+math, overlap merging, midnight clipping, "time already gone". Every piece of it
+is pure and fixture-tested on both sides of the seam. Nothing requires a network,
+a token, or a mock server.
 
 ### 2.2 Platform
 
-Electron (`npm run app:dev`, `npm run build:mac`) is the product surface and
-gets real calendar data. The browser dev server (`npm run dev`) gets a
-disconnected stub: the feature reports "not connected" and every other part of
-Phase behaves exactly as it does today. No browser code path is broken by this
-feature's absence.
+Electron is the product surface and gets real calendar data. The browser dev
+server (`npm run dev`) gets a disconnected stub: the feature reports "not
+connected" and all other Phase behavior is unchanged. No browser code path is
+broken by this feature's absence.
 
 ## 3. Data model
 
-### 3.1 Additions to `src/db/types.ts`
+### 3.1 Estimates
 
 ```ts
 // On GoalNode — leaves only. Absent means unestimated.
 estimateMin?: number;
+
+// On Task — same meaning, same units.
+estimateMin?: number;
 ```
 
-Optional, so every existing goal tree loads unchanged. No data migration.
+Both optional, so every existing goal tree and task loads unchanged. No data
+migration.
 
 `estimateMin` is meaningful on **leaves only**. If a node gains children and
 becomes a container, `estimateMin` is dropped alongside `done`/`doneAt`, per the
-existing leaf-XOR-container invariant. Any `estimateMin` found on a container is
-ignored by `capacity.ts` rather than rolled up — containers are not planned, only
-leaves are.
+existing leaf-XOR-container invariant. Any `estimateMin` on a container is
+ignored rather than rolled up.
+
+`Task` carries an estimate because the planner grid already shows dated tasks
+beside planned steps (`PlanWeekOverlay.tsx:213-220`). A workload figure that
+counted only goal leaves would report spare capacity while tasks visibly occupied
+the week — see §4.3.
+
+### 3.2 Calendar types
 
 ```ts
-// One row per weekday. Absent dow, or startMin >= endMin, means "day off".
 export interface AvailabilityWindow {
   dow: number;      // 0 = Mon … 6 = Sun, matching weekDates() order
   startMin: number; // minutes from local midnight; 540 = 09:00
   endMin: number;   // exclusive
 }
 
-// A busy slice, ALREADY flattened onto one local day.
+// A busy slice, ALREADY flattened onto one local day by the main process.
 export interface BusyBlock {
   date: string;     // 'YYYY-MM-DD' local
   startMin: number; // clipped to that local day, 0..1440
   endMin: number;   // exclusive, > startMin
-  title: string;    // for the "blocked by" line
+  title: string;
   allDay: boolean;
 }
 
 export interface CalendarCache {
-  rangeStart: string;  // 'YYYY-MM-DD' inclusive
-  rangeEnd: string;    // 'YYYY-MM-DD' exclusive
+  rangeStart: string;    // 'YYYY-MM-DD' inclusive
+  rangeEnd: string;      // 'YYYY-MM-DD' exclusive
   blocks: BusyBlock[];
-  fetchedAt: string;   // ISO instant, for the staleness label
+  fetchedAt: string;     // ISO instant, for the staleness label
+  // --- provenance: any mismatch invalidates the cache (§5.5) ---
+  accountId: string;     // Google account the blocks came from
+  calendarIds: string[]; // sorted; which calendars were queried
+  timeZone: string;      // IANA zone the blocks were flattened against
 }
 ```
 
-`BusyBlock` is flattened onto local days **in the bridge, before `src/` sees
-it**. Multi-day and cross-midnight events are split there. Consequently no
-module in `src/lib/` ever performs timezone arithmetic.
+**Provenance is part of the cache, not metadata.** Without it, an account
+switch, a changed calendar selection, or a machine timezone change leaves stale
+blocks rendering as current fact. See §5.5.
 
-### 3.2 Persistence
+Note `allDayBlocks` is **not** in the provenance list. All-day blocks are always
+cached; the preference is applied at read time in `capacity.ts` (§4.2), so
+toggling it never requires a refetch.
+
+### 3.3 Persistence
 
 Dexie `version(5)` adds a `calendarCache` table, single-row, following the
-existing `planReview` pattern (`clear()` + `put()` inside one transaction).
+existing `planReview` pattern (`clear()` + `put()` in one transaction).
 
-Availability windows persist as one JSON row in the existing `settings` table,
-key `availability`. The shipped default is Mon–Fri 09:00–18:00 and Sat/Sun off
-(`startMin: 540, endMin: 1080` for dow 0–4; no entry for dow 5–6). A malformed
-or missing row falls back to this default rather than throwing.
+Availability windows and calendar preferences persist as JSON rows in the
+existing `settings` table (keys `availability`, `calendarPrefs`).
 
-**Backup exclusion:** `calendarCache` is *not* written by `exportState` and not
+**Backup exclusion:** `calendarCache` is not written by `exportState` and not
 read by `importStateFromFile`. Calendar event titles must not land in a
-`phase-goals-*.json` file the user might share, sync, or attach to an issue. On
-import, the cache is left untouched — it is device-local derived data, not user
-data.
+`phase-goals-*.json` the user might share. On import the cache is left untouched
+— it is device-local derived data, not user data.
 
-## 4. Modules
+## 4. Capacity computation (`src/lib/capacity.ts`, pure)
 
-| Module | Responsibility | Pure |
+### 4.1 Remaining, not nominal
+
+Capacity is measured **from now forward**, not across the whole week. A planner
+opened Tuesday afternoon must not count Monday, nor Tuesday morning — that is
+precisely the time that is already unrecoverable, and counting it reproduces the
+over-commitment the feature exists to prevent.
+
+`capacity.ts` therefore takes an explicit `now: { date: string; minute: number }`
+argument (injected, never read from a clock — the module stays pure):
+
+- a day **before** `now.date` → zero remaining capacity
+- **`now.date` itself** → its availability window is clipped to start no earlier
+  than `now.minute`
+- days **after** → the full window
+
+The distinction between *nominal* capacity (what the week held) and *remaining*
+capacity (what you can still commit) is surfaced in the UI as well; the planner
+shows remaining, because that is the number the decision depends on.
+
+### 4.2 Free minutes
+
+```
+free(day) = Σ(window(day) clipped by now) − Σ(merged busy ∩ that clipped window)
+```
+
+Busy time outside the availability window is ignored — a 22:00 event does not
+reduce a 09:00–18:00 window. Free minutes clamp at zero.
+
+All-day blocks are consulted here, not at fetch time: when the `allDayBlocks`
+preference is on, an all-day block zeroes its day's window; when off, all-day
+blocks are skipped. Both directions are a pure filter over cached data.
+
+### 4.3 Workload: unfinished commitments, both kinds
+
+The week's workload is **unfinished** work of both kinds the planner displays:
+
+- planned goal leaves where `!done` — note `plannedLeaves()` returns done leaves
+  too (`plan.ts:65`), so this filter is mandatory
+- dated tasks in the week where `!done`
+
+This mirrors the existing `plannerOpenCount(placed, weekTasks)` in
+`planner.ts`, which already defines "open work" across both kinds. Capacity must
+not invent a narrower definition than the count sitting next to it.
+
+### 4.4 The honesty rule
+
+Three numbers, never fused into one:
+
+- **free** minutes remaining (calendar fact)
+- **planned** minutes (Σ `estimateMin` over unfinished commitments)
+- **unestimated** count (unfinished commitments, either kind, with no estimate)
+
+Unestimated work is never assigned a phantom duration. A single blended number
+would look authoritative while being partly invented; three numbers stay honest,
+and the dangling count is itself the nudge to estimate.
+
+**"Anyday" steps** — `plannedWeek` set, no `plannedDay` — count toward the
+**week** totals only. They are not charged to any day, because they are not on
+one.
+
+## 5. Google integration (main process)
+
+### 5.1 Scopes
+
+Two read-only scopes:
+
+| Scope | Needed for |
+| --- | --- |
+| `calendar.events.readonly` | `events.list` — the busy data |
+| `calendar.calendarlist.readonly` | `calendarList.list` — the calendar picker |
+
+`events.readonly` alone does **not** authorize `calendarList.list`. Both are
+requested, rather than the broader `calendar.readonly`, to keep the grant as
+narrow as the feature actually requires.
+
+### 5.2 OAuth loopback contract
+
+Standard installed-app flow (PKCE), entirely in main:
+
+1. Generate a PKCE verifier/challenge and a cryptographically random `state`
+2. Start a one-shot HTTP listener on `127.0.0.1`, random free port
+3. `shell.openExternal` to the Google consent URL
+4. The listener accepts **only** the exact callback path; any other path 404s
+5. The returned `state` is compared against the generated one; a mismatch aborts
+   the flow and returns an error
+6. Exchange code + verifier for tokens
+7. Encrypt the refresh token with `safeStorage` (macOS Keychain), store under
+   `app.getPath('userData')`
+
+Hard requirements: the flow **times out** (user never completes consent), and
+the listener is **shut down on every outcome** — success, error, state mismatch,
+timeout, and window close. A leaked listening socket is a security defect, not
+an untidiness.
+
+**Disconnect** revokes the token with Google, deletes the stored credential, and
+deletes the `calendarCache` row. Disconnect must not leave calendar-derived data
+on disk.
+
+### 5.3 Credentials: the user brings their own
+
+Phase ships **no** client credentials. The user creates a Google Cloud project
+and OAuth client and points Phase at it via local gitignored config.
+
+This is the decisive factor: for **external** apps left in *Testing* publishing
+status, Google expires Calendar-scope refresh tokens after **seven days**,
+forcing a re-consent every week — which would quietly destroy the weekly
+planning ritual this feature exists to support. A user-owned client can be set
+to *Production* (accepting the one-time unverified-app warning) and its refresh
+token persists.
+
+It also sidesteps the credential problem honestly: desktop OAuth clients embed
+their "secret" and it is not confidential. Shipping one would be security
+theater. Not shipping one avoids the question.
+
+Three deployment postures, documented in `docs/google-calendar-setup.md`:
+
+| Posture | Refresh token | Notes |
 | --- | --- | --- |
-| `src/lib/availability.ts` | Window model, validation, defaults, per-day window lookup | yes |
-| `src/lib/busyBlocks.ts` | Google event JSON → `BusyBlock[]`: filter, clip, split, merge | yes |
-| `src/lib/capacity.ts` | windows + blocks + planned leaves → per-day and per-week figures | yes |
-| `src/lib/calendarBridge.ts` | Adapter over `window.phaseCalendar`; stub when absent | boundary |
-| `electron/calendar.cjs` | OAuth PKCE loopback, Keychain token, `events.list` fetch | main |
-| `electron/preload.cjs` | **new file** — `contextBridge` exposure of the calendar API | main |
+| Personal, own client, Production + unverified | Persists | **Recommended.** One-time warning screen. |
+| Own client, Testing | **Expires in 7 days** | Development only. |
+| Verified production app | Persists | Requires Google review; out of scope. |
 
-Each pure module ships a sibling `*.test.ts`, per the repo convention.
+Regardless of posture, refresh failure is handled gracefully (§5.6) rather than
+assumed away.
 
-### 4.1 `busyBlocks.ts` — normalization rules
+### 5.4 Fetch: fan-out, pagination, all-or-nothing
 
-This module holds the highest bug density in the feature, so its rules are
-specified exhaustively. Given raw Google `events.list` items and a local date
-range, it produces a **disjoint, day-clipped, merged** `BusyBlock[]`.
+A refresh is **selected calendars × pages**, not one call. `events.list`
+addresses exactly one `calendarId`, and each may return several pages via
+`nextPageToken`.
 
-Events are **skipped** when any of these hold:
+Per calendar, per page: `singleEvents=true` so Google expands recurrences
+server-side — no RRULE, EXDATE, or VTIMEZONE parsing anywhere in this codebase.
 
-1. `status === 'cancelled'`
-2. `transparency === 'transparent'` — the user marked it Free in Google
-3. The user declined it: some `attendees[]` entry has `self === true` and
-   `responseStatus === 'declined'`
-4. It is all-day and the `allDayBlocks` setting is off (see §4.2)
+**The cache is replaced only if every selected calendar and every page
+succeeds.** A partial result is discarded entirely and the previous cache is
+kept with its old `fetchedAt`. This is the critical rule: a half-fetched week
+would render the missing calendar's meetings as *free time* — silently wrong in
+the exact direction that causes over-commitment. Failing loudly to stale-but-
+complete data is strictly safer than succeeding to incomplete data.
 
-Surviving events are then:
+Range: `[Monday of the current week, +28d)`. Fetch triggers are planner open and
+an explicit Refresh button. No background poll.
 
-5. **Split** at local midnight, so an event spanning two days yields two blocks
-6. **Clipped** to the requested date range
-7. **Merged** where they overlap — two overlapping meetings must contribute
-   their union, never the sum of their durations. This is the single most
-   likely source of a wrong number and is tested directly.
+### 5.5 Cache invalidation
 
-Merged blocks keep the titles of their constituents (joined) so the "blocked
-by" line stays truthful after a merge.
+The cache is discarded, not displayed, when any provenance field disagrees with
+current reality:
 
-### 4.2 All-day events
+- `accountId` differs from the connected account (account switch)
+- `calendarIds` differs from the current selection
+- `timeZone` differs from the machine's current IANA zone
+- the range does not cover the days being rendered
+- the user disconnected
 
-An all-day event (`start.date` present, `start.dateTime` absent) that survives
-the skip rules blocks the **entire availability window** for each day it
-covers. A day-long "Conference" should zero out that day.
+A day outside the cached range renders as **"no data"**, never as "free".
 
-This is behind a setting, `allDayBlocks`, defaulting **on**. The escape hatch
-matters because a calendar carrying all-day noise (a shared holiday feed, an
-"on call" banner) would otherwise silently zero whole weeks. The user also
-chooses which calendars are queried (§5.2), which is the primary defense.
+### 5.6 Degraded states
 
-### 4.3 `capacity.ts` — the honesty rule
-
-For each day:
-
-```
-freeMin = Σ(window minutes) − Σ(merged busy ∩ window)
-```
-
-Busy time falling outside the availability window is ignored — a 22:00 event
-does not reduce a 09:00–18:00 window. Free minutes are clamped at zero.
-
-Against that, the planner reports **three separate numbers that are never
-fused into one**:
-
-- free minutes (from the calendar)
-- planned minutes (sum of `estimateMin` over planned leaves)
-- count of planned leaves with no `estimateMin`
-
-Unestimated steps are **never** assigned a phantom duration. A single blended
-number would look authoritative while being partly invented; three numbers stay
-honest and the dangling count is itself the nudge to estimate.
-
-**"Anyday" steps** — planned to the week via the planner's `anyday` drop zone,
-with `plannedWeek` but no `plannedDay` — count toward the **week** totals only.
-They are not charged to any day, because they are not on one.
-
-## 5. Auth and fetch
-
-### 5.1 OAuth
-
-Standard OAuth 2.0 installed-app flow, entirely inside the main process:
-
-1. Main starts a one-shot HTTP listener on `127.0.0.1` at a random free port
-2. `shell.openExternal` opens the Google consent screen (PKCE challenge, the
-   loopback as `redirect_uri`)
-3. The listener catches the authorization code and shuts down immediately
-4. Main exchanges code + PKCE verifier for tokens
-5. The refresh token is encrypted with Electron `safeStorage` (macOS Keychain)
-   and written to `app.getPath('userData')`
-
-Scope: `https://www.googleapis.com/auth/calendar.events.readonly` — read-only,
-and the narrowest scope that still exposes event titles and the all-day flag.
-
-**The renderer never sees a token.** It calls `connect`, `disconnect`,
-`getStatus`, and `fetchRange` over IPC and receives normalized data or a status.
-
-Client credentials are read from environment/gitignored local config, never
-committed. When unconfigured, the feature reports "not configured" and is
-simply absent from the UI — never a broken pane. Setup is documented in
-`docs/google-calendar-setup.md`, written as part of implementation.
-
-### 5.2 Calendar selection
-
-On connect, main lists the user's calendars and the user picks which count as
-"busy" (default: primary only). Stored in `settings`. This is the main defense
-against noisy shared calendars.
-
-### 5.3 Refresh policy
-
-One `events.list` call covering `[today, today + 28d)`, with `singleEvents=true`
-so Google expands recurring events server-side — no RRULE, EXDATE, or VTIMEZONE
-parsing anywhere in this codebase. Paginated via `nextPageToken`.
-
-Fetch triggers:
-
-- planner open
-- explicit Refresh button
-- planner navigation to a week outside the cached range
-
-The cache holds exactly **one contiguous range**. Navigating outside it replaces
-the cache with a fresh 28-day range anchored at the Monday of the week being
-viewed — it does not accumulate disjoint ranges. A day with no cached coverage
-renders as "no data", never as "free".
-
-There is no background poll. The planner is opened a few times a week; a timer
-would burn quota and introduce numbers that change mid-edit.
-
-### 5.4 Degraded states
-
-Every failure mode resolves to *last known data plus a label*, never an error
-pane and never a silently wrong zero:
+Every failure resolves to *last known complete data plus a label*, never an
+error pane and never a silently wrong zero:
 
 | State | Behavior |
 | --- | --- |
 | Not configured | Capacity UI absent; planner behaves exactly as today |
-| Not connected | Capacity UI shows a "Connect Google Calendar" affordance |
-| Offline / fetch failed | Cached blocks + "as of Tue 9:41am" staleness label |
-| Token expired, refresh failed | Cached blocks + a re-connect prompt |
-| Connected, empty range | "No events" — genuinely free, distinct from no data |
+| Not connected | "Connect Google Calendar" affordance |
+| Offline / any fetch failure | Cached blocks + "as of Tue 9:41am" staleness label |
+| Refresh token expired/revoked | Cached blocks + re-connect prompt |
+| Provenance mismatch | Cache discarded → "no data", plus a refresh prompt |
+| Connected, empty range | "No events" — genuinely free |
 
-The distinction in the last row matters: an empty calendar and an unavailable
-calendar must never render identically.
+The last two rows must render differently. An empty calendar and an unavailable
+calendar looking identical is the failure mode that makes the whole feature
+untrustworthy.
 
-## 6. Surfaces
+## 6. Modules
 
-### 6.1 Week planner (primary)
+| Module | Responsibility | Pure |
+| --- | --- | --- |
+| `src/lib/availability.ts` | Window model, validation, defaults, per-day lookup | yes |
+| `src/lib/capacity.ts` | windows + blocks + commitments + `now` → figures | yes |
+| `src/lib/calendarBridge.ts` | Adapter over `window.phaseCalendar`; stub when absent | boundary |
+| `electron/busyBlocks.cjs` | Google JSON → `BusyBlock[]`: filter, split, clip, merge | yes |
+| `electron/googleClient.cjs` | Fan-out, pagination, token refresh — injected adapters | I/O |
+| `electron/oauth.cjs` | PKCE loopback flow, `safeStorage`, revoke | I/O |
+| `electron/preload.cjs` | **new** — `contextBridge` calendar API | main |
+
+### 6.1 `busyBlocks.cjs` — normalization rules
+
+Highest bug density in the feature, so the rules are exhaustive. Given raw
+`events.list` items, a local date range, and an IANA timezone, it produces a
+**disjoint, day-clipped, merged** `BusyBlock[]`.
+
+Skip an event when any hold:
+
+1. `status === 'cancelled'`
+2. `transparency === 'transparent'` (marked Free in Google)
+3. Declined by the user: some `attendees[]` entry with `self === true` and
+   `responseStatus === 'declined'`
+
+Note all-day events are **not** skipped here — they are always cached and
+filtered at read time (§4.2).
+
+Then:
+
+4. **Split** at local midnight, so a multi-day or overnight event yields one
+   block per local day
+5. **Clip** to the requested range
+6. **Merge** overlaps — two overlapping meetings contribute their union, never
+   the sum of their durations. This is the single likeliest source of a wrong
+   number and is tested directly.
+
+Merged blocks join their constituent titles so the "blocked by" line stays
+truthful after a merge.
+
+### 6.2 Availability validation
+
+A persisted window set is valid only if every entry has an **integer** `dow` in
+`0..6`, `dow` values are **unique**, and `0 ≤ startMin < endMin ≤ 1440`. Any
+violation falls back to the shipped default — Mon–Fri 09:00–18:00, Sat/Sun off
+(`startMin: 540, endMin: 1080` for dow 0–4; no entry for 5–6) — rather than
+throwing or rendering partial garbage.
+
+## 7. Surfaces
+
+### 7.1 Week planner (primary)
 
 Each day column header gains:
 
@@ -268,91 +377,106 @@ Tue  ·  3h 15m free  ·  2h planned  ·  2 unestimated
      blocked by: standup, 1:1, dentist
 ```
 
-The week total replaces the hardcoded `SOFT_CAPACITY = 7` with a real figure.
-Over-commitment (planned > free) is signalled using the existing visual
-vocabulary — no new colors or components. Visual identity is locked; this
-feature adds information, not styling.
+"free" is *remaining* capacity (§4.1). The week total replaces the hardcoded
+`SOFT_CAPACITY = 7`. Over-commitment is signalled with the existing visual
+vocabulary — no new colors or components. Visual identity is locked; this feature
+adds information, not styling.
 
-Setting an estimate on a step is reachable inline from the planner so the
-"unestimated" count is one keystroke from resolution.
+Setting an estimate is reachable inline from the planner, so the "unestimated"
+count is one keystroke from resolution — for both steps and tasks.
 
-### 6.2 Timeline (secondary, deliberately minimal)
+### 7.2 Timeline (secondary, minimal)
 
-A light per-day load tint across the ~28 cached days only — heavier tint means
-more booked. **No numbers.** At the timeline's normal scale (~13px/day) figures
-would be unreadable, and past the cache horizon there is no data.
+A light per-day load tint across the cached range only — heavier means more
+booked. **No numbers**: at ~13px/day they would be unreadable, and past the cache
+horizon there is no data. The band stops exactly where the cache stops, so it
+visibly ends where the truth ends rather than fading into an implied "free".
 
-The band stops exactly where the cached range stops. It reads as texture
-showing where the crunch is, and it visibly stops where the truth stops rather
-than fading into an implied "free."
+### 7.3 Not included
 
-### 6.3 Not included
+The Today view is deliberately untouched. Capacity is a *commitment-time*
+signal; Today is an execution surface, where a free-hours readout reads as
+judgment rather than planning input. Revisit after living with the planner
+numbers.
 
-The Today view is intentionally left alone in this iteration. Capacity is a
-*commitment-time* signal; Today is an execution surface, and a free-hours
-readout there risks reading as judgment rather than planning input. Revisit
-after living with the planner numbers.
+## 8. Testing
 
-## 7. Testing
+No test touches the network. Main-process modules take **injected** HTTP, token,
+and storage adapters, so they are exercised fully offline.
 
-No test in this feature touches the network.
+**`electron/busyBlocks.test.ts`** — overlapping events (the merge case),
+back-to-back events, overnight events, multi-day events, all-day events,
+declined events, `transparent` events, cancelled events, events wholly outside
+the range, and a DST transition day.
 
-- `busyBlocks.test.ts` — fixtures for: overlapping events (the merge case),
-  back-to-back events, cross-midnight events, multi-day events, all-day events
-  with the setting on and off, declined events, `transparent` events, cancelled
-  events, events wholly outside the availability window, and a DST transition
-  day.
-- `availability.test.ts` — window validation, day-off handling, malformed
-  persisted JSON falling back to defaults.
-- `capacity.test.ts` — free/planned/unestimated arithmetic, the zero clamp,
-  anyday steps counting to the week but no day, a fully-booked day, and a day
-  with no window.
-- `store.test.ts` additions — the calendar slice driven by a fake bridge:
-  connect, disconnect, fetch success, fetch failure preserving cached data.
-- `db.test.ts` additions — `version(5)` migration over a v4 database;
-  `calendarCache` absent from export and untouched by import.
+**`electron/googleClient.test.ts`** — multi-page pagination via `nextPageToken`;
+multi-calendar fan-out; **partial failure discards the whole result and keeps
+the prior cache**; refresh-token failure surfaces as a typed re-connect error.
 
-## 8. Risks
+**`electron/oauth.test.ts`** — `state` mismatch aborts; wrong callback path
+404s; timeout path; listener shut down on every outcome including error and
+timeout; disconnect revokes and deletes both credential and cache.
+
+**`src/lib/capacity.test.ts`** — free/planned/unestimated arithmetic; the zero
+clamp; **past days yield zero and today's window clips to `now.minute`**; anyday
+steps counting to the week but no day; done leaves and done tasks excluded;
+unfinished tasks without estimates landing in the unestimated bucket; a
+fully-booked day; a day with no window; `allDayBlocks` on and off over identical
+cached data.
+
+**`src/lib/availability.test.ts`** — duplicate `dow`, non-integer `dow`,
+out-of-range `dow`, `startMin >= endMin`, `endMin > 1440`, malformed JSON — each
+falling back to the default.
+
+**`src/state/store.test.ts`** additions — the calendar slice against a fake
+bridge: connect, disconnect, fetch success, fetch failure preserving cached
+data, each provenance mismatch discarding the cache.
+
+**`src/db/db.test.ts`** additions — `version(5)` migration over a v4 database;
+`calendarCache` absent from export and untouched by import.
+
+## 9. Risks
 
 **The numbers are only as good as the calendar.** Someone whose meetings live
 outside Google, or who blocks focus time inconsistently, will see free hours
-that overstate reality. Mitigations: the "blocked by" line makes the basis
-visible and immediately falsifiable, and per-calendar selection lets the user
-tune what counts. This is disclosed in the connect flow rather than discovered.
+that overstate reality. Mitigation: the "blocked by" line makes the basis
+visible and immediately falsifiable, and per-calendar selection tunes what
+counts. Disclosed in the connect flow rather than discovered later.
 
-**Estimates decay.** `estimateMin` is a guess, and the sum inherits every
-error. The three-number display keeps the guess visibly separate from the
-calendar fact rather than blending them into false precision.
+**Estimates decay.** `estimateMin` is a guess and the sum inherits every error.
+The three-number display keeps the guess visibly separate from the calendar fact
+rather than blending them into false precision.
 
-**Google verification.** `calendar.events.readonly` is a sensitive scope. An
-unverified app stays in testing mode, capped at 100 users — sufficient for
-personal and small-scale use, and documented in the setup guide so it is not a
-surprise later.
+**Setup friction.** Bringing your own Google Cloud client is a real barrier
+compared to a one-click connect. Accepted deliberately: the alternative is
+either a weekly re-consent (Testing mode's 7-day refresh expiry) or shipping a
+non-secret secret. The setup guide carries this cost.
 
-## 9. Suggested implementation phasing
+## 10. Implementation phasing
 
-The feature is deliverable in three slices, each independently valuable and
-independently testable. Every slice leaves the app shippable.
+Three slices, each independently valuable, each leaving the app shippable.
 
-1. **Estimates and windows, no network.** Add `estimateMin`, the availability
-   model, the settings UI, and `capacity.ts`. The planner shows planned hours
-   and the unestimated count against the configured window — real value with
-   zero Google involvement, and it proves the arithmetic before any OAuth code
-   exists.
-2. **Connect and fetch.** `electron/calendar.cjs`, `preload.cjs`, the bridge,
-   `busyBlocks.ts`, the Dexie `version(5)` cache, and the degraded states. Free
-   hours become calendar-aware.
+1. **Estimates, windows, and capacity — no network.** `estimateMin` on
+   `GoalNode` and `Task`, `availability.ts`, `capacity.ts` (including `now`
+   clipping), the settings UI, and the planner's three-number display against an
+   empty block list. Real value with zero Google involvement, and it proves the
+   arithmetic before any OAuth code exists.
+2. **Connect and fetch.** `oauth.cjs`, `googleClient.cjs`, `busyBlocks.cjs`,
+   `preload.cjs`, `calendarBridge.ts`, Dexie `version(5)`, provenance and
+   invalidation, degraded states. Free hours become calendar-aware.
 3. **Timeline band.** The per-day load tint over the cached range.
 
-Slice 1 is where the design risk lives, and it is the slice with no external
-dependency — deliberately sequenced first.
+Slice 1 carries the design risk and has no external dependency — deliberately
+sequenced first.
 
-## 10. Invariants preserved
+## 11. Invariants preserved
 
 - `estimateMin` is scheduling metadata. Like `start`, `deadline`, `plannedWeek`,
   and `Milestone`, it **never** affects the pct roll-up in `src/lib/pct.ts`.
 - The `goals` array stays column-major; this feature adds no goal reordering.
 - Views never call `db` or the bridge directly — everything routes through
-  `actions` in the store.
-- New pure logic lives in `src/lib` with a sibling test file.
+  `actions`.
 - Visual identity is unchanged; no restyling.
+- New pure renderer logic lives in `src/lib` with a sibling test. The one
+  exception — the main-process normalizer — is justified in §2.1 and tested to
+  the same standard.
