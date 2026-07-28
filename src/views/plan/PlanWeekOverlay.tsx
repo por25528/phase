@@ -34,8 +34,9 @@ import {
   resolvePlannerDrop,
   type PlannerDragData,
 } from './planner';
+import { weekCapacity, type Now, type DayCapacity } from '../../lib/capacity';
+import { capacityParts, isOverCommitted } from './capacityLabel';
 
-const SOFT_CAPACITY = 7;
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function PlanWeekOverlay({
@@ -193,7 +194,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
 // ── Step 2: plan — the week grid ──────────────────────────────────────────────
 
 function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: string | null }) {
-  const { goals, tasks, actions } = useAppStore();
+  const { goals, tasks, availability, allDayBlocks, actions } = useAppStore();
   const today = todayStr();
   const week = weekOf(today);
   const days = weekDates(today); // Mon … Sun (ISO)
@@ -223,6 +224,27 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
   for (const task of weekTasks) tasksByDay.get(task.date)?.push(task);
   const goalTitleById = new Map(goals.map((goal) => [goal.id, goal.title]));
   const openCount = plannerOpenCount(placed, weekTasks);
+
+  // Injected rather than read inside capacity.ts, which stays pure. Minutes since
+  // local midnight, so "free" means free FROM NOW — a planner opened Tuesday
+  // afternoon must not offer Monday's hours.
+  const nowDate = new Date();
+  const now: Now = {
+    date: today,
+    minute: nowDate.getHours() * 60 + nowDate.getMinutes(),
+  };
+
+  const capacity = weekCapacity({
+    week,
+    windows: availability,
+    blocks: [],          // slice 2 supplies real busy blocks
+    leaves: placed,
+    tasks: weekTasks,
+    now,
+    allDayBlocks,
+    hasData: false,      // slice 2 flips this when a calendar is connected
+  });
+  const capacityByDay = new Map(capacity.days.map((d) => [d.date, d]));
 
   const focusNodeId = focusGoalId
     ? firstOpenLeaf(goals.find((g) => g.id === focusGoalId)?.nodes ?? [])?.id
@@ -375,14 +397,9 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
               </h3>
               <span className="text-[.78rem] text-muted tabular-nums">
                 {openCount} planned
-                {openCount > SOFT_CAPACITY && (
-                  <span
-                    className="text-warn cursor-help"
-                    title={`More than ${SOFT_CAPACITY} items planned — a heavier week than usual`}
-                  >
-                    {' '}· big week
-                  </span>
-                )}
+              </span>
+              <span className="text-[.78rem] text-muted tabular-nums">
+                {capacityParts(capacity).join(' · ')}
               </span>
             </div>
 
@@ -398,7 +415,14 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                   />
                 </DayZone>
                 {days.map((iso, i) => (
-                  <DayZone key={iso} id={`day:${iso}`} label={DOW[i]} sub={String(parseD(iso).getDate())} today={iso === today}>
+                  <DayZone
+                    key={iso}
+                    id={`day:${iso}`}
+                    label={DOW[i]}
+                    sub={String(parseD(iso).getDate())}
+                    today={iso === today}
+                    capacity={capacityByDay.get(iso)}
+                  >
                     <DayContent
                       leaves={byDay.get(iso)!}
                       tasks={tasksByDay.get(iso)!}
@@ -456,11 +480,12 @@ function RailZone({ children }: { children: React.ReactNode }) {
 }
 
 function DayZone({
-  id, label, sub, today, anyday, children,
+  id, label, sub, today, anyday, capacity, children,
 }: {
-  id: string; label: string; sub: string; today?: boolean; anyday?: boolean; children: React.ReactNode;
+  id: string; label: string; sub: string; today?: boolean; anyday?: boolean; capacity?: DayCapacity; children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const overCommitted = capacity ? isOverCommitted(capacity) : false;
   return (
     <div
       ref={setNodeRef}
@@ -468,15 +493,32 @@ function DayZone({
         anyday ? 'border-dashed border-line-2' : 'bg-panel border-line'
       } ${today ? 'border-accent' : ''} ${isOver ? 'bg-accent-tint border-accent' : ''}`}
     >
-      <div className="flex items-baseline justify-between gap-[4px] pb-[3px] mb-[2px] border-b border-line-soft">
-        <span
-          className={`font-mono text-[.62rem] font-semibold tracking-[.04em] uppercase ${
-            today ? 'text-accent-deep' : anyday ? 'text-ink-soft' : 'text-muted'
-          }`}
-        >
-          {label}
-        </span>
-        <span className="font-mono text-[.56rem] text-faint tabular-nums">{sub}</span>
+      <div className="flex flex-col gap-[1px] pb-[3px] mb-[2px] border-b border-line-soft">
+        <div className="flex items-baseline justify-between gap-[4px]">
+          <span
+            className={`font-mono text-[.62rem] font-semibold tracking-[.04em] uppercase ${
+              today ? 'text-accent-deep' : anyday ? 'text-ink-soft' : 'text-muted'
+            }`}
+          >
+            {label}
+          </span>
+          <span className="font-mono text-[.56rem] text-faint tabular-nums">{sub}</span>
+        </div>
+        {capacity && (
+          <div className="flex flex-col gap-[1px]">
+            <span className={`text-[.56rem] tabular-nums ${overCommitted ? 'text-warn' : 'text-faint'}`}>
+              {capacityParts(capacity).join(' · ')}
+            </span>
+            {capacity.blockedBy.length > 0 && (
+              <span
+                className="text-[.56rem] text-faint truncate"
+                title={`blocked by: ${capacity.blockedBy.join(', ')}`}
+              >
+                blocked by: {capacity.blockedBy.join(', ')}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       {children}
     </div>
