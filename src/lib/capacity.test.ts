@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { BusyBlock, AvailabilityWindow, Task } from '../db/types';
 import type { PlannedLeaf } from './plan';
-import { freeMinutes, mergeIntervals, workloadOf, type Now } from './capacity';
+import { freeMinutes, mergeIntervals, workloadOf, weekCapacity, type Now } from './capacity';
 
 // Mon–Fri 09:00–18:00 (540 min window), weekend off.
 const WINDOWS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({
@@ -207,5 +207,78 @@ describe('workloadOf', () => {
   it('ignores a non-positive or non-finite estimate as unestimated', () => {
     const out = workloadOf([leaf({ estimateMin: 0 }), leaf({ estimateMin: -5 })], []);
     expect(out).toEqual({ plannedMin: 0, unestimated: 2 });
+  });
+});
+
+describe('weekCapacity', () => {
+  const base = {
+    week: MON,
+    windows: WINDOWS,
+    blocks: [] as BusyBlock[],
+    leaves: [] as PlannedLeaf[],
+    tasks: [] as Task[],
+    now: EARLY,
+    allDayBlocks: true,
+    hasData: true,
+  };
+
+  it('returns seven days starting Monday', () => {
+    const out = weekCapacity(base);
+    expect(out.days).toHaveLength(7);
+    expect(out.days[0].date).toBe(MON);
+    expect(out.days[6].date).toBe('2026-08-02');
+  });
+
+  it('totals free minutes over five working days', () => {
+    expect(weekCapacity(base).freeMin).toBe(540 * 5);
+  });
+
+  it('charges a day-pinned leaf to its day and to the week', () => {
+    const leaves = [leaf({ plannedDay: TUE, estimateMin: 60 })];
+    const out = weekCapacity({ ...base, leaves });
+    expect(out.days.find((d) => d.date === TUE)?.plannedMin).toBe(60);
+    expect(out.plannedMin).toBe(60);
+  });
+
+  it('charges an anyday leaf to the week but to no day', () => {
+    const leaves = [leaf({ estimateMin: 60 })]; // no plannedDay
+    const out = weekCapacity({ ...base, leaves });
+    expect(out.plannedMin).toBe(60);
+    expect(out.days.every((d) => d.plannedMin === 0)).toBe(true);
+  });
+
+  it('charges an unestimated anyday leaf to the week count only', () => {
+    const out = weekCapacity({ ...base, leaves: [leaf()] });
+    expect(out.unestimated).toBe(1);
+    expect(out.days.every((d) => d.unestimated === 0)).toBe(true);
+  });
+
+  it('charges a task to its date', () => {
+    const out = weekCapacity({ ...base, tasks: [task({ date: TUE, estimateMin: 25 })] });
+    expect(out.days.find((d) => d.date === TUE)?.plannedMin).toBe(25);
+    expect(out.plannedMin).toBe(25);
+  });
+
+  it('lists what is blocking a day, deduplicated', () => {
+    const blocks = [
+      block(TUE, 600, 660, 'standup'),
+      block(TUE, 700, 760, '1:1'),
+      block(TUE, 700, 760, '1:1'),
+    ];
+    expect(weekCapacity({ ...base, blocks }).days.find((d) => d.date === TUE)?.blockedBy)
+      .toEqual(['standup', '1:1']);
+  });
+
+  it('marks days as lacking data when hasData is false', () => {
+    const out = weekCapacity({ ...base, hasData: false });
+    expect(out.hasData).toBe(false);
+    expect(out.days.every((d) => d.hasData === false)).toBe(true);
+  });
+
+  it('excludes a leaf pinned outside the week from day totals', () => {
+    const leaves = [leaf({ plannedDay: '2026-08-10', estimateMin: 60 })];
+    const out = weekCapacity({ ...base, leaves });
+    expect(out.days.every((d) => d.plannedMin === 0)).toBe(true);
+    expect(out.plannedMin).toBe(60); // still a commitment for this week
   });
 });
