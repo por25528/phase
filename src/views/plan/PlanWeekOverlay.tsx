@@ -36,6 +36,7 @@ import {
 } from './planner';
 import { weekCapacity, type Now, type DayCapacity } from '../../lib/capacity';
 import { capacityParts, isOverCommitted } from './capacityLabel';
+import { EstimateField } from './EstimateField';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -412,6 +413,8 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                     goalTitleById={goalTitleById}
                     onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
                     onToggleTask={actions.toggleTask}
+                    onEstimateNode={actions.setNodeEstimate}
+                    onEstimateTask={actions.setTaskEstimate}
                   />
                 </DayZone>
                 {days.map((iso, i) => (
@@ -429,6 +432,8 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                       goalTitleById={goalTitleById}
                       onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
                       onToggleTask={actions.toggleTask}
+                      onEstimateNode={actions.setNodeEstimate}
+                      onEstimateTask={actions.setTaskEstimate}
                     />
                   </DayZone>
                 ))}
@@ -533,12 +538,16 @@ export function DayContent({
   goalTitleById,
   onRemove,
   onToggleTask,
+  onEstimateNode,
+  onEstimateTask,
 }: {
   leaves: PlannedLeaf[];
   tasks: Task[];
   goalTitleById: Map<string, string>;
   onRemove: (leaf: PlannedLeaf) => void;
   onToggleTask: (taskId: string) => void;
+  onEstimateNode: (nodeId: string, minutes: number | null) => void;
+  onEstimateTask: (taskId: string, minutes: number | null) => void;
 }) {
   if (leaves.length === 0 && tasks.length === 0) {
     return <div className="flex-1 grid place-items-center text-faint text-[.62rem] italic min-h-[40px]">—</div>;
@@ -556,6 +565,7 @@ export function DayContent({
               task={task}
               goalTitle={task.goalId ? goalTitleById.get(task.goalId) : undefined}
               onToggle={onToggleTask}
+              onEstimate={(m) => onEstimateTask(task.id, m)}
             />
           ))}
         </div>
@@ -566,7 +576,12 @@ export function DayContent({
             {grp.goalTitle}
           </span>
           {grp.leaves.map((l) => (
-            <PlacedChip key={l.nodeId} leaf={l} onRemove={() => onRemove(l)} />
+            <PlacedChip
+              key={l.nodeId}
+              leaf={l}
+              onRemove={() => onRemove(l)}
+              onEstimate={(m) => onEstimateNode(l.nodeId, m)}
+            />
           ))}
         </div>
       ))}
@@ -755,8 +770,12 @@ function RailStep({
   );
 }
 
-function PlacedChip({ leaf, onRemove }: { leaf: PlannedLeaf; onRemove: () => void }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+function PlacedChip({ leaf, onRemove, onEstimate }: {
+  leaf: PlannedLeaf;
+  onRemove: () => void;
+  onEstimate: (minutes: number | null) => void;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
     id: leaf.nodeId,
     data: {
       kind: 'step',
@@ -777,13 +796,22 @@ function PlacedChip({ leaf, onRemove }: { leaf: PlannedLeaf; onRemove: () => voi
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      className={`group flex items-center gap-[5px] px-[7px] py-[5px] rounded-[7px] bg-hover text-[.72rem] cursor-grab ${
+      className={`group flex items-center gap-[5px] px-[7px] py-[5px] rounded-[7px] bg-hover text-[.72rem] ${
         isDragging ? 'opacity-40' : ''
       }`}
     >
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`Drag "${leaf.title}"`}
+        className="flex-none px-[1px] text-faint cursor-grab hover:text-ink"
+      >
+        ⠿
+      </button>
       <span className="flex-1 min-w-0 truncate text-ink">{leaf.title}</span>
+      <EstimateField minutes={leaf.estimateMin} label={leaf.title} onChange={onEstimate} />
       <button
         type="button"
         aria-label={`Unplan "${leaf.title}"`}
@@ -801,10 +829,12 @@ export function TaskChip({
   task,
   goalTitle,
   onToggle,
+  onEstimate,
 }: {
   task: Task;
   goalTitle?: string;
   onToggle: (taskId: string) => void;
+  onEstimate: (minutes: number | null) => void;
 }) {
   const draggable = canDragTask(task);
   const {
@@ -851,6 +881,7 @@ export function TaskChip({
           {goalTitle}
         </span>
       )}
+      <EstimateField minutes={task.estimateMin} label={task.title} onChange={onEstimate} />
       <button
         type="button"
         ref={setActivatorNodeRef}
