@@ -117,19 +117,33 @@ describe('importStateFromFile', () => {
     expect(await loadAllDayBlocks()).toBe(false);
   });
 
-  it('falls back to the current defaults for an old backup that predates availability/allDayBlocks', async () => {
-    // Seed non-default settings first, so we can tell "fell back to the
-    // default" apart from "left the existing settings alone".
-    await saveAvailability([{ dow: 5, startMin: 0, endMin: 60 }]);
+  it('leaves existing availability/allDayBlocks alone for an old backup that predates them', async () => {
+    // Seed non-default settings first, so we can tell "left the existing
+    // settings alone" apart from "fell back to the default" — an absent key
+    // in the backup means it says nothing about this device preference, not
+    // that the user wants the default restored (a prior regression reset a
+    // user's working hours to the default on every old-backup import).
+    const seededAvailability = [{ dow: 5, startMin: 0, endMin: 60 }];
+    await saveAvailability(seededAvailability);
     await saveAllDayBlocks(false);
 
     const oldBackup = { goals: [goal('g1')], habits: [], tasks: [], sessions: [], pxPerDay: 40 };
     const imported = await importStateFromFile(fileOf(JSON.stringify(oldBackup)));
 
-    expect(imported.availability).toEqual(DEFAULT_AVAILABILITY);
-    expect(imported.allDayBlocks).toBe(true);
-    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
-    expect(await loadAllDayBlocks()).toBe(true);
+    expect(imported.availability).toEqual(seededAvailability);
+    expect(imported.allDayBlocks).toBe(false);
+    expect(await loadAvailability()).toEqual(seededAvailability);
+    expect(await loadAllDayBlocks()).toBe(false);
+  });
+
+  it('coerces the persisted string form "false" for allDayBlocks in a backup', async () => {
+    const backup = {
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+      pxPerDay: 40, allDayBlocks: 'false',
+    };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect(imported.allDayBlocks).toBe(false);
+    expect(await loadAllDayBlocks()).toBe(false);
   });
 
   it('falls back to DEFAULT_AVAILABILITY for a malformed availability array in the backup', async () => {

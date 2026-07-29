@@ -3,7 +3,7 @@ import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWind
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal } from '../lib/goalImport';
-import { parseAvailability, serializeAvailability, DEFAULT_AVAILABILITY } from '../lib/availability';
+import { parseAvailability, serializeAvailability } from '../lib/availability';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -185,16 +185,22 @@ export async function importStateFromFile(
     Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0
       ? clampScale(raw.pxPerDay as number)
       : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
-  // Old backups predate availability/allDayBlocks entirely — fall back to the
-  // current defaults rather than throwing. `parseAvailability` is total
-  // validation: malformed or hand-edited windows collapse to DEFAULT_AVAILABILITY.
+  // Old backups predate availability/allDayBlocks entirely — an ABSENT key
+  // means the backup says NOTHING about this device preference, which is not
+  // the same as the backup saying "use the default". Leave the current
+  // persisted value alone in that case. A PRESENT-but-malformed value still
+  // goes through `parseAvailability`, which is total validation: malformed or
+  // hand-edited windows collapse to DEFAULT_AVAILABILITY.
   const availability =
-    raw.availability === undefined ? DEFAULT_AVAILABILITY : parseAvailability(raw.availability);
-  // Mirrors loadAllDayBlocks (`row?.value !== 'false'`): absent, or anything
-  // but the literal false (string 'false' from an old settings-table dump, or
-  // an actual JSON `false` written by the current exportState), means on.
+    raw.availability === undefined ? await loadAvailability() : parseAvailability(raw.availability);
+  // Mirrors loadAllDayBlocks (`row?.value !== 'false'`): a PRESENT value of
+  // anything but the literal false (string 'false' from an old settings-table
+  // dump, or an actual JSON `false` written by the current exportState) means
+  // on. An ABSENT key means the backup is silent, so keep the current setting.
   const allDayBlocks =
-    raw.allDayBlocks === undefined ? true : raw.allDayBlocks !== 'false' && raw.allDayBlocks !== false;
+    raw.allDayBlocks === undefined
+      ? await loadAllDayBlocks()
+      : raw.allDayBlocks !== 'false' && raw.allDayBlocks !== false;
   const parsed: AppState = {
     goals: (raw.goals ?? []).map(sanitizeBackupGoal),
     habits: raw.habits ?? [],
