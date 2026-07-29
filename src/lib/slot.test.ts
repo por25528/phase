@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, BusyBlock } from '../db/types';
-import { durationOf, freeIntervals, DEFAULT_SLOT_MIN } from './slot';
+import { durationOf, freeIntervals, resolveSlot, DEFAULT_SLOT_MIN } from './slot';
 import type { Now } from './capacity';
 
 // 2026-07-15 is a Wednesday → dow 2.
@@ -87,5 +87,78 @@ describe('freeIntervals', () => {
   it('drops a gap that closes to zero width', () => {
     expect(freeIntervals(WED, WINDOWS, [busy(540, 700), busy(700, 1080)], [], EARLY, true))
       .toEqual([]);
+  });
+});
+
+describe('resolveSlot', () => {
+  function call(over: Partial<Parameters<typeof resolveSlot>[0]> = {}) {
+    return resolveSlot({
+      date: WED, aimMin: 540, durationMin: 60,
+      windows: WINDOWS, blocks: [], placed: [], now: EARLY, allDayBlocks: true,
+      ...over,
+    });
+  }
+
+  it('honours an aim that already sits in a free gap', () => {
+    expect(call({ aimMin: 720 })).toBe(720);
+  });
+
+  it('slides forward past a busy block to the first gap that fits', () => {
+    // aim 10:30 (630) lands inside a 10:00–11:30 lecture; 1h30 fits from 11:30.
+    expect(call({ aimMin: 630, durationMin: 90, blocks: [busy(600, 690)] })).toBe(690);
+  });
+
+  it('slides backward when the earlier gap is nearer than the later one', () => {
+    // gap A 09:00–10:00, lecture 10:00–15:00, gap B 15:00–18:00. Aim 09:50.
+    expect(call({ aimMin: 590, durationMin: 60, blocks: [busy(600, 900)] })).toBe(540);
+  });
+
+  it('clamps to the end of a gap rather than overflowing it', () => {
+    // gap 09:00–11:00, aim 10:45, duration 60 → latest legal start is 10:00.
+    expect(call({ aimMin: 645, durationMin: 60, blocks: [busy(660, 900)] })).toBe(600);
+  });
+
+  it('skips a gap too small and uses the next one that fits', () => {
+    // gaps: 09:00–09:30 (too small), 11:00–18:00.
+    expect(call({ aimMin: 540, durationMin: 60, blocks: [busy(570, 660)] })).toBe(660);
+  });
+
+  it('returns null when nothing fits anywhere in the day', () => {
+    expect(call({ durationMin: 600, blocks: [busy(600, 660)] })).toBeNull();
+  });
+
+  it('returns null for a day that is off', () => {
+    expect(call({ date: '2026-07-18' })).toBeNull(); // Saturday
+  });
+
+  it('returns null for a non-positive or non-finite duration', () => {
+    expect(call({ durationMin: 0 })).toBeNull();
+    expect(call({ durationMin: -30 })).toBeNull();
+    expect(call({ durationMin: Number.NaN })).toBeNull();
+  });
+
+  it('rounds the aim to the 5-minute grid before searching', () => {
+    expect(call({ aimMin: 722 })).toBe(720);
+    expect(call({ aimMin: 723 })).toBe(725);
+  });
+
+  it('lets a clamp to a gap edge win over the 5-minute grid', () => {
+    // lecture ends 10:47; aim 10:00; the gap before it is too small for 60m.
+    expect(call({ aimMin: 600, durationMin: 60, blocks: [busy(540, 647)] })).toBe(647);
+  });
+
+  it('will not schedule into hours that have already passed today', () => {
+    expect(call({ aimMin: 540, now: { date: WED, minute: 700 } })).toBe(700);
+  });
+
+  it('breaks an exact tie toward the earlier start', () => {
+    // Gaps 09:00–10:00 and 11:40–18:00. The first is exactly 60m long so its
+    // only legal start is 09:00; the second's earliest is 11:40. An aim of
+    // 10:20 sits 80m from each, so the earlier gap must win.
+    expect(call({ aimMin: 620, durationMin: 60, blocks: [busy(600, 700)] })).toBe(540);
+  });
+
+  it('treats already-placed work as occupied', () => {
+    expect(call({ aimMin: 540, placed: [{ startMin: 540, endMin: 600 }] })).toBe(600);
   });
 });

@@ -69,3 +69,52 @@ export function freeIntervals(
 
   return out.filter((i) => i.endMin > i.startMin);
 }
+
+export interface ResolveSlotInput {
+  date: string;
+  aimMin: number;        // where the user pointed, or where a migration starts looking
+  durationMin: number;
+  windows: AvailabilityWindow[];
+  blocks: BusyBlock[];
+  placed: PlacedSpan[];
+  now: Now;
+  allDayBlocks: boolean;
+}
+
+/**
+ * The start minute a block should take on `date`, or null if it does not fit.
+ *
+ * The aim is snapped to SLOT_GRANULARITY_MIN BEFORE the search; the winning
+ * candidate is then clamped inside its gap and returned as-is. A clamped result
+ * can therefore be off-grid — that is intended. Rounding after clamping would
+ * be a bug: rounding up can push the block past the end of the very gap that
+ * accepted it.
+ *
+ * Ties are broken toward the earlier start without an explicit tie-break
+ * clause: freeIntervals returns gaps ascending and disjoint, so candidate
+ * start times strictly increase as the loop proceeds. On an exact distance
+ * tie the earlier gap has therefore already won — a strict `<` comparison
+ * keeps it and lets the later, equally-distant candidate fail to displace it.
+ */
+export function resolveSlot(input: ResolveSlotInput): number | null {
+  const { date, durationMin, windows, blocks, placed, now, allDayBlocks } = input;
+  if (!Number.isFinite(durationMin) || durationMin <= 0) return null;
+
+  const aim = Math.round(input.aimMin / SLOT_GRANULARITY_MIN) * SLOT_GRANULARITY_MIN;
+  const gaps = freeIntervals(date, windows, blocks, placed, now, allDayBlocks);
+
+  let best: number | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const gap of gaps) {
+    if (gap.endMin - gap.startMin < durationMin) continue;
+    const candidate = Math.min(Math.max(aim, gap.startMin), gap.endMin - durationMin);
+    const distance = Math.abs(candidate - aim);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
+}
