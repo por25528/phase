@@ -3,6 +3,7 @@ import type { Interval } from '../../lib/capacity';
 import { assignLanes, type LaneSpan } from '../../lib/grid';
 import { scheduledOn } from '../../lib/scheduled';
 import { EventBlock, type GridBlock } from './EventBlock';
+import type { PlanDragData } from './dropTarget';
 
 /**
  * One layout-ready entry: geometry (`startMin`/`endMin`, for `assignLanes`)
@@ -33,7 +34,7 @@ interface DayItem extends LaneSpan {
  * currently unexercised. It still has to be correct when it lights up.
  */
 export function DayBlocks({
-  date, goals, tasks, blocks, range, allDayBlocks, onRemove,
+  date, goals, tasks, blocks, range, allDayBlocks, onRemove, onResize, gridHeightPx,
 }: {
   date: string;
   goals: Goal[];
@@ -42,6 +43,8 @@ export function DayBlocks({
   range: Interval;
   allDayBlocks: boolean;
   onRemove: (kind: 'step' | 'task', id: string, goalId: string | null) => void;
+  onResize: (kind: 'step' | 'task', id: string, minutes: number) => void;
+  gridHeightPx: number;
 }) {
   const work: DayItem[] = scheduledOn(goals, tasks, date).map((item) => ({
     key: `${item.kind}:${item.id}`,
@@ -100,6 +103,10 @@ export function DayBlocks({
           done: item.done,
           estimated: item.estimated,
         };
+        const isWork = item.kind !== 'busy' && item.id !== null;
+        const drag: PlanDragData | undefined = isWork
+          ? { kind: item.kind as 'step' | 'task', id: item.id!, goalId: item.goalId, title: item.title }
+          : undefined;
         return (
           <EventBlock
             key={item.key}
@@ -107,10 +114,13 @@ export function DayBlocks({
             lane={lane}
             laneCount={laneCount}
             range={range}
+            gridHeightPx={gridHeightPx}
+            drag={drag}
             onRemove={
-              item.kind === 'busy' || item.id === null
-                ? undefined
-                : () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId)
+              isWork ? () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId) : undefined
+            }
+            onResize={
+              isWork ? (minutes) => onResize(item.kind as 'step' | 'task', item.id!, minutes) : undefined
             }
           />
         );

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import type { AvailabilityWindow } from '../../db/types';
 import type { Interval } from '../../lib/capacity';
 import { minuteToPct } from '../../lib/grid';
@@ -23,12 +24,18 @@ export function DayColumn({
   range: Interval;
   children: ReactNode;
 }) {
+  // A day with no availability window refuses drops outright — the disabled
+  // droppable is what makes `over` null there, so nothing is ever scheduled
+  // onto a day off.
+  const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !availabilityWindow });
+
   return (
     <div
+      ref={setNodeRef}
       data-date={date}
       className={`relative min-w-0 overflow-hidden border-l border-line-soft ${
         availabilityWindow ? '' : 'bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgb(var(--c-hover))_4px,rgb(var(--c-hover))_8px)]'
-      } ${isToday ? 'bg-hover/40' : ''}`}
+      } ${isToday ? 'bg-hover/40' : ''} ${isOver && availabilityWindow ? 'bg-accent/5' : ''}`}
     >
       {/* hours outside the working window, dimmed */}
       {availabilityWindow && (
