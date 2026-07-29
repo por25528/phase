@@ -41,6 +41,25 @@ describe('visibleRange', () => {
     expect(visibleRange(WEEK, NINE_TO_SIX, [block('2026-08-01', 60, 120)]))
       .toEqual({ startMin: MIN_VISIBLE_START, endMin: MIN_VISIBLE_END });
   });
+
+  it('always returns a range at least as wide as the 08:00–20:00 floor', () => {
+    // WEEK (2026-07-13..19) covers dow 0-6, so a dow-6 window needs a dates
+    // array missing dow 6 to be "absent" — hence SIX rather than WEEK there.
+    const SIX = WEEK.slice(0, 6);
+    const cases: Array<[string, string[], AvailabilityWindow[], BusyBlock[]]> = [
+      ['empty week', WEEK, [], []],
+      ['no windows or blocks', WEEK, [], []],
+      ['windows only for absent days', SIX, [{ dow: 6, startMin: 600, endMin: 660 }], []],
+      ['blocks only on absent dates', WEEK, [], [block('2027-01-01', 600, 660)]],
+      ['a narrow midday window', WEEK, [{ dow: 2, startMin: 700, endMin: 720 }], []],
+      ['a genuinely empty dates array', [], [], []],
+    ];
+    for (const [label, dates, windows, blocks] of cases) {
+      const range = visibleRange(dates, windows, blocks);
+      expect(range.endMin - range.startMin, label).toBeGreaterThanOrEqual(MIN_VISIBLE_END - MIN_VISIBLE_START);
+      expect(range.endMin, label).toBeGreaterThan(range.startMin);
+    }
+  });
 });
 
 describe('minute ↔ percentage', () => {

@@ -51,17 +51,43 @@ export function visibleRange(
   return { startMin: floorToHour(startMin), endMin: ceilToHour(endMin) };
 }
 
-/** Vertical position of `minute` within `range`, as a percentage. */
+/**
+ * Vertical position of `minute` within `range`, as a percentage.
+ *
+ * Precondition: `range.endMin > range.startMin`. A zero-width range divides
+ * by zero, producing `Infinity`/`NaN` — which as a CSS percentage renders as
+ * nothing, a silent failure. This is not guarded against here: the only
+ * producer of `Interval` in this codebase is `visibleRange`, which always
+ * returns a positive-width range (it seeds at `MIN_VISIBLE_START`/
+ * `MIN_VISIBLE_END`, `MIN_VISIBLE_END > MIN_VISIBLE_START`, and every
+ * subsequent update only widens the range outward via `Math.min`/`Math.max`).
+ * A degenerate range reaching this function would mean a caller bug; a
+ * guard here would mask it instead of surfacing it.
+ */
 export function minuteToPct(minute: number, range: Interval): number {
   return ((minute - range.startMin) / (range.endMin - range.startMin)) * 100;
 }
 
-/** Inverse of `minuteToPct` — used to turn a drop position into a time. */
+/**
+ * Inverse of `minuteToPct` — used to turn a drop position into a time.
+ *
+ * Same precondition as `minuteToPct`: `range.endMin > range.startMin`, which
+ * always holds for ranges produced by `visibleRange` (see that function's
+ * doc comment for why).
+ */
 export function pctToMinute(pct: number, range: Interval): number {
   return range.startMin + (pct / 100) * (range.endMin - range.startMin);
 }
 
-/** Every whole hour the axis should label, inclusive of both ends. */
+/**
+ * Every whole hour the axis should label, inclusive of both ends.
+ *
+ * Precondition: `range.startMin` must be hour-aligned. This function starts
+ * its walk at `ceilToHour(range.startMin)`, so on an unaligned range the
+ * first mark would not equal the range start. The precondition holds for
+ * every range `visibleRange` returns, since it always floors `startMin` (and
+ * ceils `endMin`) to the hour before returning.
+ */
 export function hourMarks(range: Interval): number[] {
   const out: number[] = [];
   for (let m = ceilToHour(range.startMin); m <= range.endMin; m += MINUTES_PER_HOUR) out.push(m);
