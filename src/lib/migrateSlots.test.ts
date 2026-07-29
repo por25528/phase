@@ -65,7 +65,7 @@ describe('migrateSlots', () => {
     const g = goal([{ id: 'n1', title: 'Someday' }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
     expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Someday' });
-    expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
+    expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 });
   });
 
   it('places an open dated task', () => {
@@ -75,11 +75,15 @@ describe('migrateSlots', () => {
     expect(report.scheduledTasks).toBe(1);
   });
 
-  it('drops the date of a task that will not fit, sending it to the sidebar', () => {
+  it('keeps the date of a task that will not fit its day, only withholding startMin', () => {
     const t: Task = { id: 't1', title: 'Huge', date: WED, done: false, goalId: null, estimateMin: 600 };
     const { tasks, report } = migrateSlots([], [t], WINDOWS, true);
-    expect(tasks[0]).toEqual({ id: 't1', title: 'Huge', done: false, goalId: null, estimateMin: 600 });
-    expect(report.sidebarTasks).toBe(1);
+    // date is RETAINED — there is no task sidebar for a dateless task to land
+    // in, unlike a step, which has the backlog rail. Only startMin is withheld,
+    // which is legal backlog under the model (day without a start minute).
+    expect(tasks[0]).toEqual({ id: 't1', title: 'Huge', date: WED, done: false, goalId: null, estimateMin: 600 });
+    expect('startMin' in tasks[0]).toBe(false);
+    expect(report.unpinnedTasks).toBe(1);
   });
 
   it('schedules steps before tasks, so steps win the earlier slots', () => {
@@ -105,7 +109,7 @@ describe('migrateSlots', () => {
     const second = migrateSlots(first.goals, first.tasks, WINDOWS, true);
     expect(second.goals).toEqual(first.goals);
     expect(second.tasks).toEqual(first.tasks);
-    expect(second.report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
+    expect(second.report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 });
   });
 
   // Guards the span-registration branch: an item that ALREADY has both a day and
@@ -157,9 +161,9 @@ describe('migrateSlots', () => {
     const { tasks, report } = migrateSlots([], [already, fresh], WINDOWS, true);
 
     expect(tasks[0].startMin).toBe(540); // untouched
-    expect('date' in tasks[1]).toBe(false); // no room left in the 540..1080 window
+    expect(tasks[1].date).toBe(WED); // date is RETAINED — no room left in the 540..1080 window, but no sidebar to fall back to
     expect(tasks[1].startMin).toBeUndefined();
-    expect(report.sidebarTasks).toBe(1);
+    expect(report.unpinnedTasks).toBe(1);
     expect(report.scheduledTasks).toBe(0);
   });
 
@@ -215,7 +219,7 @@ describe('migrateSlots', () => {
       expect(goals[0].nodes[0]).toEqual(
         { id: 'n1', title: 'Leftover', plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540, estimateMin: 30 },
       );
-      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
+      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 });
     });
 
     it('returns an archived leaf that will not fit to the sidebar, uncounted', () => {
@@ -225,7 +229,7 @@ describe('migrateSlots', () => {
       );
       const { goals, report } = migrateSlots([g], [], WINDOWS, true);
       expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Huge', estimateMin: 600 });
-      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
+      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 });
     });
 
     it('does not let an archived leaf occupy a gap that a live commitment needs', () => {
@@ -258,7 +262,7 @@ describe('migrateSlots', () => {
       const { goals, report } = migrateSlots([g], [], WINDOWS, true);
       expect(goals[0].nodes[0].plannedStartMin).toBe(540); // untouched
       expect(goals[0].nodes[1].plannedStartMin).toBe(630); // stacks after the first's true end
-      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
+      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 });
     });
 
     it('leaves a done leaf on an archived project untouched', () => {
@@ -276,18 +280,26 @@ describe('migrateSlots', () => {
 
 describe('describeMigration', () => {
   it('returns null when nothing moved', () => {
-    expect(describeMigration({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 })).toBeNull();
+    expect(describeMigration({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 })).toBeNull();
   });
   it('reports placements and returns together', () => {
-    expect(describeMigration({ scheduledSteps: 2, scheduledTasks: 1, sidebarSteps: 1, sidebarTasks: 0 }))
+    expect(describeMigration({ scheduledSteps: 2, scheduledTasks: 1, sidebarSteps: 1, unpinnedTasks: 0 }))
       .toBe('3 items placed on the calendar · 1 returned to the sidebar');
   });
   it('uses the singular for one item', () => {
-    expect(describeMigration({ scheduledSteps: 1, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 }))
+    expect(describeMigration({ scheduledSteps: 1, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 }))
       .toBe('1 item placed on the calendar');
   });
   it('reports returns only, with no placed clause', () => {
-    expect(describeMigration({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 2, sidebarTasks: 1 }))
+    expect(describeMigration({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 3, unpinnedTasks: 0 }))
       .toBe('3 returned to the sidebar');
+  });
+  it('reports unpinned tasks with their own clause, distinct from sidebar returns', () => {
+    expect(describeMigration({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 1 }))
+      .toBe('1 task kept on its day, unscheduled');
+  });
+  it('reports all three clauses together when placements, returns, and unpins all occur', () => {
+    expect(describeMigration({ scheduledSteps: 1, scheduledTasks: 0, sidebarSteps: 1, unpinnedTasks: 2 }))
+      .toBe('1 item placed on the calendar · 1 returned to the sidebar · 2 tasks kept on their days, unscheduled');
   });
 });

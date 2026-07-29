@@ -155,8 +155,14 @@ describe('assignLanes', () => {
     expect(laid.every((l) => l.laneCount === 2)).toBe(true);
   });
 
-  it('returns an empty array unchanged', () => {
+  // A bare `return []` satisfies `assignLanes([])` on its own — that input can
+  // only ever produce `[]`, so no assertion on it alone can tell a real
+  // implementation apart from a stub. Pairing it with a real, non-empty call
+  // in the same test is what makes a stub actually fail this test.
+  it('returns an empty array for empty input, and still lays out real input correctly', () => {
     expect(assignLanes([])).toEqual([]);
+    expect(assignLanes([span('a', 540, 600)]))
+      .toEqual([{ item: span('a', 540, 600), lane: 0, laneCount: 1 }]);
   });
 
   it('reuses a lane at the exact touching boundary inside a live cluster', () => {

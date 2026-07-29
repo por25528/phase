@@ -836,13 +836,17 @@ export const actions = {
     withUndo(`Removed "${node.title}" from plan · Undo`, 'goals', goals);
   },
 
+  // The `×` on a task block unpins its TIME, not its day — clearing `date` too
+  // would remove the task from every view (Today, the old planner), since
+  // there is no task sidebar for a dateless task to land in. Keeping `date`
+  // and dropping only `startMin` is legal under the model (day without a
+  // start minute = backlog) and keeps the task visible and re-plannable.
   unscheduleTask(taskId: string): void {
     const task = state.tasks.find((t) => t.id === taskId);
-    if (!task || !task.date) return;
+    if (!task || !task.date || task.startMin === undefined) return;
     const tasks = state.tasks.map((t) => {
       if (t.id !== taskId) return t;
       const cleared = { ...t };
-      delete cleared.date;
       delete cleared.startMin;
       return cleared;
     });

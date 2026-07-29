@@ -57,6 +57,19 @@ describe('freeIntervals', () => {
     expect(freeIntervals(WED, WINDOWS, [busy(0, 1440, true)], [], EARLY, true)).toEqual([]);
   });
 
+  // The all-day-event test above does not discriminate the early return from
+  // plain interval subtraction: a 0..1440 block also subtracts the ENTIRE
+  // 540..1080 window down to [] on its own, so deleting the early return still
+  // passes it. This block's own startMin/endMin (0..100) sit entirely BEFORE
+  // the window and would be skipped by the subtraction loop's "entirely behind
+  // the cursor" branch, leaving the window untouched — [{540,1080}] — if the
+  // early return were gone. An all-day event must consume the WHOLE day
+  // regardless of its own timed span, so the early return is what makes this
+  // (correctly) return [] instead.
+  it('lets a nominally early all-day event still consume the entire day', () => {
+    expect(freeIntervals(WED, WINDOWS, [busy(0, 100, true)], [], EARLY, true)).toEqual([]);
+  });
+
   it('ignores an all-day event when the pref is off', () => {
     expect(freeIntervals(WED, WINDOWS, [busy(0, 1440, true)], [], EARLY, false))
       .toEqual([{ startMin: 540, endMin: 1080 }]);

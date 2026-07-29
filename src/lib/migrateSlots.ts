@@ -8,7 +8,7 @@ export interface MigrationReport {
   scheduledSteps: number;
   scheduledTasks: number;
   sidebarSteps: number;
-  sidebarTasks: number;
+  unpinnedTasks: number;
 }
 
 /** Clear every planning field a leaf or task carries, together. `plannedStartMin`
@@ -39,7 +39,7 @@ export function migrateSlots(
   allDayBlocks: boolean,
 ): { goals: Goal[]; tasks: Task[]; report: MigrationReport } {
   const report: MigrationReport = {
-    scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0,
+    scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0,
   };
   // Live and archived work are placed against SEPARATE occupancy maps. An
   // archived project's leaves must not compete with live work for a gap (a
@@ -131,15 +131,17 @@ export function migrateSlots(
     const duration = durationOf(t.estimateMin);
     const startMin = place(occupied, t.date, duration);
     if (startMin === null) {
-      const unscheduled = { ...t };
-      delete unscheduled.date;
-      // Defensive only: the `t.startMin !== undefined` guard above already
-      // returned before this branch whenever startMin was set, so it is always
-      // already absent here. Kept so this branch can never produce the
-      // date/startMin half-state even if that guard's shape changes later.
-      delete unscheduled.startMin;
-      report.sidebarTasks++;
-      return unscheduled;
+      // No room on its day: keep `date` — there is no task sidebar for a
+      // dateless task to land in (unlike a step, which has the backlog rail).
+      // Dropping `date` here made every Saturday/Sunday task, and any task on
+      // an oversubscribed weekday, silently unreachable in every view. Leaving
+      // `date` in place and only withholding `startMin` keeps the task legal
+      // under the model (day without a start minute = backlog) and visible in
+      // Today and the old planner; a later plan's sidebar can surface it.
+      const unpinned = { ...t };
+      delete unpinned.startMin;
+      report.unpinnedTasks++;
+      return unpinned;
     }
 
     spansFrom(occupied, t.date).push({ startMin, endMin: startMin + duration });
@@ -153,11 +155,19 @@ export function migrateSlots(
 /** One-line summary for the post-migration toast, or null if nothing moved. */
 export function describeMigration(report: MigrationReport): string | null {
   const placed = report.scheduledSteps + report.scheduledTasks;
-  const returned = report.sidebarSteps + report.sidebarTasks;
-  if (placed === 0 && returned === 0) return null;
+  const returned = report.sidebarSteps;
+  const unpinned = report.unpinnedTasks;
+  if (placed === 0 && returned === 0 && unpinned === 0) return null;
 
   const parts: string[] = [];
   if (placed > 0) parts.push(`${placed} item${placed === 1 ? '' : 's'} placed on the calendar`);
   if (returned > 0) parts.push(`${returned} returned to the sidebar`);
+  if (unpinned > 0) {
+    parts.push(
+      unpinned === 1
+        ? '1 task kept on its day, unscheduled'
+        : `${unpinned} tasks kept on their days, unscheduled`,
+    );
+  }
   return parts.join(' · ');
 }

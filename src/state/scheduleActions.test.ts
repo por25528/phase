@@ -72,6 +72,21 @@ describe('clampResize', () => {
     })).toBeNull(); // 05:00 is outside the 09:00–18:00 window
   });
 
+  // Pins the end-EXCLUSIVE gap-containment check: `find`'s predicate is
+  // `startMin >= g.startMin && startMin < g.endMin`. Without the strict `<`,
+  // a block whose startMin lands EXACTLY on a gap's endMin — i.e. right where
+  // the next busy block begins, not actually inside that earlier gap at all —
+  // would wrongly match the earlier gap and be allowed to "resize" from a
+  // position it doesn't actually occupy freely. Gaps here are 09:00–10:00 and
+  // 11:00–18:00 (a block occupies 10:00–11:00); startMin=660 (11:00) sits at
+  // the second gap's start, which is also exactly the first gap's endMin.
+  it('does not treat a block sitting at a gap\'s end as inside that (earlier) gap', () => {
+    expect(clampResize({
+      date: WED, startMin: 600, requestedMin: 60,
+      windows: WINDOWS, blocks: [], placed: [{ startMin: 600, endMin: 660 }], allDayBlocks: true,
+    })).toBeNull(); // 10:00 is exactly where the 09:00–10:00 gap ends — not inside it
+  });
+
   // The cap must win even when it undercuts the 5-minute floor: a gap that
   // small is still real free time, and returning the floor instead would hand
   // back a duration that overlaps the next block by 2 minutes.

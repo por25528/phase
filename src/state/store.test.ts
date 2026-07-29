@@ -725,6 +725,43 @@ describe('store actions', () => {
     });
   });
 
+  describe('unscheduleTask', () => {
+    // The `×` on a task block unpins its TIME only. Clearing `date` too would
+    // make the task unreachable everywhere: there is no task sidebar for a
+    // dateless task to land in (unlike unscheduleNode, whose leaf still shows
+    // up in the Plan backlog rail once its plan is cleared).
+    it('clears startMin but keeps date, with an undo window', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('leaf', '2026-07-15');
+      const tid = getState().tasks[0].id;
+      actions.scheduleTask(tid, '2026-07-15', 600);
+
+      actions.unscheduleTask(tid);
+
+      const cleared = getState().tasks[0];
+      expect(cleared.date).toBe('2026-07-15');
+      expect(cleared.startMin).toBeUndefined();
+      expect(getState().pendingUndo).not.toBeNull();
+
+      actions.undoLastDelete();
+      const restored = getState().tasks[0];
+      expect(restored.date).toBe('2026-07-15');
+      expect(restored.startMin).toBe(600);
+    });
+
+    it('is a no-op on a task that is not pinned to a time', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addTask('leaf', '2026-07-15');
+      const tid = getState().tasks[0].id;
+
+      actions.unscheduleTask(tid);
+
+      expect(getState().tasks[0].date).toBe('2026-07-15');
+      expect(getState().pendingUndo).toBeNull();
+    });
+  });
+
   describe('resizeNode / resizeTask', () => {
     // Both leaves sit on 2026-07-15 (Wed, 09:00-18:00 window). 'first' occupies
     // 540..600 (60min); 'second' immediately follows at 660..720 (60min).
