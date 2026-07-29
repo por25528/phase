@@ -125,4 +125,21 @@ describe('assignLanes', () => {
   it('returns an empty array unchanged', () => {
     expect(assignLanes([])).toEqual([]);
   });
+
+  it('reuses a lane at the exact touching boundary inside a live cluster', () => {
+    // b spans the whole cluster, so it stays open when c begins exactly where
+    // a ended. End-exclusive means a and c do NOT overlap, so c must take a's
+    // freed lane rather than opening a third one.
+    const laid = assignLanes([span('a', 540, 600), span('b', 550, 700), span('c', 600, 660)]);
+    expect(laid.map((l) => [l.item.id, l.lane])).toEqual([['a', 0], ['b', 1], ['c', 0]]);
+    expect(laid.every((l) => l.laneCount === 2)).toBe(true);
+  });
+
+  it('closes a cluster when the next block starts exactly where it ended', () => {
+    // a ends at 600 and b starts at 600 — a touch, not an overlap — so a is its
+    // own cluster at full width, and only b and c share a two-lane cluster.
+    const laid = assignLanes([span('a', 540, 600), span('b', 600, 660), span('c', 610, 700)]);
+    expect(laid.map((l) => [l.item.id, l.lane, l.laneCount]))
+      .toEqual([['a', 0, 1], ['b', 0, 2], ['c', 1, 2]]);
+  });
 });
