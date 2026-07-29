@@ -541,7 +541,7 @@ function DayZone({
               </span>
             ) : (
               capacityNote(capacity) && (
-                <span className="text-[.56rem] text-faint truncate">
+                <span className="text-[.56rem] text-faint truncate" title={capacityNote(capacity) ?? undefined}>
                   {capacityNote(capacity)}
                 </span>
               )

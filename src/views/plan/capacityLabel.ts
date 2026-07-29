@@ -38,6 +38,27 @@ export function capacityParts(c: CapacityFigures): string[] {
  * The honesty signal split out of the free figure: tells the user the free
  * number does not yet account for meetings, without suppressing the number
  * itself.
+ *
+ * `hasData` means "the cache covers this range" — it is NOT the same as "a
+ * calendar is connected". The two happen to coincide today only because
+ * slice 1 ships no calendar integration at all, which is the only reason the
+ * literal string 'calendar not connected' is accurate.
+ *
+ * Slice 2 breaks that coincidence: per the design spec §5.6, a provenance
+ * mismatch (account/calendar/timezone changed, or range not covered) and an
+ * expired/revoked refresh token both produce `hasData: false` while a
+ * calendar IS connected. At that point this string becomes a false
+ * statement. Slice 2 must derive this note from a richer state (e.g. an enum
+ * of "not connected" / "stale" / "provenance mismatch" / "reconnect needed")
+ * rather than the current boolean.
+ *
+ * Related trap at the call site (PlanWeekOverlay): the note is only shown
+ * when `blockedBy.length === 0` (`blockedBy.length > 0 ? blockedBy :
+ * capacityNote(...)`), which makes the caveat conditional on having no
+ * blocks. In slice 2 a partially-populated, stale, or provenance-mismatched
+ * cache can have `blockedBy` entries AND `hasData: false` simultaneously —
+ * exactly the state this caveat exists to surface — so that conditional
+ * would hide the note precisely when it matters most.
  */
 export function capacityNote(c: Pick<CapacityFigures, 'hasData'>): string | null {
   return c.hasData ? null : 'calendar not connected';

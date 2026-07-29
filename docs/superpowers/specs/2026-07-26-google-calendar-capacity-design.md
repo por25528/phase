@@ -298,7 +298,15 @@ current reality:
 - the range does not cover the days being rendered
 - the user disconnected
 
-A day outside the cached range renders as **"no data"**, never as "free".
+A day outside the cached range renders as **"no data"**, never as "free" —
+~~this line described the original design~~. **Amendment (slice 1):** the
+window-derived free figure is now always rendered, even when the cache does
+not cover the day. It comes from the availability windows the user typed, so
+it is a real number — just an upper bound until meetings are known — and
+suppressing it hid information the user already has. The "no data" caveat is
+no longer a replacement for the figure; it is surfaced alongside it via
+`capacityNote` (see `src/views/plan/capacityLabel.ts`). Slice 2 must not
+re-implement suppression of the free figure to regress this.
 
 ### 5.6 Degraded states
 

@@ -132,7 +132,12 @@ export interface DayCapacity {
   plannedMin: number;
   unestimated: number;
   blockedBy: string[]; // event titles, in start order, deduplicated
-  hasData: boolean;    // false ⇒ render "no data", never "free"
+  // Whether the cached calendar data covers this range — NOT whether a
+  // calendar is connected. The free figure is always rendered (it's derived
+  // from the availability windows the user typed, an upper bound until
+  // meetings are known); `hasData: false` no longer suppresses it. The
+  // caveat is surfaced separately via `capacityNote` (capacityLabel.ts).
+  hasData: boolean;
 }
 
 export interface WeekCapacity {
