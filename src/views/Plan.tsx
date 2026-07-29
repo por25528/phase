@@ -4,6 +4,7 @@ import {
   DragOverlay,
   PointerSensor,
   KeyboardSensor,
+  pointerWithin,
   useSensor,
   useSensors,
   useDraggable,
@@ -56,6 +57,10 @@ export function Plan() {
     setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
   }
 
+  function handleDragCancel() {
+    setDragTitle(null);
+  }
+
   function handleDragEnd(e: DragEndEvent) {
     setDragTitle(null);
     const data = e.active.data.current as PlanDragData | undefined;
@@ -63,13 +68,37 @@ export function Plan() {
     if (!data || !e.over || !overId?.startsWith('day:')) return;
     const date = overId.slice('day:'.length);
 
-    // The column's rect, live from the DOM at drop time — dnd-kit measures
-    // droppable rects when the drag begins, so a page scroll mid-drag would
-    // make e.over.rect stale. Fall back to it only if the element is gone.
-    const el = document.querySelector<HTMLElement>(`[data-date="${CSS.escape(date)}"]`);
-    const rect = el?.getBoundingClientRect() ?? e.over.rect;
-    const activator = e.activatorEvent as PointerEvent;
-    const aim = aimMinuteFor(activator.clientY + e.delta.y, rect.top, rect.height, range);
+    // e.over.rect is measured at drag START, and dnd-kit's e.delta is already
+    // scroll-adjusted (translate + any scroll since drag start) to pair with
+    // that same start-of-drag measurement. Re-reading the column's rect live
+    // from the DOM here would apply the scroll offset a second time — auto-scroll
+    // is on by default, so that drifts the aim by roughly a minute per pixel
+    // scrolled mid-drag. Do not "fix" this by swapping in a live rect.
+    const rect = e.over.rect;
+
+    // Keyboard activation has no pointer coordinates to aim with (`clientY` is
+    // undefined on a KeyboardEvent, and casting it to PointerEvent yields NaN,
+    // which used to make resolveSlot return null and lie with a "no room"
+    // toast on a day with plenty of room). Guard on finiteness, not on
+    // `instanceof`, since synthetic/cross-realm events make instanceof checks
+    // unreliable. When there's no pointer to read, aim at the start of the
+    // visible range instead, so the store snaps into the earliest gap that
+    // fits — the same semantic the data migration uses to place work.
+    const activatorClientY = (e.activatorEvent as Partial<PointerEvent>).clientY;
+    let aim: number;
+    if (!Number.isFinite(activatorClientY)) {
+      aim = range.startMin;
+    } else {
+      // The top edge of the thing being dragged — not the pointer — is the
+      // aim basis, so a block grabbed by its middle still lands where its
+      // ghost is shown, not offset by half its own height.
+      // `active.rect.current.initial` is measured at drag start, exactly like
+      // `e.over.rect`, so it pairs consistently with the scroll-adjusted
+      // `delta`.
+      const initialTop = e.active.rect.current.initial?.top ?? rect.top;
+      const draggedTop = initialTop + e.delta.y;
+      aim = aimMinuteFor(draggedTop, rect.top, rect.height, range);
+    }
 
     if (data.kind === 'task') actions.scheduleTask(data.id, date, aim);
     else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim);
@@ -84,7 +113,13 @@ export function Plan() {
     .filter((g) => g.leaves.length > 0);
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
       <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
         <div className="min-w-0">
           <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold mb-[8px]">
@@ -181,7 +216,7 @@ function BacklogRow({ goalId, nodeId, title }: { goalId: string; nodeId: string;
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`text-[.78rem] text-ink-soft truncate px-[6px] py-[4px] rounded-[6px] border border-line-2 bg-panel mt-[3px] cursor-grab ${
+      className={`text-[.78rem] text-ink-soft truncate px-[6px] py-[4px] rounded-[6px] border border-line-2 bg-panel mt-[3px] cursor-grab touch-none ${
         isDragging ? 'opacity-40' : ''
       }`}
     >
