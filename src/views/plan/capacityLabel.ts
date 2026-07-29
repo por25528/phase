@@ -21,21 +21,35 @@ export interface CapacityFigures {
  * Free / planned / unestimated as separate strings — never fused into one
  * number. A blended figure would read as authoritative while being partly
  * invented from work that carries no estimate (spec §4.4).
+ *
+ * The free figure is always rendered, even without calendar data: it is
+ * derived from the availability window the user typed, so it is a real
+ * number — just an upper bound until meetings are known. The "no calendar
+ * data" caveat lives separately, in `capacityNote`.
  */
 export function capacityParts(c: CapacityFigures): string[] {
-  const parts = [c.hasData ? `${formatMinutes(c.freeMin)} free` : 'no calendar data'];
+  const parts = [`${formatMinutes(c.freeMin)} free`];
   if (c.plannedMin > 0) parts.push(`${formatMinutes(c.plannedMin)} planned`);
   if (c.unestimated > 0) parts.push(`${c.unestimated} unestimated`);
   return parts;
 }
 
 /**
- * Only claimable with real calendar data. Without it, `freeMin` is a nominal
- * window figure, and calling that over-commitment would present a guess as a
- * fact.
+ * The honesty signal split out of the free figure: tells the user the free
+ * number does not yet account for meetings, without suppressing the number
+ * itself.
+ */
+export function capacityNote(c: Pick<CapacityFigures, 'hasData'>): string | null {
+  return c.hasData ? null : 'calendar not connected';
+}
+
+/**
+ * Planned exceeding free is over-commitment regardless of calendar data:
+ * without it, `freeMin` is an upper bound on availability, so this can only
+ * under-report over-commitment, never false-alarm.
  */
 export function isOverCommitted(
-  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'hasData'>,
+  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin'>,
 ): boolean {
-  return c.hasData && c.plannedMin > c.freeMin;
+  return c.plannedMin > c.freeMin;
 }

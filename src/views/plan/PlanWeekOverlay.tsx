@@ -35,7 +35,7 @@ import {
   type PlannerDragData,
 } from './planner';
 import { weekCapacity, type Now, type DayCapacity } from '../../lib/capacity';
-import { capacityParts, isOverCommitted } from './capacityLabel';
+import { capacityParts, capacityNote, isOverCommitted } from './capacityLabel';
 import { EstimateField } from './EstimateField';
 import { AvailabilitySettings } from '../../components/AvailabilitySettings';
 
@@ -402,7 +402,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
               <span className="text-[.78rem] text-muted tabular-nums">
                 {openCount} planned
               </span>
-              <span className="text-[.78rem] text-muted tabular-nums">
+              <span className={`text-[.78rem] tabular-nums ${isOverCommitted(capacity) ? 'text-warn' : 'text-muted'}`}>
                 {capacityParts(capacity).join(' · ')}
               </span>
               <span className="flex-1" />
@@ -532,13 +532,19 @@ function DayZone({
             <span className={`text-[.56rem] tabular-nums ${overCommitted ? 'text-warn' : 'text-faint'}`}>
               {capacityParts(capacity).join(' · ')}
             </span>
-            {capacity.blockedBy.length > 0 && (
+            {capacity.blockedBy.length > 0 ? (
               <span
                 className="text-[.56rem] text-faint truncate"
                 title={`blocked by: ${capacity.blockedBy.join(', ')}`}
               >
                 blocked by: {capacity.blockedBy.join(', ')}
               </span>
+            ) : (
+              capacityNote(capacity) && (
+                <span className="text-[.56rem] text-faint truncate">
+                  {capacityNote(capacity)}
+                </span>
+              )
             )}
           </div>
         )}
