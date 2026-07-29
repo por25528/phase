@@ -31,7 +31,7 @@ export interface PlannedLeaf {
   estimateMin?: number;
 }
 
-function walkLeaves(g: Goal, visit: (n: GoalNode) => void): void {
+export function walkLeaves(g: Goal, visit: (n: GoalNode) => void): void {
   function walk(nodes: GoalNode[]): void {
     for (const n of nodes) {
       if (n.children && n.children.length) walk(n.children);
