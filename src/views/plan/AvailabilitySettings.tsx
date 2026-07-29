@@ -1,6 +1,6 @@
-import type { AvailabilityWindow } from '../db/types';
-import { useAppStore } from '../state/store';
-import { minutesToTimeValue, timeValueToMinutes } from '../views/plan/timeInput';
+import type { AvailabilityWindow } from '../../db/types';
+import { useAppStore } from '../../state/store';
+import { minutesToTimeValue, timeValueToMinutes } from './timeInput';
 
 const DOW_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 

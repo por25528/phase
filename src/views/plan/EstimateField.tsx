@@ -2,9 +2,21 @@ import { useState, type KeyboardEvent } from 'react';
 import { parseEstimateInput, formatEstimateValue } from './estimateInput';
 
 /**
- * A one-keystroke estimate entry. Blur or Enter commits; Escape reverts.
+ * A one-keystroke estimate entry. Blur or Enter commits.
  * Unparseable input is rejected and the field reverts, so a typo can never
  * silently wipe an existing estimate.
+ *
+ * Escape does NOT just revert the draft in isolation: this field is always
+ * rendered inside the planner's <Modal>, and Modal registers its keydown
+ * listener on `window` in the CAPTURE phase (src/components/Modal.tsx).
+ * That capture-phase listener runs before this field's own (bubble-phase,
+ * React-synthetic) key handler ever fires, so pressing Escape here discards
+ * the draft AND closes the surrounding planner overlay in the same
+ * keystroke — there is no way for anything rendered below `window` to
+ * preempt it. This is not a regression specific to this field; the same is
+ * true of RailStep's break-into-tasks textarea in PlanWeekOverlay.tsx. A
+ * real fix (having Escape revert the draft without closing the modal)
+ * belongs in Modal.tsx, not here.
  *
  * Must be rendered OUTSIDE any element carrying @dnd-kit `listeners` —
  * see placement notes in PlanWeekOverlay.tsx.

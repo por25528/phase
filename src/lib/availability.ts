@@ -4,13 +4,18 @@ import { parseD } from './dates';
 export const MINUTES_PER_DAY = 1440;
 
 // Mon–Fri 09:00–18:00; Sat and Sun off (absent = off).
-export const DEFAULT_AVAILABILITY: AvailabilityWindow[] = [
-  { dow: 0, startMin: 540, endMin: 1080 },
-  { dow: 1, startMin: 540, endMin: 1080 },
-  { dow: 2, startMin: 540, endMin: 1080 },
-  { dow: 3, startMin: 540, endMin: 1080 },
-  { dow: 4, startMin: 540, endMin: 1080 },
-];
+// Frozen (array and each window) because this same array/object identity is
+// both the store's initial `availability` value and the fallback every
+// `parseAvailability` call returns — nothing mutates it today, but an
+// in-place sort or edit of `state.availability` down the line would
+// otherwise corrupt this constant for the rest of the process.
+export const DEFAULT_AVAILABILITY: AvailabilityWindow[] = Object.freeze([
+  Object.freeze({ dow: 0, startMin: 540, endMin: 1080 }),
+  Object.freeze({ dow: 1, startMin: 540, endMin: 1080 }),
+  Object.freeze({ dow: 2, startMin: 540, endMin: 1080 }),
+  Object.freeze({ dow: 3, startMin: 540, endMin: 1080 }),
+  Object.freeze({ dow: 4, startMin: 540, endMin: 1080 }),
+]) as AvailabilityWindow[];
 
 function isWindow(v: unknown): v is AvailabilityWindow {
   if (typeof v !== 'object' || v === null) return false;

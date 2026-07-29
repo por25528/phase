@@ -37,7 +37,7 @@ import {
 import { weekCapacity, type Now, type DayCapacity } from '../../lib/capacity';
 import { capacityParts, capacityNote, isOverCommitted } from './capacityLabel';
 import { EstimateField } from './EstimateField';
-import { AvailabilitySettings } from '../../components/AvailabilitySettings';
+import { AvailabilitySettings } from './AvailabilitySettings';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
