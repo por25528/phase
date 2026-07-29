@@ -93,3 +93,63 @@ export function hourMarks(range: Interval): number[] {
   for (let m = ceilToHour(range.startMin); m <= range.endMin; m += MINUTES_PER_HOUR) out.push(m);
   return out;
 }
+
+export interface LaneSpan {
+  startMin: number;
+  endMin: number;
+}
+
+export interface Laid<T> {
+  item: T;
+  lane: number;      // 0-based column within its cluster
+  laneCount: number; // how many columns that cluster needs
+}
+
+/**
+ * Pack overlapping spans into side-by-side lanes, Google-Calendar style.
+ *
+ * `laneCount` is scoped to the CLUSTER — a maximal run of spans connected by
+ * overlap — rather than to the day, so one 09:00 conflict does not halve the
+ * width of an unrelated 16:00 block.
+ *
+ * Ends are exclusive: 09:00–10:00 and 10:00–11:00 do not overlap.
+ *
+ * Returns entries in start order (ties broken by end order), not input order
+ * — the function sorts internally, so callers must not assume the input
+ * order is preserved.
+ */
+export function assignLanes<T extends LaneSpan>(items: T[]): Laid<T>[] {
+  const sorted = [...items].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+  const out: Laid<T>[] = [];
+
+  let cluster: Laid<T>[] = [];
+  let laneEnds: number[] = []; // laneEnds[i] = when lane i next becomes free
+  let clusterEnd = -Infinity;
+
+  function closeCluster() {
+    const laneCount = laneEnds.length;
+    for (const entry of cluster) out.push({ ...entry, laneCount });
+    cluster = [];
+    laneEnds = [];
+    clusterEnd = -Infinity;
+  }
+
+  for (const item of sorted) {
+    if (item.startMin >= clusterEnd) closeCluster();
+
+    let lane = laneEnds.findIndex((end) => end <= item.startMin);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(item.endMin);
+    } else {
+      laneEnds[lane] = item.endMin;
+    }
+
+    // laneCount is filled in by closeCluster once the cluster's true width is known.
+    cluster.push({ item, lane, laneCount: 0 });
+    clusterEnd = Math.max(clusterEnd, item.endMin);
+  }
+  closeCluster();
+
+  return out;
+}

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, BusyBlock } from '../db/types';
 import {
-  visibleRange, minuteToPct, pctToMinute, hourMarks,
+  visibleRange, minuteToPct, pctToMinute, hourMarks, assignLanes,
   MIN_VISIBLE_START, MIN_VISIBLE_END,
 } from './grid';
 
@@ -87,5 +87,42 @@ describe('minute ↔ percentage', () => {
 describe('hourMarks', () => {
   it('lists every whole hour from the range start to its end', () => {
     expect(hourMarks({ startMin: 480, endMin: 720 })).toEqual([480, 540, 600, 660, 720]);
+  });
+});
+
+describe('assignLanes', () => {
+  const span = (id: string, startMin: number, endMin: number) => ({ id, startMin, endMin });
+
+  it('gives a lone block the full width', () => {
+    expect(assignLanes([span('a', 540, 600)]))
+      .toEqual([{ item: span('a', 540, 600), lane: 0, laneCount: 1 }]);
+  });
+
+  it('puts two overlapping blocks in adjacent lanes', () => {
+    const laid = assignLanes([span('a', 540, 660), span('b', 600, 720)]);
+    expect(laid.map((l) => [l.item.id, l.lane, l.laneCount]))
+      .toEqual([['a', 0, 2], ['b', 1, 2]]);
+  });
+
+  it('keeps touching-but-not-overlapping blocks in one lane', () => {
+    // end is EXCLUSIVE, so 600–660 does not overlap 540–600.
+    const laid = assignLanes([span('a', 540, 600), span('b', 600, 660)]);
+    expect(laid.map((l) => [l.lane, l.laneCount])).toEqual([[0, 1], [0, 1]]);
+  });
+
+  it('scopes laneCount to the cluster, not the whole day', () => {
+    const laid = assignLanes([span('a', 540, 660), span('b', 600, 720), span('c', 900, 960)]);
+    expect(laid.map((l) => [l.item.id, l.lane, l.laneCount]))
+      .toEqual([['a', 0, 2], ['b', 1, 2], ['c', 0, 1]]);
+  });
+
+  it('reuses a lane freed by an earlier block in the same cluster', () => {
+    const laid = assignLanes([span('a', 540, 600), span('b', 550, 700), span('c', 610, 660)]);
+    expect(laid.map((l) => [l.item.id, l.lane])).toEqual([['a', 0], ['b', 1], ['c', 0]]);
+    expect(laid.every((l) => l.laneCount === 2)).toBe(true);
+  });
+
+  it('returns an empty array unchanged', () => {
+    expect(assignLanes([])).toEqual([]);
   });
 });
