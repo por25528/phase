@@ -3,6 +3,7 @@ import { useAppStore, initStore } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
+import { Plan } from './views/Plan';
 import { GoalDrawer } from './components/GoalDrawer';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
@@ -114,6 +115,7 @@ export function App() {
       if (command === 'view-today') actions.setView('today');
       if (command === 'view-goals') actions.setView('goals');
       if (command === 'view-timeline') actions.setView('timeline');
+      if (command === 'view-plan') actions.setView('plan');
       if (command === 'open-plan') actions.openPlan();
       if (command === 'go-today') {
         actions.setView('today');
@@ -137,10 +139,11 @@ export function App() {
             Phase<span className="text-accent">.</span>
           </span>
         </div>
-        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · 4 plan week · T today · ⌘N add task · ? shortcuts · Esc closes">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · 5 plan · 4 old planner · T today · ⌘N add task · ? shortcuts · Esc closes">
           {(
             [
               ['today', 'Today'],
+              ['plan', 'Plan'],
               ['goals', 'Goals'],
               ['timeline', 'Timeline'],
             ] as const
@@ -162,10 +165,10 @@ export function App() {
             type="button"
             onClick={() => actions.openPlan()}
             aria-haspopup="dialog"
-            title="Plan your week (4)"
-            className="px-[14px] py-[6px] rounded-full text-[.86rem] font-medium text-ink-soft border border-line-2 hover:bg-hover hover:text-ink"
+            title="Old planner (4)"
+            className="px-[14px] py-[6px] rounded-full text-[.86rem] font-medium text-muted border border-line-2 hover:bg-hover hover:text-ink"
           >
-            Plan week
+            Old planner
             {reviewWaiting && <span className="text-accent"> · review</span>}
           </button>
         </nav>
@@ -246,6 +249,10 @@ export function App() {
         ) : hydration === 'loading' ? null : view === 'today' ? (
           <div className="max-w-[1280px] mx-auto px-[16px] sm:px-[36px] pb-[40px]">
             <Today />
+          </div>
+        ) : view === 'plan' ? (
+          <div className="w-full px-[16px] sm:px-[36px] py-[24px]">
+            <Plan />
           </div>
         ) : view === 'timeline' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[32px]">

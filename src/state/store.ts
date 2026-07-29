@@ -39,7 +39,7 @@ import {
   cloneGoals,
 } from '../lib/tree';
 
-export type ViewName = 'today' | 'goals' | 'timeline';
+export type ViewName = 'today' | 'goals' | 'timeline' | 'plan';
 
 interface UIState {
   view: ViewName;
