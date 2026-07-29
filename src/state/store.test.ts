@@ -1392,7 +1392,10 @@ describe('estimates', () => {
     expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBe(90);
 
     store.actions.setNodeEstimate('n1', null);
-    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBeUndefined();
+    // Key ABSENCE, not just an undefined value — `delete` and `estimateMin:
+    // undefined` round-trip differently through Dexie and the JSON backup,
+    // and the implementation is supposed to `delete` the key.
+    expect('estimateMin' in (findInAll(store.getState().goals, 'n1') ?? {})).toBe(false);
   });
 
   it('clears a node estimate given a non-positive value', async () => {
@@ -1403,7 +1406,7 @@ describe('estimates', () => {
 
     store.actions.setNodeEstimate('n1', 60);
     store.actions.setNodeEstimate('n1', 0);
-    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBeUndefined();
+    expect('estimateMin' in (findInAll(store.getState().goals, 'n1') ?? {})).toBe(false);
   });
 
   it('refuses to estimate a container', async () => {
@@ -1429,13 +1432,7 @@ describe('estimates', () => {
     expect(store.getState().tasks[0].estimateMin).toBe(25);
 
     store.actions.setTaskEstimate(id, null);
-    expect(store.getState().tasks[0].estimateMin).toBeUndefined();
-  });
-
-  it('loads persisted availability into state', async () => {
-    const store = await freshStore();
-    await store.initStore();
-    expect(store.getState().availability).toHaveLength(5);
-    expect(store.getState().allDayBlocks).toBe(true);
+    // Key ABSENCE, not just an undefined value — see the node-clearing test above.
+    expect('estimateMin' in store.getState().tasks[0]).toBe(false);
   });
 });

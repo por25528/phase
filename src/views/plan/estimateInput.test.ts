@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseEstimateInput } from './estimateInput';
+import { parseEstimateInput, formatEstimateValue } from './estimateInput';
 
 describe('parseEstimateInput', () => {
   it.each([
@@ -55,4 +55,13 @@ describe('parseEstimateInput', () => {
   ])('parses %s as %s (24h cap)', (input, expected) => {
     expect(parseEstimateInput(input)).toBe(expected);
   });
+});
+
+describe('formatEstimateValue / parseEstimateInput round trip', () => {
+  it.each(Array.from({ length: 1440 }, (_, i) => i + 1))(
+    'round-trips %i minutes through formatEstimateValue → parseEstimateInput',
+    (minutes) => {
+      expect(parseEstimateInput(formatEstimateValue(minutes))).toBe(minutes);
+    },
+  );
 });

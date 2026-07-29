@@ -301,14 +301,31 @@ describe('weekCapacity', () => {
   });
 
   it('does not mutate the caller-owned blocks array', () => {
+    // The two later TUE blocks overlap (600-660 and 630-720) so
+    // mergeIntervals's sorted pass actually walks the
+    // `last.endMin = Math.max(...)` branch. If it ever regressed from
+    // `out.push({ startMin, endMin })` (a fresh copy) to `out.push(cur)` (the
+    // caller's own object) and then mutated it in place, a `snapshot` built
+    // from `[...blocks]` — which holds the SAME object references as
+    // `blocks` — would be corrupted right along with it, so `.toEqual` and
+    // `.toBe` against that snapshot would still pass. `structuredClone`
+    // keeps an independent, unmutated copy so the comparison actually means
+    // something; the original references are kept separately to still catch
+    // reordering.
     const blocks = [
       block(TUE, 900, 960, 'b'),
       block(TUE, 600, 660, 'a'),
+      block(TUE, 630, 720, 'c'),
     ];
-    const snapshot = [...blocks];
+    const originalRefs = [...blocks];
+    const snapshot = structuredClone(blocks);
     weekCapacity({ ...base, blocks });
     expect(blocks).toEqual(snapshot);
-    expect(blocks[0]).toBe(snapshot[0]);
-    expect(blocks[1]).toBe(snapshot[1]);
+    expect(blocks[0]).toBe(originalRefs[0]);
+    expect(blocks[1]).toBe(originalRefs[1]);
+    expect(blocks[2]).toBe(originalRefs[2]);
+    // Explicit field-level check: the regression above would widen this
+    // block's endMin in place (600-660 merged with 630-720 → endMin 720).
+    expect(blocks[1].endMin).toBe(660);
   });
 });
