@@ -133,12 +133,19 @@ export async function isSlotMigrationDone(): Promise<boolean> {
  * re-entry the goals/tasks handed in here would already be migrated, so an
  * unconditional `put` would overwrite the only original copy with a copy of
  * already-rewritten data. Reading first and returning early if a snapshot
- * already exists makes that impossible.
+ * already exists makes that impossible — PROVIDED the check and the write
+ * are atomic. The tab-lock gate makes two contexts both believing they own
+ * the lock unlikely but not unreachable (acquireTabLock degrades to "owned"
+ * when navigator.locks is absent or errors), so the get-then-put runs inside
+ * a single rw transaction rather than as two independent calls a second
+ * writer could interleave with.
  */
 export async function saveSlotMigrationSnapshot(goals: Goal[], tasks: Task[]): Promise<void> {
-  const existing = await db.settings.get(SLOT_SNAPSHOT_KEY);
-  if (existing) return;
-  await db.settings.put({ key: SLOT_SNAPSHOT_KEY, value: JSON.stringify({ goals, tasks }) });
+  await db.transaction('rw', db.settings, async () => {
+    const existing = await db.settings.get(SLOT_SNAPSHOT_KEY);
+    if (existing) return;
+    await db.settings.put({ key: SLOT_SNAPSHOT_KEY, value: JSON.stringify({ goals, tasks }) });
+  });
 }
 
 export async function markSlotMigrationDone(): Promise<void> {

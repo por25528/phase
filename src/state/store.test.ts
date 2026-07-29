@@ -993,6 +993,37 @@ describe('store actions', () => {
         expect(dbMod.markSlotMigrationDone).not.toHaveBeenCalled();
       });
 
+      // markSlotMigrationDone is wrapped in its OWN try/catch, separate from
+      // the outer one above: the data is already persisted and correct at
+      // that point, and migrateSlots is idempotent, so a failure to record
+      // the flag must not fail hydration — it only costs a harmless re-run
+      // next launch. Uses real, non-empty data so we can also confirm the
+      // migrated node (not the pre-migration original) reached the store
+      // despite the flag write rejecting.
+      it('does not fail hydration when markSlotMigrationDone rejects, and keeps the migrated data', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(dbMod.loadState).mockResolvedValueOnce({
+          goals: [{
+            id: 'g1', title: 'Real goal', column: 0,
+            nodes: [{
+              id: 'leaf1', title: 'Real leaf', done: false,
+              plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
+            }],
+          }],
+          habits: [], tasks: [], sessions: [],
+        });
+        vi.mocked(dbMod.markSlotMigrationDone).mockRejectedValueOnce(new Error('flag write failed'));
+
+        await store.initStore();
+
+        expect(store.getState().hydration).toBe('ready');
+        const node = store.getState().goals[0].nodes[0];
+        expect(node.plannedStartMin).toBe(540);
+        expect(node.plannedDay).toBe('2026-07-15');
+      });
+
       // Real, non-empty data — an open leaf committed to a day but never given
       // a clock time — so the object handed to `persist` and the resulting
       // store state both must carry the MIGRATED node. A stub that swaps in
@@ -1068,9 +1099,17 @@ describe('store actions', () => {
         vi.mocked(dbMod.loadState).mockResolvedValueOnce({
           goals: [], habits: [], tasks: [], sessions: [],
         });
+        // Assert on the mechanism, not just the resulting state: `toast` is
+        // already null before initStore runs, so replacing the
+        // `if (migrationToast) actions.showToast(migrationToast)` guard with
+        // an unconditional call would pass a state-only assertion here too
+        // (showToast(null) writes the same null the state already holds).
+        // Spying on showToast itself catches that mutation.
+        const showToastSpy = vi.spyOn(store.actions, 'showToast');
 
         await store.initStore();
 
+        expect(showToastSpy).not.toHaveBeenCalled();
         expect(store.getState().toast).toBeNull();
       });
     });
@@ -1087,8 +1126,12 @@ describe('store actions', () => {
       });
 
       afterEach(async () => {
-        // Drain any Once value queued below that the gate's short-circuit
-        // left unconsumed, so it can never leak into a later, unrelated test.
+        // Resets the fallback resolved value back to the safe default (done).
+        // mockResolvedValue replaces the persistent fallback, not a queued
+        // mockResolvedValueOnce — this describe block never queues a
+        // mockResolvedValueOnce for isSlotMigrationDone, so there is nothing
+        // to drain here. This just guards against a later test seeing the
+        // `false` fallback that "a non-owning tab..." leaves behind.
         const dbMod = await import('../db/db');
         vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValue(true);
       });
