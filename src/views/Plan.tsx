@@ -4,6 +4,7 @@ import { todayStr, addDays, weekDates } from '../lib/dates';
 import { weekOf, attentionRank, unplannedOpenLeaves } from '../lib/plan';
 import { visibleRange } from '../lib/grid';
 import { WeekGrid } from './plan/WeekGrid';
+import { DayBlocks } from './plan/DayBlocks';
 
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
@@ -12,10 +13,11 @@ import { WeekGrid } from './plan/WeekGrid';
  * accordion. It exists so there is something to drag from.
  */
 export function Plan() {
-  const { goals, hydration, availability } = useAppStore();
+  const { goals, tasks, hydration, availability, allDayBlocks } = useAppStore();
   const today = todayStr();
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
   const days = weekDates(weekStart);
+  const range = visibleRange(days, availability, []);
 
   // Re-render each minute so the now-line moves.
   const [nowMinute, setNowMinute] = useState(() => {
@@ -92,9 +94,22 @@ export function Plan() {
           today={today}
           nowMinute={nowMinute}
           windows={availability}
-          range={visibleRange(days, availability, [])}
+          range={range}
         >
-          {() => null}
+          {(date) => (
+            <DayBlocks
+              date={date}
+              goals={goals}
+              tasks={tasks}
+              blocks={[]}
+              range={range}
+              allDayBlocks={allDayBlocks}
+              onRemove={(kind, id, goalId) => {
+                if (kind === 'task') actions.unscheduleTask(id);
+                else if (goalId) actions.unscheduleNode(goalId, id);
+              }}
+            />
+          )}
         </WeekGrid>
       </div>
     </div>
