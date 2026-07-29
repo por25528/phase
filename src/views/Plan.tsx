@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { useAppStore } from '../state/store';
+import { useState, useEffect } from 'react';
+import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates } from '../lib/dates';
 import { weekOf, attentionRank, unplannedOpenLeaves } from '../lib/plan';
+import { visibleRange } from '../lib/grid';
+import { WeekGrid } from './plan/WeekGrid';
 
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
@@ -10,10 +12,23 @@ import { weekOf, attentionRank, unplannedOpenLeaves } from '../lib/plan';
  * accordion. It exists so there is something to drag from.
  */
 export function Plan() {
-  const { goals, hydration } = useAppStore();
+  const { goals, hydration, availability } = useAppStore();
   const today = todayStr();
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
   const days = weekDates(weekStart);
+
+  // Re-render each minute so the now-line moves.
+  const [nowMinute, setNowMinute] = useState(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  });
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date();
+      setNowMinute(d.getHours() * 60 + d.getMinutes());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   if (hydration !== 'ready') {
     return <div className="text-muted text-[.85rem] py-[40px]">Loading…</div>;
@@ -58,7 +73,30 @@ export function Plan() {
           <button type="button" onClick={() => setWeekStart(weekOf(today))} className="text-[.72rem] text-muted hover:text-ink">today</button>
           <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="text-muted hover:text-ink px-[6px]">›</button>
         </div>
-        <div className="text-faint text-[.8rem]">{days[0]} – {days[6]}</div>
+
+        {availability.length === 0 && (
+          <div className="mb-[10px] px-[10px] py-[8px] rounded-[9px] border border-line-2 bg-panel text-[.82rem] text-ink-soft">
+            No working hours set — every day is off, so nothing can be scheduled.{' '}
+            <button
+              type="button"
+              onClick={() => actions.openPlan()}
+              className="font-semibold text-accent hover:text-accent-deep"
+            >
+              Set your availability
+            </button>
+          </div>
+        )}
+
+        <WeekGrid
+          days={days}
+          today={today}
+          nowMinute={nowMinute}
+          windows={availability}
+          blocks={[]}
+          range={visibleRange(days, availability, [])}
+        >
+          {() => null}
+        </WeekGrid>
       </div>
     </div>
   );
