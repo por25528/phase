@@ -1371,6 +1371,7 @@ describe('store actions', () => {
     });
 
     it('freezes structural edits on a completed project but allows metadata and moves', async () => {
+      vi.setSystemTime(new Date(2026, 6, 13, 8)); // Mon 2026-07-13, before the 09:00 window opens
       const { actions, getState } = await freshStore();
       actions.addGoal('A');
       const gid = getState().goals[0].id;

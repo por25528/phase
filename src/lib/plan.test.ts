@@ -619,6 +619,13 @@ describe('unplannedOpenLeaves', () => {
     ]});
     expect(unplannedOpenLeaves(g, WEEK)).toEqual([]);
   });
+
+  it('a leaf with a plannedDay but no plannedStartMin is backlog, not invisible', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: WEEK, plannedDay: '2026-07-14' },
+    ]});
+    expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual(['a']);
+  });
 });
 
 describe('railTree', () => {
@@ -664,6 +671,13 @@ describe('railTree', () => {
       { id: 'a', title: 'A', done: true, plannedWeek: WEEK },
     ]});
     expect(railTree(g, WEEK)).toEqual([]);
+  });
+
+  it('a leaf with a plannedDay but no plannedStartMin is backlog, not invisible', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: WEEK, plannedDay: '2026-07-14' },
+    ]});
+    expect(railTree(g, WEEK).map((n) => n.id)).toEqual(['a']);
   });
 
   it('keeps containers as sub-headings with their open leaves nested', () => {
