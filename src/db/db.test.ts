@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   db, persist, importStateFromFile, loadState,
   loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
+  isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
 } from './db';
 import type { AppState, Goal } from './types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
@@ -217,5 +218,29 @@ describe('availability', () => {
     expect(await loadAllDayBlocks()).toBe(true);
     await saveAllDayBlocks(false);
     expect(await loadAllDayBlocks()).toBe(false);
+  });
+});
+
+describe('slot migration flag and snapshot', () => {
+  it('isSlotMigrationDone is false initially and true after markSlotMigrationDone', async () => {
+    expect(await isSlotMigrationDone()).toBe(false);
+    await markSlotMigrationDone();
+    expect(await isSlotMigrationDone()).toBe(true);
+  });
+
+  // Direct test of Finding 1: the snapshot is the sole record of pre-migration
+  // state. A second call — e.g. a re-entry after a crash between persist and
+  // markSlotMigrationDone, where the data is already migrated — must never
+  // overwrite the first, original copy.
+  it('a second saveSlotMigrationSnapshot call does not overwrite the first', async () => {
+    const originalGoal = goal('original');
+    const migratedGoal = goal('migrated-should-not-land');
+    await saveSlotMigrationSnapshot([originalGoal], []);
+
+    await saveSlotMigrationSnapshot([migratedGoal], []);
+
+    const row = await db.settings.get('preSlotMigrationSnapshot');
+    const stored = JSON.parse(row!.value);
+    expect(stored.goals).toEqual([originalGoal]);
   });
 });

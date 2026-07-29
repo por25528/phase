@@ -125,8 +125,19 @@ export async function isSlotMigrationDone(): Promise<boolean> {
  * Pre-migration copy of the two tables the migration rewrites. Kept in the
  * settings table rather than downloaded, so the safety net costs the user no
  * interaction on first launch.
+ *
+ * Write-once: this row is the SOLE record of the user's pre-migration
+ * scheduling. The caller re-enters this block whenever the done-flag reads
+ * false, including after a crash or a failed settings write that lands
+ * between a successful migration and `markSlotMigrationDone`. On such a
+ * re-entry the goals/tasks handed in here would already be migrated, so an
+ * unconditional `put` would overwrite the only original copy with a copy of
+ * already-rewritten data. Reading first and returning early if a snapshot
+ * already exists makes that impossible.
  */
 export async function saveSlotMigrationSnapshot(goals: Goal[], tasks: Task[]): Promise<void> {
+  const existing = await db.settings.get(SLOT_SNAPSHOT_KEY);
+  if (existing) return;
   await db.settings.put({ key: SLOT_SNAPSHOT_KEY, value: JSON.stringify({ goals, tasks }) });
 }
 

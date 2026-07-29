@@ -142,7 +142,12 @@ function collectContainers(goals: Goal[]): Set<string> {
 export async function initStore(): Promise<void> {
   if (initialized) return;
   initialized = true;
-  void acquireTabLock().then((owned) => {
+  // Capture the promise once so the migration block below can await actual
+  // ownership. Phase assumes a single writer: a tab that lost the lock must
+  // still load and render normally, it just must never re-run the migration
+  // (or any other write) alongside the owning tab.
+  const tabLock = acquireTabLock();
+  void tabLock.then((owned) => {
     if (!owned) set({ secondTab: true });
   });
   try {
@@ -153,15 +158,24 @@ export async function initStore(): Promise<void> {
     // One-shot: give every day-committed step and task a real start minute.
     // Snapshot BEFORE, mark done only AFTER a successful persist — a failure
     // here leaves the flag unset so the next launch retries cleanly rather
-    // than stranding half-rewritten data behind a "done" marker.
+    // than stranding half-rewritten data behind a "done" marker. Gated on
+    // actually owning the tab lock — a non-owning tab must never write.
     let migrated = appState;
     let migrationToast: string | null = null;
-    if (!(await isSlotMigrationDone())) {
+    if ((await tabLock) && !(await isSlotMigrationDone())) {
       await saveSlotMigrationSnapshot(appState.goals, appState.tasks);
       const result = migrateSlots(appState.goals, appState.tasks, availability, allDayBlocks);
       migrated = { ...appState, goals: result.goals, tasks: result.tasks };
       await persist(migrated);
-      await markSlotMigrationDone();
+      // A failure to record the flag is non-fatal: the data above is already
+      // correct and persisted, and migrateSlots is idempotent — the only
+      // cost of losing this write is that the next launch re-runs the
+      // (harmless) migration. Only `persist` failing should fail hydration.
+      try {
+        await markSlotMigrationDone();
+      } catch {
+        // swallowed intentionally — see comment above
+      }
       migrationToast = describeMigration(result.report);
     }
 

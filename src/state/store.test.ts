@@ -29,6 +29,12 @@ const dbMocks = vi.hoisted(() => ({
 
 vi.mock('../db/db', () => dbMocks);
 
+const tabLockMocks = vi.hoisted(() => ({
+  acquireTabLock: vi.fn(async () => true),
+}));
+
+vi.mock('../lib/tabLock', () => tabLockMocks);
+
 async function freshStore() {
   vi.resetModules();
   return await import('./store');
@@ -927,6 +933,9 @@ describe('store actions', () => {
         const dbMod = await import('../db/db');
         vi.mocked(dbMod.saveSlotMigrationSnapshot).mockClear();
         vi.mocked(dbMod.markSlotMigrationDone).mockClear();
+        vi.mocked(dbMod.persist).mockClear();
+        vi.mocked(dbMod.isSlotMigrationDone).mockClear();
+        vi.mocked(dbMod.loadState).mockClear();
       });
 
       it('skips snapshot/persist/mark-done entirely once already done', async () => {
@@ -982,6 +991,141 @@ describe('store actions', () => {
         expect(store.getState().hydration).toBe('error');
         expect(dbMod.saveSlotMigrationSnapshot).toHaveBeenCalled();
         expect(dbMod.markSlotMigrationDone).not.toHaveBeenCalled();
+      });
+
+      // Real, non-empty data — an open leaf committed to a day but never given
+      // a clock time — so the object handed to `persist` and the resulting
+      // store state both must carry the MIGRATED node. A stub that swaps in
+      // `appState` instead of `migrated` anywhere along the chain would leave
+      // `plannedStartMin` absent and this test would catch it.
+      //
+      // Expected minute derived from the real implementation, not guessed:
+      // '2026-07-15' is a Wednesday (dow 2), whose mocked availability window
+      // is [540, 1080) with nothing else occupying the day. `migrateSlots`
+      // places at `aimMin: window.startMin` (see lib/migrateSlots.ts +
+      // lib/slot.ts resolveSlot), so the leaf lands at minute 540 exactly.
+      it('hands persist the migrated node, and the store state reflects it too', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(dbMod.loadState).mockResolvedValueOnce({
+          goals: [{
+            id: 'g1', title: 'Real goal', column: 0,
+            nodes: [{
+              id: 'leaf1', title: 'Real leaf', done: false,
+              plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
+            }],
+          }],
+          habits: [], tasks: [], sessions: [],
+        });
+
+        await store.initStore();
+
+        expect(dbMod.persist).toHaveBeenCalledWith(
+          expect.objectContaining({
+            goals: [expect.objectContaining({
+              id: 'g1',
+              nodes: [expect.objectContaining({
+                id: 'leaf1',
+                plannedStartMin: 540,
+                plannedDay: '2026-07-15',
+              })],
+            })],
+          }),
+        );
+        const node = store.getState().goals[0].nodes[0];
+        expect(node.plannedStartMin).toBe(540);
+        expect(node.plannedDay).toBe('2026-07-15');
+      });
+
+      // describeMigration returns null for a no-op migration and a string
+      // whenever something actually moved. The toast line in initStore must
+      // fire on the latter and stay silent on the former.
+      it('shows the migration toast when something actually moved, and no toast for a no-op', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(dbMod.loadState).mockResolvedValueOnce({
+          goals: [{
+            id: 'g1', title: 'Real goal', column: 0,
+            nodes: [{
+              id: 'leaf1', title: 'Real leaf', done: false,
+              plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
+            }],
+          }],
+          habits: [], tasks: [], sessions: [],
+        });
+
+        await store.initStore();
+
+        expect(store.getState().toast).toBe('1 item placed on the calendar');
+      });
+
+      it('shows no toast when the migration is a no-op', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(dbMod.loadState).mockResolvedValueOnce({
+          goals: [], habits: [], tasks: [], sessions: [],
+        });
+
+        await store.initStore();
+
+        expect(store.getState().toast).toBeNull();
+      });
+    });
+
+    describe('tab lock gates the migration', () => {
+      beforeEach(async () => {
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.saveSlotMigrationSnapshot).mockClear();
+        vi.mocked(dbMod.markSlotMigrationDone).mockClear();
+        vi.mocked(dbMod.persist).mockClear();
+        vi.mocked(dbMod.isSlotMigrationDone).mockClear();
+        vi.mocked(tabLockMocks.acquireTabLock).mockClear();
+        vi.mocked(tabLockMocks.acquireTabLock).mockResolvedValue(true);
+      });
+
+      afterEach(async () => {
+        // Drain any Once value queued below that the gate's short-circuit
+        // left unconsumed, so it can never leak into a later, unrelated test.
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValue(true);
+      });
+
+      it('a non-owning tab renders normally without migrating', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        // isSlotMigrationDone resolves false (migration not yet done) so the
+        // ONLY thing that can prevent migration here is the tab-lock gate —
+        // if that gate were removed, this would proceed to migrate anyway.
+        // Queued as the persistent (non-Once) default for the rest of this
+        // test only; the afterEach above restores the safe default so a
+        // short-circuited, unconsumed value can never leak into later tests.
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValue(false);
+        vi.mocked(tabLockMocks.acquireTabLock).mockResolvedValueOnce(false);
+
+        await store.initStore();
+
+        expect(store.getState().hydration).toBe('ready');
+        expect(store.getState().secondTab).toBe(true);
+        expect(dbMod.saveSlotMigrationSnapshot).not.toHaveBeenCalled();
+        expect(dbMod.persist).not.toHaveBeenCalled();
+        expect(dbMod.markSlotMigrationDone).not.toHaveBeenCalled();
+      });
+
+      it('the owning tab migrates as usual', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(tabLockMocks.acquireTabLock).mockResolvedValueOnce(true);
+
+        await store.initStore();
+
+        expect(store.getState().hydration).toBe('ready');
+        expect(store.getState().secondTab).toBe(false);
+        expect(dbMod.saveSlotMigrationSnapshot).toHaveBeenCalled();
+        expect(dbMod.markSlotMigrationDone).toHaveBeenCalled();
       });
     });
   });
