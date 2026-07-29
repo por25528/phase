@@ -72,9 +72,15 @@ export interface Habit {
 export interface Task {
   id: string;
   title: string;
-  date?: string; // 'YYYY-MM-DD'. ABSENT = unscheduled — the task lives in the
-                 // sidebar backlog, not on any day.
-  startMin?: number; // minutes from local midnight. Never present without `date`.
+  // 'YYYY-MM-DD'. Optional in the type, but nothing in the app clears it, and
+  // nothing should: no surface lists a dateless task, so dropping a date makes
+  // it unreachable. Unpinning keeps `date` and clears `startMin` alone.
+  date?: string;
+  // Minutes from local midnight. Never present without `date`. A task WITH a
+  // date and NO startMin is committed to that day but not placed on the grid:
+  // it shows in Today and the old planner, and belongs in the task backlog
+  // once that ships.
+  startMin?: number;
   done: boolean;
   doneAt?: string; // local 'YYYY-MM-DD' completion date; optional for legacy data
   goalId: string | null; // tag FOR CONTEXT ONLY

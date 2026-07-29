@@ -77,9 +77,9 @@ describe('clampResize', () => {
   // a block whose startMin lands EXACTLY on a gap's endMin — i.e. right where
   // the next busy block begins, not actually inside that earlier gap at all —
   // would wrongly match the earlier gap and be allowed to "resize" from a
-  // position it doesn't actually occupy freely. Gaps here are 09:00–10:00 and
-  // 11:00–18:00 (a block occupies 10:00–11:00); startMin=660 (11:00) sits at
-  // the second gap's start, which is also exactly the first gap's endMin.
+  // position it doesn't actually occupy freely. A block occupies 10:00–11:00,
+  // so the gaps are 09:00–10:00 and 11:00–18:00; startMin=600 (10:00) is
+  // exactly the first gap's endMin, and must NOT match it.
   it('does not treat a block sitting at a gap\'s end as inside that (earlier) gap', () => {
     expect(clampResize({
       date: WED, startMin: 600, requestedMin: 60,
