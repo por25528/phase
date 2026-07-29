@@ -26,7 +26,7 @@ export function DayColumn({
   return (
     <div
       data-date={date}
-      className={`relative min-w-0 border-l border-line-soft ${
+      className={`relative min-w-0 overflow-hidden border-l border-line-soft ${
         availabilityWindow ? '' : 'bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgb(var(--c-hover))_4px,rgb(var(--c-hover))_8px)]'
       } ${isToday ? 'bg-hover/40' : ''}`}
     >

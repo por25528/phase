@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates } from '../lib/dates';
 import { weekOf, attentionRank, unplannedOpenLeaves } from '../lib/plan';
-import { visibleRange } from '../lib/grid';
+import { visibleRange, type LaneSpan } from '../lib/grid';
+import { spansOn } from '../lib/scheduled';
 import { WeekGrid } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 
@@ -17,7 +18,8 @@ export function Plan() {
   const today = todayStr();
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
   const days = weekDates(weekStart);
-  const range = visibleRange(days, availability, []);
+  const scheduledSpans: LaneSpan[] = days.flatMap((date) => spansOn(goals, tasks, date));
+  const range = visibleRange(days, availability, [], scheduledSpans);
 
   // Re-render each minute so the now-line moves.
   const [nowMinute, setNowMinute] = useState(() => {

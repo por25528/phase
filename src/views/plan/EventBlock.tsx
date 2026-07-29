@@ -18,12 +18,20 @@ export interface GridBlock {
   estimated: boolean;
 }
 
+/**
+ * A block can end after midnight (e.g. a 23:00–00:30 span has `endMin` 1470).
+ * `% 24` alone would wrap that back to "12am", making a tooltip read
+ * `11:30pm–12am` for something that actually ends half an hour later, the
+ * NEXT day. A trailing "+1" marks that case instead of silently wrapping.
+ */
 function timeLabel(minute: number): string {
+  const dayOffset = Math.floor(minute / 1440);
   const h = Math.floor(minute / 60) % 24;
   const m = minute % 60;
   const suffix = h < 12 ? 'am' : 'pm';
   const display = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${display}${suffix}` : `${display}:${String(m).padStart(2, '0')}${suffix}`;
+  const base = m === 0 ? `${display}${suffix}` : `${display}:${String(m).padStart(2, '0')}${suffix}`;
+  return dayOffset > 0 ? `${base}+${dayOffset}` : base;
 }
 
 export function EventBlock({

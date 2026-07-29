@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, BusyBlock } from '../db/types';
 import {
   visibleRange, minuteToPct, pctToMinute, hourMarks, assignLanes,
-  MIN_VISIBLE_START, MIN_VISIBLE_END,
+  MIN_VISIBLE_START, MIN_VISIBLE_END, type LaneSpan,
 } from './grid';
 
 const WEEK = ['2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16', '2026-07-17', '2026-07-18', '2026-07-19'];
@@ -10,6 +10,10 @@ const NINE_TO_SIX: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, s
 
 function block(date: string, startMin: number, endMin: number, allDay = false): BusyBlock {
   return { date, startMin, endMin, title: 'x', allDay };
+}
+
+function span(startMin: number, endMin: number): LaneSpan {
+  return { startMin, endMin };
 }
 
 describe('visibleRange', () => {
@@ -39,6 +43,35 @@ describe('visibleRange', () => {
 
   it('ignores events belonging to other weeks', () => {
     expect(visibleRange(WEEK, NINE_TO_SIX, [block('2026-08-01', 60, 120)]))
+      .toEqual({ startMin: MIN_VISIBLE_START, endMin: MIN_VISIBLE_END });
+  });
+
+  it('grows to cover a scheduled span earlier than every window, floored to the hour', () => {
+    // 06:10–06:40 (370–400) is earlier than NINE_TO_SIX's 540 start and below
+    // the MIN_VISIBLE_START floor (480), so it must widen startMin, floored
+    // down to the hour: floorToHour(370) = 360 (06:00).
+    const spans = [span(370, 400)];
+    expect(visibleRange(WEEK, NINE_TO_SIX, [], spans)).toEqual({ startMin: 360, endMin: 1200 });
+  });
+
+  it('grows to cover a scheduled span later than every window, ceiled to the hour', () => {
+    // 21:05–21:35 (1265–1295) is later than NINE_TO_SIX's 1080 end and past
+    // MIN_VISIBLE_END (1200), so it must widen endMin, ceiled up to the hour:
+    // ceilToHour(1295) = 1320 (22:00). startMin is untouched by this span.
+    const spans = [span(1265, 1295)];
+    expect(visibleRange(WEEK, NINE_TO_SIX, [], spans)).toEqual({ startMin: 480, endMin: 1320 });
+  });
+
+  it('leaves the range unchanged when the scheduled span is already inside it', () => {
+    // Baseline for NINE_TO_SIX + no spans is {480, 1200} (see the floor test
+    // above). A span fully inside that, e.g. 10:00–11:00 (600–660), must not
+    // move either edge.
+    const spans = [span(600, 660)];
+    expect(visibleRange(WEEK, NINE_TO_SIX, [], spans)).toEqual({ startMin: 480, endMin: 1200 });
+  });
+
+  it('still enforces the 08:00–20:00 minimum when there are no scheduled spans', () => {
+    expect(visibleRange(WEEK, NINE_TO_SIX, [], []))
       .toEqual({ startMin: MIN_VISIBLE_START, endMin: MIN_VISIBLE_END });
   });
 

@@ -16,9 +16,17 @@ function ceilToHour(minute: number): number {
 }
 
 /**
- * The hours the grid draws: the union of the week's availability windows and
- * its TIMED calendar events, expanded outward to whole hours, then expanded
- * again if needed to include 08:00–20:00.
+ * The hours the grid draws: the union of the week's availability windows, its
+ * TIMED calendar events, and the spans of work actually scheduled on the
+ * grid — expanded outward to whole hours, then expanded again if needed to
+ * include 08:00–20:00.
+ *
+ * `spans` MUST cover everything `minuteToPct` will be asked to place. Without
+ * it, a block scheduled outside the availability/event-derived range would
+ * render at a negative `top` or past 100% — invisible-work-adjacent, since
+ * the work IS drawn, just off-grid over the headings or below the footer.
+ * Clipping would hide it outright, which is worse; widening the range is the
+ * only fix that keeps every scheduled item on screen.
  *
  * All-day events are excluded on purpose: they typically span 0..1440, so
  * including them would stretch every week containing one to a full 24 hours.
@@ -29,6 +37,7 @@ export function visibleRange(
   dates: string[],
   windows: AvailabilityWindow[],
   blocks: BusyBlock[],
+  spans: LaneSpan[] = [],
 ): Interval {
   let startMin = MIN_VISIBLE_START;
   let endMin = MIN_VISIBLE_END;
@@ -46,6 +55,11 @@ export function visibleRange(
     if (b.allDay) continue; // see doc comment — never widens the grid
     startMin = Math.min(startMin, b.startMin);
     endMin = Math.max(endMin, b.endMin);
+  }
+
+  for (const s of spans) {
+    startMin = Math.min(startMin, s.startMin);
+    endMin = Math.max(endMin, s.endMin);
   }
 
   return { startMin: floorToHour(startMin), endMin: ceilToHour(endMin) };
