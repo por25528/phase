@@ -50,15 +50,29 @@ export function migrateSlots(
   const report: MigrationReport = {
     scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0,
   };
+  // Live and archived work are placed against SEPARATE occupancy maps. An
+  // archived project's leaves must not compete with live work for a gap (a
+  // dead project should never push a live commitment into the sidebar), but
+  // they still need a real plannedStartMin: `store.reopenGoal` is documented
+  // as archiving's exact inverse (just deleting completedAt), and a leaf left
+  // with plannedDay but no plannedStartMin is invisible everywhere — skipped
+  // by `scheduledOn` (which requires both fields) AND excluded from
+  // `unplannedOpenLeaves` when its plannedWeek is the current week (since it
+  // reads as "already planned this week"). Clearing or skipping it here would
+  // make a reopened project's steps unreachable. Placing it into its own map
+  // keeps it fully usable on reopen, at the accepted cost that it may then
+  // overlap live work placed independently — a visible, user-fixable state,
+  // not silent data loss.
   const occupied = new Map<string, PlacedSpan[]>();
+  const archivedOccupied = new Map<string, PlacedSpan[]>();
 
-  function spansFor(date: string): PlacedSpan[] {
-    let list = occupied.get(date);
-    if (!list) { list = []; occupied.set(date, list); }
+  function spansFrom(map: Map<string, PlacedSpan[]>, date: string): PlacedSpan[] {
+    let list = map.get(date);
+    if (!list) { list = []; map.set(date, list); }
     return list;
   }
 
-  function place(date: string, durationMin: number): number | null {
+  function place(map: Map<string, PlacedSpan[]>, date: string, durationMin: number): number | null {
     const window = windowForDate(date, windows);
     if (!window) return null;
     return resolveSlot({
@@ -67,7 +81,7 @@ export function migrateSlots(
       durationMin,
       windows,
       blocks: [],
-      placed: spansFor(date),
+      placed: spansFrom(map, date),
       now: MIGRATION_NOW,
       allDayBlocks,
     });
@@ -75,24 +89,15 @@ export function migrateSlots(
 
   const nextGoals = cloneGoals(goals);
   for (const g of nextGoals) {
-    // Archived projects are invisible everywhere else that reads plannedDay
-    // (plannedLeaves, scheduledOn, store.planNode all skip completedAt goals),
-    // so letting a leftover open leaf here occupy a gap would let dead work
-    // silently push a live commitment into the sidebar. Strip its planning
-    // fields entirely instead of placing or sidebar-counting it — there is no
-    // toast action a user could take on an archived project's leaf moving, so
-    // it must not inflate sidebarSteps either.
-    if (g.completedAt) {
-      walkLeaves(g, (n) => { if (!n.done) clearNodePlan(n); });
-      continue;
-    }
+    const archived = !!g.completedAt;
+    const map = archived ? archivedOccupied : occupied;
 
     walkLeaves(g, (n) => {
       if (n.done || !n.plannedWeek) return;
 
       // Already migrated: keep it, but register its span so later items avoid it.
       if (n.plannedDay && n.plannedStartMin !== undefined) {
-        spansFor(n.plannedDay).push({
+        spansFrom(map, n.plannedDay).push({
           startMin: n.plannedStartMin,
           endMin: n.plannedStartMin + durationOf(n.estimateMin),
         });
@@ -101,26 +106,26 @@ export function migrateSlots(
 
       if (!n.plannedDay) { // the old "Any day" bucket has no equivalent now
         clearNodePlan(n);
-        report.sidebarSteps++;
+        if (!archived) report.sidebarSteps++;
         return;
       }
 
       const duration = durationOf(n.estimateMin);
-      const startMin = place(n.plannedDay, duration);
+      const startMin = place(map, n.plannedDay, duration);
       if (startMin === null) {
         clearNodePlan(n);
-        report.sidebarSteps++;
+        if (!archived) report.sidebarSteps++;
         return;
       }
 
-      spansFor(n.plannedDay).push({ startMin, endMin: startMin + duration });
+      spansFrom(map, n.plannedDay).push({ startMin, endMin: startMin + duration });
       // Legacy day/week can drift apart (e.g. hand-edited data, or a day moved
       // without its week following) — re-derive the week from the day being
       // placed so the two can never disagree post-migration. Undocumented
       // until now; see migrateSlots.test.ts for the drift case this repairs.
       n.plannedWeek = weekOf(n.plannedDay);
       n.plannedStartMin = startMin;
-      report.scheduledSteps++;
+      if (!archived) report.scheduledSteps++;
     });
   }
 
@@ -128,21 +133,25 @@ export function migrateSlots(
     if (t.done || !t.date) return t;
 
     if (t.startMin !== undefined) {
-      spansFor(t.date).push({ startMin: t.startMin, endMin: t.startMin + durationOf(t.estimateMin) });
+      spansFrom(occupied, t.date).push({ startMin: t.startMin, endMin: t.startMin + durationOf(t.estimateMin) });
       return t;
     }
 
     const duration = durationOf(t.estimateMin);
-    const startMin = place(t.date, duration);
+    const startMin = place(occupied, t.date, duration);
     if (startMin === null) {
       const unscheduled = { ...t };
       delete unscheduled.date;
-      delete unscheduled.startMin; // keep date/startMin absent together — see clearNodePlan
+      // Defensive only: the `t.startMin !== undefined` guard above already
+      // returned before this branch whenever startMin was set, so it is always
+      // already absent here. Kept so this branch can never produce the
+      // date/startMin half-state even if that guard's shape changes later.
+      delete unscheduled.startMin;
       report.sidebarTasks++;
       return unscheduled;
     }
 
-    spansFor(t.date).push({ startMin, endMin: startMin + duration });
+    spansFrom(occupied, t.date).push({ startMin, endMin: startMin + duration });
     report.scheduledTasks++;
     return { ...t, startMin };
   });

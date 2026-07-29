@@ -34,6 +34,18 @@ describe('migrateSlots', () => {
     expect(report.sidebarSteps).toBe(1);
   });
 
+  // Malformed legacy shape (violates the db/types.ts invariant that
+  // plannedStartMin never survives without plannedDay, but nothing at runtime
+  // enforces that on data written before this migration existed). clearNodePlan
+  // must drop plannedStartMin too, not just plannedWeek/plannedDay, or this
+  // branch would leave the exact half-state the invariant forbids.
+  it('drops a stray plannedStartMin along with week/day on the Any-day path', () => {
+    const g = goal([{ id: 'n1', title: 'Draft', plannedWeek: WEEK, plannedStartMin: 600, estimateMin: 30 }]);
+    const { goals, report } = migrateSlots([g], [], WINDOWS, true);
+    expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Draft', estimateMin: 30 });
+    expect(report.sidebarSteps).toBe(1);
+  });
+
   it('returns a step that will not fit its day to the sidebar', () => {
     const g = goal([{ id: 'n1', title: 'Huge', plannedWeek: WEEK, plannedDay: WED, estimateMin: 600 }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
@@ -151,6 +163,20 @@ describe('migrateSlots', () => {
     expect(report.scheduledTasks).toBe(0);
   });
 
+  // Task-side mirror of the step-side true-extent test above: proves the
+  // registered span covers the already-migrated task's TRUE extent
+  // (startMin..startMin+duration), not e.g. the whole day.
+  it('stacks a new task immediately after an already-migrated task\'s true end', () => {
+    const already: Task = {
+      id: 't1', title: 'Already placed', date: WED, startMin: 540, done: false, goalId: null, estimateMin: 90,
+    };
+    const fresh: Task = { id: 't2', title: 'New task', date: WED, done: false, goalId: null, estimateMin: 60 };
+    const { tasks } = migrateSlots([], [already, fresh], WINDOWS, true);
+
+    expect(tasks[0].startMin).toBe(540); // untouched
+    expect(tasks[1].startMin).toBe(630); // stacks right after 540+90, not at 1440
+  });
+
   // Finding 3 / mutation 2: legacy plannedWeek can drift from the week its
   // plannedDay actually falls in (e.g. hand-edited data, or the day moved
   // without the week following). The migration re-derives plannedWeek from
@@ -173,18 +199,32 @@ describe('migrateSlots', () => {
     expect(t).toEqual(taskSnapshot);
   });
 
-  // Finding 1: an archived project's leftover open leaf is invisible to every
-  // other selector (plannedLeaves, scheduledOn, store.planNode all skip
-  // completedAt goals). It must not compete for a gap here either, and its
-  // planning fields must be cleared entirely rather than left half-migrated.
+  // An archived project's open leaf is placed normally — into its OWN occupancy
+  // map — rather than cleared. Clearing would make `store.reopenGoal` (which is
+  // documented as archiving's exact inverse: it only deletes completedAt) lossy,
+  // stranding a reopened project's steps with no week/day/start. Placement is
+  // uncounted in scheduledSteps/sidebarSteps: those counters drive a user-facing
+  // toast, and an archived project's leaves are invisible until reopened.
   describe('archived projects', () => {
-    it('clears an archived project\'s open leaf instead of placing or sidebar-counting it', () => {
+    it('places an archived project\'s open leaf with a real start minute, uncounted', () => {
       const g = goal(
         [{ id: 'n1', title: 'Leftover', plannedWeek: WEEK, plannedDay: WED, estimateMin: 30 }],
         { completedAt: '2026-06-01' },
       );
       const { goals, report } = migrateSlots([g], [], WINDOWS, true);
-      expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Leftover', estimateMin: 30 });
+      expect(goals[0].nodes[0]).toEqual(
+        { id: 'n1', title: 'Leftover', plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540, estimateMin: 30 },
+      );
+      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
+    });
+
+    it('returns an archived leaf that will not fit to the sidebar, uncounted', () => {
+      const g = goal(
+        [{ id: 'n1', title: 'Huge', plannedWeek: WEEK, plannedDay: WED, estimateMin: 600 }],
+        { completedAt: '2026-06-01' },
+      );
+      const { goals, report } = migrateSlots([g], [], WINDOWS, true);
+      expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Huge', estimateMin: 600 });
       expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
     });
 
@@ -198,11 +238,27 @@ describe('migrateSlots', () => {
         { id: 'g-live' },
       );
       const { goals, report } = migrateSlots([archived, live], [], WINDOWS, true);
-      // The archived leaf's stored span is wiped, not registered — the live step
-      // gets the earliest gap in the (empty) window instead of being pushed out.
-      expect(goals[1].nodes[0].plannedStartMin).toBe(540);
+      // The archived leaf's span is registered in its OWN map, not the live map —
+      // the live step gets the earliest gap in the (empty) live window instead of
+      // being pushed out, even though the archived leaf fills the entire window.
+      expect(goals[0].nodes[0].plannedStartMin).toBe(540); // archived leaf untouched
+      expect(goals[1].nodes[0].plannedStartMin).toBe(540); // live step unaffected
       expect(report.scheduledSteps).toBe(1);
       expect(report.sidebarSteps).toBe(0);
+    });
+
+    it('stacks a new archived leaf after another archived leaf, in the archived map only', () => {
+      const g = goal(
+        [
+          { id: 'n1', title: 'Already placed', plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540, estimateMin: 90 },
+          { id: 'n2', title: 'New archived leaf', plannedWeek: WEEK, plannedDay: WED, estimateMin: 60 },
+        ],
+        { completedAt: '2026-06-01' },
+      );
+      const { goals, report } = migrateSlots([g], [], WINDOWS, true);
+      expect(goals[0].nodes[0].plannedStartMin).toBe(540); // untouched
+      expect(goals[0].nodes[1].plannedStartMin).toBe(630); // stacks after the first's true end
+      expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
     });
 
     it('leaves a done leaf on an archived project untouched', () => {
