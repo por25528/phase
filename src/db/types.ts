@@ -11,6 +11,8 @@ export interface GoalNode {
   deadline?: string; // both present or both absent
   plannedWeek?: string; // 'YYYY-MM-DD' Monday — "this week" commitment. Scheduling metadata only, never affects pct.
   plannedDay?: string;  // optional pin within plannedWeek; never present without plannedWeek
+  estimateMin?: number;  // LEAVES only — expected effort in minutes.
+                         // Scheduling metadata: never affects pct roll-up.
 }
 
 // Markers only — milestones are never used in pct roll-up.
@@ -71,6 +73,7 @@ export interface Task {
   done: boolean;
   doneAt?: string; // local 'YYYY-MM-DD' completion date; optional for legacy data
   goalId: string | null; // tag FOR CONTEXT ONLY
+  estimateMin?: number; // expected effort in minutes; same meaning as GoalNode
 }
 
 export interface Session {
@@ -86,4 +89,21 @@ export interface AppState {
   habits: Habit[];
   tasks: Task[];
   sessions: Session[];
+}
+
+// A weekday's availability window. Absent dow means that day is off.
+export interface AvailabilityWindow {
+  dow: number;      // 0 = Mon … 6 = Sun, matching weekDates() order
+  startMin: number; // minutes from local midnight; 540 = 09:00
+  endMin: number;   // exclusive
+}
+
+// A busy slice, already flattened onto one local day by the main process.
+// Always empty in slice 1; populated from Google in slice 2.
+export interface BusyBlock {
+  date: string;     // 'YYYY-MM-DD' local
+  startMin: number; // clipped to that local day, 0..1440
+  endMin: number;   // exclusive, > startMin
+  title: string;
+  allDay: boolean;
 }

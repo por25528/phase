@@ -1,13 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
 import type { Goal, PlanReview, Session, Task } from '../db/types';
+import { DEFAULT_AVAILABILITY } from '../lib/availability';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
+  loadAvailability: vi.fn(async () => [
+    { dow: 0, startMin: 540, endMin: 1080 },
+    { dow: 1, startMin: 540, endMin: 1080 },
+    { dow: 2, startMin: 540, endMin: 1080 },
+    { dow: 3, startMin: 540, endMin: 1080 },
+    { dow: 4, startMin: 540, endMin: 1080 },
+  ]),
+  loadAllDayBlocks: vi.fn(async () => true),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
+  saveAvailability: vi.fn(async () => {}),
+  saveAllDayBlocks: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -839,6 +850,7 @@ describe('store actions', () => {
           nodes: [{ id: 'new-node', title: 'New commitment', done: false, plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [], pxPerDay: 40,
+        availability: DEFAULT_AVAILABILITY, allDayBlocks: true,
       });
 
       const store = await freshStore();
@@ -942,7 +954,7 @@ describe('store actions', () => {
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith({
         goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
-      }, 13, planReview);
+      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks);
     });
   });
 
@@ -1267,5 +1279,168 @@ describe('plan overlay', () => {
     actions.closePlan();
     expect(getState().planOpen).toBe(false);
     expect(getState().planFocusGoalId).toBeNull();
+  });
+
+  describe('addChild and addChildren clear leaf-only fields when creating a container', () => {
+    it('addChild drops estimateMin when a leaf becomes a container', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('Test Goal');
+      const goalId = getState().goals[0].id;
+      actions.addRootNode(goalId, 'Leaf with estimate');
+      const nodeId = getState().goals[0].nodes[0].id;
+      // Manually set estimateMin on the leaf
+      const goals = getState().goals;
+      goals[0].nodes[0].estimateMin = 120;
+
+      actions.addChild(nodeId, 'New child');
+
+      const container = getState().goals[0].nodes[0];
+      expect(container.children).toBeDefined();
+      expect(container.children!.length).toBe(1);
+      expect(container.estimateMin).toBeUndefined();
+    });
+
+    it('addChildren drops estimateMin when a leaf becomes a container', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('Test Goal');
+      const goalId = getState().goals[0].id;
+      actions.addRootNode(goalId, 'Leaf with estimate');
+      const nodeId = getState().goals[0].nodes[0].id;
+      // Manually set estimateMin on the leaf
+      const goals = getState().goals;
+      goals[0].nodes[0].estimateMin = 150;
+
+      actions.addChildren(nodeId, ['Child 1', 'Child 2']);
+
+      const container = getState().goals[0].nodes[0];
+      expect(container.children).toBeDefined();
+      expect(container.children!.length).toBe(2);
+      expect(container.estimateMin).toBeUndefined();
+    });
+  });
+});
+
+describe('availability and all-day preference (device settings)', () => {
+  it('hydrates availability and allDayBlocks from the db on init', async () => {
+    const { actions: _actions, getState, initStore } = await freshStore();
+    await initStore();
+    expect(getState().availability).toEqual([
+      { dow: 0, startMin: 540, endMin: 1080 },
+      { dow: 1, startMin: 540, endMin: 1080 },
+      { dow: 2, startMin: 540, endMin: 1080 },
+      { dow: 3, startMin: 540, endMin: 1080 },
+      { dow: 4, startMin: 540, endMin: 1080 },
+    ]);
+    expect(getState().allDayBlocks).toBe(true);
+  });
+
+  it('setAvailability updates state and persists the new windows', async () => {
+    const { actions, getState } = await freshStore();
+    dbMocks.saveAvailability.mockClear();
+    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
+
+    actions.setAvailability(windows);
+
+    expect(getState().availability).toEqual(windows);
+    expect(dbMocks.saveAvailability).toHaveBeenCalledWith(windows);
+  });
+
+  it('setAvailability rejects a malformed set at the door, falling back to the default', async () => {
+    const { actions, getState } = await freshStore();
+    dbMocks.saveAvailability.mockClear();
+
+    // Structurally valid AvailabilityWindow[], but semantically malformed (out-of-range dow/minutes).
+    actions.setAvailability([{ dow: 9, startMin: -1, endMin: 5000 }]);
+
+    const { DEFAULT_AVAILABILITY } = await import('../lib/availability');
+    expect(getState().availability).toEqual(DEFAULT_AVAILABILITY);
+    expect(dbMocks.saveAvailability).toHaveBeenCalledWith(DEFAULT_AVAILABILITY);
+  });
+
+  it('setAllDayBlocks updates state and persists the new value', async () => {
+    const { actions, getState } = await freshStore();
+    dbMocks.saveAllDayBlocks.mockClear();
+
+    actions.setAllDayBlocks(false);
+
+    expect(getState().allDayBlocks).toBe(false);
+    expect(dbMocks.saveAllDayBlocks).toHaveBeenCalledWith(false);
+  });
+
+  it('setAllDayBlocks is a no-op when the value is unchanged', async () => {
+    const { actions } = await freshStore();
+    dbMocks.saveAllDayBlocks.mockClear();
+
+    actions.setAllDayBlocks(true); // already true in the initial state literal
+
+    expect(dbMocks.saveAllDayBlocks).not.toHaveBeenCalled();
+  });
+});
+
+describe('estimates', () => {
+  const goalWithLeaf: Goal = {
+    id: 'g1', title: 'G', nodes: [{ id: 'n1', title: 'N', done: false }],
+  };
+
+  it('sets and clears a node estimate', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+
+    store.actions.setNodeEstimate('n1', 90);
+    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBe(90);
+
+    store.actions.setNodeEstimate('n1', null);
+    // Key ABSENCE, not just an undefined value — `delete` and `estimateMin:
+    // undefined` round-trip differently through Dexie and the JSON backup,
+    // and the implementation is supposed to `delete` the key. Assert the
+    // node still exists first: `?? {}` on a missing node would otherwise
+    // make the key-absence check pass vacuously.
+    const clearedNode = findInAll(store.getState().goals, 'n1');
+    expect(clearedNode).not.toBeNull();
+    expect('estimateMin' in clearedNode!).toBe(false);
+  });
+
+  it('clears a node estimate given a non-positive value', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+
+    store.actions.setNodeEstimate('n1', 60);
+    store.actions.setNodeEstimate('n1', 0);
+    // Same non-vacuous shape as above: confirm the node exists before
+    // checking that the key is gone.
+    const clearedNode = findInAll(store.getState().goals, 'n1');
+    expect(clearedNode).not.toBeNull();
+    expect('estimateMin' in clearedNode!).toBe(false);
+  });
+
+  it('refuses to estimate a container', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g1', title: 'G',
+      nodes: [{ id: 'c1', title: 'C', children: [{ id: 'n1', title: 'N', done: false }] }],
+    }]);
+
+    store.actions.setNodeEstimate('c1', 90);
+    expect(findInAll(store.getState().goals, 'c1')?.estimateMin).toBeUndefined();
+  });
+
+  it('sets and clears a task estimate', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addTask('T', '2026-07-28', null);
+    const id = store.getState().tasks[0].id;
+
+    store.actions.setTaskEstimate(id, 25);
+    expect(store.getState().tasks[0].estimateMin).toBe(25);
+
+    store.actions.setTaskEstimate(id, null);
+    // Key ABSENCE, not just an undefined value — see the node-clearing test above.
+    expect('estimateMin' in store.getState().tasks[0]).toBe(false);
   });
 });

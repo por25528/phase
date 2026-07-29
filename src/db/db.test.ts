@@ -1,7 +1,11 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { db, persist, importStateFromFile, loadState } from './db';
+import {
+  db, persist, importStateFromFile, loadState,
+  loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
+} from './db';
 import type { AppState, Goal } from './types';
+import { DEFAULT_AVAILABILITY } from '../lib/availability';
 
 function goal(id: string): Goal {
   return { id, title: id, start: '2026-01-01', deadline: '2026-12-31', nodes: [], column: 0 };
@@ -96,6 +100,63 @@ describe('importStateFromFile', () => {
   it('rejects a backup whose tables are malformed', async () => {
     await expect(importStateFromFile(fileOf('{"goals": "nope"}'))).rejects.toThrow(/Phase backup/);
   });
+
+  it('round-trips availability and allDayBlocks through a backup', async () => {
+    // Mirrors the JSON shape exportState() produces (exportState itself is
+    // untestable here — it drives DOM download APIs not present under
+    // environment: 'node' — so we build the same backup literal it would).
+    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
+    const backup = {
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+      pxPerDay: 40, availability: windows, allDayBlocks: false,
+    };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect(imported.availability).toEqual(windows);
+    expect(imported.allDayBlocks).toBe(false);
+    expect(await loadAvailability()).toEqual(windows);
+    expect(await loadAllDayBlocks()).toBe(false);
+  });
+
+  it('leaves existing availability/allDayBlocks alone for an old backup that predates them', async () => {
+    // Seed non-default settings first, so we can tell "left the existing
+    // settings alone" apart from "fell back to the default" — an absent key
+    // in the backup means it says nothing about this device preference, not
+    // that the user wants the default restored (a prior regression reset a
+    // user's working hours to the default on every old-backup import).
+    const seededAvailability = [{ dow: 5, startMin: 0, endMin: 60 }];
+    await saveAvailability(seededAvailability);
+    await saveAllDayBlocks(false);
+
+    const oldBackup = { goals: [goal('g1')], habits: [], tasks: [], sessions: [], pxPerDay: 40 };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(oldBackup)));
+
+    expect(imported.availability).toEqual(seededAvailability);
+    expect(imported.allDayBlocks).toBe(false);
+    expect(await loadAvailability()).toEqual(seededAvailability);
+    expect(await loadAllDayBlocks()).toBe(false);
+  });
+
+  it('coerces the persisted string form "false" for allDayBlocks in a backup', async () => {
+    const backup = {
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+      pxPerDay: 40, allDayBlocks: 'false',
+    };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect(imported.allDayBlocks).toBe(false);
+    expect(await loadAllDayBlocks()).toBe(false);
+  });
+
+  it('falls back to DEFAULT_AVAILABILITY for a malformed availability array in the backup', async () => {
+    const backup = {
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+      pxPerDay: 40,
+      availability: [{ dow: 9, startMin: -1, endMin: 5000 }], // out-of-range, malformed
+      allDayBlocks: true,
+    };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect(imported.availability).toEqual(DEFAULT_AVAILABILITY);
+    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
+  });
 });
 
 describe('loadState', () => {
@@ -131,5 +192,30 @@ describe('loadState', () => {
     expect(loaded.goals[0].datesConfirmed).toBeUndefined();
     expect(loaded.goals[0].nodes[0].doneAt).toBeUndefined();
     expect(loaded.tasks[0].doneAt).toBeUndefined();
+  });
+});
+
+describe('availability', () => {
+  it('returns the default availability when nothing is stored', async () => {
+    await db.settings.clear();
+    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
+  });
+
+  it('round-trips saved availability', async () => {
+    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
+    await saveAvailability(windows);
+    expect(await loadAvailability()).toEqual(windows);
+  });
+
+  it('falls back to the default when the stored value is corrupt', async () => {
+    await db.settings.put({ key: 'availability', value: '{not json' });
+    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
+  });
+
+  it('defaults allDayBlocks to true and round-trips false', async () => {
+    await db.settings.clear();
+    expect(await loadAllDayBlocks()).toBe(true);
+    await saveAllDayBlocks(false);
+    expect(await loadAllDayBlocks()).toBe(false);
   });
 });

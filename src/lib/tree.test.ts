@@ -204,6 +204,19 @@ describe('indentNode', () => {
       expect(a.done).toBeUndefined();
       expect(a.doneAt).toBeUndefined();
     });
+
+    it('drops estimateMin when a leaf becomes a container via indent', () => {
+      const goals: Goal[] = [{
+        id: 'g1', title: 'G', nodes: [
+          { id: 'a', title: 'A', done: false, estimateMin: 90 },
+          { id: 'b', title: 'B', done: false },
+        ],
+      }];
+      const next = indentNode(goals, 'b');
+      const a = next[0].nodes[0];
+      expect(a.children?.map((c) => c.id)).toEqual(['b']);
+      expect(a.estimateMin).toBeUndefined();
+    });
   });
 });
 

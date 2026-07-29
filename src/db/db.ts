@@ -1,8 +1,9 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState, PlanReview } from './types';
+import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal } from '../lib/goalImport';
+import { parseAvailability, serializeAvailability } from '../lib/availability';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -90,6 +91,25 @@ export async function saveScale(pxPerDay: number): Promise<void> {
   await db.settings.put({ key: 'pxPerDay', value: String(pxPerDay) });
 }
 
+export async function loadAvailability(): Promise<AvailabilityWindow[]> {
+  const row = await db.settings.get('availability');
+  return parseAvailability(row?.value);
+}
+
+export async function saveAvailability(windows: AvailabilityWindow[]): Promise<void> {
+  await db.settings.put({ key: 'availability', value: serializeAvailability(windows) });
+}
+
+// Defaults ON: an all-day event usually does consume the day.
+export async function loadAllDayBlocks(): Promise<boolean> {
+  const row = await db.settings.get('allDayBlocks');
+  return row?.value !== 'false';
+}
+
+export async function saveAllDayBlocks(value: boolean): Promise<void> {
+  await db.settings.put({ key: 'allDayBlocks', value: String(value) });
+}
+
 // Single-row table: the one previous-week snapshot. clear+put inside a
 // transaction so a crash can't leave two rows.
 export async function loadPlanReview(): Promise<PlanReview | null> {
@@ -104,8 +124,20 @@ export async function savePlanReview(review: PlanReview): Promise<void> {
   });
 }
 
-export function exportState(state: AppState, pxPerDay: number, planReview: PlanReview | null): void {
-  const backup = { ...state, pxPerDay, ...(planReview ? { planReview } : {}) };
+export function exportState(
+  state: AppState,
+  pxPerDay: number,
+  planReview: PlanReview | null,
+  availability: AvailabilityWindow[],
+  allDayBlocks: boolean,
+): void {
+  const backup = {
+    ...state,
+    pxPerDay,
+    availability,
+    allDayBlocks,
+    ...(planReview ? { planReview } : {}),
+  };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -119,7 +151,9 @@ function isEntityArray(v: unknown): boolean {
   );
 }
 
-export async function importStateFromFile(file: File): Promise<AppState & { pxPerDay: number }> {
+export async function importStateFromFile(
+  file: File,
+): Promise<AppState & { pxPerDay: number; availability: AvailabilityWindow[]; allDayBlocks: boolean }> {
   let text: string;
   try {
     text = await file.text();
@@ -127,7 +161,14 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
     throw new Error('Could not read that file.');
   }
 
-  let raw: Partial<AppState & { pxPerDay?: number; zoom?: string }>;
+  let raw: Partial<
+    AppState & {
+      pxPerDay?: number;
+      zoom?: string;
+      availability?: unknown;
+      allDayBlocks?: unknown;
+    }
+  >;
   try {
     raw = JSON.parse(text);
   } catch {
@@ -144,6 +185,22 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
     Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0
       ? clampScale(raw.pxPerDay as number)
       : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
+  // Old backups predate availability/allDayBlocks entirely — an ABSENT key
+  // means the backup says NOTHING about this device preference, which is not
+  // the same as the backup saying "use the default". Leave the current
+  // persisted value alone in that case. A PRESENT-but-malformed value still
+  // goes through `parseAvailability`, which is total validation: malformed or
+  // hand-edited windows collapse to DEFAULT_AVAILABILITY.
+  const availability =
+    raw.availability === undefined ? await loadAvailability() : parseAvailability(raw.availability);
+  // Mirrors loadAllDayBlocks (`row?.value !== 'false'`): a PRESENT value of
+  // anything but the literal false (string 'false' from an old settings-table
+  // dump, or an actual JSON `false` written by the current exportState) means
+  // on. An ABSENT key means the backup is silent, so keep the current setting.
+  const allDayBlocks =
+    raw.allDayBlocks === undefined
+      ? await loadAllDayBlocks()
+      : raw.allDayBlocks !== 'false' && raw.allDayBlocks !== false;
   const parsed: AppState = {
     goals: (raw.goals ?? []).map(sanitizeBackupGoal),
     habits: raw.habits ?? [],
@@ -152,6 +209,8 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
   };
   await persist(parsed);
   await saveScale(pxPerDay);
+  await saveAvailability(availability);
+  await saveAllDayBlocks(allDayBlocks);
   // Optional: restore the week-review snapshot if the backup carries a sane one.
   const pr = (raw as { planReview?: PlanReview }).planReview;
   if (pr && typeof pr.week === 'string' && Array.isArray(pr.entries) && typeof pr.reviewed === 'boolean') {
@@ -159,5 +218,5 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
   } else {
     await db.planReview.clear();
   }
-  return { ...parsed, pxPerDay };
+  return { ...parsed, pxPerDay, availability, allDayBlocks };
 }

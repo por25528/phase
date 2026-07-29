@@ -41,6 +41,8 @@ describe('planner task markup', () => {
         goalTitleById: new Map([['g1', 'Launch']]),
         onRemove: vi.fn(),
         onToggleTask: vi.fn(),
+        onEstimateNode: vi.fn(),
+        onEstimateTask: vi.fn(),
       }),
     ));
 
@@ -60,6 +62,7 @@ describe('planner task markup', () => {
       createElement(TaskChip, {
         task: task('open'),
         onToggle: vi.fn(),
+        onEstimate: vi.fn(),
       }),
     ));
     const done = renderToStaticMarkup(createElement(
@@ -68,6 +71,7 @@ describe('planner task markup', () => {
       createElement(TaskChip, {
         task: task('done', true),
         onToggle: vi.fn(),
+        onEstimate: vi.fn(),
       }),
     ));
 
