@@ -98,11 +98,16 @@ export function groupPlannedByGoal(leaves: PlannedLeaf[]): PlannedGoalGroup[] {
   return order.map((id) => map.get(id)!);
 }
 
-// Open leaves not committed to `week` — the week planner's left rail (T9). A leaf
-// planned to a different week (a carry-over) still counts as available to plan.
+// Open leaves available to plan for `week` — the week planner's left rail (T9).
+// Under the calendar-grid model, a leaf is genuinely placed only once it has
+// BOTH `plannedWeek === week` and a `plannedDay` (see scheduledOn). Anything
+// else is backlog: a leaf planned for a different week (a carry-over) still
+// counts as available, and — the case the old predicate got wrong — a leaf
+// already committed to this week but not yet pinned to a day is backlog too,
+// not invisible.
 export function unplannedOpenLeaves(g: Goal, week: string): GoalNode[] {
   const out: GoalNode[] = [];
-  walkLeaves(g, (n) => { if (!n.done && n.plannedWeek !== week) out.push(n); });
+  walkLeaves(g, (n) => { if (!n.done && (n.plannedWeek !== week || n.plannedDay === undefined)) out.push(n); });
   return out;
 }
 
@@ -113,11 +118,14 @@ export interface RailTreeNode {
   children: RailTreeNode[];
 }
 
-// The planner rail's display tree for a project: the same open, not-yet-this-week
-// leaves as `unplannedOpenLeaves` (whose flat count powers the section header), but
-// with their container ancestors kept as sub-headings so subgoals show in context.
-// A container with no visible descendant is dropped, so an all-done or fully-planned
-// branch never leaves an empty heading behind.
+// The planner rail's display tree for a project: the same backlog leaves as
+// `unplannedOpenLeaves` (whose flat count powers the section header) — open and
+// not genuinely placed on a day in `week` — but with their container ancestors
+// kept as sub-headings so subgoals show in context. A leaf committed to this
+// week but not yet pinned to a day still belongs here; only a leaf with both
+// `plannedWeek === week` and a `plannedDay` is actually on the grid and drops
+// out. A container with no visible descendant is dropped, so an all-done or
+// fully-placed branch never leaves an empty heading behind.
 export function railTree(g: Goal, week: string): RailTreeNode[] {
   function build(nodes: GoalNode[]): RailTreeNode[] {
     const out: RailTreeNode[] = [];
@@ -125,7 +133,7 @@ export function railTree(g: Goal, week: string): RailTreeNode[] {
       if (n.children && n.children.length) {
         const children = build(n.children);
         if (children.length > 0) out.push({ id: n.id, title: n.title, isLeaf: false, children });
-      } else if (!n.done && n.plannedWeek !== week) {
+      } else if (!n.done && (n.plannedWeek !== week || n.plannedDay === undefined)) {
         out.push({ id: n.id, title: n.title, isLeaf: true, children: [] });
       }
     }

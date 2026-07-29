@@ -571,35 +571,99 @@ describe('groupPlannedByGoal', () => {
 });
 
 describe('unplannedOpenLeaves', () => {
-  it('returns open leaves not committed to this week, skipping done and already-planned', () => {
+  it('returns open leaves not genuinely placed on the grid this week, skipping done and placed', () => {
     const g = goal({ nodes: [
       { id: 'a', title: 'A', done: false },                       // unplanned open → in
       { id: 'b', title: 'B', done: true },                        // done → out
-      { id: 'c', title: 'C', done: false, plannedWeek: WEEK },    // planned this week → out
+      { id: 'c', title: 'C', done: false, plannedWeek: WEEK },    // committed, no day → in (backlog)
       { id: 'd', title: 'D', done: false, plannedWeek: LAST_WEEK }, // carry-over → in (available)
+      {
+        id: 'placed', title: 'Placed', done: false, plannedWeek: WEEK,
+        plannedDay: '2026-07-14', plannedStartMin: 600,
+      },                                                            // on the grid → out
       { id: 'grp', title: 'G', children: [
         { id: 'e', title: 'E', done: false },                     // nested open → in
       ]},
     ]});
-    expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual(['a', 'd', 'e']);
+    expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual(['a', 'c', 'd', 'e']);
   });
 
   it('is empty for a project with no leaves', () => {
     expect(unplannedOpenLeaves(goal({ nodes: [] }), WEEK)).toEqual([]);
   });
+
+  it('regression: a leaf committed to this week with no plannedDay is backlog, not invisible', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: WEEK }, // no plannedDay
+    ]});
+    expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('a leaf placed on a day and start minute this week is not backlog', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: WEEK, plannedDay: '2026-07-14', plannedStartMin: 540 },
+    ]});
+    expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual([]);
+  });
+
+  it('a leaf planned to a different week is still backlog (carry-over)', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: LAST_WEEK },
+    ]});
+    expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('a done leaf is never backlog, even with no plannedDay', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true, plannedWeek: WEEK },
+    ]});
+    expect(unplannedOpenLeaves(g, WEEK)).toEqual([]);
+  });
 });
 
 describe('railTree', () => {
-  it('keeps flat open leaves, dropping done and already-planned ones', () => {
+  it('keeps flat open leaves, dropping done and grid-placed ones', () => {
     const g = goal({ nodes: [
       { id: 'a', title: 'A', done: false },
       { id: 'b', title: 'B', done: true },                        // done → out
-      { id: 'c', title: 'C', done: false, plannedWeek: WEEK },    // this week → out
+      { id: 'c', title: 'C', done: false, plannedWeek: WEEK },    // committed, no day → in (backlog)
       { id: 'd', title: 'D', done: false, plannedWeek: LAST_WEEK }, // carry-over → in
+      {
+        id: 'placed', title: 'Placed', done: false, plannedWeek: WEEK,
+        plannedDay: '2026-07-14', plannedStartMin: 600,
+      },                                                            // on the grid → out
     ]});
     const tree = railTree(g, WEEK);
-    expect(tree.map((n) => n.id)).toEqual(['a', 'd']);
+    expect(tree.map((n) => n.id)).toEqual(['a', 'c', 'd']);
     expect(tree.every((n) => n.isLeaf)).toBe(true);
+  });
+
+  it('regression: a leaf committed to this week with no plannedDay is backlog, not invisible', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: WEEK },
+    ]});
+    expect(railTree(g, WEEK).map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('a leaf placed on a day and start minute this week is not backlog', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: WEEK, plannedDay: '2026-07-14', plannedStartMin: 540 },
+    ]});
+    expect(railTree(g, WEEK)).toEqual([]);
+  });
+
+  it('a leaf planned to a different week is still backlog (carry-over)', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: false, plannedWeek: LAST_WEEK },
+    ]});
+    expect(railTree(g, WEEK).map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('a done leaf is never backlog, even with no plannedDay', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true, plannedWeek: WEEK },
+    ]});
+    expect(railTree(g, WEEK)).toEqual([]);
   });
 
   it('keeps containers as sub-headings with their open leaves nested', () => {
@@ -617,11 +681,14 @@ describe('railTree', () => {
     expect(grp.children.map((n) => n.id)).toEqual(['x']);
   });
 
-  it('drops a container whose descendants are all done or planned', () => {
+  it('drops a container whose descendants are all done or placed on the grid', () => {
     const g = goal({ nodes: [
       { id: 'grp', title: 'Subgoal', children: [
         { id: 'x', title: 'X', done: true },
-        { id: 'y', title: 'Y', done: false, plannedWeek: WEEK },
+        {
+          id: 'y', title: 'Y', done: false, plannedWeek: WEEK,
+          plannedDay: '2026-07-14', plannedStartMin: 600,
+        },
       ]},
     ]});
     expect(railTree(g, WEEK)).toEqual([]);
