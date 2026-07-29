@@ -1394,8 +1394,12 @@ describe('estimates', () => {
     store.actions.setNodeEstimate('n1', null);
     // Key ABSENCE, not just an undefined value — `delete` and `estimateMin:
     // undefined` round-trip differently through Dexie and the JSON backup,
-    // and the implementation is supposed to `delete` the key.
-    expect('estimateMin' in (findInAll(store.getState().goals, 'n1') ?? {})).toBe(false);
+    // and the implementation is supposed to `delete` the key. Assert the
+    // node still exists first: `?? {}` on a missing node would otherwise
+    // make the key-absence check pass vacuously.
+    const clearedNode = findInAll(store.getState().goals, 'n1');
+    expect(clearedNode).not.toBeNull();
+    expect('estimateMin' in clearedNode!).toBe(false);
   });
 
   it('clears a node estimate given a non-positive value', async () => {
@@ -1406,7 +1410,11 @@ describe('estimates', () => {
 
     store.actions.setNodeEstimate('n1', 60);
     store.actions.setNodeEstimate('n1', 0);
-    expect('estimateMin' in (findInAll(store.getState().goals, 'n1') ?? {})).toBe(false);
+    // Same non-vacuous shape as above: confirm the node exists before
+    // checking that the key is gone.
+    const clearedNode = findInAll(store.getState().goals, 'n1');
+    expect(clearedNode).not.toBeNull();
+    expect('estimateMin' in clearedNode!).toBe(false);
   });
 
   it('refuses to estimate a container', async () => {

@@ -58,10 +58,14 @@ describe('parseEstimateInput', () => {
 });
 
 describe('formatEstimateValue / parseEstimateInput round trip', () => {
-  it.each(Array.from({ length: 1440 }, (_, i) => i + 1))(
-    'round-trips %i minutes through formatEstimateValue → parseEstimateInput',
-    (minutes) => {
-      expect(parseEstimateInput(formatEstimateValue(minutes))).toBe(minutes);
-    },
-  );
+  it('round-trips every minute value from 1 to 1440 through formatEstimateValue → parseEstimateInput', () => {
+    const failures: string[] = [];
+    for (let minutes = 1; minutes <= 1440; minutes++) {
+      const roundTripped = parseEstimateInput(formatEstimateValue(minutes));
+      if (roundTripped !== minutes) {
+        failures.push(`${minutes} -> "${formatEstimateValue(minutes)}" -> ${roundTripped}`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
 });
