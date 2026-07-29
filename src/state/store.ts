@@ -4,6 +4,7 @@ import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
   loadAllDayBlocks, saveAllDayBlocks,
+  isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone,
 } from '../db/db';
 import { clampScale } from '../lib/timeline';
 import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
@@ -12,6 +13,7 @@ import { clampSpan } from '../lib/timeline';
 import { isValidLocalDate, projectDateError, confirmableDateGoalIds } from '../lib/schedule';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { deferOpenWork } from '../lib/deferWork';
+import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
@@ -147,18 +149,35 @@ export async function initStore(): Promise<void> {
     const [appState, pxPerDay, planReview, availability, allDayBlocks] = await Promise.all([
       loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(),
     ]);
+
+    // One-shot: give every day-committed step and task a real start minute.
+    // Snapshot BEFORE, mark done only AFTER a successful persist — a failure
+    // here leaves the flag unset so the next launch retries cleanly rather
+    // than stranding half-rewritten data behind a "done" marker.
+    let migrated = appState;
+    let migrationToast: string | null = null;
+    if (!(await isSlotMigrationDone())) {
+      await saveSlotMigrationSnapshot(appState.goals, appState.tasks);
+      const result = migrateSlots(appState.goals, appState.tasks, availability, allDayBlocks);
+      migrated = { ...appState, goals: result.goals, tasks: result.tasks };
+      await persist(migrated);
+      await markSlotMigrationDone();
+      migrationToast = describeMigration(result.report);
+    }
+
     state = {
       ...state,
-      ...appState,
+      ...migrated,
       pxPerDay,
       planReview,
       availability,
       allDayBlocks,
       hydration: 'ready',
-      expanded: collectContainers(appState.goals),
+      expanded: collectContainers(migrated.goals),
     };
     notify();
     ensureWeekRollover();
+    if (migrationToast) actions.showToast(migrationToast);
   } catch {
     // IndexedDB unavailable (private mode, blocked storage) or corrupt.
     // Nothing was deleted — refuse to render an empty board that would

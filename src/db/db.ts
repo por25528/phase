@@ -110,6 +110,30 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
   await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
+// One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
+// Not a Dexie version: the migration adds optional fields to existing objects,
+// which changes no store and no index.
+const SLOT_MIGRATION_KEY = 'slotMigrationDone';
+const SLOT_SNAPSHOT_KEY = 'preSlotMigrationSnapshot';
+
+export async function isSlotMigrationDone(): Promise<boolean> {
+  const row = await db.settings.get(SLOT_MIGRATION_KEY);
+  return row?.value === 'true';
+}
+
+/**
+ * Pre-migration copy of the two tables the migration rewrites. Kept in the
+ * settings table rather than downloaded, so the safety net costs the user no
+ * interaction on first launch.
+ */
+export async function saveSlotMigrationSnapshot(goals: Goal[], tasks: Task[]): Promise<void> {
+  await db.settings.put({ key: SLOT_SNAPSHOT_KEY, value: JSON.stringify({ goals, tasks }) });
+}
+
+export async function markSlotMigrationDone(): Promise<void> {
+  await db.settings.put({ key: SLOT_MIGRATION_KEY, value: 'true' });
+}
+
 // Single-row table: the one previous-week snapshot. clear+put inside a
 // transaction so a crash can't leave two rows.
 export async function loadPlanReview(): Promise<PlanReview | null> {

@@ -22,6 +22,9 @@ const dbMocks = vi.hoisted(() => ({
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
+  isSlotMigrationDone: vi.fn(async () => true),
+  saveSlotMigrationSnapshot: vi.fn(async () => {}),
+  markSlotMigrationDone: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -917,6 +920,69 @@ describe('store actions', () => {
       const store = await import('./store');
       await store.initStore();
       expect(store.getState().hydration).toBe('error');
+    });
+
+    describe('one-shot slot migration', () => {
+      beforeEach(async () => {
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.saveSlotMigrationSnapshot).mockClear();
+        vi.mocked(dbMod.markSlotMigrationDone).mockClear();
+      });
+
+      it('skips snapshot/persist/mark-done entirely once already done', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(true);
+
+        await store.initStore();
+
+        expect(store.getState().hydration).toBe('ready');
+        expect(dbMod.saveSlotMigrationSnapshot).not.toHaveBeenCalled();
+        expect(dbMod.markSlotMigrationDone).not.toHaveBeenCalled();
+      });
+
+      it('snapshots, migrates, persists, then marks done, in that order, when not yet done', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(dbMod.loadState).mockResolvedValueOnce({
+          goals: [], habits: [], tasks: [], sessions: [],
+        });
+
+        const calls: string[] = [];
+        vi.mocked(dbMod.saveSlotMigrationSnapshot).mockImplementationOnce(async () => {
+          calls.push('snapshot');
+        });
+        vi.mocked(dbMod.persist).mockImplementationOnce(async () => {
+          calls.push('persist');
+        });
+        vi.mocked(dbMod.markSlotMigrationDone).mockImplementationOnce(async () => {
+          calls.push('markDone');
+        });
+
+        await store.initStore();
+
+        expect(store.getState().hydration).toBe('ready');
+        expect(calls).toEqual(['snapshot', 'persist', 'markDone']);
+      });
+
+      it('never marks done if persist throws, so a retry is possible next launch', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(dbMod.loadState).mockResolvedValueOnce({
+          goals: [], habits: [], tasks: [], sessions: [],
+        });
+        vi.mocked(dbMod.persist).mockRejectedValueOnce(new Error('write failed'));
+
+        await store.initStore();
+
+        // The existing catch in initStore refuses to render on any failure,
+        // including one raised mid-migration — leaving the flag unset.
+        expect(store.getState().hydration).toBe('error');
+        expect(dbMod.saveSlotMigrationSnapshot).toHaveBeenCalled();
+        expect(dbMod.markSlotMigrationDone).not.toHaveBeenCalled();
+      });
     });
   });
 
