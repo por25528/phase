@@ -5,3 +5,6 @@ release
 build/icon.png
 .DS_Store
 *.local
+
+# Brainstorming visual companion mockups
+.superpowers/
