@@ -309,5 +309,5 @@ export function tasksForWeek(tasks: Task[], week: string): Task[] {
       && task.date >= start
       && task.date <= end
     ))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
+    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '') || a.title.localeCompare(b.title));
 }

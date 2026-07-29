@@ -11,6 +11,9 @@ export interface GoalNode {
   deadline?: string; // both present or both absent
   plannedWeek?: string; // 'YYYY-MM-DD' Monday — "this week" commitment. Scheduling metadata only, never affects pct.
   plannedDay?: string;  // optional pin within plannedWeek; never present without plannedWeek
+  plannedStartMin?: number; // minutes from local midnight, 0..1440. Never present
+                            // without plannedDay. Scheduling metadata: never
+                            // affects the pct roll-up.
   estimateMin?: number;  // LEAVES only — expected effort in minutes.
                          // Scheduling metadata: never affects pct roll-up.
 }
@@ -69,7 +72,9 @@ export interface Habit {
 export interface Task {
   id: string;
   title: string;
-  date: string;  // 'YYYY-MM-DD'
+  date?: string; // 'YYYY-MM-DD'. ABSENT = unscheduled — the task lives in the
+                 // sidebar backlog, not on any day.
+  startMin?: number; // minutes from local midnight. Never present without `date`.
   done: boolean;
   doneAt?: string; // local 'YYYY-MM-DD' completion date; optional for legacy data
   goalId: string | null; // tag FOR CONTEXT ONLY

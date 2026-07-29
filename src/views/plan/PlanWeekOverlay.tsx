@@ -223,7 +223,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
   }
   const weekTasks = tasksForWeek(tasks, week);
   const tasksByDay = new Map<string, Task[]>(days.map((day) => [day, []]));
-  for (const task of weekTasks) tasksByDay.get(task.date)?.push(task);
+  for (const task of weekTasks) if (task.date) tasksByDay.get(task.date)?.push(task);
   const goalTitleById = new Map(goals.map((goal) => [goal.id, goal.title]));
   const openCount = plannerOpenCount(placed, weekTasks);
 

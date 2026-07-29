@@ -473,6 +473,12 @@ describe('tasksForWeek', () => {
     expect(tasksForWeek(tasks, WEEK).map((item) => item.id)).toEqual(['valid']);
     expect(tasksForWeek(tasks, 'not-a-date')).toEqual([]);
   });
+
+  it('excludes a task with no date from the week', () => {
+    const dated: Task = { id: 't1', title: 'Dated', date: '2026-07-15', done: false, goalId: null };
+    const undated: Task = { id: 't2', title: 'Undated', done: false, goalId: null };
+    expect(tasksForWeek([dated, undated], '2026-07-13').map((t) => t.id)).toEqual(['t1']);
+  });
 });
 
 describe('buildDailyWork malformed task dates', () => {
