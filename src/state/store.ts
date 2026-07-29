@@ -849,7 +849,13 @@ export const actions = {
 
   // IO
   exportBackup() {
-    exportState({ goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions }, state.pxPerDay, state.planReview);
+    exportState(
+      { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
+      state.pxPerDay,
+      state.planReview,
+      state.availability,
+      state.allDayBlocks,
+    );
     actions.showToast('Backup exported');
   },
 

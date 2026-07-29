@@ -100,6 +100,49 @@ describe('importStateFromFile', () => {
   it('rejects a backup whose tables are malformed', async () => {
     await expect(importStateFromFile(fileOf('{"goals": "nope"}'))).rejects.toThrow(/Phase backup/);
   });
+
+  it('round-trips availability and allDayBlocks through a backup', async () => {
+    // Mirrors the JSON shape exportState() produces (exportState itself is
+    // untestable here — it drives DOM download APIs not present under
+    // environment: 'node' — so we build the same backup literal it would).
+    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
+    const backup = {
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+      pxPerDay: 40, availability: windows, allDayBlocks: false,
+    };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect(imported.availability).toEqual(windows);
+    expect(imported.allDayBlocks).toBe(false);
+    expect(await loadAvailability()).toEqual(windows);
+    expect(await loadAllDayBlocks()).toBe(false);
+  });
+
+  it('falls back to the current defaults for an old backup that predates availability/allDayBlocks', async () => {
+    // Seed non-default settings first, so we can tell "fell back to the
+    // default" apart from "left the existing settings alone".
+    await saveAvailability([{ dow: 5, startMin: 0, endMin: 60 }]);
+    await saveAllDayBlocks(false);
+
+    const oldBackup = { goals: [goal('g1')], habits: [], tasks: [], sessions: [], pxPerDay: 40 };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(oldBackup)));
+
+    expect(imported.availability).toEqual(DEFAULT_AVAILABILITY);
+    expect(imported.allDayBlocks).toBe(true);
+    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
+    expect(await loadAllDayBlocks()).toBe(true);
+  });
+
+  it('falls back to DEFAULT_AVAILABILITY for a malformed availability array in the backup', async () => {
+    const backup = {
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+      pxPerDay: 40,
+      availability: [{ dow: 9, startMin: -1, endMin: 5000 }], // out-of-range, malformed
+      allDayBlocks: true,
+    };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect(imported.availability).toEqual(DEFAULT_AVAILABILITY);
+    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
+  });
 });
 
 describe('loadState', () => {

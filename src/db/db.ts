@@ -3,7 +3,7 @@ import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWind
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal } from '../lib/goalImport';
-import { parseAvailability, serializeAvailability } from '../lib/availability';
+import { parseAvailability, serializeAvailability, DEFAULT_AVAILABILITY } from '../lib/availability';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -124,8 +124,20 @@ export async function savePlanReview(review: PlanReview): Promise<void> {
   });
 }
 
-export function exportState(state: AppState, pxPerDay: number, planReview: PlanReview | null): void {
-  const backup = { ...state, pxPerDay, ...(planReview ? { planReview } : {}) };
+export function exportState(
+  state: AppState,
+  pxPerDay: number,
+  planReview: PlanReview | null,
+  availability: AvailabilityWindow[],
+  allDayBlocks: boolean,
+): void {
+  const backup = {
+    ...state,
+    pxPerDay,
+    availability,
+    allDayBlocks,
+    ...(planReview ? { planReview } : {}),
+  };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -139,7 +151,9 @@ function isEntityArray(v: unknown): boolean {
   );
 }
 
-export async function importStateFromFile(file: File): Promise<AppState & { pxPerDay: number }> {
+export async function importStateFromFile(
+  file: File,
+): Promise<AppState & { pxPerDay: number; availability: AvailabilityWindow[]; allDayBlocks: boolean }> {
   let text: string;
   try {
     text = await file.text();
@@ -147,7 +161,14 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
     throw new Error('Could not read that file.');
   }
 
-  let raw: Partial<AppState & { pxPerDay?: number; zoom?: string }>;
+  let raw: Partial<
+    AppState & {
+      pxPerDay?: number;
+      zoom?: string;
+      availability?: unknown;
+      allDayBlocks?: unknown;
+    }
+  >;
   try {
     raw = JSON.parse(text);
   } catch {
@@ -164,6 +185,16 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
     Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0
       ? clampScale(raw.pxPerDay as number)
       : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
+  // Old backups predate availability/allDayBlocks entirely — fall back to the
+  // current defaults rather than throwing. `parseAvailability` is total
+  // validation: malformed or hand-edited windows collapse to DEFAULT_AVAILABILITY.
+  const availability =
+    raw.availability === undefined ? DEFAULT_AVAILABILITY : parseAvailability(raw.availability);
+  // Mirrors loadAllDayBlocks (`row?.value !== 'false'`): absent, or anything
+  // but the literal false (string 'false' from an old settings-table dump, or
+  // an actual JSON `false` written by the current exportState), means on.
+  const allDayBlocks =
+    raw.allDayBlocks === undefined ? true : raw.allDayBlocks !== 'false' && raw.allDayBlocks !== false;
   const parsed: AppState = {
     goals: (raw.goals ?? []).map(sanitizeBackupGoal),
     habits: raw.habits ?? [],
@@ -172,6 +203,8 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
   };
   await persist(parsed);
   await saveScale(pxPerDay);
+  await saveAvailability(availability);
+  await saveAllDayBlocks(allDayBlocks);
   // Optional: restore the week-review snapshot if the backup carries a sane one.
   const pr = (raw as { planReview?: PlanReview }).planReview;
   if (pr && typeof pr.week === 'string' && Array.isArray(pr.entries) && typeof pr.reviewed === 'boolean') {
@@ -179,5 +212,5 @@ export async function importStateFromFile(file: File): Promise<AppState & { pxPe
   } else {
     await db.planReview.clear();
   }
-  return { ...parsed, pxPerDay };
+  return { ...parsed, pxPerDay, availability, allDayBlocks };
 }

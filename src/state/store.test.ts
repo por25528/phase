@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
 import type { Goal, PlanReview, Session, Task } from '../db/types';
+import { DEFAULT_AVAILABILITY } from '../lib/availability';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
@@ -849,6 +850,7 @@ describe('store actions', () => {
           nodes: [{ id: 'new-node', title: 'New commitment', done: false, plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [], pxPerDay: 40,
+        availability: DEFAULT_AVAILABILITY, allDayBlocks: true,
       });
 
       const store = await freshStore();
@@ -952,7 +954,7 @@ describe('store actions', () => {
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith({
         goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
-      }, 13, planReview);
+      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks);
     });
   });
 
