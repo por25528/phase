@@ -13,6 +13,20 @@ export const DEFAULT_SLOT_MIN = 60;
 /** Start times are snapped to this grid before searching for a gap. */
 export const SLOT_GRANULARITY_MIN = 5;
 
+/**
+ * A sentinel `Now` far enough in the past that it never clamps. Passing this
+ * to `remainingWindow` (via `freeIntervals`/`resolveSlot`) disables its
+ * past-clamping for any real date — the whole day's window is treated as
+ * still ahead, whatever the actual wall clock says.
+ *
+ * Used wherever the caller is re-deriving or adjusting a commitment the user
+ * already made, rather than placing brand-new work against "right now": the
+ * migration re-homing old data, and a resize of something already scheduled
+ * earlier today. Resizing a 09:00 block must stay possible at 14:00 — clamping
+ * to the real clock would report no gap at all and silently refuse the edit.
+ */
+export const NO_PAST_LIMIT: Now = { date: '1970-01-01', minute: 0 };
+
 /** A span already occupying part of a day. */
 export interface PlacedSpan {
   startMin: number;

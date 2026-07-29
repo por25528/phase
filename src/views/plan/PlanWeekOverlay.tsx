@@ -90,7 +90,6 @@ export function PlanWeekOverlay({
 function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () => void }) {
   const { goals, sessions, planReview, actions } = useAppStore();
   const today = todayStr();
-  const week = weekOf(today);
   if (!planReview) return null;
   const r = weekRecap(planReview, goals);
   const logged = loggedTimeForWeek(sessions, planReview.week);
@@ -135,7 +134,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
               <span className="text-[.72rem] text-muted truncate">{e.goalTitle}</span>
               <button
                 type="button"
-                onClick={() => actions.planNode(e.goalId, e.nodeId, week)}
+                onClick={() => actions.scheduleNode(e.goalId, e.nodeId, today, 0)}
                 className="text-[.72rem] font-semibold text-accent hover:text-accent-deep px-[4px]"
               >
                 Replan
@@ -152,7 +151,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
               </button>
               <button
                 type="button"
-                onClick={() => actions.unplanNode(e.goalId, e.nodeId)}
+                onClick={() => actions.unscheduleNode(e.goalId, e.nodeId)}
                 className="text-[.72rem] font-semibold text-muted hover:text-ink px-[4px]"
               >
                 Remove
@@ -303,10 +302,12 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
       return;
     }
     if (command.kind === 'unplan-step') {
-      actions.unplanNode(command.goalId, command.nodeId);
+      actions.unscheduleNode(command.goalId, command.nodeId);
       return;
     }
-    actions.planNode(command.goalId, command.nodeId, command.week, command.day);
+    // The old overlay has no notion of a time; aim at the start of the day and
+    // let resolveSlot pick. This file is deleted in plan 2.
+    if (command.day) actions.scheduleNode(command.goalId, command.nodeId, command.day, 0);
   }
 
   return (
@@ -379,7 +380,6 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                           <RailTreeView
                             nodes={tree}
                             goalId={goal.id}
-                            week={week}
                             days={days}
                             actions={actions}
                             focusNodeId={focusNodeId}
@@ -429,7 +429,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                     leaves={anyDay}
                     tasks={[]}
                     goalTitleById={goalTitleById}
-                    onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
+                    onRemove={(l) => actions.unscheduleNode(l.goalId, l.nodeId)}
                     onToggleTask={actions.toggleTask}
                     onEstimateNode={actions.setNodeEstimate}
                     onEstimateTask={actions.setTaskEstimate}
@@ -448,7 +448,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                       leaves={byDay.get(iso)!}
                       tasks={tasksByDay.get(iso)!}
                       goalTitleById={goalTitleById}
-                      onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
+                      onRemove={(l) => actions.unscheduleNode(l.goalId, l.nodeId)}
                       onToggleTask={actions.toggleTask}
                       onEstimateNode={actions.setNodeEstimate}
                       onEstimateTask={actions.setTaskEstimate}
@@ -618,11 +618,10 @@ export function DayContent({
 // into subtasks shows those subtasks in place beneath it. Indentation is absolute
 // (depth × 10px per item), so nesting never compounds.
 function RailTreeView({
-  nodes, goalId, week, days, actions, focusNodeId, depth = 0,
+  nodes, goalId, days, actions, focusNodeId, depth = 0,
 }: {
   nodes: RailTreeNode[];
   goalId: string;
-  week: string;
   days: string[];
   actions: ReturnType<typeof useAppStore>['actions'];
   focusNodeId?: string;
@@ -638,7 +637,6 @@ function RailTreeView({
             nodeId={n.id}
             title={n.title}
             focus={n.id === focusNodeId}
-            week={week}
             days={days}
             actions={actions}
             depth={depth}
@@ -652,7 +650,6 @@ function RailTreeView({
             <RailTreeView
               nodes={n.children}
               goalId={goalId}
-              week={week}
               days={days}
               actions={actions}
               focusNodeId={focusNodeId}
@@ -670,13 +667,12 @@ function RailTreeView({
 // actions.addChildren, so the step stops being a leaf and its children take its
 // place in the rail — no manual refresh, no leaving the overlay.
 function RailStep({
-  goalId, nodeId, title, focus, week, days, actions, depth,
+  goalId, nodeId, title, focus, days, actions, depth,
 }: {
   goalId: string;
   nodeId: string;
   title: string;
   focus: boolean;
-  week: string;
   days: string[];
   actions: ReturnType<typeof useAppStore>['actions'];
   depth: number;
@@ -698,7 +694,9 @@ function RailStep({
     if (!target) return;
     e.preventDefault();
     e.stopPropagation();
-    actions.planNode(goalId, nodeId, week, target.day ?? undefined);
+    // '0' ("Any day") has no equivalent in the new model — this file is
+    // deleted in plan 2, so it's left as a no-op rather than reworked.
+    if (target.day) actions.scheduleNode(goalId, nodeId, target.day, 0);
   }
 
   function close() {
@@ -730,7 +728,7 @@ function RailStep({
           type="button"
           {...attributes}
           {...listeners}
-          onClick={() => actions.planNode(goalId, nodeId, week)}
+          onClick={() => actions.scheduleNode(goalId, nodeId, days[0], 0)}
           title="Click or drag to plan · press 1–7 for a weekday, 0 for Any day"
           className="flex items-center gap-[7px] flex-1 min-w-0 text-left text-[.79rem] text-ink-soft cursor-grab hover:text-ink"
         >

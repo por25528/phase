@@ -17,7 +17,10 @@ import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
-import { normalizeEstimate } from '../lib/capacity';
+import { normalizeEstimate, type Now } from '../lib/capacity';
+import { resolveSlot, durationOf, freeIntervals } from '../lib/slot';
+import { spansOn } from '../lib/scheduled';
+import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
 import {
   type Theme,
   resolveTheme,
@@ -241,6 +244,35 @@ function isActiveGoal(goalId: string): boolean {
 }
 function isActiveNode(nodeId: string): boolean {
   return !goalOfNode(nodeId)?.completedAt;
+}
+
+// Minutes-since-midnight for the live clock — the one place the store reads it.
+function nowMoment(): Now {
+  const d = new Date();
+  return { date: todayStr(), minute: d.getHours() * 60 + d.getMinutes() };
+}
+
+// "1h 30m" / "45m" — used only in refusal toasts.
+function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+// The refusal toast must be actionable: naming the longest free stretch tells
+// the user what WOULD fit, not just that this attempt failed. Deliberately the
+// longest single stretch, not total free minutes — three scattered 15-minute
+// gaps summing to 45m would read as "45m free" while nothing 45m long actually
+// fits, and the longest stretch is the number that predicts whether a retry
+// will succeed. A day with no free stretch at all gets its own wording rather
+// than a misleading "longest free stretch is 0m".
+function describeNoRoom(durationMin: number, gaps: { startMin: number; endMin: number }[]): string {
+  const longest = gaps.reduce((max, g) => Math.max(max, g.endMin - g.startMin), 0);
+  const need = `No ${formatDuration(durationMin)} gap left that day`;
+  return longest > 0
+    ? `${need} — longest free stretch is ${formatDuration(longest)}`
+    : `${need} — no free time left that day`;
 }
 
 // Snapshot the outgoing week's commitments exactly once per rollover. Entries
@@ -724,32 +756,129 @@ export const actions = {
     withUndo(`Unscheduled "${node.title}" · Undo`, 'goals', goals);
   },
 
-  // Planning — plannedWeek/plannedDay are scheduling metadata only.
-  // A provided day derives the week (they can never disagree); containers
-  // and unknown ids are no-ops.
-  planNode(goalId: string, nodeId: string, week: string, day?: string): void {
+  // Scheduling. A view hands over WHERE THE USER POINTED; the store resolves
+  // the actual slot, refuses with an explanation when nothing fits, and
+  // persists. Views never call resolveSlot.
+  scheduleNode(goalId: string, nodeId: string, day: string, aimMin: number): void {
     if (!isActiveGoal(goalId)) return; // frozen on a completed project
+    const source = state.goals.find((g) => g.id === goalId);
+    const sourceNode = source ? findNode(source.nodes, nodeId) : null;
+    if (!sourceNode || sourceNode.children) return;
+
+    const durationMin = durationOf(sourceNode.estimateMin);
+    const placed = spansOn(state.goals, state.tasks, day, nodeId);
+    const startMin = resolveSlot({
+      date: day,
+      aimMin,
+      durationMin,
+      windows: state.availability,
+      blocks: [], // slice 2 supplies real busy blocks
+      placed,
+      now: nowMoment(),
+      allDayBlocks: state.allDayBlocks,
+    });
+    if (startMin === null) {
+      const gaps = freeIntervals(day, state.availability, [], placed, nowMoment(), state.allDayBlocks);
+      actions.showToast(describeNoRoom(durationMin, gaps));
+      return;
+    }
+
     const goals = cloneGoals(state.goals);
-    const goal = goals.find((g) => g.id === goalId);
-    if (!goal) return;
-    const node = findNode(goal.nodes, nodeId);
-    if (!node || node.children) return;
-    node.plannedWeek = day ? weekOf(day) : weekOf(week);
-    if (day) node.plannedDay = day;
-    else delete node.plannedDay;
+    const node = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
+    setPlannedSlot(node, day, startMin);
     setAndPersist({ goals });
   },
 
-  unplanNode(goalId: string, nodeId: string): void {
-    if (!isActiveGoal(goalId)) return; // frozen on a completed project
+  scheduleTask(taskId: string, date: string, aimMin: number): void {
+    const task = state.tasks.find((t) => t.id === taskId);
+    if (!task || !isValidLocalDate(date)) return;
+
+    const durationMin = durationOf(task.estimateMin);
+    const placed = spansOn(state.goals, state.tasks, date, taskId);
+    const startMin = resolveSlot({
+      date,
+      aimMin,
+      durationMin,
+      windows: state.availability,
+      blocks: [],
+      placed,
+      now: nowMoment(),
+      allDayBlocks: state.allDayBlocks,
+    });
+    if (startMin === null) {
+      const gaps = freeIntervals(date, state.availability, [], placed, nowMoment(), state.allDayBlocks);
+      actions.showToast(describeNoRoom(durationMin, gaps));
+      return;
+    }
+
+    setAndPersist({
+      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, date, startMin } : t)),
+    });
+  },
+
+  unscheduleNode(goalId: string, nodeId: string): void {
+    if (!isActiveGoal(goalId)) return;
     const goal = state.goals.find((g) => g.id === goalId);
     const node = goal ? findNode(goal.nodes, nodeId) : null;
     if (!goal || !node || !node.plannedWeek) return;
     const goals = cloneGoals(state.goals);
-    const cloned = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
-    delete cloned.plannedWeek;
-    delete cloned.plannedDay;
+    clearPlannedSlot(findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!);
     withUndo(`Removed "${node.title}" from plan · Undo`, 'goals', goals);
+  },
+
+  unscheduleTask(taskId: string): void {
+    const task = state.tasks.find((t) => t.id === taskId);
+    if (!task || !task.date) return;
+    const tasks = state.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const cleared = { ...t };
+      delete cleared.date;
+      delete cleared.startMin;
+      return cleared;
+    });
+    withUndo(`Unscheduled "${task.title}" · Undo`, 'tasks', tasks);
+  },
+
+  resizeNode(nodeId: string, minutes: number): void {
+    if (!isActiveNode(nodeId)) return;
+    const goal = goalOfNode(nodeId);
+    const node = goal ? findNode(goal.nodes, nodeId) : null;
+    if (!goal || !node || node.plannedDay === undefined || node.plannedStartMin === undefined) return;
+
+    const clamped = clampResize({
+      date: node.plannedDay,
+      startMin: node.plannedStartMin,
+      requestedMin: minutes,
+      windows: state.availability,
+      blocks: [],
+      placed: spansOn(state.goals, state.tasks, node.plannedDay, nodeId),
+      allDayBlocks: state.allDayBlocks,
+    });
+    if (clamped === null) return;
+
+    const goals = cloneGoals(state.goals);
+    findNode(goals.find((g) => g.id === goal.id)!.nodes, nodeId)!.estimateMin = clamped;
+    setAndPersist({ goals });
+  },
+
+  resizeTask(taskId: string, minutes: number): void {
+    const task = state.tasks.find((t) => t.id === taskId);
+    if (!task || task.date === undefined || task.startMin === undefined) return;
+
+    const clamped = clampResize({
+      date: task.date,
+      startMin: task.startMin,
+      requestedMin: minutes,
+      windows: state.availability,
+      blocks: [],
+      placed: spansOn(state.goals, state.tasks, task.date, taskId),
+      allDayBlocks: state.allDayBlocks,
+    });
+    if (clamped === null) return;
+
+    setAndPersist({
+      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, estimateMin: clamped } : t)),
+    });
   },
 
   markWeekReviewed(): void {

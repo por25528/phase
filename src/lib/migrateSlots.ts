@@ -1,17 +1,8 @@
 import type { AvailabilityWindow, Goal, GoalNode, Task } from '../db/types';
 import { windowForDate } from './availability';
-import type { Now } from './capacity';
 import { walkLeaves, weekOf } from './plan';
-import { durationOf, resolveSlot, type PlacedSpan } from './slot';
+import { durationOf, resolveSlot, NO_PAST_LIMIT, type PlacedSpan } from './slot';
 import { cloneGoals } from './tree';
-
-/**
- * The migration re-homes commitments the user ALREADY made. Clamping to the
- * real clock would refuse this morning merely because it is now afternoon and
- * dump the day's work into the sidebar. A sentinel far in the past disables
- * `remainingWindow`'s past-clamping for every date the migration touches.
- */
-export const MIGRATION_NOW: Now = { date: '1970-01-01', minute: 0 };
 
 export interface MigrationReport {
   scheduledSteps: number;
@@ -82,7 +73,7 @@ export function migrateSlots(
       windows,
       blocks: [],
       placed: spansFrom(map, date),
-      now: MIGRATION_NOW,
+      now: NO_PAST_LIMIT,
       allDayBlocks,
     });
   }

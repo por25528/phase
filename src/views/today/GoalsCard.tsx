@@ -95,7 +95,7 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
                   onClick={(e) => {
                     e.stopPropagation();
                     if (alreadyPlanned || !next) return;
-                    actions.planNode(g.id, next.id, week, today);
+                    actions.scheduleNode(g.id, next.id, today, 0);
                     actions.showToast(`Planned "${next.title}" for today`);
                   }}
                   disabled={alreadyPlanned}

@@ -307,7 +307,8 @@ describe('store actions', () => {
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
-      // plan the leaf by hand (planNode arrives in a later task)
+      // plan the leaf by hand — addChild's field-clearing is what's under test
+      // here, not scheduleNode's slot resolution.
       getState().goals[0].nodes[0].plannedWeek = '2026-07-13';
       getState().goals[0].nodes[0].plannedDay = '2026-07-15';
       actions.addChild(nid, 'child');
@@ -613,52 +614,137 @@ describe('store actions', () => {
     });
   });
 
-  describe('planNode / unplanNode', () => {
-    it('plans a leaf into a week, normalizing week and day together', async () => {
+  describe('scheduleNode / unscheduleNode', () => {
+    // '2026-07-15' is a Wednesday; the module default availability (Mon-Fri
+    // 09:00-18:00) covers it, so resolveSlot has somewhere to place the leaf.
+    it('schedules a leaf onto a day, deriving plannedWeek and a real start minute', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
       actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
 
-      // day wins: plannedWeek is derived FROM the day
-      actions.planNode(gid, nid, '2026-07-01', '2026-07-15');
-      let n = getState().goals[0].nodes[0];
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
+      const n = getState().goals[0].nodes[0];
       expect(n.plannedWeek).toBe('2026-07-13');
       expect(n.plannedDay).toBe('2026-07-15');
-
-      // re-plan without a day clears the pin and normalizes the week
-      actions.planNode(gid, nid, '2026-07-15');
-      n = getState().goals[0].nodes[0];
-      expect(n.plannedWeek).toBe('2026-07-13');
-      expect(n.plannedDay).toBeUndefined();
+      expect(n.plannedStartMin).toBe(600);
     });
 
     it('is a no-op on containers and unknown ids', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
       actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
       actions.addChild(nid, 'child'); // nid is now a container
-      actions.planNode(gid, nid, '2026-07-13');
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
       expect(getState().goals[0].nodes[0].plannedWeek).toBeUndefined();
-      actions.planNode('nope', 'nada', '2026-07-13'); // must not throw
+      actions.scheduleNode('nope', 'nada', '2026-07-15', 600); // must not throw
     });
 
-    it('unplanNode clears both fields with an undo window', async () => {
+    it('refuses with a toast naming the longest free stretch when nothing fits', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
       actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
-      actions.planNode(gid, nid, '2026-07-13', '2026-07-15');
-      actions.unplanNode(gid, nid);
-      expect(getState().goals[0].nodes[0].plannedWeek).toBeUndefined();
+      actions.setNodeEstimate(nid, 600); // longer than the whole 09:00-18:00 window
+
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
+
+      expect(getState().goals[0].nodes[0].plannedDay).toBeUndefined();
+      expect(getState().toast).toBe('No 10h gap left that day — longest free stretch is 9h');
+    });
+
+    it('unscheduleNode clears all three fields with an undo window', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
+
+      actions.unscheduleNode(gid, nid);
+
+      const cleared = getState().goals[0].nodes[0];
+      expect(cleared.plannedWeek).toBeUndefined();
+      expect(cleared.plannedDay).toBeUndefined();
+      expect(cleared.plannedStartMin).toBeUndefined();
       expect(getState().pendingUndo).not.toBeNull();
+
       actions.undoLastDelete();
-      expect(getState().goals[0].nodes[0].plannedWeek).toBe('2026-07-13');
-      expect(getState().goals[0].nodes[0].plannedDay).toBe('2026-07-15');
+      const restored = getState().goals[0].nodes[0];
+      expect(restored.plannedWeek).toBe('2026-07-13');
+      expect(restored.plannedDay).toBe('2026-07-15');
+      expect(restored.plannedStartMin).toBe(600);
+    });
+  });
+
+  describe('resizeNode / resizeTask', () => {
+    // Both leaves sit on 2026-07-15 (Wed, 09:00-18:00 window). 'first' occupies
+    // 540..600 (60min); 'second' immediately follows at 600..660 (60min).
+    async function scheduledPair() {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'first');
+      actions.addRootNode(gid, 'second');
+      const firstId = getState().goals[0].nodes[0].id;
+      const secondId = getState().goals[0].nodes[1].id;
+      actions.scheduleNode(gid, firstId, '2026-07-15', 540);
+      actions.scheduleNode(gid, secondId, '2026-07-15', 660);
+      return { actions, getState, gid, firstId, secondId };
+    }
+
+    // Regression guard: without excludeId in the resize path, `first`'s own
+    // 540..600 span would appear in `placed`, so `first` would collide with
+    // ITSELF and never be able to grow — even into genuinely free time before
+    // `second`. This proves growing in place (excluding self) works.
+    it('resizes a node in place, growing into the free gap right up to the next block', async () => {
+      const { actions, getState, firstId } = await scheduledPair();
+
+      actions.resizeNode(firstId, 120); // 540..660 would exactly touch `second` at 660
+
+      expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBe(120);
+    });
+
+    it('clamps a resize so it cannot overlap the next block', async () => {
+      const { actions, getState, firstId } = await scheduledPair();
+
+      actions.resizeNode(firstId, 600); // would run straight through `second`
+
+      // Clamped to the free gap: 540 (its own start) .. 660 (second's start) = 120min.
+      expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBe(120);
+    });
+
+    it('is a no-op when the resize is refused (non-positive request)', async () => {
+      const { actions, getState, firstId } = await scheduledPair();
+
+      actions.resizeNode(firstId, 0);
+
+      expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBeUndefined();
+    });
+
+    it('resizeTask mirrors resizeNode: grows in place and clamps against the next block', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('first', '2026-07-15');
+      actions.addTask('second', '2026-07-15');
+      const [firstId, secondId] = getState().tasks.map((t) => t.id);
+      actions.scheduleTask(firstId, '2026-07-15', 540);
+      actions.scheduleTask(secondId, '2026-07-15', 660);
+
+      actions.resizeTask(firstId, 120); // exactly touches `second` — must succeed
+      expect(getState().tasks.find((t) => t.id === firstId)?.estimateMin).toBe(120);
+
+      actions.resizeTask(firstId, 600); // would run through `second` — must clamp
+      expect(getState().tasks.find((t) => t.id === firstId)?.estimateMin).toBe(120);
     });
   });
 
@@ -766,7 +852,9 @@ describe('store actions', () => {
       const goalId = getState().goals[0].id;
       actions.addRootNode(goalId, 'Outgoing commitment');
       const nodeId = getState().goals[0].nodes[0].id;
-      actions.planNode(goalId, nodeId, prevWeek);
+      // Plan the leaf by hand (scheduleNode resolves a real slot elsewhere;
+      // the rollover snapshot only cares about plannedWeek).
+      getState().goals[0].nodes[0].plannedWeek = prevWeek;
 
       actions.ensureWeekRollover();
 
@@ -799,7 +887,7 @@ describe('store actions', () => {
       expect(pr?.reviewed).toBe(false);
 
       // Triage must not change the snapshot, and rollover is idempotent:
-      actions.unplanNode('g1', 'n1');
+      actions.unscheduleNode('g1', 'n1');
       actions.ensureWeekRollover();
       expect(getState().planReview?.entries).toHaveLength(1);
     });
@@ -1254,7 +1342,7 @@ describe('store actions', () => {
       expect(getState().goals[0].nodes[0].done).toBe(false);
       actions.addRootNode(gid, 'Another');
       expect(getState().goals[0].nodes).toHaveLength(1);
-      actions.planNode(gid, nid, '2026-07-13');
+      actions.scheduleNode(gid, nid, '2026-07-13', 600);
       expect(getState().goals[0].nodes[0].plannedWeek).toBeUndefined();
       actions.removeNode(nid);
       expect(getState().goals[0].nodes).toHaveLength(1);

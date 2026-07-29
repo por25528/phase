@@ -114,8 +114,8 @@ describe('daily work actions', () => {
     expect(actions.rescheduleTask).toHaveBeenCalledWith('t1', '2026-08-02');
   });
 
-  it('accepts a suggestion for today with derived week arguments', () => {
-    const actions = { planNode: vi.fn() };
+  it('accepts a suggestion for today, aiming at the start of the day', () => {
+    const actions = { scheduleNode: vi.fn() };
     const suggestion = item({
       key: 'step:s1',
       kind: 'step',
@@ -125,6 +125,6 @@ describe('daily work actions', () => {
     });
 
     expect(scheduleSuggestionForToday(suggestion, '2026-07-23', actions)).toBe(true);
-    expect(actions.planNode).toHaveBeenCalledWith('g1', 's1', '2026-07-20', '2026-07-23');
+    expect(actions.scheduleNode).toHaveBeenCalledWith('g1', 's1', '2026-07-23', 0);
   });
 });

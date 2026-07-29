@@ -184,8 +184,8 @@ export function TodayWorkCard({
                       <span className="flex flex-wrap items-center gap-x-[4px] gap-y-[3px]">
                         <button
                           type="button"
-                          aria-label={`Replan "${item.title}" this week`}
-                          onClick={() => item.goalId && actions.planNode(item.goalId, item.id, week)}
+                          aria-label={`Replan "${item.title}" for today`}
+                          onClick={() => item.goalId && actions.scheduleNode(item.goalId, item.id, today, 0)}
                           className={`${decisionButtonClass} text-accent hover:text-accent-deep`}
                         >
                           Replan
@@ -201,7 +201,7 @@ export function TodayWorkCard({
                         <button
                           type="button"
                           aria-label={`Remove "${item.title}" from the plan`}
-                          onClick={() => item.goalId && actions.unplanNode(item.goalId, item.id)}
+                          onClick={() => item.goalId && actions.unscheduleNode(item.goalId, item.id)}
                           className={`${decisionButtonClass} text-muted hover:text-ink`}
                         >
                           Remove
