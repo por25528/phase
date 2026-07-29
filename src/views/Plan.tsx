@@ -15,11 +15,14 @@ import {
 } from '@dnd-kit/core';
 import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates } from '../lib/dates';
-import { weekOf, attentionRank, unplannedOpenLeaves } from '../lib/plan';
+import { weekOf, attentionRank, unplannedOpenLeaves, plannedLeaves } from '../lib/plan';
 import { visibleRange, type LaneSpan } from '../lib/grid';
 import { spansOn } from '../lib/scheduled';
+import { weekCapacity, type Now } from '../lib/capacity';
+import { tasksForWeek } from '../lib/dailyWork';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
+import { WeekHeader } from './plan/WeekHeader';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
 
 /**
@@ -61,6 +64,7 @@ export function Plan() {
   const days = weekDates(weekStart);
   const scheduledSpans: LaneSpan[] = days.flatMap((date) => spansOn(goals, tasks, date));
   const range = visibleRange(days, availability, [], scheduledSpans);
+  const isPast = weekStart < weekOf(today);
 
   // Re-render each minute so the now-line moves.
   const [nowMinute, setNowMinute] = useState(() => {
@@ -74,6 +78,18 @@ export function Plan() {
     }, 60_000);
     return () => clearInterval(id);
   }, []);
+
+  const now: Now = { date: today, minute: nowMinute };
+  const capacity = weekCapacity({
+    week: weekStart,
+    windows: availability,
+    blocks: [],
+    leaves: plannedLeaves(goals, weekStart),
+    tasks: tasksForWeek(tasks, weekStart),
+    now,
+    allDayBlocks,
+    hasData: false, // slice 2 flips this when a calendar is connected
+  });
 
   const [dragTitle, setDragTitle] = useState<string | null>(null);
   const sensors = useSensors(
@@ -158,15 +174,14 @@ export function Plan() {
         </div>
 
         <div className="min-w-0">
-          <div className="flex items-baseline gap-[10px] mb-[10px]">
-            <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold">
-              Your week
-            </h3>
-            <span className="flex-1" />
-            <button type="button" onClick={() => setWeekStart(addDays(weekStart, -7))} className="text-muted hover:text-ink px-[6px]">‹</button>
-            <button type="button" onClick={() => setWeekStart(weekOf(today))} className="text-[.72rem] text-muted hover:text-ink">today</button>
-            <button type="button" onClick={() => setWeekStart(addDays(weekStart, 7))} className="text-muted hover:text-ink px-[6px]">›</button>
-          </div>
+          <WeekHeader
+            weekStart={weekStart}
+            isPast={isPast}
+            capacity={capacity}
+            onPrev={() => setWeekStart(addDays(weekStart, -7))}
+            onNext={() => setWeekStart(addDays(weekStart, 7))}
+            onToday={() => setWeekStart(weekOf(today))}
+          />
 
           {availability.length === 0 && (
             <div className="mb-[10px] px-[10px] py-[8px] rounded-[9px] border border-line-2 bg-panel text-[.82rem] text-ink-soft">
@@ -187,6 +202,7 @@ export function Plan() {
             nowMinute={nowMinute}
             windows={availability}
             range={range}
+            readOnly={isPast}
           >
             {(date) => (
               <DayBlocks
@@ -196,6 +212,7 @@ export function Plan() {
                 blocks={[]}
                 range={range}
                 allDayBlocks={allDayBlocks}
+                readOnly={isPast}
                 gridHeightPx={GRID_HEIGHT_PX}
                 onRemove={(kind, id, goalId) => {
                   if (kind === 'task') actions.unscheduleTask(id);

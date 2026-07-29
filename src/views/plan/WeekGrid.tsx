@@ -35,13 +35,15 @@ function hourLabel(minute: number): string {
  * two independent computations could drift.
  */
 export function WeekGrid({
-  days, today, nowMinute, windows, range, children,
+  days, today, nowMinute, windows, range, readOnly, children,
 }: {
   days: string[];
   today: string;
   nowMinute: number | null;
   windows: AvailabilityWindow[];
   range: Interval;
+  /** True when the whole week is past — forwarded to every DayColumn. */
+  readOnly?: boolean;
   children: (date: string) => ReactNode;
 }) {
   const marks = hourMarks(range);
@@ -106,6 +108,7 @@ export function WeekGrid({
               availabilityWindow={windowForDate(iso, windows)}
               nowMinute={iso === today ? nowMinute : null}
               range={range}
+              readOnly={readOnly}
             >
               {children(iso)}
             </DayColumn>

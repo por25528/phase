@@ -15,19 +15,21 @@ import { minuteToPct } from '../../lib/grid';
  * neighbouring component (Task 13) adds `window.addEventListener` calls.
  */
 export function DayColumn({
-  date, isToday, availabilityWindow, nowMinute, range, children,
+  date, isToday, availabilityWindow, nowMinute, range, readOnly, children,
 }: {
   date: string;
   isToday: boolean;
   availabilityWindow: AvailabilityWindow | null;
   nowMinute: number | null;
   range: Interval;
+  /** True when this column belongs to a past week — every drop is refused. */
+  readOnly?: boolean;
   children: ReactNode;
 }) {
-  // A day with no availability window refuses drops outright — the disabled
-  // droppable is what makes `over` null there, so nothing is ever scheduled
-  // onto a day off.
-  const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !availabilityWindow });
+  // A day with no availability window, OR a day in a read-only (past) week,
+  // refuses drops outright — the disabled droppable is what makes `over` null
+  // there, so nothing is ever scheduled onto a day off or into the past.
+  const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !availabilityWindow || !!readOnly });
 
   return (
     <div
