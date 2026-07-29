@@ -94,6 +94,31 @@ describe('migrateSlots', () => {
     expect(second.report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, sidebarTasks: 0 });
   });
 
+  // Guards the span-registration branch: an item that ALREADY has both a day and
+  // a start minute is skipped for PLACEMENT, but its span must still be registered
+  // as occupied — otherwise the next item competing for that day is placed on top
+  // of it, silently double-booking work the user already committed to.
+  //
+  // The idempotence test above does NOT pin this: there, every item is already
+  // migrated, so nothing new is ever placed and a missing registration has no
+  // observable effect. This test mixes an already-migrated item with a new one on
+  // the same day, which is the only shape that exposes the bug.
+  it('does not place new work on top of an already-migrated item', () => {
+    const g = goal([
+      // Already migrated, and occupies the entire 540..1080 window.
+      { id: 'n1', title: 'Already placed', plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540, estimateMin: 540 },
+      // Brand new, same day — there is no room left for it.
+      { id: 'n2', title: 'New step', plannedWeek: WEEK, plannedDay: WED, estimateMin: 30 },
+    ]);
+    const { goals, report } = migrateSlots([g], [], WINDOWS, true);
+
+    expect(goals[0].nodes[0].plannedStartMin).toBe(540); // untouched
+    expect(goals[0].nodes[1].plannedStartMin).toBeUndefined();
+    expect(goals[0].nodes[1].plannedDay).toBeUndefined();
+    expect(report.sidebarSteps).toBe(1);
+    expect(report.scheduledSteps).toBe(0);
+  });
+
   it('does not mutate its inputs', () => {
     const g = goal([{ id: 'n1', title: 'Draft', plannedWeek: WEEK, plannedDay: WED, estimateMin: 90 }]);
     const snapshot = structuredClone(g);
