@@ -40,7 +40,7 @@ export function mergeIntervals(intervals: Interval[]): Interval[] {
  * The part of `date`'s availability window that is still ahead of `now`.
  * Returns null when the day is off, already past, or its window has closed.
  */
-function remainingWindow(
+export function remainingWindow(
   date: string,
   windows: AvailabilityWindow[],
   now: Now,
