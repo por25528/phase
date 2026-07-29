@@ -30,15 +30,17 @@ describe('sampleProject', () => {
     expect(pct).toBeLessThan(100);
   });
 
-  it('pins one open leaf to today so Today is not dim on first run', () => {
+  it('commits one open leaf to this week but leaves it in the backlog (no day, no start minute)', () => {
     const g = sampleProject(TODAY, counter());
-    const pinned: string[] = [];
+    const backlog: string[] = [];
     const walk = (nodes: typeof g.nodes) => nodes.forEach((n) => {
       if (n.children) walk(n.children);
-      else if (!n.done && n.plannedDay === TODAY && n.plannedWeek === weekOf(TODAY)) pinned.push(n.id);
+      else if (!n.done && n.plannedWeek === weekOf(TODAY) && n.plannedDay === undefined && n.plannedStartMin === undefined) {
+        backlog.push(n.id);
+      }
     });
     walk(g.nodes);
-    expect(pinned.length).toBe(1);
+    expect(backlog.length).toBe(1);
   });
 
   it('gives every node a unique id', () => {

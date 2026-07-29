@@ -1,6 +1,5 @@
 import type { DailyWorkItem } from '../../lib/dailyWork';
 import { addDays } from '../../lib/dates';
-import { weekOf } from '../../lib/plan';
 import { isValidLocalDate } from '../../lib/schedule';
 
 export type QuickAddType = 'habit' | 'goal' | 'task';
@@ -74,7 +73,10 @@ export function rescheduleTaskToPickedDate(
 }
 
 interface SuggestionActions {
-  planNode(goalId: string, nodeId: string, week: string, day?: string): void;
+  // scheduleNode reports whether a slot was actually found — a refusal
+  // already wrote its own explanatory toast, so callers must not layer a
+  // success message on top of it.
+  scheduleNode(goalId: string, nodeId: string, day: string, aimMin: number): boolean;
 }
 
 export function scheduleSuggestionForToday(
@@ -91,6 +93,27 @@ export function scheduleSuggestionForToday(
   ) {
     return false;
   }
-  actions.planNode(item.goalId, item.id, weekOf(today), today);
+  // No specific time to aim at — aim at the start of the day and let
+  // resolveSlot pick the earliest gap that fits.
+  actions.scheduleNode(item.goalId, item.id, today, 0);
   return true;
+}
+
+interface PlanNodeForTodayActions {
+  scheduleNode(goalId: string, nodeId: string, day: string, aimMin: number): boolean;
+}
+
+/**
+ * GoalsCard's "→ today" control: plan a goal's next open step for today.
+ * Returns whether scheduling actually succeeded, so the caller shows a
+ * success toast only then — scheduleNode already wrote its own explanatory
+ * toast on refusal, and an unconditional success message would clobber it.
+ */
+export function planNodeForToday(
+  goalId: string,
+  nodeId: string,
+  today: string,
+  actions: PlanNodeForTodayActions,
+): boolean {
+  return actions.scheduleNode(goalId, nodeId, today, 0);
 }

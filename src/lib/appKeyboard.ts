@@ -5,6 +5,7 @@ export type AppKeyCommand =
   | 'view-today'
   | 'view-goals'
   | 'view-timeline'
+  | 'view-plan'
   | 'open-plan'
   | 'go-today'
   | 'toggle-shortcuts';
@@ -44,6 +45,7 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
   if (event.key === '2') return 'view-goals';
   if (event.key === '3') return 'view-timeline';
   if (event.key === '4') return 'open-plan';
+  if (event.key === '5') return 'view-plan';
   if (event.key === 't') return 'go-today';
   return null;
 }

@@ -3,6 +3,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   db, persist, importStateFromFile, loadState,
   loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
+  isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
+  resetSlotMigration,
 } from './db';
 import type { AppState, Goal } from './types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
@@ -157,6 +159,22 @@ describe('importStateFromFile', () => {
     expect(imported.availability).toEqual(DEFAULT_AVAILABILITY);
     expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
   });
+
+  // Finding I2: every backup predates the calendar-grid migration, but this
+  // device's own done-flag is already true from its own first launch — so
+  // without re-arming it here, migrateSlots would never run over the imported
+  // (pre-migration-shape) data and pre-migration data would resurface.
+  it('re-arms the slot migration so the imported data is migrated on next hydration', async () => {
+    await markSlotMigrationDone();
+    await saveSlotMigrationSnapshot([goal('this-devices-own-snapshot')], []);
+    expect(await isSlotMigrationDone()).toBe(true);
+
+    const backup = { goals: [goal('g1')], habits: [], tasks: [], sessions: [], pxPerDay: 40 };
+    await importStateFromFile(fileOf(JSON.stringify(backup)));
+
+    expect(await isSlotMigrationDone()).toBe(false);
+    expect(await db.settings.get('preSlotMigrationSnapshot')).toBeUndefined();
+  });
 });
 
 describe('loadState', () => {
@@ -217,5 +235,60 @@ describe('availability', () => {
     expect(await loadAllDayBlocks()).toBe(true);
     await saveAllDayBlocks(false);
     expect(await loadAllDayBlocks()).toBe(false);
+  });
+});
+
+describe('slot migration flag and snapshot', () => {
+  it('isSlotMigrationDone is false initially and true after markSlotMigrationDone', async () => {
+    expect(await isSlotMigrationDone()).toBe(false);
+    await markSlotMigrationDone();
+    expect(await isSlotMigrationDone()).toBe(true);
+  });
+
+  // Direct test of Finding 1: the snapshot is the sole record of pre-migration
+  // state. A second call — e.g. a re-entry after a crash between persist and
+  // markSlotMigrationDone, where the data is already migrated — must never
+  // overwrite the first, original copy.
+  it('a second saveSlotMigrationSnapshot call does not overwrite the first', async () => {
+    const originalGoal = goal('original');
+    const migratedGoal = goal('migrated-should-not-land');
+    await saveSlotMigrationSnapshot([originalGoal], []);
+
+    await saveSlotMigrationSnapshot([migratedGoal], []);
+
+    const row = await db.settings.get('preSlotMigrationSnapshot');
+    const stored = JSON.parse(row!.value);
+    expect(stored.goals).toEqual([originalGoal]);
+  });
+
+  // Finding I2: an import must re-arm the migration, or the imported (always
+  // pre-migration-shape) data is stranded behind a done-flag this device
+  // already flipped true on its own first launch.
+  describe('resetSlotMigration', () => {
+    it('clears the done-flag', async () => {
+      await markSlotMigrationDone();
+      expect(await isSlotMigrationDone()).toBe(true);
+
+      await resetSlotMigration();
+
+      expect(await isSlotMigrationDone()).toBe(false);
+    });
+
+    it('clears the snapshot row too, so the next migration can write a fresh one', async () => {
+      const oldSnapshotGoal = goal('pre-existing-device-snapshot');
+      await saveSlotMigrationSnapshot([oldSnapshotGoal], []);
+      await markSlotMigrationDone();
+
+      await resetSlotMigration();
+
+      // With the row cleared, saveSlotMigrationSnapshot's write-once guard must
+      // not see a stale row and skip — the NEW pre-migration data (the import)
+      // needs its own snapshot, not the old device's leftover one.
+      const importedGoal = goal('freshly-imported');
+      await saveSlotMigrationSnapshot([importedGoal], []);
+      const row = await db.settings.get('preSlotMigrationSnapshot');
+      const stored = JSON.parse(row!.value);
+      expect(stored.goals).toEqual([importedGoal]);
+    });
   });
 });

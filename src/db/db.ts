@@ -110,6 +110,80 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
   await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
+// One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
+// Not a Dexie version: the migration adds optional fields to existing objects,
+// which changes no store and no index.
+const SLOT_MIGRATION_KEY = 'slotMigrationDone';
+const SLOT_SNAPSHOT_KEY = 'preSlotMigrationSnapshot';
+
+export async function isSlotMigrationDone(): Promise<boolean> {
+  const row = await db.settings.get(SLOT_MIGRATION_KEY);
+  return row?.value === 'true';
+}
+
+/**
+ * Pre-migration copy of the two tables the migration rewrites. Kept in the
+ * settings table rather than downloaded, so the safety net costs the user no
+ * interaction on first launch.
+ *
+ * Write-once: this row is the SOLE record of the user's pre-migration
+ * scheduling. The caller re-enters this block whenever the done-flag reads
+ * false, including after a crash or a failed settings write that lands
+ * between a successful migration and `markSlotMigrationDone`. On such a
+ * re-entry the goals/tasks handed in here would already be migrated, so an
+ * unconditional `put` would overwrite the only original copy with a copy of
+ * already-rewritten data. Reading first and returning early if a snapshot
+ * already exists makes that impossible — PROVIDED the check and the write
+ * are atomic. The tab-lock gate makes two contexts both believing they own
+ * the lock unlikely but not unreachable (acquireTabLock degrades to "owned"
+ * when navigator.locks is absent or errors), so the get-then-put runs inside
+ * a single rw transaction rather than as two independent calls a second
+ * writer could interleave with.
+ */
+export async function saveSlotMigrationSnapshot(goals: Goal[], tasks: Task[]): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    const existing = await db.settings.get(SLOT_SNAPSHOT_KEY);
+    if (existing) return;
+    await db.settings.put({ key: SLOT_SNAPSHOT_KEY, value: JSON.stringify({ goals, tasks }) });
+  });
+}
+
+export async function markSlotMigrationDone(): Promise<void> {
+  await db.settings.put({ key: SLOT_MIGRATION_KEY, value: 'true' });
+}
+
+/**
+ * Re-arm the slot migration so an imported backup is migrated exactly like the
+ * original data was at first hydration.
+ *
+ * Every backup in existence predates the calendar-grid branch, so an imported
+ * goals/tasks pair is pre-migration shape (Any-day steps, tasks with no
+ * startMin, etc.) even though the done-flag from THIS device's own history
+ * already reads true. Without clearing it, `initStore` would never call
+ * `migrateSlots` over the imported data and the pre-migration shapes would
+ * resurface everywhere `plannedStartMin`/`startMin` is assumed once a day is
+ * set.
+ *
+ * The snapshot row is cleared too, not just the done-flag. `saveSlotMigrationSnapshot`
+ * is write-once BY DESIGN (see its own doc comment) so a crash mid-migration can't
+ * clobber the one pre-migration copy with a partially-migrated one — but that
+ * guard is scoped to protecting a single generation of data. The imported
+ * goals/tasks are a NEW generation the moment they land: they are what the
+ * next hydration will migrate, so they are what the snapshot must protect if
+ * that migration needs to be undone. Leaving the old snapshot row in place
+ * would silently block the new one from ever being written (the existing-row
+ * check would see a row and return early), leaving the newly-imported
+ * pre-migration data with no safety net at all. Clearing both rows together
+ * is what makes import behave like a fresh first launch for migration
+ * purposes.
+ */
+export async function resetSlotMigration(): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    await db.settings.delete(SLOT_MIGRATION_KEY);
+    await db.settings.delete(SLOT_SNAPSHOT_KEY);
+  });
+}
+
 // Single-row table: the one previous-week snapshot. clear+put inside a
 // transaction so a crash can't leave two rows.
 export async function loadPlanReview(): Promise<PlanReview | null> {
@@ -211,6 +285,14 @@ export async function importStateFromFile(
   await saveScale(pxPerDay);
   await saveAvailability(availability);
   await saveAllDayBlocks(allDayBlocks);
+  // Every backup predates the calendar-grid migration, and this device's own
+  // done-flag (already true from its own first launch) would otherwise skip
+  // it for the just-imported data. Re-arm it so the NEXT hydration — the next
+  // time `initStore` runs, i.e. the next app launch — migrates the imported
+  // goals/tasks exactly as it did the original data. The CURRENT session
+  // keeps running on the un-migrated shapes it just loaded; this only
+  // guarantees the migration is not skipped forever.
+  await resetSlotMigration();
   // Optional: restore the week-review snapshot if the backup carries a sane one.
   const pr = (raw as { planReview?: PlanReview }).planReview;
   if (pr && typeof pr.week === 'string' && Array.isArray(pr.entries) && typeof pr.reviewed === 'boolean') {

@@ -131,8 +131,11 @@ export function indentNode(goals: Goal[], nodeId: string): Goal[] {
     if (!prev.children?.length) {
       delete prev.done;
       delete prev.doneAt;
+      // A container can never carry a planned slot — clear all three
+      // together so plannedStartMin never survives without plannedDay.
       delete prev.plannedWeek;
       delete prev.plannedDay;
+      delete prev.plannedStartMin;
       delete prev.estimateMin;
     }
     (prev.children ??= []).push(node);

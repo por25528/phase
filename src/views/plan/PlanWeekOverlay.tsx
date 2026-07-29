@@ -90,7 +90,6 @@ export function PlanWeekOverlay({
 function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () => void }) {
   const { goals, sessions, planReview, actions } = useAppStore();
   const today = todayStr();
-  const week = weekOf(today);
   if (!planReview) return null;
   const r = weekRecap(planReview, goals);
   const logged = loggedTimeForWeek(sessions, planReview.week);
@@ -135,7 +134,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
               <span className="text-[.72rem] text-muted truncate">{e.goalTitle}</span>
               <button
                 type="button"
-                onClick={() => actions.planNode(e.goalId, e.nodeId, week)}
+                onClick={() => actions.scheduleNode(e.goalId, e.nodeId, today, 0)}
                 className="text-[.72rem] font-semibold text-accent hover:text-accent-deep px-[4px]"
               >
                 Replan
@@ -152,7 +151,7 @@ function RecapStep({ onDone, onCloseAll }: { onDone: () => void; onCloseAll: () 
               </button>
               <button
                 type="button"
-                onClick={() => actions.unplanNode(e.goalId, e.nodeId)}
+                onClick={() => actions.unscheduleNode(e.goalId, e.nodeId)}
                 className="text-[.72rem] font-semibold text-muted hover:text-ink px-[4px]"
               >
                 Remove
@@ -213,17 +212,18 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
     }))
     .filter((g) => g.count > 0 || g.pace === 'needs-breakdown');
 
-  // Grid: everything committed to the week, bucketed by day (undated → Any day).
+  // Grid: everything committed to the week, bucketed by day. "Any day" (undated
+  // within the week) no longer exists as a destination under the calendar-grid
+  // model — every planned leaf now carries a plannedDay — so a leaf without one
+  // is simply not shown on this grid rather than routed to a dead bucket.
   const placed = plannedLeaves(goals, week);
   const byDay = new Map<string, PlannedLeaf[]>(days.map((d) => [d, []]));
-  const anyDay: PlannedLeaf[] = [];
   for (const l of placed) {
     if (l.plannedDay && byDay.has(l.plannedDay)) byDay.get(l.plannedDay)!.push(l);
-    else anyDay.push(l);
   }
   const weekTasks = tasksForWeek(tasks, week);
   const tasksByDay = new Map<string, Task[]>(days.map((day) => [day, []]));
-  for (const task of weekTasks) tasksByDay.get(task.date)?.push(task);
+  for (const task of weekTasks) if (task.date) tasksByDay.get(task.date)?.push(task);
   const goalTitleById = new Map(goals.map((goal) => [goal.id, goal.title]));
   const openCount = plannerOpenCount(placed, weekTasks);
 
@@ -303,10 +303,12 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
       return;
     }
     if (command.kind === 'unplan-step') {
-      actions.unplanNode(command.goalId, command.nodeId);
+      actions.unscheduleNode(command.goalId, command.nodeId);
       return;
     }
-    actions.planNode(command.goalId, command.nodeId, command.week, command.day);
+    // The old overlay has no notion of a time; aim at the start of the day and
+    // let resolveSlot pick. This file is deleted in plan 2.
+    if (command.day) actions.scheduleNode(command.goalId, command.nodeId, command.day, 0);
   }
 
   return (
@@ -314,8 +316,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
       <div className="flex flex-col gap-[14px]">
         <p className="text-[.8rem] text-muted leading-[1.5]">
           Drag a step or task onto a day — or focus a step and press{' '}
-          <span className="text-ink-soft font-medium">1–7</span> for a weekday,{' '}
-          <span className="text-ink-soft font-medium">0</span> for Any day. Hover a step and hit{' '}
+          <span className="text-ink-soft font-medium">1–7</span> for a weekday. Hover a step and hit{' '}
           <span className="text-ink-soft font-medium">Break</span> to split it into day-sized tasks.
         </p>
 
@@ -379,8 +380,8 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                           <RailTreeView
                             nodes={tree}
                             goalId={goal.id}
-                            week={week}
                             days={days}
+                            today={today}
                             actions={actions}
                             focusNodeId={focusNodeId}
                           />
@@ -424,17 +425,6 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
 
             <div className="overflow-x-auto pb-[6px]">
               <div className="grid gap-[8px]" style={{ gridTemplateColumns: '1.2fr repeat(7, minmax(66px, 1fr))' }}>
-                <DayZone id="anyday" label="Any day" sub="this wk" anyday>
-                  <DayContent
-                    leaves={anyDay}
-                    tasks={[]}
-                    goalTitleById={goalTitleById}
-                    onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
-                    onToggleTask={actions.toggleTask}
-                    onEstimateNode={actions.setNodeEstimate}
-                    onEstimateTask={actions.setTaskEstimate}
-                  />
-                </DayZone>
                 {days.map((iso, i) => (
                   <DayZone
                     key={iso}
@@ -448,7 +438,7 @@ function PlanStep({ onClose, focusGoalId }: { onClose: () => void; focusGoalId: 
                       leaves={byDay.get(iso)!}
                       tasks={tasksByDay.get(iso)!}
                       goalTitleById={goalTitleById}
-                      onRemove={(l) => actions.unplanNode(l.goalId, l.nodeId)}
+                      onRemove={(l) => actions.unscheduleNode(l.goalId, l.nodeId)}
                       onToggleTask={actions.toggleTask}
                       onEstimateNode={actions.setNodeEstimate}
                       onEstimateTask={actions.setTaskEstimate}
@@ -618,12 +608,12 @@ export function DayContent({
 // into subtasks shows those subtasks in place beneath it. Indentation is absolute
 // (depth × 10px per item), so nesting never compounds.
 function RailTreeView({
-  nodes, goalId, week, days, actions, focusNodeId, depth = 0,
+  nodes, goalId, days, today, actions, focusNodeId, depth = 0,
 }: {
   nodes: RailTreeNode[];
   goalId: string;
-  week: string;
   days: string[];
+  today: string;
   actions: ReturnType<typeof useAppStore>['actions'];
   focusNodeId?: string;
   depth?: number;
@@ -638,8 +628,8 @@ function RailTreeView({
             nodeId={n.id}
             title={n.title}
             focus={n.id === focusNodeId}
-            week={week}
             days={days}
+            today={today}
             actions={actions}
             depth={depth}
           />
@@ -652,8 +642,8 @@ function RailTreeView({
             <RailTreeView
               nodes={n.children}
               goalId={goalId}
-              week={week}
               days={days}
+              today={today}
               actions={actions}
               focusNodeId={focusNodeId}
               depth={depth + 1}
@@ -670,14 +660,14 @@ function RailTreeView({
 // actions.addChildren, so the step stops being a leaf and its children take its
 // place in the rail — no manual refresh, no leaving the overlay.
 function RailStep({
-  goalId, nodeId, title, focus, week, days, actions, depth,
+  goalId, nodeId, title, focus, days, today, actions, depth,
 }: {
   goalId: string;
   nodeId: string;
   title: string;
   focus: boolean;
-  week: string;
   days: string[];
+  today: string;
   actions: ReturnType<typeof useAppStore>['actions'];
   depth: number;
 }) {
@@ -698,7 +688,9 @@ function RailStep({
     if (!target) return;
     e.preventDefault();
     e.stopPropagation();
-    actions.planNode(goalId, nodeId, week, target.day ?? undefined);
+    // '0' ("Any day") has no equivalent in the new model — this file is
+    // deleted in plan 2, so it's left as a no-op rather than reworked.
+    if (target.day) actions.scheduleNode(goalId, nodeId, target.day, 0);
   }
 
   function close() {
@@ -730,8 +722,11 @@ function RailStep({
           type="button"
           {...attributes}
           {...listeners}
-          onClick={() => actions.planNode(goalId, nodeId, week)}
-          title="Click or drag to plan · press 1–7 for a weekday, 0 for Any day"
+          // "Any day this week" no longer exists under the calendar-grid model
+          // — every commitment needs a real day — so a plain click (no weekday
+          // chosen) plans onto *today*, matching the Today-view "→ today" sites.
+          onClick={() => actions.scheduleNode(goalId, nodeId, today, 0)}
+          title="Click or drag to plan · press 1–7 for a weekday"
           className="flex items-center gap-[7px] flex-1 min-w-0 text-left text-[.79rem] text-ink-soft cursor-grab hover:text-ink"
         >
           <span className="text-faint text-[.7rem] flex-none">⠿</span>

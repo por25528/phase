@@ -8,6 +8,7 @@ import { behindPaceBy } from '../../lib/timeline';
 import { weekOf, paceStatus } from '../../lib/plan';
 import { BehindChip } from '../../components/BehindChip';
 import { hasTrustedSchedule, needsDateConfirmation } from '../../lib/schedule';
+import { planNodeForToday } from './workActions';
 
 export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
   const { goals, actions } = useAppStore();
@@ -95,8 +96,13 @@ export function GoalsCard({ onAddGoal }: { onAddGoal: () => void }) {
                   onClick={(e) => {
                     e.stopPropagation();
                     if (alreadyPlanned || !next) return;
-                    actions.planNode(g.id, next.id, week, today);
-                    actions.showToast(`Planned "${next.title}" for today`);
+                    // planNodeForToday reports whether scheduleNode actually
+                    // found a slot — a refusal already wrote its own
+                    // explanatory toast, so only announce success on true or
+                    // that message gets clobbered immediately.
+                    if (planNodeForToday(g.id, next.id, today, actions)) {
+                      actions.showToast(`Planned "${next.title}" for today`);
+                    }
                   }}
                   disabled={alreadyPlanned}
                   aria-label={`Plan "${next.title}" for today`}

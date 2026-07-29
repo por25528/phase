@@ -7,7 +7,11 @@ import { weekOf } from './plan';
 // things the audit said were invisible on day one:
 //   • leaves are the concrete actions you check off (the % only moves on a tick),
 //   • a container ("Problem 3") groups several leaves without touching the %,
-//   • one open leaf is pinned to today, so Today isn't dim before the first plan.
+//   • one open leaf is committed to this week but left in the backlog (no
+//     plannedDay, no plannedStartMin) — the sample can't know the user's
+//     availability, so it doesn't guess a day or a clock time. That leaf
+//     surfaces in the planner's backlog rail, and dragging it onto the grid is
+//     meant to be the user's first action under the calendar-grid model.
 // Dates are confirmed and relative to `today`, so it never trips the
 // unconfirmed-dates banner and always reads as "current".
 
@@ -22,7 +26,7 @@ export function sampleProject(today: string, makeId: () => string): Goal {
       id: makeId(),
       title: 'Problem 3: dynamic programming',
       children: [
-        { id: makeId(), title: 'Write the recurrence', done: false, plannedWeek: thisWeek, plannedDay: today },
+        { id: makeId(), title: 'Write the recurrence', done: false, plannedWeek: thisWeek },
         { id: makeId(), title: 'Implement + memoize', done: false },
         { id: makeId(), title: 'Test against the provided cases', done: false },
       ],
