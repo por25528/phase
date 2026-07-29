@@ -53,9 +53,12 @@ export function EventBlock({
   const isBusy = block.kind === 'busy';
 
   // Hooks cannot be conditional, so useDraggable is always called with a
-  // stable id; `disabled: !drag` (busy/calendar blocks) makes attributes/
-  // listeners/transform inert, so there's no need to conditionally spread
-  // them below — they're already no-ops when disabled.
+  // stable id; `disabled: !drag` (busy/calendar blocks) makes `listeners`
+  // undefined. `attributes` (role="button", tabIndex, aria-roledescription)
+  // is returned unconditionally by dnd-kit regardless of `disabled` — so it
+  // must be spread only when `drag` is set, same as `ref`/`listeners` below,
+  // or every busy block gets announced as a focusable draggable button and
+  // ends up nesting an interactive element inside the real `<button>` below.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: drag ? `${drag.kind}:${drag.id}` : `busy:${block.key}`,
     data: drag,
@@ -79,12 +82,12 @@ export function EventBlock({
   return (
     <div
       ref={drag ? setNodeRef : undefined}
-      {...attributes}
-      {...listeners}
-      className={`absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-[.66rem] leading-[1.2] border touch-none ${
+      {...(drag ? attributes : {})}
+      {...(drag ? listeners : {})}
+      className={`absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-[.66rem] leading-[1.2] border ${
         isBusy
           ? 'bg-hover border-line-2 text-muted italic'
-          : `bg-panel border-line-2 border-l-[3px] border-l-accent text-ink ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? '' : 'border-dashed'} cursor-grab`
+          : `bg-panel border-line-2 border-l-[3px] border-l-accent text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? '' : 'border-dashed'} cursor-grab`
       } ${isDragging ? 'opacity-40' : ''}`}
       style={{
         top: `${top}%`,

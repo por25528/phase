@@ -5,9 +5,11 @@ import {
   PointerSensor,
   KeyboardSensor,
   pointerWithin,
+  rectIntersection,
   useSensor,
   useSensors,
   useDraggable,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
@@ -19,6 +21,32 @@ import { spansOn } from '../lib/scheduled';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
+
+/**
+ * Resolve the drop target against the pointer when there is one, falling
+ * back to rect intersection when there isn't.
+ *
+ * `pointerWithin` returns `[]` whenever `pointerCoordinates` is null — and
+ * that's exactly what happens under `KeyboardSensor`: the activator is a
+ * `KeyboardEvent`, `getEventCoordinates` has no `clientX`/`clientY` to read
+ * from it, and the resulting null propagates all the way to `over`. A bare
+ * `pointerWithin` therefore makes `handleDragEnd`'s `if (!data || !e.over...)`
+ * guard bail on every keyboard-driven drag, silently turning keyboard
+ * dragging inert. `rectIntersection` doesn't need pointer coordinates — it
+ * compares the dragging node's own (translated) rect against droppable
+ * rects — so it resolves correctly for the keyboard case, where arrow keys
+ * move the dragging node itself rather than a pointer. Pointer-based drags
+ * still resolve via the precise pointer basis first; this is dnd-kit's own
+ * documented composite pattern for mixing sensor types under one
+ * `collisionDetection`. Defined at module scope: it's pure, and passing an
+ * inline arrow to `DndContext` would hand it a new function identity every
+ * render. Do not simplify this back to bare `pointerWithin` — that
+ * regresses keyboard drops.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args);
+};
 
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
@@ -76,29 +104,19 @@ export function Plan() {
     // scrolled mid-drag. Do not "fix" this by swapping in a live rect.
     const rect = e.over.rect;
 
-    // Keyboard activation has no pointer coordinates to aim with (`clientY` is
-    // undefined on a KeyboardEvent, and casting it to PointerEvent yields NaN,
-    // which used to make resolveSlot return null and lie with a "no room"
-    // toast on a day with plenty of room). Guard on finiteness, not on
-    // `instanceof`, since synthetic/cross-realm events make instanceof checks
-    // unreliable. When there's no pointer to read, aim at the start of the
-    // visible range instead, so the store snaps into the earliest gap that
-    // fits — the same semantic the data migration uses to place work.
-    const activatorClientY = (e.activatorEvent as Partial<PointerEvent>).clientY;
-    let aim: number;
-    if (!Number.isFinite(activatorClientY)) {
-      aim = range.startMin;
-    } else {
-      // The top edge of the thing being dragged — not the pointer — is the
-      // aim basis, so a block grabbed by its middle still lands where its
-      // ghost is shown, not offset by half its own height.
-      // `active.rect.current.initial` is measured at drag start, exactly like
-      // `e.over.rect`, so it pairs consistently with the scroll-adjusted
-      // `delta`.
-      const initialTop = e.active.rect.current.initial?.top ?? rect.top;
-      const draggedTop = initialTop + e.delta.y;
-      aim = aimMinuteFor(draggedTop, rect.top, rect.height, range);
-    }
+    // The top edge of the thing being dragged — not the pointer — is the aim
+    // basis, so a block grabbed by its middle still lands where its ghost is
+    // shown, not offset by half its own height. This basis is well-defined
+    // for both sensors: `active.rect.current.initial` is measured at drag
+    // start, exactly like `e.over.rect`, and `e.delta` is dnd-kit's
+    // scroll-adjusted translate, which `KeyboardSensor` populates via its
+    // coordinate getter just as `PointerSensor` does via pointer movement.
+    // Neither reads `clientY`/pointer coordinates, so there is no keyboard
+    // special case here — that's handled instead by falling back to
+    // `rectIntersection` in `collisionDetection` above.
+    const initialTop = e.active.rect.current.initial?.top ?? rect.top;
+    const draggedTop = initialTop + e.delta.y;
+    const aim = aimMinuteFor(draggedTop, rect.top, rect.height, range);
 
     if (data.kind === 'task') actions.scheduleTask(data.id, date, aim);
     else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim);
@@ -115,7 +133,7 @@ export function Plan() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
