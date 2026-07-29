@@ -106,7 +106,14 @@ Containment instead of removal:
 
 If `plannedWeek` is ever removed, it should be its own change with its own review.
 
-### Migration (Dexie v5)
+### Migration (one-shot at hydration)
+
+> **Revised while planning.** This section originally said "Dexie v5". No version
+> bump is needed: `plannedStartMin`, `Task.startMin` and optional `Task.date` add
+> no store and no index, and Dexie only versions schema changes. A ceremonial bump
+> would imply a schema change that is not happening. The migration is instead a
+> one-shot guarded by a `slotMigrationDone` row in the existing `settings` table,
+> which also keeps `migrateSlots` a pure, fully testable function.
 
 | Existing data | Becomes |
 |---|---|
@@ -128,9 +135,16 @@ the idempotence test checks.
 
 Two further requirements on the migration:
 
-- **A dated backup JSON is written to disk before it runs.** This rewrites scheduling
-  across every goal the user has. "Export first" is not something a user should have
-  to think to do.
+- **A snapshot of `goals` and `tasks` is written before it runs.** This rewrites
+  scheduling across every goal the user has, and "export first" is not something a
+  user should have to think to do. **Revised while planning:** the snapshot goes to a
+  `preSlotMigrationSnapshot` row in the `settings` table rather than a downloaded
+  file. `exportState` opens a save dialog, and firing one unprompted on the first
+  launch after an update is startling; the risk actually being guarded against is
+  this migration mangling scheduling, which a same-database snapshot fully covers.
+- **Ordering is load-bearing:** snapshot → migrate → persist → mark done. If the
+  persist fails the flag is never set, so the next launch retries cleanly instead of
+  stranding half-rewritten data behind a "done" marker.
 - **A toast afterwards reports what moved**, including the count returned to the
   sidebar, so a silently-dropped commitment is impossible.
 
@@ -219,9 +233,13 @@ is not part of `AppState`.
 5. For each surviving interval, the candidate start is the aimed-at minute clamped to
    `[intervalStart, intervalEnd - durationMin]`. Choose the interval whose candidate
    is closest to the aimed-at minute. Ties break toward the earlier start.
-6. Round the winning candidate to the nearest multiple of 5, then re-clamp it into its
-   interval — so rounding can never push a block past the end of the gap it was
-   placed in. All stored `startMin` values are multiples of 5.
+6. **Revised while planning.** The aimed-at minute is rounded to the nearest
+   multiple of 5 **before** the search, not after. Rounding the winner and then
+   re-clamping is unsound: rounding up can push a block past the end of the very
+   gap that accepted it, and a window starting at an off-grid minute can have no
+   valid multiple-of-5 start at all. A result clamped to a gap edge may therefore
+   be off-grid — deliberately, since a step butting against a meeting that ends at
+   10:47 should start at 10:47 rather than waste three minutes.
 7. If nothing fits → return `null`. The drop is refused, the block returns to the
    sidebar, and a toast explains why, with the number:
    *"No 1h 30m gap left on Wed — 45m free."*
