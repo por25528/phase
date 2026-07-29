@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { AvailabilityWindow, BusyBlock } from '../../db/types';
+import type { AvailabilityWindow } from '../../db/types';
 import type { Interval } from '../../lib/capacity';
 import { windowForDate } from '../../lib/availability';
 import { minuteToPct, hourMarks } from '../../lib/grid';
@@ -25,24 +25,24 @@ function hourLabel(minute: number): string {
 }
 
 /**
- * `blocks` is currently always `[]`; `WeekGrid` doesn't draw them itself
- * (that's Task 12), but it scopes them per day and hands them to `children`
- * so the caller doesn't have to re-filter the same list for every column.
+ * `WeekGrid` draws the chrome of the week calendar — hour axis, day columns,
+ * availability shading, off-day hatching, now-line. It renders no content
+ * blocks itself; `children` is handed the date for each column so the caller
+ * can render whatever belongs there.
  *
  * `range` is computed once by the caller (Plan.tsx) via `visibleRange` and
  * passed down — Task 12 needs the identical range to position blocks, and
  * two independent computations could drift.
  */
 export function WeekGrid({
-  days, today, nowMinute, windows, blocks, range, children,
+  days, today, nowMinute, windows, range, children,
 }: {
   days: string[];
   today: string;
   nowMinute: number | null;
   windows: AvailabilityWindow[];
-  blocks: BusyBlock[];
   range: Interval;
-  children: (date: string, dayBlocks: BusyBlock[]) => ReactNode;
+  children: (date: string) => ReactNode;
 }) {
   const marks = hourMarks(range);
 
@@ -107,7 +107,7 @@ export function WeekGrid({
               nowMinute={iso === today ? nowMinute : null}
               range={range}
             >
-              {children(iso, blocks.filter((b) => b.date === iso))}
+              {children(iso)}
             </DayColumn>
           ))}
         </div>

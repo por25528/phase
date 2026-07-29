@@ -92,7 +92,6 @@ export function Plan() {
           today={today}
           nowMinute={nowMinute}
           windows={availability}
-          blocks={[]}
           range={visibleRange(days, availability, [])}
         >
           {() => null}
