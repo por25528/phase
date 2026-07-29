@@ -1,4 +1,4 @@
-import type { AvailabilityWindow, Goal, Task } from '../db/types';
+import type { AvailabilityWindow, Goal, GoalNode, Task } from '../db/types';
 import { windowForDate } from './availability';
 import type { Now } from './capacity';
 import { walkLeaves, weekOf } from './plan';
@@ -18,6 +18,16 @@ export interface MigrationReport {
   scheduledTasks: number;
   sidebarSteps: number;
   sidebarTasks: number;
+}
+
+/** Clear every planning field a leaf or task carries, together. `plannedStartMin`
+ * (leaves) / `startMin` (tasks) is never present without a day — see db/types.ts
+ * — so every path that returns an item to the sidebar must drop both fields in
+ * the same step or it leaves the half-state the invariant forbids. */
+function clearNodePlan(n: GoalNode): void {
+  delete n.plannedWeek;
+  delete n.plannedDay;
+  delete n.plannedStartMin;
 }
 
 /**
@@ -65,6 +75,18 @@ export function migrateSlots(
 
   const nextGoals = cloneGoals(goals);
   for (const g of nextGoals) {
+    // Archived projects are invisible everywhere else that reads plannedDay
+    // (plannedLeaves, scheduledOn, store.planNode all skip completedAt goals),
+    // so letting a leftover open leaf here occupy a gap would let dead work
+    // silently push a live commitment into the sidebar. Strip its planning
+    // fields entirely instead of placing or sidebar-counting it — there is no
+    // toast action a user could take on an archived project's leaf moving, so
+    // it must not inflate sidebarSteps either.
+    if (g.completedAt) {
+      walkLeaves(g, (n) => { if (!n.done) clearNodePlan(n); });
+      continue;
+    }
+
     walkLeaves(g, (n) => {
       if (n.done || !n.plannedWeek) return;
 
@@ -78,7 +100,7 @@ export function migrateSlots(
       }
 
       if (!n.plannedDay) { // the old "Any day" bucket has no equivalent now
-        delete n.plannedWeek;
+        clearNodePlan(n);
         report.sidebarSteps++;
         return;
       }
@@ -86,13 +108,16 @@ export function migrateSlots(
       const duration = durationOf(n.estimateMin);
       const startMin = place(n.plannedDay, duration);
       if (startMin === null) {
-        delete n.plannedWeek;
-        delete n.plannedDay;
+        clearNodePlan(n);
         report.sidebarSteps++;
         return;
       }
 
       spansFor(n.plannedDay).push({ startMin, endMin: startMin + duration });
+      // Legacy day/week can drift apart (e.g. hand-edited data, or a day moved
+      // without its week following) — re-derive the week from the day being
+      // placed so the two can never disagree post-migration. Undocumented
+      // until now; see migrateSlots.test.ts for the drift case this repairs.
       n.plannedWeek = weekOf(n.plannedDay);
       n.plannedStartMin = startMin;
       report.scheduledSteps++;
@@ -112,6 +137,7 @@ export function migrateSlots(
     if (startMin === null) {
       const unscheduled = { ...t };
       delete unscheduled.date;
+      delete unscheduled.startMin; // keep date/startMin absent together — see clearNodePlan
       report.sidebarTasks++;
       return unscheduled;
     }
