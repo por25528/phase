@@ -9,6 +9,13 @@ export interface DeferResult {
 
 // Replan the matching leaves onto `week`, clearing any day pin. Containers are
 // walked, never matched — only leaves carry a plan.
+//
+// This deliberately produces a `plannedWeek`-with-no-`plannedDay` node: under
+// the calendar-grid model that is legal backlog ("committed to the week, not
+// yet pinned to a day"), not a half-scheduled item — dailyWork.ts's carry-over
+// and this-week checks both key off exactly that shape. plannedStartMin has no
+// meaning without a day, though, so it is cleared alongside plannedDay to keep
+// the "never present without plannedDay" invariant intact.
 function replanNodes(nodes: GoalNode[], stepIds: Set<string>, week: string): GoalNode[] {
   return nodes.map((node) => {
     if (node.children && node.children.length > 0) {
@@ -17,6 +24,7 @@ function replanNodes(nodes: GoalNode[], stepIds: Set<string>, week: string): Goa
     if (stepIds.has(node.id)) {
       const next: GoalNode = { ...node, plannedWeek: week };
       delete next.plannedDay;
+      delete next.plannedStartMin;
       return next;
     }
     return node;

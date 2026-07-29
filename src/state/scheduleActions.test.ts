@@ -71,4 +71,14 @@ describe('clampResize', () => {
       windows: WINDOWS, blocks: [], placed: [], allDayBlocks: true,
     })).toBeNull(); // 05:00 is outside the 09:00–18:00 window
   });
+
+  // The cap must win even when it undercuts the 5-minute floor: a gap that
+  // small is still real free time, and returning the floor instead would hand
+  // back a duration that overlaps the next block by 2 minutes.
+  it('caps below the 5-minute floor when fewer than 5 minutes remain in the gap', () => {
+    expect(clampResize({
+      date: WED, startMin: 540, requestedMin: 60,
+      windows: WINDOWS, blocks: [], placed: [{ startMin: 543, endMin: 1080 }], allDayBlocks: true,
+    })).toBe(3); // only 09:00–09:03 is free before the next block
+  });
 });

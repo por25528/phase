@@ -683,11 +683,51 @@ describe('store actions', () => {
       expect(restored.plannedDay).toBe('2026-07-15');
       expect(restored.plannedStartMin).toBe(600);
     });
+
+    // Regression guard for excludeId in scheduleNode's own `placed` lookup:
+    // without it, a node already sitting at 600..660 on this day would appear
+    // in its own `placed` list, collide with itself at every aim minute in
+    // that gap, and never be able to move within the free time it already
+    // occupies.
+    it('re-schedules a node already placed on the same day to a new aim minute', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.scheduleNode(gid, nid, '2026-07-15', 600); // first placement: 600..660
+      expect(actions.scheduleNode(gid, nid, '2026-07-15', 630)).toBe(true); // move within the same free day
+
+      const n = getState().goals[0].nodes[0];
+      expect(n.plannedDay).toBe('2026-07-15');
+      expect(n.plannedStartMin).toBe(630);
+    });
+  });
+
+  describe('scheduleTask', () => {
+    // Mirrors the scheduleNode regression guard above: without excludeId in
+    // scheduleTask's own `placed` lookup, a task already sitting at 600..660
+    // would collide with itself and never be able to move within its own gap.
+    it('re-schedules a task already placed on the same day to a new aim minute', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('leaf', '2026-07-15');
+      const tid = getState().tasks[0].id;
+
+      actions.scheduleTask(tid, '2026-07-15', 600); // first placement: 600..660
+      expect(actions.scheduleTask(tid, '2026-07-15', 630)).toBe(true); // move within the same free day
+
+      const t = getState().tasks[0];
+      expect(t.date).toBe('2026-07-15');
+      expect(t.startMin).toBe(630);
+    });
   });
 
   describe('resizeNode / resizeTask', () => {
     // Both leaves sit on 2026-07-15 (Wed, 09:00-18:00 window). 'first' occupies
-    // 540..600 (60min); 'second' immediately follows at 600..660 (60min).
+    // 540..600 (60min); 'second' immediately follows at 660..720 (60min).
     async function scheduledPair() {
       vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
@@ -723,12 +763,13 @@ describe('store actions', () => {
       expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBe(120);
     });
 
-    it('is a no-op when the resize is refused (non-positive request)', async () => {
+    it('leaves estimateMin untouched and explains itself when the resize is refused (non-positive request)', async () => {
       const { actions, getState, firstId } = await scheduledPair();
 
       actions.resizeNode(firstId, 0);
 
       expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBeUndefined();
+      expect(getState().toast).toBe('Can\'t resize "first" — it no longer fits a free slot that day');
     });
 
     it('resizeTask mirrors resizeNode: grows in place and clamps against the next block', async () => {

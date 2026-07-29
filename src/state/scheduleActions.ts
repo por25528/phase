@@ -39,6 +39,11 @@ export interface ClampResizeInput {
  *
  * A resize must not be able to create the overlap a drop is forbidden from
  * creating, so the requested duration is clamped to the gap the block occupies.
+ * The gap cap is applied LAST, after the 5-minute floor: when fewer than 5
+ * minutes remain in the gap, flooring first and capping second would let the
+ * floor win and return a duration that overlaps the next block. The cap must
+ * always have the final say, even if that means returning less than
+ * SLOT_GRANULARITY_MIN.
  *
  * `NO_PAST_LIMIT` is used deliberately: resizing something already scheduled at
  * 09:00 must stay possible at 14:00, and the real clock's past-clamp would
@@ -53,5 +58,5 @@ export function clampResize(input: ClampResizeInput): number | null {
   if (!gap) return null;
 
   const rounded = Math.round(requestedMin / SLOT_GRANULARITY_MIN) * SLOT_GRANULARITY_MIN;
-  return Math.max(SLOT_GRANULARITY_MIN, Math.min(rounded, gap.endMin - startMin));
+  return Math.min(Math.max(SLOT_GRANULARITY_MIN, rounded), gap.endMin - startMin);
 }

@@ -275,6 +275,14 @@ function describeNoRoom(durationMin: number, gaps: { startMin: number; endMin: n
     : `${need} — no free time left that day`;
 }
 
+// Same voice as describeNoRoom: a refused resize (clampResize returned null)
+// means either the request itself was nonsense or the block's own slot no
+// longer sits in any free gap — say so instead of leaving the drag to
+// silently snap back with no explanation.
+function describeResizeRefused(title: string): string {
+  return `Can't resize "${title}" — it no longer fits a free slot that day`;
+}
+
 // Snapshot the outgoing week's commitments exactly once per rollover. Entries
 // are immutable after creation; a week with no commitments needs no review.
 function ensureWeekRollover(): void {
@@ -324,8 +332,7 @@ export const actions = {
     node.children.push({ id: uid(), title });
     delete node.done;
     delete node.doneAt;
-    delete node.plannedWeek;
-    delete node.plannedDay;
+    clearPlannedSlot(node); // a container can never carry a planned slot
     delete node.estimateMin;
     const expanded = new Set(state.expanded);
     expanded.add(nodeId);
@@ -346,8 +353,7 @@ export const actions = {
     for (const title of clean) node.children.push({ id: uid(), title, done: false });
     delete node.done;
     delete node.doneAt;
-    delete node.plannedWeek;
-    delete node.plannedDay;
+    clearPlannedSlot(node); // a container can never carry a planned slot
     delete node.estimateMin;
     const expanded = new Set(state.expanded);
     expanded.add(nodeId);
@@ -758,12 +764,14 @@ export const actions = {
 
   // Scheduling. A view hands over WHERE THE USER POINTED; the store resolves
   // the actual slot, refuses with an explanation when nothing fits, and
-  // persists. Views never call resolveSlot.
-  scheduleNode(goalId: string, nodeId: string, day: string, aimMin: number): void {
-    if (!isActiveGoal(goalId)) return; // frozen on a completed project
+  // persists. Views never call resolveSlot. Returns whether a slot was found
+  // and persisted — callers must not report success on a refusal, since the
+  // refusal already wrote its own explanatory toast.
+  scheduleNode(goalId: string, nodeId: string, day: string, aimMin: number): boolean {
+    if (!isActiveGoal(goalId)) return false; // frozen on a completed project
     const source = state.goals.find((g) => g.id === goalId);
     const sourceNode = source ? findNode(source.nodes, nodeId) : null;
-    if (!sourceNode || sourceNode.children) return;
+    if (!sourceNode || sourceNode.children) return false;
 
     const durationMin = durationOf(sourceNode.estimateMin);
     const placed = spansOn(state.goals, state.tasks, day, nodeId);
@@ -780,18 +788,19 @@ export const actions = {
     if (startMin === null) {
       const gaps = freeIntervals(day, state.availability, [], placed, nowMoment(), state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
-      return;
+      return false;
     }
 
     const goals = cloneGoals(state.goals);
     const node = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
     setPlannedSlot(node, day, startMin);
     setAndPersist({ goals });
+    return true;
   },
 
-  scheduleTask(taskId: string, date: string, aimMin: number): void {
+  scheduleTask(taskId: string, date: string, aimMin: number): boolean {
     const task = state.tasks.find((t) => t.id === taskId);
-    if (!task || !isValidLocalDate(date)) return;
+    if (!task || !isValidLocalDate(date)) return false;
 
     const durationMin = durationOf(task.estimateMin);
     const placed = spansOn(state.goals, state.tasks, date, taskId);
@@ -808,12 +817,13 @@ export const actions = {
     if (startMin === null) {
       const gaps = freeIntervals(date, state.availability, [], placed, nowMoment(), state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
-      return;
+      return false;
     }
 
     setAndPersist({
       tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, date, startMin } : t)),
     });
+    return true;
   },
 
   unscheduleNode(goalId: string, nodeId: string): void {
@@ -854,7 +864,10 @@ export const actions = {
       placed: spansOn(state.goals, state.tasks, node.plannedDay, nodeId),
       allDayBlocks: state.allDayBlocks,
     });
-    if (clamped === null) return;
+    if (clamped === null) {
+      actions.showToast(describeResizeRefused(node.title));
+      return;
+    }
 
     const goals = cloneGoals(state.goals);
     findNode(goals.find((g) => g.id === goal.id)!.nodes, nodeId)!.estimateMin = clamped;
@@ -874,7 +887,10 @@ export const actions = {
       placed: spansOn(state.goals, state.tasks, task.date, taskId),
       allDayBlocks: state.allDayBlocks,
     });
-    if (clamped === null) return;
+    if (clamped === null) {
+      actions.showToast(describeResizeRefused(task.title));
+      return;
+    }
 
     setAndPersist({
       tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, estimateMin: clamped } : t)),
