@@ -51,7 +51,7 @@ export function ImportGoalModal({
   return (
     <Modal open={open} onClose={onClose} title="Import goal">
       <div className="flex flex-col gap-[14px]">
-        <p className="text-[.82rem] text-muted leading-[1.5]">
+        <p className="text-body text-muted leading-[1.5]">
           Paste JSON to create a goal with its subgoals. No AI handy? Copy the prompt below
           and ask any AI to plan a goal for you, then paste its reply here.
         </p>
@@ -60,14 +60,14 @@ export function ImportGoalModal({
           <button className={primaryBtn} onClick={copyPrompt}>
             {copied ? 'Copied!' : 'Copy AI prompt'}
           </button>
-          <span className="text-[.74rem] text-faint">Paste into ChatGPT, Claude, etc.</span>
+          <span className="text-compact text-muted">Paste into ChatGPT, Claude, etc.</span>
         </div>
 
         <details className="rounded-field border border-line-2 px-[10px] py-[8px]">
-          <summary className="text-[.76rem] font-medium text-muted cursor-pointer select-none">
+          <summary className="text-compact font-medium text-muted cursor-pointer select-none">
             Format reference
           </summary>
-          <pre className="mt-[8px] text-[.68rem] leading-[1.45] text-ink-soft font-mono overflow-x-auto whitespace-pre">
+          <pre className="mt-[8px] text-chip leading-[1.45] text-ink-soft font-mono overflow-x-auto whitespace-pre">
             {FORMAT_HINT}
           </pre>
         </details>
@@ -79,9 +79,9 @@ export function ImportGoalModal({
             onChange={(e) => { setText(e.target.value); if (error) setError(null); }}
             rows={8}
             placeholder={'{ "title": "…", "subgoals": ["…"] }'}
-            className={`${fieldCls} w-full resize-y font-mono text-[.76rem] leading-[1.5]`}
+            className={`${fieldCls} w-full resize-y font-mono text-compact leading-[1.5]`}
           />
-          {error && <p className="text-[.78rem] text-[#b4453a]">{error}</p>}
+          {error && <p className="text-ui text-[#b4453a]">{error}</p>}
         </div>
 
         <div className="flex items-center gap-[8px] mt-[2px]">

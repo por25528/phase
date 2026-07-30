@@ -1,5 +1,7 @@
 export type AppKeyCommand =
   | 'capture-task'
+  | 'open-palette'
+  | 'undo'
   | 'blur-target'
   | 'close-drawer'
   | 'view-plan'
@@ -32,8 +34,18 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
     return event.repeat ? null : 'capture-task';
   }
 
+  // ⌘K outranks the editable-target guard — search has to be reachable while a
+  // field is focused. ⌘Z deliberately does NOT: inside a field it belongs to
+  // the browser's text undo, which is what a half-typed rename needs.
+  if (shouldConsumePaletteShortcut(event)) {
+    return event.repeat ? null : 'open-palette';
+  }
+
   if (isEditableTarget(event.target)) {
     return event.key === 'Escape' ? 'blur-target' : null;
+  }
+  if (isUndoShortcut(event)) {
+    return event.repeat ? null : 'undo';
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return null;
   if (event.key === 'Escape') return 'close-drawer';
@@ -52,6 +64,28 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
   // in `src` reads the `selDate` that sets — it looked like it worked only
   // because switching to Plan remounts it on the current week.
   return null;
+}
+
+// ⌘K / Ctrl+K. Chromium binds Ctrl+K to the address bar, so the caller must
+// preventDefault as it does for ⌘N.
+export function shouldConsumePaletteShortcut(event: AppKeyEvent): boolean {
+  return Boolean(
+    (event.metaKey || event.ctrlKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.key.toLowerCase() === 'k'
+  );
+}
+
+// ⌘Z / Ctrl+Z, but not ⇧⌘Z (redo, which Phase does not implement — leaving it
+// unbound is better than silently doing an undo).
+function isUndoShortcut(event: AppKeyEvent): boolean {
+  return Boolean(
+    (event.metaKey || event.ctrlKey)
+    && !event.altKey
+    && !event.shiftKey
+    && event.key.toLowerCase() === 'z'
+  );
 }
 
 export function shouldConsumeTaskCaptureShortcut(event: AppKeyEvent): boolean {

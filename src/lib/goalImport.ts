@@ -268,21 +268,62 @@ Example:
 ["Draft the outline", "Write the first section", "Write the second section", "Edit and polish"]`;
 }
 
+/** Curly quotes are what you get when a reply passes through a rich-text field. */
+function normaliseQuotes(text: string): string {
+  return text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+}
+
+/** Pull the body out of a ```json … ``` block, prose and all. */
+function stripCodeFence(text: string): string {
+  const fenced = text.match(/```[a-zA-Z]*\s*\n?([\s\S]*?)```/);
+  return (fenced ? fenced[1] : text).trim();
+}
+
+/** `- `, `* `, `• `, `1. `, `2) ` — whatever a model decided a bullet is. */
+function stripListMarker(line: string): string {
+  return line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim();
+}
+
 /**
- * Parse an AI response into subtask titles. Accepts a JSON array of strings, or
- * of `{ title }` objects (forgiving). Trims, drops blanks; empty/invalid rejects.
+ * Find and parse a JSON array in `text`, tolerating a trailing comma. Returns
+ * null when there is no array to be had, so the caller can fall back to lines.
+ */
+function tryParseArray(text: string): unknown[] | null {
+  const start = text.indexOf('[');
+  const end = text.lastIndexOf(']');
+  if (start === -1 || end <= start) return null;
+  const slice = normaliseQuotes(text.slice(start, end + 1)).replace(/,\s*]$/, ']');
+  try {
+    const data: unknown = JSON.parse(slice);
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse an AI response into subtask titles.
+ *
+ * Deliberately forgiving: a JSON array (fenced or bare, smart-quoted, with a
+ * trailing comma, wrapped in prose), an array of `{ title }` objects, or just a
+ * plain list one per line with whatever bullet the model felt like using.
  */
 export function parseSubtasks(raw: string): { titles: string[] } | { error: string } {
   const text = raw.trim();
   if (!text) return { error: 'Paste the AI output first.' };
 
-  let data: unknown;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return { error: "That's not valid JSON — expected an array of subtask strings." };
+  const unfenced = stripCodeFence(text);
+  const data = tryParseArray(unfenced);
+
+  if (data === null) {
+    // A model asked for a list very often just writes a list.
+    const opensJson = /^[[{]/.test(unfenced);
+    const lines = unfenced.split(/\r?\n/).map(stripListMarker).filter(Boolean);
+    if (opensJson || lines.length === 0) {
+      return { error: "That didn't look like a list — paste a JSON array, or one subtask per line." };
+    }
+    return { titles: lines };
   }
-  if (!Array.isArray(data)) return { error: 'Expected a JSON array of subtask strings.' };
 
   const titles = data
     .map((d): string => {
@@ -295,6 +336,6 @@ export function parseSubtasks(raw: string): { titles: string[] } | { error: stri
     .map((t) => t.trim())
     .filter(Boolean);
 
-  if (titles.length === 0) return { error: 'No subtasks found in that JSON.' };
+  if (titles.length === 0) return { error: 'No subtasks found in that list.' };
   return { titles };
 }

@@ -20,6 +20,7 @@ export default {
         line: 'rgb(var(--c-line) / <alpha-value>)',
         'line-2': 'rgb(var(--c-line-2) / <alpha-value>)',
         'line-soft': 'rgb(var(--c-line-soft) / <alpha-value>)',
+        check: 'rgb(var(--c-check) / <alpha-value>)',
         hover: 'rgb(var(--c-hover) / <alpha-value>)',
         'hover-deep': 'rgb(var(--c-hover-deep) / <alpha-value>)',
         fill: 'rgb(var(--c-fill) / <alpha-value>)',
@@ -37,6 +38,28 @@ export default {
         warn: 'rgb(var(--c-warn) / <alpha-value>)',
         'warn-tint': 'rgb(var(--c-warn-tint) / <alpha-value>)',
       },
+      // The type scale. Every size in src/ is one of these — pick from the menu
+      // rather than inventing a value; 37 near-duplicate sizes was the loudest
+      // "no system here" signal in the UI.
+      fontSize: {
+        root: '14px',      // body base (index.css)
+        micro: '.52rem',   // mono eyebrows at their smallest
+        eyebrow: '.56rem', // uppercase mono section labels
+        tiny: '.6rem',
+        kbd: '.62rem',
+        chip: '.68rem',
+        meta: '.72rem',    // counters, dates, secondary metadata
+        compact: '.76rem',
+        ui: '.8rem',       // default control text
+        body: '.84rem',    // default reading text
+        lead: '.9rem',
+        title: '.98rem',   // row / card titles
+        h3: '1.05rem',
+        h2: '1.2rem',
+        h1: '1.4rem',
+        wordmark: '1.5rem',
+      },
+      // Corner radii: 4, 6, 11 arbitrary plus `field` (9) and `card` (14).
       borderRadius: {
         card: '14px',
         field: '9px',

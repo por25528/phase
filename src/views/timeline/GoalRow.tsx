@@ -71,7 +71,7 @@ export const GoalRow = memo(function GoalRow({
             onClick={() => onToggle(g.id)}
             aria-expanded={isExpanded}
             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${g.title}`}
-            className="flex-shrink-0 w-[16px] h-[16px] flex items-center justify-center text-muted hover:text-ink rounded-[3px] hover:bg-hover-deep"
+            className="flex-shrink-0 w-[24px] h-[24px] -m-[4px] flex items-center justify-center text-muted hover:text-ink rounded-[4px] hover:bg-hover-deep"
           >
             <svg
               width="8"
@@ -85,22 +85,25 @@ export const GoalRow = memo(function GoalRow({
             </svg>
           </button>
           <div className="flex flex-col justify-center gap-[2px] min-w-0">
-            <span className="text-[.66rem] text-faint font-semibold tracking-[.06em]">#{i + 1}</span>
-            <span className="text-[.84rem] font-medium text-ink leading-[1.25]">{g.title}</span>
-            <span className="flex items-center gap-[5px] min-w-0">
-              <span className="text-[.68rem] text-muted tabular-nums truncate">
+            <span className="text-chip text-muted font-semibold tracking-[.06em]">#{i + 1}</span>
+            <span className="text-body font-medium text-ink leading-[1.25]">{g.title}</span>
+            {/* Wraps rather than truncates: sharing one line with a flex-none
+                chip inside the 200px label column clipped the metric itself to
+                "67% · …", making the ellipsis the content. */}
+            <span className="flex flex-wrap items-center gap-x-[5px] gap-y-[3px] min-w-0">
+              <span className="text-chip text-muted tabular-nums">
                 {p}%{trustedSchedule ? ` · ${daysLeftLabel(g.deadline)}` : ' · dates unconfirmed'}
               </span>
-              {pace === 'behind' && <BehindChip pts={behind} className="flex-none" />}
+              {pace === 'behind' && <BehindChip pts={behind} donePct={p} className="flex-none" />}
               {pace === 'needs-breakdown' && (
-                <span className="text-[.66rem] text-muted italic flex-none">define next step</span>
+                <span className="text-chip text-muted italic flex-none">define next step</span>
               )}
             </span>
             {warnings.length > 0 && (
               <button
                 type="button"
                 onClick={() => actions.openDrawer(g.id, warnings[0].nodeIds?.[0])}
-                className="text-[.66rem] text-warn text-left leading-[1.3] truncate hover:underline"
+                className="text-chip text-warn text-left leading-[1.3] truncate hover:underline min-h-[24px] inline-flex items-center rounded-[4px]"
                 title={warnings.map((w) => w.message).join(' · ')}
               >
                 ⚠ {warnings[0].message}{warnings.length > 1 ? ` · +${warnings.length - 1}` : ''}
@@ -123,7 +126,7 @@ export const GoalRow = memo(function GoalRow({
               pct={p}
               label={`${p}%`}
               ariaLabel={`${g.title}: ${p}% complete, ${fmtD(g.start)}–${fmtD(g.deadline)}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
-              height={22}
+              height={24}
               warn={projectOverdue}
               onCommit={(next) => actions.setGoalDates(g.id, next.start, next.deadline)}
               onOpen={() => actions.openDrawer(g.id)}
@@ -146,13 +149,15 @@ export const GoalRow = memo(function GoalRow({
               style={{
                 left: `${dateToX(g.start, rangeStart, pxPerDay)}px`,
                 width: `${Math.max(daysBetween(g.start, g.deadline) * pxPerDay, 8)}px`,
-                height: '22px',
+                height: '24px',
               }}
             >
               <i className="tl-bar-fill" style={{ width: `${p}%` }} />
-              <b className="relative text-[.7rem] font-semibold text-white pl-[8px] [mix-blend-mode:difference] tabular-nums z-[2]">
-                {p}%
-              </b>
+              {Math.max(daysBetween(g.start, g.deadline) * pxPerDay, 8) >= 42 && (
+                <b className="relative text-meta font-semibold text-white pl-[8px] [mix-blend-mode:difference] tabular-nums z-[2] whitespace-nowrap">
+                  {p}%
+                </b>
+              )}
             </button>
           )}
 
@@ -173,7 +178,7 @@ export const GoalRow = memo(function GoalRow({
           {(g.milestones ?? []).map((m) => (
             <span
               key={m.id}
-              className="absolute top-[3px] -translate-x-1/2 text-accent text-[.58rem] leading-none z-[4] cursor-default select-none"
+              className="absolute top-[3px] -translate-x-1/2 text-accent text-tiny leading-none z-[4] cursor-default select-none"
               style={{ left: `${dateToX(m.date, rangeStart, pxPerDay)}px` }}
               onMouseEnter={(e) => setMsTip({ x: e.clientX, y: e.clientY, text: `${m.title} · ${fmtD(m.date)}` })}
               onMouseLeave={() => setMsTip(null)}
@@ -204,13 +209,13 @@ export const GoalRow = memo(function GoalRow({
           className="fixed z-[50] pointer-events-none bg-panel border border-line-2 rounded-[6px] px-[10px] py-[7px] select-none"
           style={{ left: barTip.x + 14, top: barTip.y - 90 }}
         >
-          <div className="text-[.8rem] font-medium text-ink whitespace-nowrap">{g.title}</div>
-          <div className="text-[.72rem] text-muted mt-[2px] tabular-nums whitespace-nowrap">
+          <div className="text-ui font-medium text-ink whitespace-nowrap">{g.title}</div>
+          <div className="text-meta text-muted mt-[2px] tabular-nums whitespace-nowrap">
             {fmtD(g.start)} → {fmtD(g.deadline)}
           </div>
-          <div className="text-[.72rem] text-muted tabular-nums">{Math.round(goalPct(g))}% complete</div>
-          <div className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</div>
-          <div className="text-[.72rem] text-muted tabular-nums">
+          <div className="text-meta text-muted tabular-nums">{Math.round(goalPct(g))}% complete</div>
+          <div className="text-meta text-muted tabular-nums">{daysLeftLabel(g.deadline)}</div>
+          <div className="text-meta text-muted tabular-nums">
             {(() => {
               if (!trustedSchedule) return 'Dates unconfirmed';
               const expected = Math.round(expectedPct(g.start, g.deadline, today));
@@ -233,7 +238,7 @@ export const GoalRow = memo(function GoalRow({
           className="fixed z-[50] pointer-events-none bg-panel border border-line-2 rounded-[6px] px-[8px] py-[5px] select-none"
           style={{ left: flagTip.x + 10, top: flagTip.y - 38 }}
         >
-          <span className="text-[.72rem] text-muted tabular-nums whitespace-nowrap">{fmtD(g.deadline)}</span>
+          <span className="text-meta text-muted tabular-nums whitespace-nowrap">{fmtD(g.deadline)}</span>
         </div>
       )}
 
@@ -243,7 +248,7 @@ export const GoalRow = memo(function GoalRow({
           className="fixed z-[50] pointer-events-none bg-panel border border-line-2 rounded-[6px] px-[8px] py-[5px] select-none"
           style={{ left: msTip.x + 10, top: msTip.y - 38 }}
         >
-          <span className="text-[.72rem] text-muted whitespace-nowrap">{msTip.text}</span>
+          <span className="text-meta text-muted whitespace-nowrap">{msTip.text}</span>
         </div>
       )}
     </div>

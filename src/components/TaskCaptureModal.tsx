@@ -9,10 +9,11 @@ import {
 } from '../lib/taskCapture';
 import { useAppStore } from '../state/store';
 import { Modal } from './Modal';
+import { DateField } from './DateField';
 import { dispatchTaskCapture } from './taskCaptureActions';
 
-const fieldCls = 'bg-field border border-line-2 rounded-field px-[10px] py-[7px] text-[.86rem] text-ink outline-none focus:border-accent';
-const choiceCls = 'px-[12px] py-[6px] rounded-full text-[.78rem] font-semibold border';
+const fieldCls = 'bg-field border border-line-2 rounded-field px-[10px] py-[7px] text-body text-ink outline-none focus:border-accent';
+const choiceCls = 'px-[12px] py-[6px] rounded-full text-ui font-semibold border';
 
 export function TaskCaptureModal({
   open,
@@ -77,7 +78,7 @@ export function TaskCaptureModal({
     <Modal open={open} onClose={onClose} title="Add task">
       <form className="flex flex-col gap-[16px]" onSubmit={submit}>
         <div className="flex flex-col gap-[5px]">
-          <label htmlFor="task-capture-title" className="text-[.72rem] font-semibold text-ink-soft">
+          <label htmlFor="task-capture-title" className="text-meta font-semibold text-ink-soft">
             Task
           </label>
           <input
@@ -96,7 +97,7 @@ export function TaskCaptureModal({
         </div>
 
         <fieldset className="flex flex-col gap-[7px]">
-          <legend className="text-[.72rem] font-semibold text-ink-soft mb-[7px]">When</legend>
+          <legend className="text-meta font-semibold text-ink-soft mb-[7px]">When</legend>
           <div className="flex flex-wrap gap-[7px]">
             {([
               ['today', 'Today'],
@@ -119,13 +120,12 @@ export function TaskCaptureModal({
             ))}
           </div>
           {draft.dateChoice === 'pick' && (
-            <input
-              type="date"
-              aria-label="Task date"
+            <DateField
+              ariaLabel="Task date"
               value={draft.pickedDate}
-              onChange={(event) => setDraft((current) => ({
+              onCommit={(next) => setDraft((current) => ({
                 ...current,
-                pickedDate: event.target.value,
+                pickedDate: next,
               }))}
               className={`${fieldCls} self-start`}
             />
@@ -170,14 +170,14 @@ export function TaskCaptureModal({
           <button
             type="submit"
             disabled={!enabled || !draft.title.trim() || !resolvedDate}
-            className="px-[14px] py-[8px] rounded-field bg-ink text-paper text-[.84rem] font-semibold hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
+            className="px-[14px] py-[8px] rounded-field bg-ink text-paper text-body font-semibold hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
           >
             Add task
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="px-[12px] py-[8px] rounded-field text-[.84rem] text-ink-soft hover:bg-hover"
+            className="px-[12px] py-[8px] rounded-field text-body text-ink-soft hover:bg-hover"
           >
             Cancel
           </button>

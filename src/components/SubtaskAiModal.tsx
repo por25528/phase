@@ -6,11 +6,11 @@ import { todayStr } from '../lib/dates';
 import { buildSubtaskPrompt, parseSubtasks } from '../lib/goalImport';
 
 const field =
-  'rounded-field border border-line-2 px-[8px] py-[5px] text-[.8rem] text-ink bg-transparent outline-none focus-visible:border-accent';
-const label = 'text-[.72rem] font-medium text-muted';
+  'rounded-field border border-line-2 px-[8px] py-[5px] text-ui text-ink bg-transparent outline-none focus-visible:border-accent';
+const label = 'text-meta font-medium text-muted';
 const primary =
-  'text-[.84rem] font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover disabled:opacity-40';
-const ghost = 'text-[.84rem] text-muted px-[10px] py-[7px] rounded-field hover:bg-hover';
+  'text-body font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover disabled:opacity-40';
+const ghost = 'text-body text-muted px-[10px] py-[7px] rounded-field hover:bg-hover';
 
 interface OpenLeaf {
   id: string;
@@ -65,6 +65,10 @@ export function SubtaskAiModal({
 
   const step = leaves.find((l) => l.id === stepId) ?? null;
 
+  // Parse as you type so the preview and the Add button agree with `submit`.
+  const parsed = text.trim() ? parseSubtasks(text) : null;
+  const preview = parsed && !('error' in parsed) ? parsed.titles : null;
+
   function copyPrompt() {
     if (!step) return;
     navigator.clipboard?.writeText(buildSubtaskPrompt(goal.title, step.title, todayStr())).then(
@@ -93,12 +97,12 @@ export function SubtaskAiModal({
     <Modal open={open} onClose={onClose} title="Break a step into daily tasks">
       <div className="flex flex-col gap-[14px]">
         {leaves.length === 0 ? (
-          <p className="text-[.85rem] text-muted">
+          <p className="text-body text-muted">
             This project has no open steps to break down — add a step first.
           </p>
         ) : (
           <>
-            <p className="text-[.82rem] text-muted leading-[1.5]">
+            <p className="text-body text-muted leading-[1.5]">
               Pick a step, copy the prompt, and ask any AI to split it into subtasks each doable in a day.
               Paste its reply below to add them under the step.
             </p>
@@ -118,24 +122,41 @@ export function SubtaskAiModal({
               <button className={primary} onClick={copyPrompt} disabled={!step}>
                 {copied ? 'Copied!' : 'Copy AI prompt'}
               </button>
-              <span className="text-[.74rem] text-faint">Paste into ChatGPT, Claude, etc.</span>
+              <span className="text-compact text-muted">Paste into ChatGPT, Claude, etc.</span>
             </div>
 
             <div className="flex flex-col gap-[5px]">
-              <label className={label}>Paste subtasks JSON</label>
+              <label className={label}>Paste the reply</label>
               <textarea
                 value={text}
                 onChange={(e) => { setText(e.target.value); if (error) setError(null); }}
                 rows={6}
-                placeholder={'["First subtask", "Second subtask", "Third subtask"]'}
-                className={`${field} w-full resize-y font-mono text-[.76rem] leading-[1.5]`}
+                placeholder={'["First subtask", "Second subtask"]\n\n…or just one subtask per line.'}
+                className={`${field} w-full resize-y font-mono text-compact leading-[1.5]`}
               />
-              {error && <p className="text-[.78rem] text-[#b4453a]">{error}</p>}
+              {error && <p className="text-ui text-[#b4453a]">{error}</p>}
             </div>
 
+            {/* Show the parse before committing it, so a bad read is visible
+                rather than fatal — the parser is deliberately forgiving. */}
+            {preview && (
+              <div className="flex flex-col gap-[5px]">
+                <label className={label}>
+                  Will add {preview.length} subtask{preview.length === 1 ? '' : 's'}
+                </label>
+                <ol className="flex flex-col gap-[3px] max-h-[150px] overflow-y-auto rounded-field border border-line-2 px-[10px] py-[7px]">
+                  {preview.map((title, i) => (
+                    <li key={`${i}-${title}`} className="text-ui text-ink-soft truncate">
+                      {i + 1}. {title}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
             <div className="flex items-center gap-[8px] mt-[2px]">
-              <button className={primary} onClick={submit} disabled={!text.trim() || !step}>
-                Add subtasks
+              <button className={primary} onClick={submit} disabled={!preview || !step}>
+                {preview ? `Add ${preview.length} subtask${preview.length === 1 ? '' : 's'}` : 'Add subtasks'}
               </button>
               <button className={ghost} onClick={onClose}>Cancel</button>
             </div>

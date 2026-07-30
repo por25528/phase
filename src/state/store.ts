@@ -9,14 +9,14 @@ import {
 } from '../db/db';
 import { clampScale } from '../lib/timeline';
 import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
-import { todayStr, addDays } from '../lib/dates';
+import { todayStr, addDays, fmtD } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import { isValidLocalDate, projectDateError, confirmableDateGoalIds } from '../lib/schedule';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { deferOpenWork } from '../lib/deferWork';
 import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { sampleProject } from '../lib/sampleProject';
-import { weaveCompleted } from '../lib/board';
+import { weaveCompleted, leafCount } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
 import { resolveSlot, durationOf, freeIntervals } from '../lib/slot';
@@ -93,7 +93,35 @@ let initialized = false;
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 let undoTimer: ReturnType<typeof setTimeout> | null = null;
 let scaleTimer: ReturnType<typeof setTimeout> | null = null;
-let restoreFn: (() => void) | null = null;
+/**
+ * Undo history, newest last. It used to be a single `restoreFn`, which any
+ * subsequent undoable action overwrote — so deleting a project and then ticking
+ * a checkbox inside the toast window destroyed the project permanently with no
+ * warning. Keeping a short stack means ⌘Z still walks back to it, which is also
+ * the only recovery path once the toast has faded.
+ */
+interface UndoEntry {
+  label: string;
+  restore: () => void;
+  /**
+   * True when the restore is SURGICAL — it reapplies just the thing that
+   * changed against whatever the state is now (e.g. re-splicing one deleted
+   * task), so replaying it later cannot clobber unrelated edits.
+   *
+   * False for a whole-slice snapshot, which reverts everything written to that
+   * slice since. Those must be dropped as soon as any other write lands.
+   */
+  surgical: boolean;
+}
+
+let undoStack: UndoEntry[] = [];
+const UNDO_DEPTH = 20;
+/**
+ * True only while withUndo / a restore is doing its own write, so
+ * `setAndPersist` can tell an undoable edit from every other mutation and drop
+ * stale restores for the latter. See the note in setAndPersist.
+ */
+let writingUndoableEdit = false;
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -108,6 +136,13 @@ function set(patch: Partial<FullState>) {
 // uiPatch merges in first so patch (the persisted slice) always wins on overlap;
 // letting callers fold a same-tick UI change (e.g. expanded) into this single write+notify.
 function setAndPersist(patch: Partial<AppState>, uiPatch?: Partial<UIState>) {
+  // An undo entry is a snapshot of a WHOLE slice, so replaying it also reverts
+  // anything written after it. Most mutations (rename, add child, move horizon,
+  // reorder, schedule) are not undoable and land here directly — so once one
+  // happens, every armed restore is stale and must be dropped. Without this,
+  // ⌘Z after "delete a project, then move another to Someday" silently undid
+  // the move as well.
+  if (!writingUndoableEdit) undoStack = undoStack.filter((entry) => entry.surgical);
   const next = { ...state, ...uiPatch, ...patch };
   state = next;
   notify();
@@ -209,25 +244,59 @@ export function getState(): FullState {
 }
 
 // ---- undo helper ----
-function scheduleUndo(label: string, restore: () => void): void {
+
+/** A cheap toggle is reversible by repeating it; a structural delete is not. */
+const UNDO_MS = 5000;
+const DESTRUCTIVE_UNDO_MS = 15000;
+
+/**
+ * Arm an undo and show its toast.
+ *
+ * The timer only hides the TOAST. The restore itself stays on `undoStack`, so
+ * ⌘Z reaches it afterwards — five seconds is below the time it takes to notice
+ * a misclick, let alone move the mouse to a toast.
+ */
+function scheduleUndo(
+  label: string,
+  restore: () => void,
+  ttlMs = UNDO_MS,
+  surgical = false,
+): void {
   if (undoTimer) clearTimeout(undoTimer);
-  restoreFn = restore;
+  undoStack.push({ label, restore, surgical });
+  if (undoStack.length > UNDO_DEPTH) undoStack.shift();
   set({ pendingUndo: { label } });
   undoTimer = setTimeout(() => {
-    restoreFn = null;
     undoTimer = null;
     set({ pendingUndo: null });
-  }, 5000);
+  }, ttlMs);
 }
 
 // Snapshot state[key], arm its restoration, then persist `next` — the shared
 // seam behind every undoable edit (deletes, date edits). Callers compute
 // `next` from the pre-write state and hand it in; the snapshot below is taken
 // before that value lands, so restore always replays the prior slice.
-function withUndo<K extends keyof AppState>(label: string, key: K, next: AppState[K]): void {
+function withUndo<K extends keyof AppState>(
+  label: string,
+  key: K,
+  next: AppState[K],
+  ttlMs = UNDO_MS,
+): void {
   const snapshot = structuredClone(state[key]);
-  scheduleUndo(label, () => setAndPersist({ [key]: snapshot } as Partial<AppState>));
-  setAndPersist({ [key]: next } as Partial<AppState>);
+  scheduleUndo(label, () => withoutClearingUndo(() => {
+    setAndPersist({ [key]: snapshot } as Partial<AppState>);
+  }), ttlMs);
+  withoutClearingUndo(() => setAndPersist({ [key]: next } as Partial<AppState>));
+}
+
+/** Run a write that must not invalidate the armed undo history. */
+function withoutClearingUndo(write: () => void): void {
+  writingUndoableEdit = true;
+  try {
+    write();
+  } finally {
+    writingUndoableEdit = false;
+  }
 }
 
 // The four commitment horizons (Now / Next / Later / Someday).
@@ -313,7 +382,7 @@ export const actions = {
       // Completion makes the row vanish from Next up — arm the undo window.
       node.done = true;
       node.doneAt = todayStr();
-      withUndo(`Completed "${node.title}" · Undo`, 'goals', goals);
+      withUndo(`Completed "${node.title}"`, 'goals', goals);
     }
   },
 
@@ -409,7 +478,7 @@ export const actions = {
       removeNode(nodes, nodeId);
       return { ...g, nodes };
     });
-    withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
+    withUndo(`Deleted "${title}"`, 'goals', goals, DESTRUCTIVE_UNDO_MS);
   },
 
   // Append one or more fully-built goals (manual New Goal form or JSON import).
@@ -496,7 +565,14 @@ export const actions = {
     const goal = state.goals.find((g) => g.id === goalId);
     const title = goal?.title ?? 'project';
     const goals = state.goals.filter((g) => g.id !== goalId);
-    withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
+    // Name the cost. Deleting a project takes two clicks and can take a dozen
+    // steps, milestones and a week of scheduling with it; "Deleted X" alone
+    // gave no sense of how much was riding on the Undo button.
+    const steps = goal ? leafCount(goal.nodes).total : 0;
+    const label = steps > 0
+      ? `Deleted "${title}" and its ${steps} step${steps === 1 ? '' : 's'}`
+      : `Deleted "${title}"`;
+    withUndo(label, 'goals', goals, DESTRUCTIVE_UNDO_MS);
   },
 
   // Completion lifecycle — explicit and reversible (spec §2.5). Completing removes
@@ -506,7 +582,7 @@ export const actions = {
     const goal = state.goals.find((g) => g.id === goalId);
     if (!goal || goal.completedAt) return;
     const goals = state.goals.map((g) => (g.id === goalId ? { ...g, completedAt: todayStr() } : g));
-    withUndo(`Completed "${goal.title}" · Undo`, 'goals', goals);
+    withUndo(`Completed "${goal.title}"`, 'goals', goals);
   },
 
   reopenGoal(goalId: string): void {
@@ -530,10 +606,13 @@ export const actions = {
   // yesterday shouldn't permanently dent the streak. Guarded so a future day and
   // any day before the habit began can never be checked, keeping streaks honest.
   toggleHabitOn(habitId: string, date: string) {
-    if (!isValidLocalDate(date) || date > todayStr()) return;
+    const today = todayStr();
+    if (!isValidLocalDate(date) || date > today) return;
+    const target = state.habits.find((h) => h.id === habitId);
+    if (!target || (target.createdAt && date < target.createdAt)) return;
+    const cleared = target.checkins.includes(date);
     const habits = state.habits.map((h) => {
       if (h.id !== habitId) return h;
-      if (h.createdAt && date < h.createdAt) return h;
       const i = h.checkins.indexOf(date);
       const checkins =
         i >= 0
@@ -541,7 +620,18 @@ export const actions = {
           : [...h.checkins, date];
       return { ...h, checkins };
     });
-    setAndPersist({ habits });
+    // Today's toggle is visible on the row and instantly reversible, so it stays
+    // silent. Editing a PAST day rewrites the record streaks are computed from
+    // with nothing on screen to show for it — that needs an undo.
+    if (date === today) {
+      setAndPersist({ habits });
+      return;
+    }
+    withUndo(
+      `${cleared ? 'Cleared' : 'Marked'} "${target.title}" on ${fmtD(date)}`,
+      'habits',
+      habits,
+    );
   },
 
   addHabit(title: string, cadence: Habit['cadence'], weeklyTarget: number) {
@@ -557,7 +647,12 @@ export const actions = {
   removeHabit(habitId: string) {
     const habit = state.habits.find((h) => h.id === habitId);
     const title = habit?.title ?? 'habit';
-    withUndo(`Deleted "${title}" · Undo`, 'habits', state.habits.filter((h) => h.id !== habitId));
+    withUndo(
+      `Deleted "${title}"`,
+      'habits',
+      state.habits.filter((h) => h.id !== habitId),
+      DESTRUCTIVE_UNDO_MS,
+    );
   },
 
   // Tasks
@@ -605,13 +700,15 @@ export const actions = {
     if (!task) return;
     const originalIndex = state.tasks.indexOf(task);
     const deletedTask = structuredClone(task);
-    scheduleUndo(`Deleted "${task.title}" · Undo`, () => {
+    scheduleUndo(`Deleted "${task.title}"`, () => withoutClearingUndo(() => {
       if (state.tasks.some((item) => item.id === deletedTask.id)) return;
       const tasks = [...state.tasks];
       tasks.splice(Math.min(originalIndex, tasks.length), 0, deletedTask);
       setAndPersist({ tasks });
+    }), DESTRUCTIVE_UNDO_MS, true);
+    withoutClearingUndo(() => {
+      setAndPersist({ tasks: state.tasks.filter((item) => item.id !== taskId) });
     });
-    setAndPersist({ tasks: state.tasks.filter((item) => item.id !== taskId) });
   },
 
   // Bulk-triage the "Needs a decision" pile onto next week in one keystroke — the
@@ -625,10 +722,10 @@ export const actions = {
     const snapGoals = structuredClone(state.goals);
     const snapTasks = structuredClone(state.tasks);
     scheduleUndo(
-      `Pushed ${count} item${count === 1 ? '' : 's'} to next week · Undo`,
-      () => setAndPersist({ goals: snapGoals, tasks: snapTasks }),
+      `Pushed ${count} item${count === 1 ? '' : 's'} to next week`,
+      () => withoutClearingUndo(() => setAndPersist({ goals: snapGoals, tasks: snapTasks })),
     );
-    setAndPersist({ goals, tasks });
+    withoutClearingUndo(() => setAndPersist({ goals, tasks }));
   },
 
   // Structural reorder / indent / outdent
@@ -725,7 +822,7 @@ export const actions = {
     const idSet = new Set(ids);
     const goals = state.goals.map((g) => (idSet.has(g.id) ? { ...g, datesConfirmed: true } : g));
     withUndo(
-      `Confirmed dates for ${ids.length} project${ids.length === 1 ? '' : 's'} · Undo`,
+      `Confirmed dates for ${ids.length} project${ids.length === 1 ? '' : 's'}`,
       'goals',
       goals,
     );
@@ -744,7 +841,7 @@ export const actions = {
     if (deadline) updated.deadline = deadline;
     else delete updated.deadline;
     const goals = state.goals.map((g) => g.id === goalId ? updated : g);
-    withUndo(`Updated dates for "${goal.title}" · Undo`, 'goals', goals);
+    withUndo(`Updated dates for "${goal.title}"`, 'goals', goals);
     return true;
   },
 
@@ -760,7 +857,7 @@ export const actions = {
     const clonedNode = findNode(clonedGoal.nodes, nodeId)!;
     clonedNode.start = clamped.start;
     clonedNode.deadline = clamped.deadline;
-    withUndo(`Scheduled "${node.title}" · Undo`, 'goals', goals);
+    withUndo(`Scheduled "${node.title}"`, 'goals', goals);
   },
 
   clearNodeDates(goalId: string, nodeId: string): void {
@@ -773,7 +870,7 @@ export const actions = {
     const clonedNode = findNode(clonedGoal.nodes, nodeId)!;
     delete clonedNode.start;
     delete clonedNode.deadline;
-    withUndo(`Unscheduled "${node.title}" · Undo`, 'goals', goals);
+    withUndo(`Unscheduled "${node.title}"`, 'goals', goals);
   },
 
   // Scheduling. A view hands over WHERE THE USER POINTED; the store resolves
@@ -847,7 +944,7 @@ export const actions = {
     if (!goal || !node || !node.plannedWeek) return;
     const goals = cloneGoals(state.goals);
     clearPlannedSlot(findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!);
-    withUndo(`Removed "${node.title}" from plan · Undo`, 'goals', goals);
+    withUndo(`Removed "${node.title}" from plan`, 'goals', goals);
   },
 
   // The `×` on a task block unpins its TIME, not its day — clearing `date` too
@@ -864,7 +961,7 @@ export const actions = {
       delete cleared.startMin;
       return cleared;
     });
-    withUndo(`Unscheduled "${task.title}" · Undo`, 'tasks', tasks);
+    withUndo(`Unscheduled "${task.title}"`, 'tasks', tasks);
   },
 
   resizeNode(nodeId: string, minutes: number): void {
@@ -963,14 +1060,12 @@ export const actions = {
         ? { ...g, milestones: (g.milestones ?? []).filter((m) => m.id !== milestoneId) }
         : g,
     );
-    withUndo(`Deleted "${title}" · Undo`, 'goals', goals);
+    withUndo(`Deleted "${title}"`, 'goals', goals);
   },
 
   undoLastDelete(): void {
-    if (restoreFn) {
-      restoreFn();
-      restoreFn = null;
-    }
+    const entry = undoStack.pop();
+    if (entry) entry.restore();
     if (undoTimer) {
       clearTimeout(undoTimer);
       undoTimer = null;
@@ -994,10 +1089,6 @@ export const actions = {
 
   setSelDate(s: string) {
     set({ selDate: s });
-  },
-
-  shiftDay(n: number) {
-    set({ selDate: addDays(state.selDate, n) });
   },
 
   goToToday() {

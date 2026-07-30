@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode, Task } from '../db/types';
-import { buildDailyWork, tasksForWeek } from './dailyWork';
+import { buildDailyWork, nowDividerIndex, tasksForWeek } from './dailyWork';
+import type { DailyWorkItem } from './dailyWork';
 
 const TODAY = '2026-07-23';
 const WEEK = '2026-07-20';
@@ -186,7 +187,6 @@ describe('buildDailyWork carryovers and completion', () => {
         plannedDay: undefined,
       },
     ]);
-    expect(result.suggestions).toEqual([]);
   });
 
   it('uses doneAt exactly and does not infer legacy completion dates', () => {
@@ -257,196 +257,6 @@ describe('buildDailyWork carryovers and completion', () => {
   });
 });
 
-describe('buildDailyWork suggestions', () => {
-  it('uses only active Now projects and excludes ineligible leaf dates', () => {
-    const goals = [
-      goal('now', [
-        { id: 'eligible', title: 'Eligible' },
-        { id: 'due', title: 'Already due', deadline: TODAY },
-        { id: 'far', title: 'Too far away', start: '2026-08-23' },
-        { id: 'planned', title: 'Already planned', plannedWeek: WEEK },
-        { id: 'done', title: 'Already done', done: true },
-      ]),
-      goal('next', [{ id: 'next-leaf', title: 'Next' }], { column: 1 }),
-      goal('later', [{ id: 'later-leaf', title: 'Later' }], { column: 2 }),
-      goal('someday', [{ id: 'someday-leaf', title: 'Someday' }], { column: 3 }),
-      goal('completed', [{ id: 'completed-leaf', title: 'Completed project' }], {
-        completedAt: TODAY,
-      }),
-      goal('future-project', [{ id: 'future-project-leaf', title: 'Future project' }], {
-        start: '2026-07-24',
-      }),
-    ];
-
-    const result = buildDailyWork(goals, [], TODAY);
-
-    expect(result.suggestions.map((item) => item.key)).toEqual(['step:eligible']);
-  });
-
-  it('labels each suggestion with why it surfaced', () => {
-    const goals = [
-      goal('a', [
-        { id: 'undated', title: 'Undated' },
-        { id: 'inwindow', title: 'In window', start: '2026-07-01', deadline: '2026-08-01' },
-      ]),
-    ];
-
-    const byId = new Map(
-      buildDailyWork(goals, [], TODAY).suggestions.map((s) => [s.id, s.reason]),
-    );
-
-    expect(byId.get('inwindow')).toBe('In its window');
-    expect(byId.get('undated')).toBe('Next open step');
-  });
-
-  it('flags a soon milestone as the reason across that project', () => {
-    const goals = [
-      goal('m', [{ id: 'leaf', title: 'Leaf' }], {
-        milestones: [{ id: 'ms', title: 'Demo', date: '2026-07-30' }],
-      }),
-    ];
-
-    const result = buildDailyWork(goals, [], TODAY);
-
-    expect(result.suggestions[0].reason).toBe('Milestone soon');
-  });
-
-  it('ranks active spans, then undated leaves, then starts within 30 days, preserving tree order', () => {
-    const activeThenUndated = [
-      goal('ranked', [
-        { id: 'future-a', title: 'Future A', start: '2026-08-01' },
-        {
-          id: 'branch',
-          title: 'Branch',
-          children: [
-            { id: 'undated-a', title: 'Undated A', children: [] },
-            {
-              id: 'active-a',
-              title: 'Active A',
-              start: '2026-07-01',
-              deadline: '2026-07-31',
-            },
-          ],
-        },
-        { id: 'active-b', title: 'Active B', start: '2026-07-20', deadline: '2026-08-20' },
-        { id: 'undated-b', title: 'Undated B' },
-      ]),
-    ];
-    const undatedThenFuture = [
-      goal('ranked', [
-        { id: 'future-a', title: 'Future A', start: '2026-08-01' },
-        { id: 'undated-a', title: 'Undated A' },
-        { id: 'future-b', title: 'Future B', start: '2026-07-30' },
-      ]),
-    ];
-
-    const first = buildDailyWork(activeThenUndated, [], TODAY);
-    const second = buildDailyWork(undatedThenFuture, [], TODAY);
-
-    expect(first.suggestions.map((item) => item.id)).toEqual(['active-a', 'active-b']);
-    expect(second.suggestions.map((item) => item.id)).toEqual(['undated-a', 'future-a']);
-  });
-
-  it('round-robins projects for at most two rounds and four total suggestions', () => {
-    const goals = [
-      goal('a', [
-        { id: 'a1', title: 'A1' },
-        { id: 'a2', title: 'A2' },
-        { id: 'a3', title: 'A3' },
-      ]),
-      goal('b', [
-        { id: 'b1', title: 'B1' },
-        { id: 'b2', title: 'B2' },
-      ]),
-      goal('c', [{ id: 'c1', title: 'C1' }]),
-    ];
-
-    const result = buildDailyWork(goals, [], TODAY);
-
-    expect(result.suggestions.map((item) => item.goalId)).toEqual(['a', 'b', 'c', 'a']);
-    expect(result.suggestions).toHaveLength(4);
-  });
-
-  it('puts projects with a milestone in the next 14 days first', () => {
-    const goals = [
-      goal('plain', [{ id: 'plain-leaf', title: 'Plain' }]),
-      goal('milestone', [{ id: 'milestone-leaf', title: 'Milestone' }], {
-        milestones: [{ id: 'm', title: 'Marker', date: '2026-08-06' }],
-      }),
-      goal('past-milestone', [{ id: 'past-leaf', title: 'Past' }], {
-        milestones: [{ id: 'old', title: 'Old', date: '2026-07-22' }],
-      }),
-    ];
-
-    const result = buildDailyWork(goals, [], TODAY);
-
-    expect(result.suggestions.map((item) => item.goalId)).toEqual([
-      'milestone',
-      'plain',
-      'past-milestone',
-    ]);
-  });
-
-  it('treats malformed legacy step and project dates as absent scheduling metadata', () => {
-    const projectDates = [
-      goal('plain-first', [{ id: 'plain', title: 'Plain' }]),
-      goal('bad-project', [{ id: 'bad-project-start', title: 'Bad project start' }], {
-        start: 'not-a-date',
-        milestones: [{ id: 'bad', title: 'Bad milestone', date: 'not-a-date' }],
-      }),
-    ];
-    const stepDates = [
-      goal('bad-deadline-goal', [
-        { id: 'bad-deadline', title: 'Bad deadline', deadline: 'not-a-date' },
-      ]),
-      goal('bad-week-goal', [
-        {
-          id: 'bad-week',
-          title: 'Bad week',
-          plannedWeek: 'not-a-date',
-          plannedDay: TODAY,
-        },
-      ]),
-      goal('bad-day-goal', [
-        {
-          id: 'bad-day',
-          title: 'Bad day',
-          plannedWeek: WEEK,
-          plannedDay: 'not-a-date',
-        },
-      ]),
-      goal('bad-start-goal', [
-        { id: 'bad-start', title: 'Bad start', start: 'not-a-date' },
-      ]),
-    ];
-
-    const projectResult = buildDailyWork(projectDates, [], TODAY);
-    const stepResult = buildDailyWork(stepDates, [], TODAY);
-
-    expect(projectResult.suggestions.map((item) => item.id)).toEqual([
-      'plain',
-      'bad-project-start',
-    ]);
-    expect(stepResult.commitments.map(({ key, source, plannedDay }) => ({
-      key,
-      source,
-      plannedDay,
-    }))).toEqual([
-      {
-        key: 'step:bad-day',
-        source: 'this-week',
-        plannedDay: undefined,
-      },
-    ]);
-    expect(stepResult.carryOvers).toEqual([]);
-    expect(stepResult.suggestions.map((item) => item.id)).toEqual([
-      'bad-deadline',
-      'bad-week',
-      'bad-start',
-    ]);
-  });
-});
-
 describe('tasksForWeek', () => {
   it('includes open and completed tasks in the inclusive week sorted by date then title', () => {
     const tasks = [
@@ -493,5 +303,95 @@ describe('buildDailyWork malformed task dates', () => {
     expect(result.commitments).toEqual([]);
     expect(result.carryOvers).toEqual([]);
     expect(result.completedToday.map((item) => item.key)).toEqual(['task:done-invalid']);
+  });
+});
+
+// C-1: the Plan grid assigns real clock times, and Today used to know nothing
+// about them — it listed a 09:00 standup below an 11:00 booking and showed no
+// times at all, which made the default view contradict the flagship feature.
+describe('buildDailyWork clock times', () => {
+  it('carries a task startMin onto its item', () => {
+    const sections = buildDailyWork([], [task('t', TODAY, { startMin: 540 })], TODAY);
+    expect(sections.commitments[0].startMin).toBe(540);
+  });
+
+  it('carries a pinned step plannedStartMin onto its item', () => {
+    const goals = [goal('g', [{
+      id: 'n', title: 'Step', done: false,
+      plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 660,
+    }])];
+    expect(buildDailyWork(goals, [], TODAY).commitments[0].startMin).toBe(660);
+  });
+
+  it('leaves startMin absent when nothing is placed on the grid', () => {
+    const sections = buildDailyWork([], [task('t', TODAY)], TODAY);
+    expect(sections.commitments[0].startMin).toBeUndefined();
+  });
+
+  it('sorts timed commitments chronologically, whatever their source bucket', () => {
+    const goals = [goal('g', [
+      { id: 'n15', title: '15:00 kernel', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
+      { id: 'n09', title: '09:00 standup', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
+    ])];
+    const tasks = [
+      task('t13', TODAY, { startMin: 780 }),
+      task('t11', TODAY, { startMin: 660 }),
+    ];
+
+    const titles = buildDailyWork(goals, tasks, TODAY).commitments.map((i) => i.title);
+    expect(titles).toEqual(['09:00 standup', 'Task t11', 'Task t13', '15:00 kernel']);
+  });
+
+  it('sinks untimed work below every timed item but keeps its bucket order', () => {
+    const goals = [goal('g', [
+      { id: 'n', title: 'Timed step', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
+      { id: 'nw', title: 'Anytime this week', done: false, plannedWeek: WEEK },
+    ])];
+    const tasks = [task('t', TODAY)];
+
+    const items = buildDailyWork(goals, tasks, TODAY).commitments;
+    expect(items.map((i) => i.title)).toEqual(['Timed step', 'Task t', 'Anytime this week']);
+    expect(items[0].startMin).toBe(900);
+    expect(items[1].startMin).toBeUndefined();
+  });
+
+  it('breaks a startMin tie by the existing bucket precedence, not by title', () => {
+    const goals = [goal('g', [
+      { id: 'n', title: 'AAA step', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
+    ])];
+    const tasks = [task('zzz', TODAY, { startMin: 540 })];
+
+    // task-today outranks pinned-today in the bucket order.
+    expect(buildDailyWork(goals, tasks, TODAY).commitments.map((i) => i.title))
+      .toEqual(['Task zzz', 'AAA step']);
+  });
+});
+
+describe('nowDividerIndex', () => {
+  const at = (m?: number): DailyWorkItem => ({
+    key: `k${m}`, kind: 'task', id: `${m}`, title: 't', goalId: null,
+    due: false, done: false, editable: true, source: 'task-today',
+    ...(m == null ? {} : { startMin: m }),
+  });
+
+  it('returns the position of the first item still ahead of now', () => {
+    expect(nowDividerIndex([at(540), at(660), at(900)], 700)).toBe(2);
+    expect(nowDividerIndex([at(540), at(660), at(900)], 500)).toBe(0);
+  });
+
+  it('returns null when every item is in the past', () => {
+    expect(nowDividerIndex([at(540), at(660)], 900)).toBeNull();
+  });
+
+  it('returns null when nothing is timed — there is no clock to divide on', () => {
+    expect(nowDividerIndex([at(), at()], 700)).toBeNull();
+  });
+
+  it('never places the divider at the very top, where it would mean nothing', () => {
+    expect(nowDividerIndex([at(900)], 100)).toBe(0);
+  });
+
+  it('treats an item starting exactly now as still ahead', () => {
+    expect(nowDividerIndex([at(540), at(700)], 700)).toBe(1);
   });
 });

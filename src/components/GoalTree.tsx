@@ -50,25 +50,36 @@ function LeafCheckbox({
   label: string;
 }) {
   return (
+    // The 17px box sits inside a 24×24 button: WCAG 2.2 AA wants a 24px target,
+    // but a 24px box would overpower the row. `border-check` clears 1.4.11's
+    // 3:1 — `border-line-2` measured 1.55:1 dark / 1.31:1 light, which made the
+    // one action that moves every number in the app effectively invisible.
     <button
       type="button"
       role="checkbox"
       aria-checked={checked}
       aria-label={label}
-      className={`w-[17px] h-[17px] flex-shrink-0 border-[1.5px] rounded-[5px] grid place-items-center transition-all duration-100 ${
-        checked ? 'bg-accent border-accent' : 'border-line-2 hover:border-muted'
-      }`}
-      onClick={onToggle}
+      className="w-[24px] h-[24px] -m-[3px] flex-shrink-0 grid place-items-center group/cb"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
     >
-      <svg
-        viewBox="0 0 12 12"
-        className={`w-[11px] h-[11px] stroke-accent-contrast fill-none transition-opacity duration-100 ${
-          checked ? 'opacity-100' : 'opacity-0'
+      <span
+        className={`w-[17px] h-[17px] border-[1.5px] rounded-[6px] grid place-items-center transition-all duration-100 ${
+          checked ? 'bg-accent border-accent' : 'border-check group-hover/cb:border-muted'
         }`}
-        strokeWidth={2.4}
       >
-        <path d="M2 6.2 4.6 9 10 3" />
-      </svg>
+        <svg
+          viewBox="0 0 12 12"
+          className={`w-[11px] h-[11px] stroke-accent-contrast fill-none transition-opacity duration-100 ${
+            checked ? 'opacity-100' : 'opacity-0'
+          }`}
+          strokeWidth={2.4}
+        >
+          <path d="M2 6.2 4.6 9 10 3" />
+        </svg>
+      </span>
     </button>
   );
 }
@@ -205,6 +216,17 @@ function GoalTreeNode({
     setEditing(false);
   }
 
+  // Single click anywhere on the row runs its primary action: toggle a leaf's
+  // done state, or expand/collapse a container. Interactive children (checkbox,
+  // twirl, drag handle, + sub, delete) stopPropagation so they never reach here.
+  // Double-click on the title enters rename; its two underlying single clicks
+  // toggle then untoggle (net zero) before the editor opens (Approach A).
+  function handleRowClick() {
+    if (editing) return;
+    if (hasKids) actions.toggleExpand(n.id);
+    else actions.toggleLeaf(n.id);
+  }
+
   // Move focus to the next/previous VISIBLE row in DOM order. Because children
   // are unmounted when collapsed ({isOpen && ...}), only visible rows appear in
   // querySelectorAll('[data-row]').
@@ -254,7 +276,7 @@ function GoalTreeNode({
   }
 
   const ROW_CLS =
-    'flex items-center gap-[9px] px-[6px] py-[4px] rounded-[6px] hover:bg-hover group ' +
+    'flex items-center gap-[9px] px-[6px] py-[4px] rounded-[6px] hover:bg-hover group cursor-pointer ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-0';
 
   return (
@@ -267,6 +289,7 @@ function GoalTreeNode({
         data-node-id={n.id}
         tabIndex={0}
         onKeyDown={handleKeyDown}
+        onClick={handleRowClick}
       >
         {/* Drag handle — {listeners} here, NOT on the whole row, to avoid
             colliding with row-level Space/Arrow handlers. tabIndex={-1} keeps
@@ -277,7 +300,8 @@ function GoalTreeNode({
           {...listeners}
           tabIndex={-1}
           aria-label="Drag to reorder"
-          className="w-[14px] flex-shrink-0 text-[11px] text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 cursor-grab active:cursor-grabbing select-none transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+          className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-tiny text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 cursor-grab active:cursor-grabbing select-none transition-opacity"
         >
           ⠿
         </button>
@@ -289,9 +313,12 @@ function GoalTreeNode({
             aria-expanded={isOpen}
             aria-label={isOpen ? 'Collapse' : 'Expand'}
             tabIndex={-1}
-            className="w-[14px] h-[14px] flex-shrink-0 grid place-items-center text-faint text-[9px] select-none transition-transform duration-150"
+            className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint text-micro select-none transition-transform duration-150 rounded-[4px] hover:bg-hover"
             style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
-            onClick={() => actions.toggleExpand(n.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.toggleExpand(n.id);
+            }}
           >
             ▶
           </button>
@@ -312,7 +339,7 @@ function GoalTreeNode({
         {editing ? (
           <InlineEdit
             value={n.title}
-            className={`flex-1 text-[.9rem] ${
+            className={`flex-1 text-lead ${
               hasKids ? 'font-semibold text-ink' : n.done ? 'line-through text-faint' : 'text-ink-soft'
             }`}
             onCommit={commitRename}
@@ -320,14 +347,14 @@ function GoalTreeNode({
           />
         ) : (
           <span
-            className={`flex-1 text-[.9rem] cursor-default select-none ${
+            className={`flex-1 text-lead select-none ${
               hasKids
                 ? 'font-semibold text-ink'
                 : n.done
                   ? 'line-through text-faint'
                   : 'text-ink-soft'
             }`}
-            onClick={() => setEditing(true)}
+            onDoubleClick={() => setEditing(true)}
           >
             {n.title}
           </span>
@@ -335,7 +362,7 @@ function GoalTreeNode({
 
         {/* Progress % (containers only) */}
         {hasKids && (
-          <span className="text-[.74rem] text-muted tabular-nums flex-shrink-0">
+          <span className="text-compact text-muted tabular-nums flex-shrink-0">
             {Math.round(nodePct(n))}%
           </span>
         )}
@@ -346,8 +373,11 @@ function GoalTreeNode({
           tabIndex={-1}
           aria-label={`Add sub-item to "${n.title}"`}
           title="+ sub"
-          className="text-faint text-[.74rem] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0 px-[2px] hover:text-accent"
-          onClick={() => actions.addChild(n.id)}
+          className="text-faint text-compact opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0 min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:text-accent hover:bg-hover"
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.addChild(n.id);
+          }}
         >
           + sub
         </button>
@@ -357,8 +387,11 @@ function GoalTreeNode({
           type="button"
           tabIndex={-1}
           aria-label={`Delete ${n.title}`}
-          className="text-faint text-[.8rem] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-[#b4453a] transition-opacity flex-shrink-0"
-          onClick={() => actions.removeNode(n.id)}
+          className="text-faint text-ui opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-[#b4453a] transition-opacity flex-shrink-0 min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover"
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.removeNode(n.id);
+          }}
         >
           ✕
         </button>
@@ -402,7 +435,7 @@ function AddChildInput({
     <div style={{ marginLeft: indent }} className="px-[6px] py-[2px]">
       <input
         ref={ref}
-        className="ghost-in w-full text-[.85rem]"
+        className="ghost-in w-full text-body"
         placeholder={placeholder}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && ref.current) {

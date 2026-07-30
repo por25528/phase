@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../state/store';
 import type { Goal } from '../db/types';
 import { GoalTree } from './GoalTree';
+import { DateField } from './DateField';
 import { ProgressBar } from './ProgressBar';
 import { InlineEdit } from './InlineEdit';
 import { SubtaskAiModal } from './SubtaskAiModal';
@@ -22,7 +23,7 @@ import {
 // two columns read as one system.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[.7rem] font-[550] uppercase tracking-[0.08em] text-muted mb-[9px]">
+    <div className="text-meta font-[550] uppercase tracking-[0.08em] text-muted mb-[9px]">
       {children}
     </div>
   );
@@ -60,20 +61,20 @@ function MilestonesSection({
       <SectionLabel>Milestones</SectionLabel>
 
       {sorted.length === 0 && (
-        <div className="text-[.78rem] text-faint mb-[6px] px-[2px]">No milestones yet — add one below.</div>
+        <div className="text-ui text-muted mb-[6px] px-[2px]">No milestones yet — add one below.</div>
       )}
 
       {sorted.map((m) => (
         <div
           key={m.id}
-          className="group flex items-center gap-[6px] py-[4px] px-[2px] rounded-[5px] hover:bg-hover"
+          className="group flex items-center gap-[6px] py-[4px] px-[2px] rounded-[6px] hover:bg-hover"
         >
-          <span className="text-[.72rem] text-accent mt-[1px]">◆</span>
-          <div className="flex-1 min-w-0 text-[.85rem]">
+          <span className="text-meta text-accent mt-[1px]">◆</span>
+          <div className="flex-1 min-w-0 text-body">
             {editingId === m.id ? (
               <InlineEdit
                 value={m.title}
-                className="text-[.85rem]"
+                className="text-body"
                 onCommit={(v) => { actions.updateMilestone(g.id, m.id, { title: v }); setEditingId(null); }}
                 onCancel={() => setEditingId(null)}
               />
@@ -86,15 +87,14 @@ function MilestonesSection({
               </span>
             )}
           </div>
-          <input
-            type="date"
+          <DateField
             value={m.date}
-            onChange={(e) => actions.updateMilestone(g.id, m.id, { date: e.target.value })}
-            className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
+            ariaLabel={`Date for milestone "${m.title}"`}
+            onCommit={(next) => { if (next) actions.updateMilestone(g.id, m.id, { date: next }); }}
           />
           <button
             onClick={() => actions.removeMilestone(g.id, m.id)}
-            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[.8rem] text-muted hover:text-ink px-[3px] rounded transition-opacity duration-[120ms]"
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-ui text-muted hover:text-ink min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover transition-opacity duration-[120ms]"
             tabIndex={0}
             aria-label="Delete milestone"
           >
@@ -105,25 +105,23 @@ function MilestonesSection({
 
       {/* Add row */}
       <div className="flex items-center gap-[6px] mt-[6px] px-[2px]">
-        <span className="text-[.72rem] text-faint mt-[1px]">◆</span>
+        <span className="text-meta text-faint mt-[1px]">◆</span>
         <input
           ref={newTitleRef}
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="Milestone title…"
-          className="flex-1 min-w-0 bg-transparent border-none outline-none text-[.85rem] text-ink placeholder:text-faint"
+          className="flex-1 min-w-0 bg-transparent border-none outline-none text-body min-h-[24px] text-ink placeholder:text-faint"
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNew(); } }}
         />
-        <input
-          type="date"
+        <DateField
           value={newDate}
-          onChange={(e) => setNewDate(e.target.value)}
-          className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNew(); } }}
+          ariaLabel="New milestone date"
+          onCommit={setNewDate}
         />
         <button
           onClick={submitNew}
-          className="text-[.78rem] text-ink-soft px-[7px] py-[3px] rounded-[5px] border border-line-2 hover:bg-hover disabled:opacity-40"
+          className="text-ui text-ink-soft px-[7px] py-[3px] rounded-[6px] border border-line-2 hover:bg-hover disabled:opacity-40"
           disabled={!newTitle.trim()}
         >
           Add
@@ -158,7 +156,21 @@ function DrawerHeader({
   const datesUnconfirmed = needsDateConfirmation(g);
   const dateError = projectDateError(draftStart || undefined, draftDeadline || undefined);
   const storedDateError = projectDateError(g.start, g.deadline);
-  const datesDirty = goalDateDraftIsDirty(g, draftStart, draftDeadline);
+
+  /**
+   * Every other edit in Phase persists immediately; the date range alone used
+   * to need a "Save dates" click, which produced exactly the "did that save?"
+   * moment the product should never have. A pair that doesn't validate yet
+   * (start after deadline, half-typed) stays in the draft and shows its error
+   * rather than being written.
+   */
+  function commitDates(nextStart: string, nextDeadline: string): void {
+    setDraftStart(nextStart);
+    setDraftDeadline(nextDeadline);
+    if (projectDateError(nextStart || undefined, nextDeadline || undefined)) return;
+    if (!goalDateDraftIsDirty(g, nextStart, nextDeadline)) return;
+    actions.setGoalDates(g.id, nextStart || undefined, nextDeadline || undefined);
+  }
   const expected = trustedSchedule
     ? Math.round(expectedPct(g.start, g.deadline, today))
     : 0;
@@ -191,13 +203,13 @@ function DrawerHeader({
         {editingTitle ? (
           <InlineEdit
             value={g.title}
-            className="font-disp text-[1.4rem] font-semibold tracking-[-0.01em]"
+            className="font-disp text-h1 font-semibold tracking-[-0.01em]"
             onCommit={(v) => { actions.renameGoal(g.id, v); setEditingTitle(false); }}
             onCancel={() => setEditingTitle(false)}
           />
         ) : (
           <div
-            className="font-disp text-[1.4rem] font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit"
+            className="font-disp text-h1 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit"
             onClick={() => setEditingTitle(true)}
             title="Click to rename"
           >
@@ -206,44 +218,30 @@ function DrawerHeader({
         )}
         <div className="mt-[9px]">
           <div className="flex flex-wrap items-center gap-[6px]">
-            <input
-              ref={startDateRef}
-              type="date"
+            <DateField
+              inputRef={startDateRef}
               value={draftStart}
-              aria-label="Start date"
-              onChange={(e) => setDraftStart(e.target.value)}
-              className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
+              ariaLabel="Start date"
+              placeholder="Start"
+              onCommit={(next) => commitDates(next, draftDeadline)}
             />
-            <span className="text-[.78rem] text-muted">→</span>
-            <input
-              type="date"
+            <span className="text-ui text-muted">→</span>
+            <DateField
               value={draftDeadline}
-              aria-label="Deadline"
-              onChange={(e) => setDraftDeadline(e.target.value)}
-              className="rounded-[5px] border border-line-2 px-[5px] py-[2px] text-[.72rem] text-ink bg-transparent outline-none"
+              ariaLabel="Deadline"
+              placeholder="Deadline"
+              onCommit={(next) => commitDates(draftStart, next)}
             />
-            <button
-              type="button"
-              disabled={dateError !== null}
-              onClick={() => actions.setGoalDates(
-                g.id,
-                draftStart || undefined,
-                draftDeadline || undefined,
-              )}
-              className="text-[.7rem] font-semibold text-accent-deep px-[7px] py-[3px] rounded-[7px] hover:bg-accent-tint disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Save dates
-            </button>
             {datesUnconfirmed && (
               <button
                 type="button"
-                disabled={storedDateError !== null || datesDirty}
-                title={storedDateError ?? (datesDirty ? 'Save changes before confirming these dates.' : undefined)}
+                disabled={storedDateError !== null}
+                title={storedDateError ?? undefined}
                 onClick={() => {
                   actions.confirmGoalDates(g.id);
                   requestAnimationFrame(() => startDateRef.current?.focus());
                 }}
-                className="text-[.7rem] font-semibold text-warn px-[7px] py-[3px] rounded-[7px] hover:bg-warn-tint disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-meta font-semibold text-warn px-[7px] py-[3px] rounded-[6px] hover:bg-warn-tint disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Confirm
               </button>
@@ -257,23 +255,18 @@ function DrawerHeader({
                   actions.setGoalDates(g.id, undefined, undefined);
                   requestAnimationFrame(() => startDateRef.current?.focus());
                 }}
-                className="text-[.7rem] font-medium text-muted px-[7px] py-[3px] rounded-[7px] hover:bg-hover hover:text-ink"
+                className="text-meta font-medium text-muted px-[7px] min-h-[24px] inline-flex items-center rounded-[6px] hover:bg-hover hover:text-ink"
               >
                 Clear dates
               </button>
             )}
             {g.deadline && (
-              <span className="text-[.72rem] text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
+              <span className="text-meta text-muted tabular-nums">{daysLeftLabel(g.deadline)}</span>
             )}
           </div>
           {dateError && (
-            <p className="mt-[5px] text-[.7rem] text-warn" role="alert">
+            <p className="mt-[5px] text-meta text-warn" role="alert">
               {dateError}
-            </p>
-          )}
-          {datesUnconfirmed && datesDirty && (
-            <p className="mt-[5px] text-[.7rem] text-muted">
-              Save changes before confirming these dates.
             </p>
           )}
         </div>
@@ -281,10 +274,10 @@ function DrawerHeader({
 
       {/* Progress */}
       <div className="mt-[16px] flex items-center gap-[11px]">
-        <span className="font-disp text-[1.15rem] font-semibold tabular-nums min-w-[50px]">{pct}%</span>
+        <span className="font-disp text-h2 font-semibold tabular-nums min-w-[50px]">{pct}%</span>
         <ProgressBar pct={pct} />
       </div>
-      <div className="mt-[7px] flex flex-wrap items-center gap-x-[10px] gap-y-[3px] text-[.75rem] text-muted tabular-nums">
+      <div className="mt-[7px] flex flex-wrap items-center gap-x-[10px] gap-y-[3px] text-compact text-muted tabular-nums">
         <span className={pace === 'behind' ? 'text-warn' : ''}>{paceLine}</span>
         {wk.length > 0 && (<><Dot /><span>{wkDone}/{wk.length} planned this week</span></>)}
         {next && !isCompleted && (
@@ -296,11 +289,11 @@ function DrawerHeader({
           structural edits (store guards enforce it); metadata stays editable. */}
       {isCompleted ? (
         <div className="flex items-center gap-[10px] mt-[16px] px-[11px] py-[9px] rounded-card border border-line bg-hover">
-          <span className="text-accent text-[.9rem]" aria-hidden="true">✓</span>
-          <span className="text-[.8rem] text-ink-soft flex-1">Completed {fmtD(g.completedAt!)}</span>
+          <span className="text-accent text-lead" aria-hidden="true">✓</span>
+          <span className="text-ui text-ink-soft flex-1">Completed {fmtD(g.completedAt!)}</span>
           <button
             onClick={() => actions.reopenGoal(g.id)}
-            className="text-[.78rem] font-semibold text-ink-soft px-[10px] py-[5px] rounded-[8px] border border-line-2 hover:bg-panel"
+            className="text-ui font-semibold text-ink-soft px-[10px] py-[5px] rounded-field border border-line-2 hover:bg-panel"
           >
             Reopen project
           </button>
@@ -308,7 +301,7 @@ function DrawerHeader({
       ) : pace === 'complete' ? (
         <button
           onClick={() => actions.completeGoal(g.id)}
-          className="mt-[16px] text-[.82rem] font-semibold text-accent-contrast bg-accent px-[15px] py-[8px] rounded-field hover:bg-accent-deep"
+          className="mt-[16px] text-body font-semibold text-accent-contrast bg-accent px-[15px] py-[8px] rounded-field hover:bg-accent-deep"
         >
           Complete project
         </button>
@@ -336,16 +329,16 @@ function StepsSection({
   return (
     <section>
       <div className="flex items-baseline justify-between mb-[9px]">
-        <div className="text-[.7rem] font-[550] uppercase tracking-[0.08em] text-muted">Steps</div>
+        <div className="text-meta font-[550] uppercase tracking-[0.08em] text-muted">Steps</div>
         {total > 0 && (
-          <span className="font-mono text-[.68rem] text-faint tabular-nums">{done}/{total} done</span>
+          <span className="font-mono text-chip text-muted tabular-nums">{done}/{total} done</span>
         )}
       </div>
 
       {!hasSteps && (
         <div className="rounded-card border border-dashed border-line-2 px-[14px] py-[16px] text-center mb-[8px]">
-          <div className="text-[.82rem] text-ink-soft">No steps yet</div>
-          <div className="text-[.74rem] text-muted mt-[3px] leading-[1.5]">
+          <div className="text-body text-ink-soft">No steps yet</div>
+          <div className="text-compact text-muted mt-[3px] leading-[1.5]">
             Break this project into the actions that move it forward.
           </div>
         </div>
@@ -359,7 +352,7 @@ function StepsSection({
         <div className="mt-[4px] px-[6px] py-[2px]">
           <input
             ref={addRootRef}
-            className="ghost-in w-full text-[.85rem]"
+            className="ghost-in w-full text-body"
             placeholder={hasSteps ? '+ add step…' : '+ add the first step…'}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && addRootRef.current) {
@@ -374,9 +367,11 @@ function StepsSection({
           <button
             type="button"
             onClick={() => setSubtaskOpen(true)}
-            className="mt-[8px] text-[.78rem] font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[7px] -ml-[1px]"
+            className="mt-[8px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[1px]"
           >
-            ✦ Break a step into daily tasks with AI
+            {/* No AI runs in Phase — the modal hands you a prompt for your own.
+                "with AI" promised in-app generation the feature cannot do. */}
+            ✦ Break a step into subtasks…
           </button>
         </div>
       )}
@@ -410,7 +405,7 @@ function NotesSection({
         aria-label="Goal notes"
         rows={6}
         onBlur={(e) => { if (e.target.value !== (g.notes ?? '')) actions.setGoalNotes(g.id, e.target.value); }}
-        className="w-full border border-line-2 rounded-[7px] bg-transparent px-[9px] py-[7px] text-[.85rem] leading-[1.5] text-ink placeholder:text-faint outline-none focus-visible:border-accent resize-y"
+        className="w-full border border-line-2 rounded-[6px] bg-transparent px-[9px] py-[7px] text-body leading-[1.5] text-ink placeholder:text-faint outline-none focus-visible:border-accent resize-y"
       />
     </div>
   );
@@ -427,11 +422,28 @@ export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const open = goal != null;
 
+  // Drives the entrance transition. The dialog is unmounted while closed (see
+  // the early return below), so it mounts at opacity-0 and flips on the next
+  // frame rather than animating from a permanently-present node.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setShown(false);
+      return;
+    }
+    const raf = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
+
   // Open behaviour: focus the close button, lock background scroll, and trap Tab
   // inside the dialog (Escape is handled globally in App → closeDrawer).
   useEffect(() => {
     if (!open) return;
-    closeBtnRef.current?.focus();
+    const opener = document.activeElement as HTMLElement | null;
+    // Focus the panel, not the ✕. Landing on the close button drew an accent
+    // ring around a corner glyph, which reads as an error state on open; the
+    // panel is a focus target only so the trap has somewhere to start.
+    panelRef.current?.focus();
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
@@ -457,6 +469,8 @@ export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
     return () => {
       window.removeEventListener('keydown', onKey, true);
       document.body.style.overflow = prevOverflow;
+      // Hand focus back to whatever opened the drawer, as Modal does.
+      opener?.focus();
     };
   }, [open]);
 
@@ -487,10 +501,16 @@ export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
     return () => clearTimeout(t);
   }, [open, focusNodeId]);
 
+  // Unmount while closed. Left mounted, this dialog kept `aria-modal="true"` in
+  // the tree permanently — which tells assistive tech everything OUTSIDE it is
+  // inert, i.e. hides the whole app — and its close button stayed tabbable at
+  // opacity 0. `opacity: 0` removes neither.
+  if (!open) return null;
+
   return (
     <div
       className={`fixed inset-0 z-50 grid place-items-center px-[16px] py-[24px] bg-[rgba(20,20,18,0.28)] transition-opacity duration-[180ms] ${
-        open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        shown ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
       }`}
       onClick={() => actions.closeDrawer()}
     >
@@ -498,16 +518,19 @@ export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         aria-label={goal ? `${goal.title} — project` : 'Project'}
-        className={`relative w-full max-w-[960px] max-h-[88vh] flex flex-col bg-panel border border-line-2 rounded-card shadow-card transition-[opacity,transform] duration-[200ms] ease-out ${
-          open ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[8px] scale-[.985] pointer-events-none'
+        // Focused programmatically to seed the focus trap, never by the user —
+        // so it must not draw the global focus ring around the whole panel.
+        className={`relative w-full max-w-[960px] outline-none focus-visible:outline-none max-h-[88vh] flex flex-col bg-panel border border-line-2 rounded-card shadow-card transition-[opacity,transform] duration-[200ms] ease-out ${
+          shown ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-[8px] scale-[.985]'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
           ref={closeBtnRef}
           aria-label="Close goal drawer"
-          className="absolute top-[16px] right-[18px] z-10 text-muted text-[18px] px-[8px] py-[4px] rounded-[6px] hover:bg-hover"
+          className="absolute top-[16px] right-[18px] z-10 text-muted text-h3 px-[8px] py-[4px] rounded-[6px] hover:bg-hover"
           onClick={() => actions.closeDrawer()}
         >
           ✕

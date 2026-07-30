@@ -29,7 +29,7 @@ export function Stats() {
   return (
     <div className="flex flex-col gap-[3px]">
       {stats.map(([value, label, hint]) => (
-        <span key={label} title={hint} className="flex items-baseline gap-[5px] cursor-help text-[.78rem]">
+        <span key={label} title={hint} className="flex items-baseline gap-[5px] cursor-help text-ui">
           <span className="font-semibold text-ink tabular-nums">{value}</span>
           <span className="text-muted">{label}</span>
         </span>

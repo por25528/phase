@@ -192,7 +192,7 @@ export function Plan() {
   }
 
   if (hydration !== 'ready') {
-    return <div className="text-muted text-[.85rem] py-[40px]">Loading…</div>;
+    return <div className="text-muted text-body py-[40px]">Loading…</div>;
   }
 
   return (
@@ -241,7 +241,7 @@ export function Plan() {
           />
 
           {availability.length === 0 && (
-            <div className="mb-[10px] px-[10px] py-[8px] rounded-[9px] border border-line-2 bg-panel text-[.82rem] text-ink-soft">
+            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
               No working hours set — every day is off, so nothing can be scheduled.{' '}
               <button
                 type="button"
@@ -300,7 +300,7 @@ export function Plan() {
 
       <DragOverlay>
         {dragTitle != null ? (
-          <div className="px-[9px] py-[6px] rounded-[9px] bg-panel border border-accent shadow-today text-[.8rem] text-ink cursor-grabbing max-w-[220px] truncate">
+          <div className="px-[9px] py-[6px] rounded-field bg-panel border border-accent shadow-today text-ui text-ink cursor-grabbing max-w-[220px] truncate">
             {dragTitle}
           </div>
         ) : null}

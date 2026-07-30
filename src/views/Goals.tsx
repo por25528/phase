@@ -186,22 +186,22 @@ export function Goals() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-start justify-between gap-[16px] mb-[6px]">
-        <div>
-          <h1 className="font-disp text-[1.4rem] font-semibold tracking-[-0.015em]">Goals</h1>
-          <p className="text-[.8rem] text-muted mt-[3px]">
-            Drag a project between horizons to recommit it — Now is what you're actively pushing on, capped at {summary.slots.limit} to keep focus honest.
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-[10px] sm:gap-[16px] mb-[6px]">
+        <div className="min-w-0">
+          <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em]">Projects</h1>
+          <p className="text-ui text-muted mt-[3px]">
+            Drag a project between horizons to recommit it — Now is what you're actively pushing on, and {summary.slots.limit} at a time is the target that keeps focus honest.
           </p>
         </div>
-        <div className="flex-none flex items-center gap-[8px]">
+        <div className="flex-none flex items-center gap-[8px] self-start">
           <button
-            className="text-[.82rem] font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
+            className="text-body font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
             onClick={() => setModal('import')}
           >
             Import project
           </button>
           <button
-            className="text-[.82rem] font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
+            className="text-body font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
             onClick={() => setModal('new')}
           >
             + New project
@@ -212,20 +212,20 @@ export function Goals() {
       {/* Empty state */}
       {isEmpty && (
         <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
-          <p className="text-ink-soft text-[.9rem] max-w-[440px] mb-[16px] leading-[1.6]">
+          <p className="text-ink-soft text-lead max-w-[440px] mb-[16px] leading-[1.6]">
             No projects yet. A project is one outcome you can finish — a pset, a paper, a
             launch — split into a few steps you check off. Start one, or drop in the example
             to see how a good one decomposes.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-[10px]">
             <button
-              className="text-[.84rem] font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
+              className="text-body font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
               onClick={() => setModal('new')}
             >
               + New project
             </button>
             <button
-              className="text-[.84rem] font-semibold text-accent-deep border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-accent-tint"
+              className="text-body font-semibold text-accent-deep border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-accent-tint"
               onClick={() => {
                 actions.addSampleProject();
                 actions.showToast('Example project added — delete it anytime');
@@ -234,13 +234,13 @@ export function Goals() {
               Load example
             </button>
             <button
-              className="text-[.84rem] font-medium text-ink-soft border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-hover"
+              className="text-body font-medium text-ink-soft border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-hover"
               onClick={() => setModal('import')}
             >
               Import project
             </button>
           </div>
-          <p className="text-faint text-[.74rem] mt-[13px]">
+          <p className="text-muted text-compact mt-[13px]">
             New here? Load the example, poke around, then delete it.
           </p>
         </div>
@@ -248,14 +248,14 @@ export function Goals() {
 
       {unconfirmed.length > 0 && !dateReviewDismissed && (
         <div className="mt-[16px] flex items-center gap-[10px] rounded-card border border-line-2 bg-panel px-[13px] py-[10px] shadow-card">
-          <p className="flex-1 text-[.8rem] text-ink-soft">
+          <p className="flex-1 text-ui text-ink-soft">
             {unconfirmed.length} {unconfirmed.length === 1 ? 'project has' : 'projects have'} unconfirmed dates
           </p>
           {confirmableCount > 0 && (
             <button
               type="button"
               onClick={actions.confirmAllGoalDates}
-              className="text-[.76rem] font-semibold text-accent-deep px-[9px] py-[5px] rounded-[8px] hover:bg-accent-tint"
+              className="text-compact font-semibold text-accent-deep px-[9px] py-[5px] rounded-field hover:bg-accent-tint"
             >
               Confirm all
             </button>
@@ -263,15 +263,15 @@ export function Goals() {
           <button
             type="button"
             onClick={reviewUnconfirmedDates}
-            className="text-[.76rem] font-medium text-ink-soft px-[9px] py-[5px] rounded-[8px] hover:bg-hover hover:text-ink"
+            className="text-compact font-medium text-ink-soft px-[9px] py-[5px] rounded-field hover:bg-hover hover:text-ink"
           >
             Review
           </button>
           <button
             type="button"
-            aria-label="Dismiss date review"
+            aria-label="Dismiss date review" 
             onClick={actions.dismissDateReview}
-            className="text-[.82rem] text-muted px-[6px] py-[4px] rounded-[8px] hover:bg-hover hover:text-ink"
+            className="text-body text-muted px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-field hover:bg-hover hover:text-ink"
           >
             ✕
           </button>
@@ -298,12 +298,12 @@ export function Goals() {
               aria-pressed={i === activeHorizon}
               aria-label={`Show ${col.label} — ${(columns[i] ?? []).length} project${(columns[i] ?? []).length === 1 ? '' : 's'}`}
               onClick={() => setActiveHorizon(i)}
-              className={`flex-1 text-[.78rem] font-medium px-[6px] py-[7px] rounded-[8px] transition-colors ${
+              className={`flex-1 text-ui font-medium px-[6px] py-[7px] rounded-field transition-colors ${
                 i === activeHorizon ? 'bg-panel text-ink shadow-card' : 'text-muted hover:text-ink'
               }`}
             >
               {col.label}
-              <span className="tabular-nums text-faint"> · {(columns[i] ?? []).length}</span>
+              <span className="tabular-nums text-muted"> · {(columns[i] ?? []).length}</span>
             </button>
           ))}
         </div>
@@ -319,7 +319,11 @@ export function Goals() {
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <div className="mt-[20px] flex gap-[18px] items-start overflow-x-auto pb-[8px]">
+          <div
+            className={`mt-[20px] items-start pb-[8px] ${
+              wide ? 'grid grid-cols-4 gap-[14px] xl:gap-[18px]' : 'flex gap-[18px]'
+            }`}
+          >
             {COLUMNS.map((col, i) => {
               if (!wide && i !== activeHorizon) return null;
               return (
@@ -401,14 +405,14 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
         className="flex items-center gap-[9px] w-full text-left px-[2px] py-[4px]"
       >
         <span
-          className="text-faint text-[.7rem] transition-transform"
+          className="text-muted text-meta transition-transform"
           style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
           aria-hidden="true"
         >
           ▶
         </span>
-        <span className="font-mono text-[.62rem] tracking-[.11em] uppercase text-muted font-semibold">Completed</span>
-        <span className="font-mono text-[.66rem] text-faint tabular-nums">{goals.length}</span>
+        <span className="font-mono text-kbd tracking-[.11em] uppercase text-muted font-semibold">Completed</span>
+        <span className="font-mono text-chip text-muted tabular-nums">{goals.length}</span>
       </button>
       {open && (
         <div className="mt-[13px] grid gap-[11px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
@@ -417,13 +421,13 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
               key={g.id}
               className="flex items-center gap-[10px] px-[13px] py-[11px] border border-line rounded-card bg-panel opacity-[.86]"
             >
-              <span className="text-accent text-[.82rem]" aria-hidden="true">✓</span>
-              <span className="font-disp text-[.9rem] font-semibold flex-1 min-w-0 truncate">{g.title}</span>
-              {g.completedAt && <span className="font-mono text-[.6rem] text-faint whitespace-nowrap">{fmtD(g.completedAt)}</span>}
+              <span className="text-accent text-body" aria-hidden="true">✓</span>
+              <span className="font-disp text-lead font-semibold flex-1 min-w-0 truncate">{g.title}</span>
+              {g.completedAt && <span className="font-mono text-tiny text-muted whitespace-nowrap">{fmtD(g.completedAt)}</span>}
               <button
                 type="button"
                 onClick={() => onReopen(g.id)}
-                className="text-[.72rem] text-muted px-[9px] py-[4px] rounded-[8px] border border-line-2 hover:bg-hover hover:text-ink"
+                className="text-meta text-muted px-[9px] py-[4px] rounded-field border border-line-2 hover:bg-hover hover:text-ink"
               >
                 Reopen
               </button>

@@ -20,8 +20,8 @@ export function RecapPanel() {
   return (
     <section className="mb-[14px] p-[12px] rounded-card border border-line-2 bg-panel">
       <div className="flex flex-col gap-[14px]">
-        <p className="text-[.95rem] text-ink">
-          <span className="font-disp text-[1.2rem] font-semibold tabular-nums">
+        <p className="text-title text-ink">
+          <span className="font-disp text-h2 font-semibold tabular-nums">
             {r.nowComplete.length} of {r.planned}
           </span>{' '}
           of last week's commitments are now complete.
@@ -36,12 +36,12 @@ export function RecapPanel() {
 
         {r.nowComplete.length > 0 && (
           <section>
-            <h3 className="font-mono text-[.62rem] tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Done</h3>
+            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Done</h3>
             {r.nowComplete.map((e) => (
-              <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-[.86rem]">
+              <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-body">
                 <span className="text-accent">✓</span>
                 <span className="flex-1 min-w-0 truncate">{e.leafTitle}</span>
-                <span className="text-[.72rem] text-muted truncate">{e.goalTitle}</span>
+                <span className="text-meta text-muted truncate">{e.goalTitle}</span>
               </div>
             ))}
           </section>
@@ -49,17 +49,17 @@ export function RecapPanel() {
 
         {r.unfinished.length > 0 && (
           <section>
-            <h3 className="font-mono text-[.62rem] tracking-[.1em] uppercase text-warn font-semibold mb-[4px]">
+            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-warn font-semibold mb-[4px]">
               Unfinished — decide
             </h3>
             {r.unfinished.map((e) => (
-              <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-[.86rem]">
+              <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-body">
                 <span className="flex-1 min-w-0 truncate">{e.leafTitle}</span>
-                <span className="text-[.72rem] text-muted truncate">{e.goalTitle}</span>
+                <span className="text-meta text-muted truncate">{e.goalTitle}</span>
                 <button
                   type="button"
                   onClick={() => actions.scheduleNode(e.goalId, e.nodeId, today, 0)}
-                  className="text-[.72rem] font-semibold text-accent hover:text-accent-deep px-[4px]"
+                  className="text-meta font-semibold text-accent hover:text-accent-deep px-[4px]"
                 >
                   Replan
                 </button>
@@ -68,14 +68,14 @@ export function RecapPanel() {
                   onClick={() => {
                     actions.openDrawer(e.goalId, e.nodeId);
                   }}
-                  className="text-[.72rem] font-semibold text-ink-soft hover:text-ink px-[4px]"
+                  className="text-meta font-semibold text-ink-soft hover:text-ink px-[4px]"
                 >
                   Break down
                 </button>
                 <button
                   type="button"
                   onClick={() => actions.unscheduleNode(e.goalId, e.nodeId)}
-                  className="text-[.72rem] font-semibold text-muted hover:text-ink px-[4px]"
+                  className="text-meta font-semibold text-muted hover:text-ink px-[4px]"
                 >
                   Remove
                 </button>
@@ -86,10 +86,10 @@ export function RecapPanel() {
 
         {r.removed.length > 0 && (
           <section>
-            <h3 className="font-mono text-[.62rem] tracking-[.1em] uppercase text-faint font-semibold mb-[4px]">Removed</h3>
+            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-faint font-semibold mb-[4px]">Removed</h3>
             {r.removed.map((e) => (
-              <div key={e.nodeId} className="py-[3px] text-[.82rem] text-faint line-through">
-                {e.leafTitle} <span className="no-underline text-[.72rem]">· {e.goalTitle}</span>
+              <div key={e.nodeId} className="py-[3px] text-body text-faint line-through">
+                {e.leafTitle} <span className="no-underline text-meta">· {e.goalTitle}</span>
               </div>
             ))}
           </section>
@@ -101,7 +101,7 @@ export function RecapPanel() {
         <button
           type="button"
           onClick={() => actions.markWeekReviewed()}
-          className="px-[14px] py-[6px] rounded-field bg-ink text-paper text-[.82rem] font-semibold hover:bg-ink-hover"
+          className="px-[14px] py-[6px] rounded-field bg-ink text-paper text-body font-semibold hover:bg-ink-hover"
         >
           Done
         </button>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { Interval } from '../../lib/capacity';
 import { minuteToPct } from '../../lib/grid';
+import { clockLabel } from '../../lib/clock';
 import type { PlanDragData } from './dropTarget';
 
 /**
@@ -22,20 +23,12 @@ export interface GridBlock {
 }
 
 /**
- * A block can end after midnight (e.g. a 23:00–00:30 span has `endMin` 1470).
- * `% 24` alone would wrap that back to "12am", making a tooltip read
- * `11:30pm–12am` for something that actually ends half an hour later, the
- * NEXT day. A trailing "+1" marks that case instead of silently wrapping.
+ * Two lines of 13px text plus padding. Google Calendar enforces a comparable
+ * floor and switches to an inline `time — title` for sub-30-minute events.
  */
-function timeLabel(minute: number): string {
-  const dayOffset = Math.floor(minute / 1440);
-  const h = Math.floor(minute / 60) % 24;
-  const m = minute % 60;
-  const suffix = h < 12 ? 'am' : 'pm';
-  const display = h % 12 === 0 ? 12 : h % 12;
-  const base = m === 0 ? `${display}${suffix}` : `${display}:${String(m).padStart(2, '0')}${suffix}`;
-  return dayOffset > 0 ? `${base}+${dayOffset}` : base;
-}
+const MIN_BLOCK_PX = 34;
+/** Below this, there is no room for a second line, so use the inline layout. */
+const COMPACT_BLOCK_PX = 40;
 
 export function EventBlock({
   block, lane, laneCount, range, onRemove, onComplete, drag, onResize, gridHeightPx,
@@ -89,27 +82,47 @@ export function EventBlock({
       ? (minuteToPct(block.startMin + previewMinutes, range) - top)
       : committedHeight;
   const width = 100 / laneCount;
+  // `height` is a percentage of the grid; compare in px to decide the layout.
+  const heightPx = Math.max((height / 100) * gridHeightPx, MIN_BLOCK_PX);
+  const compact = heightPx < COMPACT_BLOCK_PX;
 
   return (
     <div
       ref={drag ? setNodeRef : undefined}
       {...(drag ? attributes : {})}
       {...(drag ? listeners : {})}
-      className={`absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-[.66rem] leading-[1.2] border ${
+      className={`group/blk absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-chip leading-[1.2] border ${
         isBusy
           ? 'bg-hover border-line-2 text-muted italic'
           : `bg-panel border-line-2 border-l-[3px] border-l-accent text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? '' : 'border-dashed'} cursor-grab`
       } ${isDragging ? 'opacity-40' : ''}`}
       style={{
         top: `${top}%`,
-        height: `${Math.max(height, 1.6)}%`,
+        height: `${height}%`,
+        // A 1.6% floor works out to ~11px, which clipped the start-time line
+        // entirely and left a hairline with text floating over the gridline.
+        // Every calendar accepts a little overlap for very short events instead.
+        minHeight: `${MIN_BLOCK_PX}px`,
         left: `calc(${lane * width}% + 2px)`,
         width: `calc(${width}% - 4px)`,
       }}
-      title={`${block.title} · ${timeLabel(block.startMin)}–${timeLabel(block.endMin)}${block.estimated ? '' : ' · no estimate'}`}
+      title={`${block.title} · ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}${block.estimated ? '' : ' · no estimate'}`}
     >
-      <div className="truncate font-medium">{block.title}</div>
-      <div className="truncate text-faint text-[.6rem] tabular-nums">{timeLabel(block.startMin)}</div>
+      {/* Below two lines' worth of height, collapse to `9am Title` on one row
+          rather than rendering a title with its time cut off. */}
+      {compact ? (
+        <div className="truncate">
+          <span className="text-muted text-tiny tabular-nums mr-[4px]">{clockLabel(block.startMin)}</span>
+          <span className="font-medium">{block.title}</span>
+        </div>
+      ) : (
+        <>
+          {/* A tall block has room to wrap; `truncate` clipped a long title to
+              one line and left the space below it empty. */}
+          <div className="font-medium line-clamp-3">{block.title}</div>
+          <div className="truncate text-muted text-tiny tabular-nums">{clockLabel(block.startMin)}</div>
+        </>
+      )}
       {onComplete && !isBusy && (
         <button
           type="button"
@@ -119,7 +132,7 @@ export function EventBlock({
           // announced as "Complete" that actually reopens the work is the same
           // lie as a button naming a date it does not open.
           aria-label={`${block.done ? 'Reopen' : 'Complete'} ${block.title}`}
-          className="absolute top-0 right-[14px] text-faint hover:text-accent text-[.7rem] leading-none px-[2px]"
+          className="absolute top-0 right-[14px] text-faint hover:text-accent text-meta leading-none px-[2px]"
         >
           ✓
         </button>
@@ -130,7 +143,11 @@ export function EventBlock({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={onRemove}
           aria-label={`Unschedule ${block.title}`}
-          className="absolute top-0 right-[2px] text-faint hover:text-warn text-[.7rem] leading-none px-[2px]"
+          // 24x24 target on a block that can itself be only 34px tall — the
+          // glyph stays small, the hit area does not.
+          className={`absolute right-0 w-[24px] h-[24px] grid place-items-center text-faint hover:text-warn text-meta leading-none opacity-0 group-hover/blk:opacity-100 focus-visible:opacity-100 transition-opacity ${
+            compact ? 'top-1/2 -translate-y-1/2 bg-panel/90 rounded-[4px]' : 'top-0'
+          }`}
         >
           ×
         </button>
