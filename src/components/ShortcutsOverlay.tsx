@@ -14,11 +14,14 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['Esc'], label: 'Close drawer or dialog' },
 ];
 
-// Context keys — they act only on a focused step inside the planner, so the
-// overlay groups them separately rather than implying they work everywhere.
+// Context keys — they act only inside the Plan view, so the overlay groups
+// them separately rather than implying they work everywhere. `1`-`7` also
+// require a focused backlog row; `[`, `]` and `t` work regardless of focus.
 const PLANNER_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['1–7'], label: 'Put the focused step on that weekday' },
-  { keys: ['0'], label: 'Any day this week' },
+  { keys: ['['], label: 'Previous week' },
+  { keys: [']'], label: 'Next week' },
+  { keys: ['t'], label: 'Back to this week' },
 ];
 
 function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {

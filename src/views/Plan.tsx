@@ -19,6 +19,7 @@ import { visibleRange, type LaneSpan } from '../lib/grid';
 import { spansOn } from '../lib/scheduled';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { tasksForWeek } from '../lib/dailyWork';
+import { resolvePlanKey } from '../lib/planKeyboard';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
@@ -28,6 +29,7 @@ import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { Stats } from './plan/sidebar/Stats';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
+import type { BacklogItem } from '../lib/backlog';
 
 /**
  * Resolve the drop target against the pointer when there is one, falling
@@ -94,10 +96,57 @@ export function Plan() {
   });
 
   const [dragTitle, setDragTitle] = useState<string | null>(null);
+  const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   );
+
+  // Keyboard placement. The aim is the start of the visible range, so the
+  // store snaps to that day's earliest fitting gap — the same semantic the
+  // data migration uses. Refusals surface the store's own toast.
+  //
+  // Registered on the capture phase: App.tsx's own `keydown` listener is also
+  // on `window`, and `stopPropagation` on a bubble-phase listener would not
+  // stop a sibling bubble-phase listener on the same node — it only stops
+  // propagation to other nodes. A capture-phase listener on `window` always
+  // runs before any bubble-phase listener on `window`, regardless of mount
+  // order, so calling `stopPropagation` here reliably keeps App's handler
+  // from ever seeing a key this view has consumed.
+  //
+  // Depends on `weekStart` rather than `days`: `weekDates(weekStart)` builds
+  // a new array every render, so depending on `days` would tear down and
+  // re-register this listener on every render instead of only when the week
+  // actually changes. The target date is derived from `weekStart` inside the
+  // handler instead.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const command = resolvePlanKey(e);
+      if (!command) return;
+
+      if (command.kind === 'week') {
+        e.preventDefault();
+        e.stopPropagation();
+        setWeekStart((current) => addDays(current, command.delta * 7));
+        return;
+      }
+      if (command.kind === 'today') {
+        e.preventDefault();
+        e.stopPropagation();
+        setWeekStart(weekOf(todayStr()));
+        return;
+      }
+      // command.kind === 'place'
+      if (!focusedItem) return; // nothing selected — let the digit fall through (e.g. view switching)
+      e.preventDefault();
+      e.stopPropagation();
+      const date = weekDates(weekStart)[command.dow];
+      if (focusedItem.kind === 'task') actions.scheduleTask(focusedItem.id, date, range.startMin);
+      else if (focusedItem.goalId) actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, range.startMin);
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [focusedItem, weekStart, range.startMin]);
 
   function handleDragStart(e: DragStartEvent) {
     setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
@@ -156,7 +205,7 @@ export function Plan() {
 
       <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
         <PlanSidebar>
-          <Backlog weekStart={weekStart} today={today} onFocusItem={() => {}} />
+          <Backlog weekStart={weekStart} today={today} onFocusItem={setFocusedItem} />
           <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
             <Habits />
           </SidebarSection>
