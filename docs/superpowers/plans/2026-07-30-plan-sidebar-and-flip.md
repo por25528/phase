@@ -514,9 +514,23 @@ it('deduplicates repeated panels', async () => {
   await saveSidebarPanels(['stats', 'stats']);
   expect(await loadSidebarPanels()).toEqual(['stats']);
 });
+
+it('filters and deduplicates on read, not just on write', async () => {
+  // Bypasses saveSidebarPanels: its identical write-side filter would
+  // otherwise clean the data before parseSidebarPanels ever sees it,
+  // leaving the read-path filter unexercised. This is the path that
+  // defends against a row written by a different version of the app.
+  await db.settings.put({
+    key: 'sidebarPanels',
+    value: JSON.stringify(['habits', 'bogus', 'stats', 'stats']),
+  });
+  expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+});
 ```
 
 Add `loadSidebarPanels`, `saveSidebarPanels`, `type SidebarPanel` to that file's imports from `./db`.
+
+The last test is the only one that reaches `parseSidebarPanels`'s filter. Every other case here writes through `saveSidebarPanels`, which filters identically, so the row is already clean by the time it is read back — see Step 6.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -584,13 +598,15 @@ In `src/state/store.ts`: add `loadSidebarPanels, saveSidebarPanels, type Sidebar
 - [ ] **Step 5: Run the suite and typecheck**
 
 Run: `./node_modules/.bin/vitest run --config vitest.config.ts`
-Expected: PASS, including 5 new cases.
+Expected: PASS, including 6 new cases.
 Run: `./node_modules/.bin/tsc -b`
 Expected: no output.
 
 - [ ] **Step 6: Prove the tests discriminate**
 
-Mutate `parseSidebarPanels` to `return value as SidebarPanel[]` (skipping the filter); the unknown-name and dedup tests must fail. Revert and record the output.
+Mutate `parseSidebarPanels` to `return value as SidebarPanel[]` (skipping the filter). **This alone will NOT fail the unknown-name and dedup tests** — those go through `saveSidebarPanels`, which applies the identical filter on write, so the stored row is already clean before the mutated parser reads it. That is precisely why Step 1 includes a test writing a dirty array **directly** via `db.settings.put`: it is the only one that reaches the read-path filter.
+
+Under this mutation, that direct-write test must fail while the three save-then-load tests keep passing. Record both halves — the asymmetry is the evidence. To confirm the write path too, mutate `saveSidebarPanels`'s filter separately and check the round-trip tests fail then.
 
 - [ ] **Step 7: Commit**
 
