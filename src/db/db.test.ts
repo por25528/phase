@@ -5,6 +5,7 @@ import {
   loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
   isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
   resetSlotMigration,
+  loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
 } from './db';
 import type { AppState, Goal } from './types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
@@ -290,5 +291,31 @@ describe('slot migration flag and snapshot', () => {
       const stored = JSON.parse(row!.value);
       expect(stored.goals).toEqual([importedGoal]);
     });
+  });
+});
+
+describe('sidebar panels', () => {
+  it('defaults to no expanded panels', async () => {
+    expect(await loadSidebarPanels()).toEqual([]);
+  });
+
+  it('round-trips a saved selection', async () => {
+    await saveSidebarPanels(['habits', 'stats']);
+    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+  });
+
+  it('drops unknown panel names rather than storing them', async () => {
+    await saveSidebarPanels(['habits', 'bogus' as SidebarPanel]);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
+  });
+
+  it('falls back to empty for malformed stored JSON', async () => {
+    await db.settings.put({ key: 'sidebarPanels', value: 'not json' });
+    expect(await loadSidebarPanels()).toEqual([]);
+  });
+
+  it('deduplicates repeated panels', async () => {
+    await saveSidebarPanels(['stats', 'stats']);
+    expect(await loadSidebarPanels()).toEqual(['stats']);
   });
 });

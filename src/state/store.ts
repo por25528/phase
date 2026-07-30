@@ -4,6 +4,7 @@ import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
   loadAllDayBlocks, saveAllDayBlocks,
+  loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone,
 } from '../db/db';
 import { clampScale } from '../lib/timeline';
@@ -59,6 +60,7 @@ interface UIState {
   planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
   availability: AvailabilityWindow[]; // per-weekday planning window (device preference)
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
+  sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
 }
 
 interface FullState extends AppState, UIState {}
@@ -84,6 +86,7 @@ let state: FullState = {
   planReview: null,
   availability: DEFAULT_AVAILABILITY,
   allDayBlocks: true,
+  sidebarPanels: [],
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
   // non-DOM contexts (tests).
@@ -154,8 +157,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -189,6 +192,7 @@ export async function initStore(): Promise<void> {
       planReview,
       availability,
       allDayBlocks,
+      sidebarPanels,
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -690,6 +694,13 @@ export const actions = {
     if (value === state.allDayBlocks) return;
     set({ allDayBlocks: value });
     void saveAllDayBlocks(value);
+  },
+
+  // A device preference, like availability and the all-day setting: set() plus
+  // its own save, never setAndPersist — this is not app data.
+  setSidebarPanels(panels: SidebarPanel[]): void {
+    set({ sidebarPanels: panels });
+    void saveSidebarPanels(panels);
   },
 
   // Goal date editing

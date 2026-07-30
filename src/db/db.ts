@@ -110,6 +110,41 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
   await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
+/** Which sidebar panels are expanded. The backlog is pinned and never listed. */
+export type SidebarPanel = 'habits' | 'stats';
+
+const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'stats'];
+const SIDEBAR_PANELS_KEY = 'sidebarPanels';
+
+/**
+ * Total parse: a malformed or partly-unknown value yields the default rather
+ * than a half-trusted list, mirroring `parseAvailability`. Collapsing every
+ * panel is a harmless fallback — the backlog, the only section that matters
+ * for placing work, is pinned open regardless.
+ */
+function parseSidebarPanels(raw: string | undefined): SidebarPanel[] {
+  if (!raw) return [];
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(value)) return [];
+  const kept = SIDEBAR_PANELS.filter((panel) => value.includes(panel));
+  return [...kept];
+}
+
+export async function loadSidebarPanels(): Promise<SidebarPanel[]> {
+  const row = await db.settings.get(SIDEBAR_PANELS_KEY);
+  return parseSidebarPanels(row?.value);
+}
+
+export async function saveSidebarPanels(panels: SidebarPanel[]): Promise<void> {
+  const clean = SIDEBAR_PANELS.filter((panel) => panels.includes(panel));
+  await db.settings.put({ key: SIDEBAR_PANELS_KEY, value: JSON.stringify(clean) });
+}
+
 // One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
 // Not a Dexie version: the migration adds optional fields to existing objects,
 // which changes no store and no index.
