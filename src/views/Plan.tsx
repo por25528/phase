@@ -23,6 +23,7 @@ import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
 import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
+import { RecapPanel } from './plan/RecapPanel';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { Stats } from './plan/sidebar/Stats';
@@ -151,6 +152,8 @@ export function Plan() {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
+      <RecapPanel />
+
       <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
         <PlanSidebar>
           <Backlog weekStart={weekStart} today={today} onFocusItem={() => {}} />
