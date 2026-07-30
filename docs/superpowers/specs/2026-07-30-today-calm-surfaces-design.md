@@ -13,12 +13,13 @@ competing panels.
 
 In scope: `src/views/Today.tsx` and `src/views/today/*`, the shared
 `CardSection` component, `src/lib/dailyWork.ts`, `src/lib/calendar.ts`,
-`pinnedDayCounts` in `src/lib/plan.ts`, the `selDate` slice of
-`src/state/store.ts`, and `src/index.css`.
+`pinnedDayCounts` in `src/lib/plan.ts`, `shiftDay` in `src/state/store.ts`, and
+`src/index.css`.
 
-Two files outside Today are touched, both as unavoidable consequences of
-deleting `selDate`: `src/App.tsx` (the `t` shortcut) and
-`src/views/timeline/DaysLane.tsx` (see Part 1.4).
+No other **view** is modified. `src/App.tsx` and
+`src/views/timeline/DaysLane.tsx` are both left untouched — the `t` shortcut
+and the Timeline's day buttons behave exactly as they do now. See "Known wart"
+in Part 1.4 for why.
 
 Out of scope: the Plan-view flip described in
 `docs/superpowers/plans/2026-07-30-plan-sidebar-and-flip.md`. That plan makes
@@ -35,6 +36,7 @@ not depend on it or block it — see "Relationship to the Plan flip" below.
 | Layout | Two columns, per mockup option A |
 | Week strip | Flattened to a hairline row |
 | Suggestion engine | Deleted, recoverable from git |
+| `DaysLane` / `selDate` | Left alone. `selDate` becomes write-only; recorded as a known wart rather than fixed here. |
 
 ## Visual identity exception
 
@@ -130,35 +132,45 @@ every piece of information it displays — weekday, date, the per-day step and
 habit summary, the today marker — and drops a control that only pretended to
 act.
 
-Consequently, delete from `src/state/store.ts`: the `selDate` field, its
-initialiser, and the `setSelDate` / `shiftDay` / `goToToday` actions. In
-`src/App.tsx:120-123` the `go-today` command drops its `actions.goToToday()`
-call and keeps only `actions.setView('today')`, so `t` still navigates to
-Today. `shiftDay` already has zero callers anywhere in the codebase.
+`WeekStrip` therefore stops calling `actions.setSelDate` and stops reading
+`selDate` at all.
 
 `ShortcutsOverlay` needs no change: its `T` entry reads "Jump to today", which
 stays accurate — `t` still navigates to the Today view.
 
-#### The one caller outside Today
+#### What stays, and why
 
-`src/views/timeline/DaysLane.tsx:33` calls `actions.setSelDate(s.start)`
-followed by `actions.setView('today')`, under an `aria-label` of
-`Open ${fmtD(s.start)}`. The intent is clear — click a day in the Timeline,
-see that day's work — but because nothing reads `selDate`, it has never done
-that. It navigates to Today, which shows today, and the chosen date is
-discarded.
+`selDate` itself is **not** deleted, and neither are `setSelDate` or
+`goToToday`. `src/views/timeline/DaysLane.tsx:33` still calls `setSelDate`, and
+the decision for this change is to leave the Timeline untouched.
 
-This is a pre-existing broken promise, not one this change introduces, but
-deleting `selDate` forces it into the open. Resolve it honestly rather than
-leaving a label that lies:
+Delete only `shiftDay` from `src/state/store.ts` — it has zero callers anywhere
+in the codebase and is unambiguously dead.
 
-- `DaysLane` drops the `actions.setSelDate(s.start)` call, keeping
-  `actions.setView('today')`
-- its `aria-label` changes from `Open ${fmtD(s.start)}` to `Go to Today`
+#### Known wart, accepted deliberately
 
-The alternative — actually wiring `selDate` through `buildDailyWork` so Today
-can render an arbitrary day — is a real feature, not a cleanup, and is out of
-scope here. Note that the Plan view now covers viewing another day's work.
+After this change `selDate` is **write-only**: `DaysLane` and the `t` shortcut
+write it, and nothing reads it. That is worth recording plainly rather than
+leaving for someone to rediscover.
+
+It is also a pre-existing bug with a visible symptom. `DaysLane` renders its
+day buttons with `aria-label={`Open ${fmtD(s.start)}`}` and, on click, does
+`setSelDate(day)` then `setView('today')`. The intent is "click a day in the
+Timeline, see that day's work" — but since nothing reads `selDate`, it lands
+you on Today showing *today*, and the chosen date is silently discarded. The
+label promises something the app has never done.
+
+Two ways to resolve it, both out of scope here:
+
+1. Make `DaysLane` honest — drop the dead `setSelDate` call and relabel the
+   button. Small, but it edits the Timeline view.
+2. Wire `selDate` through `buildDailyWork` so Today can render an arbitrary
+   day. This is the feature the code was reaching for, but it is a feature, not
+   a cleanup — and the Plan view now covers viewing another day's work, which
+   weakens the case for building it.
+
+Neither is part of this change. Leaving `selDate` in place keeps the diff
+inside Today and keeps option 2 open.
 
 ---
 
@@ -308,7 +320,7 @@ be unit-tested here, and this design does not pretend otherwise. Do not add
 - [ ] Viewport above and below the 1160px breakpoint
 - [ ] Tab through Habits, Today's work and Goals; every `quiet-control`
       becomes visible when focused, and none is skipped in the tab order
-- [ ] Clicking a day in the Timeline still lands on Today
+- [ ] Clicking a day in the Timeline still lands on Today, unchanged
 - [ ] `+ Goal` navigates to the Goals view
 - [ ] `+ Habit` still opens `AddHabitForm` inline
 - [ ] `Plan week` still opens the planner, review badge intact
@@ -335,11 +347,15 @@ that session.
 the home view, relocate Today's cards into a Plan sidebar accordion, and delete
 `Today`. That plan's sidebar includes a quick-add and a Suggestions panel.
 
-This design removes both from Today. If the flip proceeds afterwards, the
-sidebar should be built without them — the reasoning in Parts 1.1 and 1.2
-applies equally there, and rebuilding a suggestions panel would resurrect
-exactly what this change removes. That is a revision to make to the flip plan
-when it is next picked up; this design does not modify it.
+This design removes both from Today, along with the month calendar the flip
+plan wanted to relocate as its `Month` panel.
+
+**That plan has been amended to match.** It now carries a dated amendment
+notice and edits to Tasks 2, 6, 8 and 11: the sidebar has two collapsible
+panels (Habits, Stats) rather than four, `SidebarPanel` narrows to
+`'habits' | 'stats'`, and `PlanSidebar` loses the `pinned` prop that existed
+only to hold quick-add. The two documents are consistent, and either can land
+first.
 
 The deleted suggestion engine and `calendar.ts` remain in git history and can
 be restored if a future surface wants them.

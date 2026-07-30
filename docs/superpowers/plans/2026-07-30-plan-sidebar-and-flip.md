@@ -4,7 +4,34 @@
 
 **Goal:** Give the Plan view its sidebar, inline recap and keyboard placement, then make it the home view and delete `Today` and the old modal planner.
 
-**Architecture:** The accordion sidebar holds every card the old `Today` view carried: the backlog pinned open, with Habits / Suggestions / Stats / Month folded beneath it. New logic goes into `src/lib` where it can be tested; the panels themselves are relocations of existing components. The flip lands last, in one revertible commit.
+**Architecture:** The accordion sidebar holds the cards the trimmed `Today` view carries: the backlog pinned open, with Habits / Stats folded beneath it. New logic goes into `src/lib` where it can be tested; the panels themselves are relocations of existing components. The flip lands last, in one revertible commit.
+
+---
+
+## ⚠ Amendment — 2026-07-30
+
+**Three panels this plan originally carried have been cut and must not be rebuilt.**
+
+`docs/superpowers/specs/2026-07-30-today-calm-surfaces-design.md` (approved, committed) removes **Worth considering**, **Quick add** and the **month calendar** from `Today`, along with the logic behind them: the suggestion engine in `src/lib/dailyWork.ts`, `dispatchQuickAdd` in `workActions.ts`, and `src/lib/calendar.ts` plus `pinnedDayCounts`.
+
+That spec is intended to land first. When it does, the components this plan wanted to `git mv` **will not exist**, and neither will the state it wanted to read (`dailyWork.suggestions`).
+
+The sidebar therefore has **two** collapsible panels, not four, and no pinned quick-add:
+
+| Originally planned | Now |
+|---|---|
+| Backlog (pinned open) | unchanged |
+| Habits | unchanged |
+| ~~Suggestions~~ | **cut** — the suggestion engine is deleted |
+| Stats | unchanged |
+| ~~Month~~ | **cut** — `MiniCalendar` and `calendar.ts` are deleted |
+| ~~Quick-add (pinned)~~ | **cut** — ⌘N task capture, `AddHabitForm` and the Goals view already cover creation |
+
+Rebuilding any of the three here would resurrect exactly what the other spec removes. Tasks 2, 6, 8 and 11 are edited in place to match; this notice records *why*, since those edits alone read as though the panels were never planned.
+
+**If the Today spec has not landed when you start this plan**, do not re-add the panels — implement the two-panel sidebar as written here and let the Today spec delete the originals on its own schedule. The two are independent.
+
+Affected sections below are marked **[amended]**.
 
 **Tech Stack:** React 19, TypeScript, Vite, Tailwind 3, Dexie/IndexedDB, `@dnd-kit/core`, Vitest (`environment: 'node'`).
 
@@ -43,8 +70,8 @@ Specs:
 | `src/lib/planKeyboard.ts` | **New.** Pure resolution of the Plan view's keys: `1`–`7`, `[`, `]`, `T`. |
 | `src/db/db.ts` | Adds load/save for the sidebar's open-panel preference, and puts the pre-migration snapshot into the backup export. |
 | `src/state/store.ts` | Adds `setSidebarPanels`; fixes two actions that leave a stale `startMin`. |
-| `src/views/plan/PlanSidebar.tsx` | **New.** The accordion shell: a rail bounded by the calendar's height, with quick-add pinned above a scroll region holding the backlog and four collapsible panels. |
-| `src/views/plan/sidebar/*.tsx` | **New.** `Backlog`, `Habits`, `Suggestions`, `Stats`, `Month` — the backlog is new, the other four relocate existing `today/` components. |
+| `src/views/plan/PlanSidebar.tsx` | **New.** [amended] The accordion shell: a rail bounded by the calendar's height, holding a scroll region with the backlog and two collapsible panels. |
+| `src/views/plan/sidebar/*.tsx` | **New.** [amended] `Backlog`, `Habits`, `Stats` — the backlog is new, `Habits` relocates an existing `today/` component, `Stats` is lifted from `Hero`. |
 | `src/views/plan/RecapPanel.tsx` | **New.** Last week's recap, inline and dismissible rather than a modal gate. |
 | `src/views/Plan.tsx` | Gains the sidebar, the recap and keyboard handling. Its two-column grid is rebuilt in Task 6 so the rail's column stretches to the calendar's height. |
 | `src/views/Today.tsx`, `src/views/today/*`, `src/views/plan/PlanWeekOverlay.tsx` | **Deleted** in the final task. |
@@ -441,7 +468,7 @@ git commit -m "feat(backlog): one selector for unplaced steps and tasks, capped 
 
 ---
 
-### Task 2: Sidebar open-panel preference
+### Task 2: Sidebar open-panel preference [amended]
 
 **Files:**
 - Modify: `src/db/db.ts` (append after `saveAllDayBlocks`)
@@ -450,7 +477,7 @@ git commit -m "feat(backlog): one selector for unplaced steps and tasks, capped 
 
 **Interfaces:**
 - Produces:
-  - `type SidebarPanel = 'habits' | 'suggestions' | 'stats' | 'month'`
+  - `type SidebarPanel = 'habits' | 'stats'`
   - `loadSidebarPanels(): Promise<SidebarPanel[]>` / `saveSidebarPanels(panels: SidebarPanel[]): Promise<void>` in `db.ts`
   - `actions.setSidebarPanels(panels: SidebarPanel[]): void`
   - `state.sidebarPanels: SidebarPanel[]`
@@ -469,8 +496,8 @@ it('defaults to no expanded panels', async () => {
 });
 
 it('round-trips a saved selection', async () => {
-  await saveSidebarPanels(['habits', 'month']);
-  expect(await loadSidebarPanels()).toEqual(['habits', 'month']);
+  await saveSidebarPanels(['habits', 'stats']);
+  expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
 });
 
 it('drops unknown panel names rather than storing them', async () => {
@@ -502,9 +529,9 @@ Append after `saveAllDayBlocks`:
 
 ```ts
 /** Which sidebar panels are expanded. The backlog is pinned and never listed. */
-export type SidebarPanel = 'habits' | 'suggestions' | 'stats' | 'month';
+export type SidebarPanel = 'habits' | 'stats';
 
-const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'suggestions', 'stats', 'month'];
+const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'stats'];
 const SIDEBAR_PANELS_KEY = 'sidebarPanels';
 
 /**
@@ -587,7 +614,7 @@ git commit -m "feat(sidebar): persist which panels are expanded as a device pref
 
 `1`–`7` place the focused backlog item on that weekday (`1` = Monday, matching `dow`). `[` and `]` move weeks. `T` returns to today.
 
-The `target` guard matters: these keys must do nothing while the user is typing in the quick-add box or an estimate field. `src/lib/appKeyboard.ts` already has an editable-target helper — reuse it rather than writing a second one, exporting it if it is currently private.
+The `target` guard matters: these keys must do nothing while the user is typing in an estimate field, the habit-add form, or any other input inside the view. `src/lib/appKeyboard.ts` already has an editable-target helper — reuse it rather than writing a second one, exporting it if it is currently private.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -678,7 +705,7 @@ interface PlanKeyEvent {
  * Monday is 0 — so the digit is one greater than the index it produces.
  *
  * Every branch is gated on an unmodified key with a non-editable target: the
- * sidebar's quick-add box and the inline estimate fields sit inside this view,
+ * sidebar's habit-add form and the inline estimate fields sit inside this view,
  * and swallowing a typed "7" there would be worse than having no shortcut.
  */
 export function resolvePlanKey(event: PlanKeyEvent): PlanKeyCommand | null {
@@ -944,7 +971,7 @@ Push any logic that *can* be tested down into `src/lib` and test it there.
 
 Throughout tasks 6–10, `Today` and the old modal planner keep working. The flip is Task 11 alone.
 
-### Task 6: The sidebar shell
+### Task 6: The sidebar shell [amended]
 
 **Files:**
 - Create: `src/views/plan/PlanSidebar.tsx`
@@ -952,9 +979,11 @@ Throughout tasks 6–10, `Today` and the old modal planner keep working. The fli
 
 **Interfaces:**
 - Consumes: `SidebarPanel` and `actions.setSidebarPanels` from Task 2.
-- Produces: `PlanSidebar({ pinned, children })` — `pinned?: ReactNode` never scrolls (Task 8 puts quick-add there), `children: ReactNode` is the scrolling region holding the backlog and the four panels. Plus a `SidebarSection` sub-component for those panels.
+- Produces: `PlanSidebar({ children })` — `children: ReactNode` is the scrolling region holding the backlog and the two panels. Plus a `SidebarSection` sub-component for those panels.
 
-The layout is the A2 decision from the spec: quick-add at the top, the backlog **pinned open** directly beneath it, then four one-line collapsible headers each showing a count. Nothing is hidden — folded panels still report their number, so "3 need a decision" is legible without expanding.
+The layout is the A2 decision from the spec, minus the quick-add the amendment cuts: the backlog **pinned open** at the top, then two one-line collapsible headers each showing a count. Nothing is hidden — folded panels still report their number, so "3 need a decision" is legible without expanding.
+
+The original `pinned` prop existed only to keep quick-add from scrolling away. With quick-add cut there is no second region, so the prop is dropped rather than left unused — `noUnusedParameters` would reject it anyway.
 
 **The rail is bounded by the calendar's height and scrolls internally**, which is the whole point of this task. The mechanism is CSS, not measurement: the two-column grid's row is sized by the calendar, the rail's column stretches to that row, and the rail itself is an absolutely-positioned layer inside it. An absolutely-positioned child contributes nothing to its parent's size, so the rail is *structurally incapable* of making the page taller. Do not replace this with a `ResizeObserver` — a measured height is a second source of truth for something CSS already knows. (One exception, in Step 4.)
 
@@ -971,8 +1000,8 @@ import { useAppStore } from '../../state/store';
  * One collapsible sidebar panel.
  *
  * `count` stays visible while collapsed on purpose: the whole point of folding
- * these rather than deleting them is that the user can still see there are
- * three suggestions without giving them screen space.
+ * these rather than deleting them is that the user can still see how many
+ * habits are outstanding without giving them screen space.
  */
 export function SidebarSection({
   panel, title, count, children,
@@ -1030,14 +1059,11 @@ export function SidebarSection({
  * The inset carries the gutter instead, which also keeps the scrollbar clear
  * of the rule.
  *
- * `pinned` sits outside the scroll region — Task 8 puts quick-add there,
- * because it is the one control you reach for without looking.
  */
-export function PlanSidebar({ pinned, children }: { pinned?: ReactNode; children: ReactNode }) {
+export function PlanSidebar({ children }: { children: ReactNode }) {
   return (
     <div className="min-w-0 md:relative md:border-r md:border-line">
       <aside className="flex flex-col min-h-0 md:absolute md:inset-y-0 md:left-0 md:right-[18px]">
-        {pinned && <div className="flex-none pb-[8px]">{pinned}</div>}
         <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
       </aside>
     </div>
@@ -1298,38 +1324,34 @@ git commit -m "feat(plan): pinned backlog with draggable steps and tasks"
 
 ---
 
-### Task 8: Relocate the four remaining panels
+### Task 8: Relocate the two remaining panels [amended]
 
 **Files:**
 - Move: `src/views/today/HabitsCard.tsx` → `src/views/plan/sidebar/Habits.tsx`
-- Move: `src/views/today/WorthConsideringCard.tsx` → `src/views/plan/sidebar/Suggestions.tsx`
-- Move: `src/views/today/MiniCalendar.tsx` → `src/views/plan/sidebar/Month.tsx`
-- Move: `src/views/today/QuickAdd.tsx` → `src/views/plan/sidebar/QuickAdd.tsx`
 - Create: `src/views/plan/sidebar/Stats.tsx`
 - Modify: `src/views/Today.tsx`, `src/views/Plan.tsx`
 
 **Interfaces:**
 - Consumes: `SidebarSection` from Task 6.
-- Produces: `Habits`, `Suggestions`, `Month`, `QuickAdd`, `Stats` under `src/views/plan/sidebar/`.
+- Produces: `Habits`, `Stats` under `src/views/plan/sidebar/`.
 
-Use `git mv` so history follows the files. **`Today.tsx` must keep working** — update its imports to the new paths rather than leaving it broken; it is deleted in Task 11, not this one.
+Per the amendment, `WorthConsideringCard`, `MiniCalendar` and `QuickAdd` are **not** moved — they are deleted by the Today spec. If they are still present when you reach this task, leave them where they are; do not relocate them, and do not build sidebar panels for them.
+
+Use `git mv` so history follows the file. **`Today.tsx` must keep working** — update its imports to the new path rather than leaving it broken; it is deleted in Task 11, not this one.
 
 `HabitsCard` also pulls in `HabitDots`, `GripIcon` and `useReducedMotion`. Move whatever it alone uses; leave anything `TodayWorkCard` or `DailyWorkRow` still needs where it is. Check with `grep -rn "<name>" src/` before moving each.
 
 `Stats` is new but small: it is the three figures from `Hero` — habits done today, planned steps completed this week, and the habit-hit percentage — without the greeting or date kicker, which the week header already supplies. Read `src/views/today/Hero.tsx` and lift the `stats` array and its hover legends verbatim; do not reword them.
 
-`Suggestions` needs `DailyWorkSections`, which comes from `buildDailyWork(goals, tasks, today)` in `src/lib/dailyWork.ts`. `Plan.tsx` must compute it and pass it down, the way `Today.tsx` does today.
+`Plan.tsx` no longer needs `buildDailyWork` for the sidebar — that was only for `Suggestions`. Do not add the `useMemo` the original plan called for.
 
-- [ ] **Step 1: Move the files and fix every import**
+- [ ] **Step 1: Move the file and fix every import**
 
 ```bash
 git mv src/views/today/HabitsCard.tsx src/views/plan/sidebar/Habits.tsx
-git mv src/views/today/WorthConsideringCard.tsx src/views/plan/sidebar/Suggestions.tsx
-git mv src/views/today/MiniCalendar.tsx src/views/plan/sidebar/Month.tsx
-git mv src/views/today/QuickAdd.tsx src/views/plan/sidebar/QuickAdd.tsx
 ```
 
-Each moved file goes one directory deeper, so every relative import inside it needs another `../`. Rename the exported components to match their new filenames (`HabitsCard` → `Habits`, `WorthConsideringCard` → `Suggestions`, `MiniCalendar` → `Month`) and update `Today.tsx` accordingly. Run `./node_modules/.bin/tsc -b` after this step alone — it is the fastest way to find every stale path.
+The moved file goes one directory deeper, so every relative import inside it needs another `../`. Rename the exported component to match its new filename (`HabitsCard` → `Habits`) and update `Today.tsx` accordingly. Run `./node_modules/.bin/tsc -b` after this step alone — it is the fastest way to find every stale path.
 
 - [ ] **Step 2: Create `src/views/plan/sidebar/Stats.tsx`**
 
@@ -1377,37 +1399,23 @@ export function Stats() {
 }
 ```
 
-- [ ] **Step 3: Mount all four panels in `Plan.tsx`**
+- [ ] **Step 3: Mount both panels in `Plan.tsx`**
 
-Quick-add goes in `PlanSidebar`'s **`pinned` prop**, not in `children` — it is the one control you reach for without looking, so it must not scroll away:
+The backlog and both panels sit inside `children` and scroll as one region:
 
 ```tsx
-        <PlanSidebar pinned={<QuickAdd … />}>
+        <PlanSidebar>
           <Backlog … />
-          {/* the four sections below */}
+          <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
+            <Habits />
+          </SidebarSection>
+          <SidebarSection panel="stats" title="This week">
+            <Stats />
+          </SidebarSection>
         </PlanSidebar>
 ```
 
-Give it the local state it needs, mirroring `Today.tsx`'s usage. Everything else — the backlog and all four panels — stays inside `children` and scrolls as one region. A pinned footer for the panel counts was considered and rejected in the spec: it spends ~120px permanently on sections you *read* in order to protect them from the one section you *drag from*, and the per-project cap already keeps them near the fold.
-
-Below the backlog, still inside `children`:
-
-```tsx
-        <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
-          <Habits />
-        </SidebarSection>
-        <SidebarSection panel="suggestions" title="Worth considering" count={String(dailyWork.suggestions.length)}>
-          <Suggestions sections={dailyWork} today={today} />
-        </SidebarSection>
-        <SidebarSection panel="stats" title="This week">
-          <Stats />
-        </SidebarSection>
-        <SidebarSection panel="month" title="Month">
-          <Month />
-        </SidebarSection>
-```
-
-Compute `dailyWork` with `useMemo(() => buildDailyWork(goals, tasks, today), [goals, tasks, today])`, matching `Today.tsx`.
+A pinned footer for the panel counts was considered and rejected in the spec: it spends ~120px permanently on sections you *read* in order to protect them from the one section you *drag from*, and the per-project cap already keeps them near the fold.
 
 - [ ] **Step 4: Typecheck and run the suite**
 
@@ -1418,20 +1426,19 @@ Expected: PASS. Any test importing a moved path needs its import updated — tha
 
 - [ ] **Step 5: Smoke checklist for the human**
 
-1. All four headers appear, collapsed, each with its count.
+1. Both headers appear, collapsed, each with its count.
 2. Expanding one persists across a reload; collapsing it persists too.
-3. Habits: check one off, add one, drag to reorder — all still work inside the sidebar.
-4. Quick-add creates a task, and it appears in the backlog under **Loose tasks**.
-5. **Quick-add stays pinned at the top while the backlog scrolls under it.**
-6. **Expanding a panel scrolls the rail rather than lengthening the page** — the page still does not scroll, and the rail is still exactly as tall as the calendar.
-7. With the rail scrolled to the bottom, the four panel headers are reachable.
-8. `Today` still renders correctly with its moved imports.
+3. Habits: check one off, add one via `AddHabitForm`, drag to reorder — all still work inside the sidebar.
+4. ⌘N still captures a task, and it appears in the backlog under **Loose tasks**.
+5. **Expanding a panel scrolls the rail rather than lengthening the page** — the page still does not scroll, and the rail is still exactly as tall as the calendar.
+6. With the rail scrolled to the bottom, both panel headers are reachable.
+7. `Today` still renders correctly with its moved import.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/views/plan/sidebar src/views/today src/views/Today.tsx src/views/Plan.tsx
-git commit -m "feat(plan): relocate habits, suggestions, stats and month into the sidebar"
+git commit -m "feat(plan): relocate habits and stats into the sidebar"
 ```
 
 ---
@@ -1566,7 +1573,7 @@ Focus a backlog row and press `1`–`7` to schedule it on that weekday; `[` and 
   }, [focusedItem, days, range.startMin]);
 ```
 
-`resolvePlanKey` already refuses when the event target is editable, so the quick-add box and the inline estimate fields keep their digits.
+`resolvePlanKey` already refuses when the event target is editable, so the habit-add form and the inline estimate fields keep their digits.
 
 Note that `App.tsx` binds `1`–`3` to view switching on the same `window`. Read `src/App.tsx`'s key handler and confirm the ordering: while the Plan view is active with a focused backlog row, `1` must place work rather than navigate to Today. If both fire, gate the App-level handler on the Plan view not having a focused item, or call `stopPropagation`. **Describe in your report which mechanism you used and why** — a silent double-fire here would be a bad surprise.
 
@@ -1587,7 +1594,7 @@ Expected: PASS.
 2. Press a weekday key with a **full** day → the same refusal toast a drop gives, and nothing moves.
 3. Press a weekday key for a **hatched off-day** → refused, nothing moves.
 4. `[` and `]` move weeks; `T` returns to this week.
-5. With focus in the quick-add box, typing `3` inserts a "3" and does not schedule anything.
+5. With focus in the habit-add form's name field, typing `3` inserts a "3" and does not schedule anything.
 6. With no backlog row focused, `1` still switches to the Today view.
 
 - [ ] **Step 5: Commit**
@@ -1660,7 +1667,7 @@ Expected: PASS. Tests referencing deleted components must be deleted with them; 
 1. The app opens on **Plan**. The nav reads `Plan · Goals · Timeline`.
 2. `1`, `2`, `3` switch views; `4` and `5` do nothing.
 3. With a backlog row focused, `1`–`7` still place work rather than navigating.
-4. Everything the old Today carried is reachable: habits, suggestions, stats, month, quick-add.
+4. Everything the trimmed Today carried is reachable: the backlog, habits and stats. Task capture is on ⌘N; goal creation is in the Goals view.
 5. Availability is still editable.
 6. Export and import a backup; goals, habits, tasks and sessions all survive.
 7. Undo still works after unscheduling.
