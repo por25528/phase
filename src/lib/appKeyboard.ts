@@ -20,7 +20,7 @@ interface AppKeyEvent {
   target?: unknown;
 }
 
-function isEditableTarget(target: unknown): boolean {
+export function isEditableTarget(target: unknown): boolean {
   if (!target || typeof target !== 'object') return false;
   const candidate = target as { tagName?: unknown; isContentEditable?: unknown };
   const tagName = typeof candidate.tagName === 'string' ? candidate.tagName.toUpperCase() : '';
