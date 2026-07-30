@@ -183,6 +183,23 @@ export async function saveSlotMigrationSnapshot(goals: Goal[], tasks: Task[]): P
   });
 }
 
+/**
+ * The pre-migration copy of goals and tasks, or null if none was taken or the
+ * row is unreadable. A corrupt row must not throw: this is a recovery path,
+ * and failing loudly here would block the very export that rescues the data.
+ */
+export async function loadSlotMigrationSnapshot(): Promise<{ goals: Goal[]; tasks: Task[] } | null> {
+  const row = await db.settings.get(SLOT_SNAPSHOT_KEY);
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value) as { goals?: Goal[]; tasks?: Task[] };
+    if (!Array.isArray(parsed.goals) || !Array.isArray(parsed.tasks)) return null;
+    return { goals: parsed.goals, tasks: parsed.tasks };
+  } catch {
+    return null;
+  }
+}
+
 export async function markSlotMigrationDone(): Promise<void> {
   await db.settings.put({ key: SLOT_MIGRATION_KEY, value: 'true' });
 }
@@ -239,6 +256,7 @@ export function exportState(
   planReview: PlanReview | null,
   availability: AvailabilityWindow[],
   allDayBlocks: boolean,
+  preSlotMigrationSnapshot?: { goals: Goal[]; tasks: Task[] } | null,
 ): void {
   const backup = {
     ...state,
@@ -246,6 +264,7 @@ export function exportState(
     availability,
     allDayBlocks,
     ...(planReview ? { planReview } : {}),
+    ...(preSlotMigrationSnapshot ? { preSlotMigrationSnapshot } : {}),
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -276,6 +295,14 @@ export async function importStateFromFile(
       zoom?: string;
       availability?: unknown;
       allDayBlocks?: unknown;
+      // Present on backups exported by this feature, but deliberately NOT part
+      // of the type below and never read: it records a PREVIOUS DEVICE's
+      // pre-migration state. Importing it must never overwrite this device's
+      // own snapshot (see saveSlotMigrationSnapshot's write-once contract) —
+      // this device's snapshot, if any, is the only one that protects THIS
+      // device's data, and resetSlotMigration (below) clears it deliberately
+      // so a fresh one can be taken for the just-imported data on next launch.
+      preSlotMigrationSnapshot?: unknown;
     }
   >;
   try {

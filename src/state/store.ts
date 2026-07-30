@@ -5,7 +5,7 @@ import {
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
   loadAllDayBlocks, saveAllDayBlocks,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
-  isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone,
+  isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
 } from '../db/db';
 import { clampScale } from '../lib/timeline';
 import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
@@ -1047,13 +1047,15 @@ export const actions = {
   },
 
   // IO
-  exportBackup() {
+  async exportBackup() {
+    const preSlotMigrationSnapshot = await loadSlotMigrationSnapshot();
     exportState(
       { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
       state.pxPerDay,
       state.planReview,
       state.availability,
       state.allDayBlocks,
+      preSlotMigrationSnapshot,
     );
     actions.showToast('Backup exported');
   },

@@ -26,6 +26,7 @@ const dbMocks = vi.hoisted(() => ({
   importStateFromFile: vi.fn(),
   isSlotMigrationDone: vi.fn(async () => true),
   saveSlotMigrationSnapshot: vi.fn(async () => {}),
+  loadSlotMigrationSnapshot: vi.fn(async () => null),
   markSlotMigrationDone: vi.fn(async () => {}),
 }));
 
@@ -1395,12 +1396,27 @@ describe('store actions', () => {
       const { exportState } = await import('../db/db');
       vi.mocked(exportState).mockClear();
 
-      store.actions.exportBackup();
+      await store.actions.exportBackup();
 
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith({
         goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
-      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks);
+      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks, null);
+    });
+
+    it('loads the pre-migration snapshot and carries it into the export', async () => {
+      const { store } = await freshStoreWithLegacyData();
+      const { exportState, loadSlotMigrationSnapshot } = await import('../db/db');
+      vi.mocked(exportState).mockClear();
+      const snapshot = { goals: [], tasks: [] };
+      vi.mocked(loadSlotMigrationSnapshot).mockResolvedValueOnce(snapshot);
+
+      await store.actions.exportBackup();
+
+      expect(exportState).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+        snapshot,
+      );
     });
   });
 

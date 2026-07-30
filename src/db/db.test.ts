@@ -4,7 +4,7 @@ import {
   db, persist, importStateFromFile, loadState,
   loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
   isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
-  resetSlotMigration,
+  resetSlotMigration, loadSlotMigrationSnapshot,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
 } from './db';
 import type { AppState, Goal } from './types';
@@ -290,6 +290,37 @@ describe('slot migration flag and snapshot', () => {
       const row = await db.settings.get('preSlotMigrationSnapshot');
       const stored = JSON.parse(row!.value);
       expect(stored.goals).toEqual([importedGoal]);
+    });
+  });
+
+  describe('loadSlotMigrationSnapshot', () => {
+    it('returns null when no snapshot has been taken', async () => {
+      expect(await loadSlotMigrationSnapshot()).toBeNull();
+    });
+
+    it('reads back a snapshot that was written', async () => {
+      const goals = [{ id: 'g1', title: 'Thesis', nodes: [] }];
+      const tasks = [{ id: 't1', title: 'Email', date: '2026-07-15', done: false, goalId: null }];
+      await saveSlotMigrationSnapshot(goals as unknown as Goal[], tasks as unknown as AppState['tasks']);
+      expect(await loadSlotMigrationSnapshot()).toEqual({ goals, tasks });
+    });
+
+    it('returns null rather than throwing on a corrupt snapshot row', async () => {
+      await db.settings.put({ key: 'preSlotMigrationSnapshot', value: '{ not json' });
+      expect(await loadSlotMigrationSnapshot()).toBeNull();
+    });
+
+    // The round-trip test above writes well-formed data via saveSlotMigrationSnapshot,
+    // so it can never exercise the Array.isArray shape guard inside
+    // loadSlotMigrationSnapshot — only the JSON.parse throw path. This writes valid
+    // JSON of the WRONG shape directly, bypassing saveSlotMigrationSnapshot entirely,
+    // so the guard is the only thing standing between this row and a bad return value.
+    it('returns null when the parsed row has valid JSON but the wrong shape', async () => {
+      await db.settings.put({
+        key: 'preSlotMigrationSnapshot',
+        value: JSON.stringify({ goals: 'nope', tasks: [] }),
+      });
+      expect(await loadSlotMigrationSnapshot()).toBeNull();
     });
   });
 });
