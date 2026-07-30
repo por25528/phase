@@ -270,6 +270,10 @@ export function Plan() {
                   if (kind === 'task') actions.unscheduleTask(id);
                   else if (goalId) actions.unscheduleNode(goalId, id);
                 }}
+                onComplete={(kind, id) => {
+                  if (kind === 'task') actions.toggleTask(id);
+                  else actions.toggleLeaf(id);
+                }}
                 onResize={(kind, id, minutes) => {
                   if (kind === 'task') actions.resizeTask(id, minutes);
                   else actions.resizeNode(id, minutes);

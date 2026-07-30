@@ -34,7 +34,8 @@ interface DayItem extends LaneSpan {
  * currently unexercised. It still has to be correct when it lights up.
  */
 export function DayBlocks({
-  date, goals, tasks, blocks, range, allDayBlocks, readOnly, onRemove, onResize, gridHeightPx,
+  date, goals, tasks, blocks, range, allDayBlocks, readOnly, onRemove, onComplete, onResize,
+  gridHeightPx,
 }: {
   date: string;
   goals: Goal[];
@@ -42,9 +43,14 @@ export function DayBlocks({
   blocks: BusyBlock[];
   range: Interval;
   allDayBlocks: boolean;
-  /** True on a past week — suppresses the remove (×) affordance and the resize handle. */
+  /**
+   * True on a past week — suppresses the remove (×) affordance, the completion
+   * (✓) affordance and the resize handle.
+   */
   readOnly?: boolean;
   onRemove: (kind: 'step' | 'task', id: string, goalId: string | null) => void;
+  /** No `goalId`: both `toggleTask` and `toggleLeaf` key off the id alone. */
+  onComplete: (kind: 'step' | 'task', id: string) => void;
   onResize: (kind: 'step' | 'task', id: string, minutes: number) => void;
   gridHeightPx: number;
 }) {
@@ -120,6 +126,9 @@ export function DayBlocks({
             drag={drag}
             onRemove={
               isWork && !readOnly ? () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId) : undefined
+            }
+            onComplete={
+              isWork && !readOnly ? () => onComplete(item.kind as 'step' | 'task', item.id!) : undefined
             }
             onResize={
               isWork && !readOnly ? (minutes) => onResize(item.kind as 'step' | 'task', item.id!, minutes) : undefined

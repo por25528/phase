@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { BacklogItem } from '../../../lib/backlog';
 import { backlogGroups, capBacklog } from '../../../lib/backlog';
-import { useAppStore } from '../../../state/store';
+import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 
 /**
@@ -13,6 +13,16 @@ import type { PlanDragData } from '../dropTarget';
  * tint and `cursor-grab` are the whole affordance; a permanent grip glyph on
  * every row would advertise what the cursor already says, and Task 10's
  * `1`-`7` keys give a non-drag route regardless.
+ *
+ * The complete/delete controls follow the same rule: text at rest, revealed on
+ * hover or keyboard focus (the pattern `Habits.tsx` already uses in this rail).
+ * They are the only route to `toggleTask`/`removeTask` now that the Today view
+ * is gone, so they cannot be hover-only in the pointer sense —
+ * `focus-visible:opacity-100` keeps them reachable by keyboard.
+ *
+ * Both buttons stop the pointer-down from reaching the row: `listeners` is
+ * spread onto the row itself, so an un-stopped press would arm the drag sensor
+ * and a 5px twitch would turn the click into a drag instead of an action.
  */
 function BacklogRow({
   item, onFocusItem,
@@ -35,7 +45,7 @@ function BacklogRow({
       {...listeners}
       onFocus={() => onFocusItem(item)}
       onBlur={() => onFocusItem(null)}
-      className={`flex items-center gap-[6px] text-[.78rem] text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none ${
+      className={`group flex items-center gap-[6px] text-[.78rem] text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none ${
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       }`}
     >
@@ -44,6 +54,38 @@ function BacklogRow({
         <span className="flex-none font-mono text-[.56rem] text-faint tabular-nums">
           {item.estimateMin}m
         </span>
+      )}
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (item.kind === 'task') actions.toggleTask(item.id);
+          else actions.toggleLeaf(item.id);
+        }}
+        aria-label={`Complete "${item.title}"`}
+        className="flex-none text-[.72rem] text-muted hover:text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+      >
+        ✓
+      </button>
+      {/*
+        Tasks only. A step belongs to a project's structure — it is deleted in
+        the Goals view, where the tree it lives in is visible; offering that
+        here would let a stray click amputate a branch from a flat list.
+      */}
+      {item.kind === 'task' && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.removeTask(item.id);
+          }}
+          aria-label={`Delete "${item.title}"`}
+          className="flex-none text-[.72rem] text-muted hover:text-warn opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+        >
+          ✕
+        </button>
       )}
     </div>
   );

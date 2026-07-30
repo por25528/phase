@@ -38,13 +38,19 @@ function timeLabel(minute: number): string {
 }
 
 export function EventBlock({
-  block, lane, laneCount, range, onRemove, drag, onResize, gridHeightPx,
+  block, lane, laneCount, range, onRemove, onComplete, drag, onResize, gridHeightPx,
 }: {
   block: GridBlock;
   lane: number;
   laneCount: number;
   range: Interval;
   onRemove?: () => void;
+  /**
+   * Marks the block's work done/undone in place. Without it the only route to
+   * completion is unscheduling first, which is the opposite of what finishing
+   * a piece of work means.
+   */
+  onComplete?: () => void;
   /** Present only for placed work — a busy/calendar block is never draggable. */
   drag?: PlanDragData;
   onResize?: (minutes: number) => void;
@@ -99,6 +105,20 @@ export function EventBlock({
     >
       <div className="truncate font-medium">{block.title}</div>
       <div className="truncate text-faint text-[.6rem] tabular-nums">{timeLabel(block.startMin)}</div>
+      {onComplete && !isBusy && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={onComplete}
+          // The label tracks `done` because the action is a toggle — a control
+          // announced as "Complete" that actually reopens the work is the same
+          // lie as a button naming a date it does not open.
+          aria-label={`${block.done ? 'Reopen' : 'Complete'} ${block.title}`}
+          className="absolute top-0 right-[14px] text-faint hover:text-accent text-[.7rem] leading-none px-[2px]"
+        >
+          ✓
+        </button>
+      )}
       {onRemove && !isBusy && (
         <button
           type="button"
