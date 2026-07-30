@@ -29,7 +29,7 @@ import type { ZoomLevel, Goal } from '../db/types';
 import { GoalRow } from './timeline/GoalRow';
 import { DaysLane } from './timeline/DaysLane';
 import { Ruler } from './timeline/Ruler';
-import { useReducedMotion } from './today/useReducedMotion';
+import { useReducedMotion } from '../components/useReducedMotion';
 import { hasGoalSpan } from '../lib/schedule';
 
 type Scope = 'focus' | 'all' | string; // 'focus' | 'all' | a project id

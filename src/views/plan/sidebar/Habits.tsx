@@ -11,10 +11,10 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '../../../state/store';
 import { CardSection } from '../../../components/CardSection';
 import { Tag } from '../../../components/Tag';
-import { TodayCheckbox } from '../../today/TodayCheckbox';
+import { TodayCheckbox } from '../../../components/TodayCheckbox';
 import { GripIcon } from './GripIcon';
 import { HabitDots } from './HabitDots';
-import { useReducedMotion } from '../../today/useReducedMotion';
+import { useReducedMotion } from '../../../components/useReducedMotion';
 import { todayStr, addDays, weekDates, streak } from '../../../lib/dates';
 import type { Cadence, Habit } from '../../../db/types';
 

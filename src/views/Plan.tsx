@@ -25,6 +25,7 @@ import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
 import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
 import { RecapPanel } from './plan/RecapPanel';
+import { AvailabilitySettings } from './plan/AvailabilitySettings';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { Stats } from './plan/sidebar/Stats';
@@ -61,7 +62,7 @@ const collisionDetection: CollisionDetection = (args) => {
  * The week calendar. Owns which week is shown; everything else is derived.
  */
 export function Plan() {
-  const { goals, tasks, habits, hydration, availability, allDayBlocks } = useAppStore();
+  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels } = useAppStore();
   const today = todayStr();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
@@ -212,6 +213,9 @@ export function Plan() {
           <SidebarSection panel="stats" title="This week">
             <Stats />
           </SidebarSection>
+          <SidebarSection panel="availability" title="Working hours">
+            <AvailabilitySettings />
+          </SidebarSection>
         </PlanSidebar>
 
         <div className="min-w-0 md:pl-[18px]">
@@ -229,7 +233,14 @@ export function Plan() {
               No working hours set — every day is off, so nothing can be scheduled.{' '}
               <button
                 type="button"
-                onClick={() => actions.openPlan()}
+                // Expands the sidebar's "Working hours" panel rather than
+                // navigating: the editor is already on this page, beside the
+                // banner. Guarded against re-adding an already-open panel so a
+                // second click can't duplicate the entry.
+                onClick={() => {
+                  if (sidebarPanels.includes('availability')) return;
+                  actions.setSidebarPanels([...sidebarPanels, 'availability']);
+                }}
                 className="font-semibold text-accent hover:text-accent-deep"
               >
                 Set your availability

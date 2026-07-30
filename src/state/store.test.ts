@@ -1719,29 +1719,10 @@ describe('toggleHabitOn (backfill)', () => {
   });
 });
 
-describe('plan overlay', () => {
-  it('openPlan opens the overlay and records the focus target', async () => {
-    const { actions, getState } = await freshStore();
-    expect(getState().planOpen).toBe(false);
-    expect(getState().planFocusGoalId).toBeNull();
-    actions.openPlan('g1');
-    expect(getState().planOpen).toBe(true);
-    expect(getState().planFocusGoalId).toBe('g1');
-  });
-
-  it('openPlan with no argument opens the overlay focused on nothing', async () => {
-    const { actions, getState } = await freshStore();
-    actions.openPlan();
-    expect(getState().planOpen).toBe(true);
-    expect(getState().planFocusGoalId).toBeNull();
-  });
-
-  it('closePlan clears both the overlay flag and the focus target', async () => {
-    const { actions, getState } = await freshStore();
-    actions.openPlan('g1');
-    actions.closePlan();
-    expect(getState().planOpen).toBe(false);
-    expect(getState().planFocusGoalId).toBeNull();
+describe('view', () => {
+  it('opens on the Plan calendar', async () => {
+    const { getState } = await freshStore();
+    expect(getState().view).toBe('plan');
   });
 
   describe('addChild and addChildren clear leaf-only fields when creating a container', () => {

@@ -52,7 +52,8 @@ export function capacityParts(c: CapacityFigures): string[] {
  * of "not connected" / "stale" / "provenance mismatch" / "reconnect needed")
  * rather than the current boolean.
  *
- * Related trap at the call site (PlanWeekOverlay): the note is only shown
+ * Related trap, carried over from the deleted PlanWeekOverlay and worth
+ * re-checking against WeekHeader, the current caller: the note was only shown
  * when `blockedBy.length === 0` (`blockedBy.length > 0 ? blockedBy :
  * capacityNote(...)`), which makes the caveat conditional on having no
  * blocks. In slice 2 a partially-populated, stale, or provenance-mismatched

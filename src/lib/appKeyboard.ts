@@ -2,11 +2,9 @@ export type AppKeyCommand =
   | 'capture-task'
   | 'blur-target'
   | 'close-drawer'
-  | 'view-today'
+  | 'view-plan'
   | 'view-goals'
   | 'view-timeline'
-  | 'view-plan'
-  | 'open-plan'
   | 'go-today'
   | 'toggle-shortcuts';
 
@@ -41,11 +39,14 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
   if (event.metaKey || event.ctrlKey || event.altKey) return null;
   if (event.key === 'Escape') return 'close-drawer';
   if (event.key === '?') return 'toggle-shortcuts'; // Shift+/ — the cheat sheet
-  if (event.key === '1') return 'view-today';
+  // 1-3 are the three views, in nav order. They collide with the Plan view's
+  // own 1-7 weekday placement, which wins: Plan registers a CAPTURE-phase
+  // listener on `window` and calls stopPropagation, so a digit it consumes
+  // never reaches App's bubble-phase handler. Plan only consumes the digit
+  // when a backlog row is focused, so otherwise it falls through to here.
+  if (event.key === '1') return 'view-plan';
   if (event.key === '2') return 'view-goals';
   if (event.key === '3') return 'view-timeline';
-  if (event.key === '4') return 'open-plan';
-  if (event.key === '5') return 'view-plan';
   if (event.key === 't') return 'go-today';
   return null;
 }

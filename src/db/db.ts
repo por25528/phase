@@ -111,9 +111,11 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
 }
 
 /** Which sidebar panels are expanded. The backlog is pinned and never listed. */
-export type SidebarPanel = 'habits' | 'stats';
+export type SidebarPanel = 'habits' | 'stats' | 'availability';
 
-const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'stats'];
+// Stored order — `saveSidebarPanels` writes panels in this order, so append
+// new members rather than inserting them.
+const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'stats', 'availability'];
 const SIDEBAR_PANELS_KEY = 'sidebarPanels';
 
 /**

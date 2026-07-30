@@ -7,9 +7,12 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /**
  * Week-zoom day strip in the timeline header: day-number buttons (accent circle
- * on today, month name on the 1st). Clicking a day opens it in the Today view as
- * a navigation convenience — the Timeline no longer schedules actions, so the
+ * on today, month name on the 1st). Clicking a day switches to the Plan calendar
+ * as a navigation convenience — the Timeline no longer schedules actions, so the
  * per-day planned counts and habit dots are gone (spec §3.3).
+ *
+ * The Plan view owns its own `weekStart` and does not read `selDate`, so this
+ * lands on the current week rather than the clicked day's week.
  */
 export function DaysLane({
   segs, rangeStart, pxPerDay,
@@ -31,7 +34,7 @@ export function DaysLane({
             aria-label={`Open ${fmtD(s.start)}`}
             onClick={() => {
               actions.setSelDate(s.start);
-              actions.setView('today');
+              actions.setView('plan');
             }}
             className={`absolute inset-y-0 text-left px-[7px] py-[5px] hover:bg-hover transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-tint${
               weekend ? ' bg-hover/50' : ''
