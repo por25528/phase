@@ -591,9 +591,15 @@ export const actions = {
   rescheduleTask(taskId: string, date: string): void {
     const task = state.tasks.find((item) => item.id === taskId);
     if (!task || !isValidLocalDate(date) || task.date === date) return;
-    const tasks = state.tasks.map((task) => (
-      task.id === taskId ? { ...task, date } : task
-    ));
+    const tasks = state.tasks.map((item) => {
+      if (item.id !== taskId) return item;
+      // A different day cannot inherit this day's minute: the new day may have
+      // no room there, or no availability window at all. Clearing it returns
+      // the task to that day's backlog rather than parking it in dead time.
+      const moved = { ...item, date };
+      delete moved.startMin;
+      return moved;
+    });
     setAndPersist({ tasks });
   },
 

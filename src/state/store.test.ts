@@ -181,6 +181,31 @@ describe('store actions', () => {
       expect(dbMocks.persist).not.toHaveBeenCalled();
     });
 
+    it('drops the start minute when a task moves to a different day', async () => {
+      // The new day may have no room at that minute, or no availability at all.
+      // Returning it to the backlog is honest; carrying the time over is not.
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Email', '2026-07-15');
+      const id = getState().tasks[0].id;
+      actions.scheduleTask(id, '2026-07-15', 600);
+      expect(getState().tasks[0].startMin).toBe(600);
+
+      actions.rescheduleTask(id, '2026-07-16');
+      expect(getState().tasks[0].date).toBe('2026-07-16');
+      expect('startMin' in getState().tasks[0]).toBe(false);
+    });
+
+    it('keeps the start minute when rescheduling to the same day', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Email', '2026-07-15');
+      const id = getState().tasks[0].id;
+      actions.scheduleTask(id, '2026-07-15', 600);
+      actions.rescheduleTask(id, '2026-07-15');
+      expect(getState().tasks[0].startMin).toBe(600);
+    });
+
     it('removes a task with undo support and restores the same id', async () => {
       const { actions, getState } = await freshStore();
       actions.addTask('File notes');
