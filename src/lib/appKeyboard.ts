@@ -5,7 +5,6 @@ export type AppKeyCommand =
   | 'view-plan'
   | 'view-goals'
   | 'view-timeline'
-  | 'go-today'
   | 'toggle-shortcuts';
 
 interface AppKeyEvent {
@@ -47,7 +46,11 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
   if (event.key === '1') return 'view-plan';
   if (event.key === '2') return 'view-goals';
   if (event.key === '3') return 'view-timeline';
-  if (event.key === 't') return 'go-today';
+  // `t` is deliberately NOT mapped here. It belongs to the Plan view, which
+  // handles it on its own capture-phase listener to jump the week back to
+  // today. An app-level `t` could only call `actions.goToToday()`, and nothing
+  // in `src` reads the `selDate` that sets — it looked like it worked only
+  // because switching to Plan remounts it on the current week.
   return null;
 }
 

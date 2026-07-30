@@ -113,10 +113,6 @@ export function App() {
       if (command === 'view-plan') actions.setView('plan');
       if (command === 'view-goals') actions.setView('goals');
       if (command === 'view-timeline') actions.setView('timeline');
-      if (command === 'go-today') {
-        actions.setView('plan');
-        actions.goToToday();
-      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -133,7 +129,7 @@ export function App() {
             Phase<span className="text-accent">.</span>
           </span>
         </div>
-        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · T today · ⌘N add task · ? shortcuts · Esc closes">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · ⌘N add task · ? shortcuts · Esc closes">
           {(
             [
               ['plan', 'Plan'],

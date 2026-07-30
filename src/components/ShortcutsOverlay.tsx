@@ -6,7 +6,8 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['1'], label: 'Plan' },
   { keys: ['2'], label: 'Goals' },
   { keys: ['3'], label: 'Timeline' },
-  { keys: ['T'], label: 'Jump to today' },
+  // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
+  // app-level binding that used to sit here set a `selDate` nothing reads.
   { keys: ['⌘', 'N'], label: 'Add a task' },
   { keys: ['?'], label: 'This cheat sheet' },
   { keys: ['Esc'], label: 'Close drawer or dialog' },

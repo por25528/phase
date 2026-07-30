@@ -47,7 +47,11 @@ export function backlogGroups(
   };
 
   const byGoal = new Map<string, BacklogItem[]>();
-  const ranked = attentionRank(goals, today); // archived projects already dropped
+  // `attentionRank` drops archived projects AND 'ready-to-complete' ones
+  // (100% done but not archived — see plan.ts). Neither gets a `byGoal` entry,
+  // so an unfinished task still pointing at such a project misses the lookup
+  // below and lands in the Loose tasks bucket, losing its project heading.
+  const ranked = attentionRank(goals, today);
 
   for (const g of ranked) {
     const items: BacklogItem[] = [];

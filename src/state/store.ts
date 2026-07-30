@@ -1034,7 +1034,12 @@ export const actions = {
 
   // IO
   async exportBackup() {
-    const preSlotMigrationSnapshot = await loadSlotMigrationSnapshot();
+    // Non-fatal: the snapshot is a nicety, the backup is the point. A rejected
+    // IndexedDB read here would otherwise skip exportState entirely — no file
+    // written, no toast, and an unhandled rejection, because the call site
+    // neither awaits nor catches. Degrade to "backup without a snapshot",
+    // never to "no backup".
+    const preSlotMigrationSnapshot = await loadSlotMigrationSnapshot().catch(() => null);
     exportState(
       { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
       state.pxPerDay,

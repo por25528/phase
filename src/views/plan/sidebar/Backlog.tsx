@@ -55,7 +55,15 @@ function BacklogRow({
       {...listeners}
       onFocus={() => onFocusItem(item)}
       onBlur={() => onFocusItem(null)}
-      className={`group flex items-center gap-[6px] text-[.78rem] text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none ${
+      // Plain `:focus`, NOT `:focus-visible`. dnd-kit's `attributes` put
+      // `tabIndex: 0` on this row, so a mouse click focuses it and arms the
+      // `1`-`7` weekday placement — but Chromium does not match
+      // `:focus-visible` on a tabIndex div focused by pointer, so the app's
+      // global focus ring (index.css) never shows. Without this the user sits
+      // in an invisible mode where `2` schedules onto Tuesday instead of
+      // switching to Goals, and `scheduleNode` has no undo. The mode has to be
+      // visible for as long as it is active.
+      className={`group flex items-center gap-[6px] text-[.78rem] text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       }`}
     >

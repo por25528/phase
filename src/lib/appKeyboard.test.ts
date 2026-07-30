@@ -61,7 +61,11 @@ describe('resolveAppKeyCommand', () => {
 
   it('preserves the existing unmodified app shortcuts', () => {
     expect(resolveAppKeyCommand({ key: 'Escape' })).toBe('close-drawer');
-    expect(resolveAppKeyCommand({ key: 't' })).toBe('go-today');
+    // `t` is the Plan view's own key (jump the week back to today), handled on
+    // its capture-phase listener. There is deliberately no app-level binding:
+    // the old one only called `goToToday`, and nothing reads the `selDate` it
+    // sets — it appeared to work because Plan remounts on the current week.
+    expect(resolveAppKeyCommand({ key: 't' })).toBeNull();
     expect(resolveAppKeyCommand({ key: 'T' })).toBeNull();
   });
 

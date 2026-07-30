@@ -167,9 +167,10 @@ export function Plan() {
     // e.over.rect is measured at drag START, and dnd-kit's e.delta is already
     // scroll-adjusted (translate + any scroll since drag start) to pair with
     // that same start-of-drag measurement. Re-reading the column's rect live
-    // from the DOM here would apply the scroll offset a second time — auto-scroll
-    // is on by default, so that drifts the aim by roughly a minute per pixel
-    // scrolled mid-drag. Do not "fix" this by swapping in a live rect.
+    // from the DOM here would apply any scroll offset a second time and drift
+    // the aim by roughly a minute per pixel scrolled mid-drag. Do not "fix"
+    // this by swapping in a live rect. (Auto-scroll is disabled on the
+    // DndContext below for the mirror-image reason.)
     const rect = e.over.rect;
 
     // The top edge of the thing being dragged — not the pointer — is the aim
@@ -197,6 +198,17 @@ export function Plan() {
   return (
     <DndContext
       sensors={sensors}
+      // Auto-scroll OFF, and it must stay off. `handleDragEnd` pairs
+      // `e.over.rect` (measured at drag start) with `e.delta` (scroll-adjusted
+      // over the DRAGGABLE's scrollable ancestors). The backlog rail is now a
+      // scroller, so an auto-scroll of the rail mid-drag adds its offset to
+      // `delta.y` while the day column's start-of-drag `rect.top` stays put —
+      // the aim minute drifts by that many pixels' worth of grid and the block
+      // lands away from its ghost. Nothing here needs auto-scroll: the grid is
+      // a fixed GRID_HEIGHT_PX and the sidebar is bounded to it, so there is
+      // no scrolling a drag has to do. Re-enabling this means re-deriving the
+      // aim arithmetic against a live rect first.
+      autoScroll={false}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
