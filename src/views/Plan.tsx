@@ -270,6 +270,8 @@ export function Plan() {
                   if (kind === 'task') actions.unscheduleTask(id);
                   else if (goalId) actions.unscheduleNode(goalId, id);
                 }}
+                // Fires on past weeks too: `readOnly` above stops history being
+                // rescheduled, not recorded. See DayBlocks' `readOnly` note.
                 onComplete={(kind, id) => {
                   if (kind === 'task') actions.toggleTask(id);
                   else actions.toggleLeaf(id);

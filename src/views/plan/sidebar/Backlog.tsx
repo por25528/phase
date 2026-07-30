@@ -4,6 +4,7 @@ import type { BacklogItem } from '../../../lib/backlog';
 import { backlogGroups, capBacklog } from '../../../lib/backlog';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
+import { EstimateField } from '../EstimateField';
 
 /**
  * One draggable row.
@@ -23,6 +24,14 @@ import type { PlanDragData } from '../dropTarget';
  * Both buttons stop the pointer-down from reaching the row: `listeners` is
  * spread onto the row itself, so an un-stopped press would arm the drag sensor
  * and a 5px twitch would turn the click into a drag instead of an action.
+ *
+ * The estimate badge is the same idea taken one step further: it is the only
+ * route to `setTaskEstimate`/`setNodeEstimate` left in the app, because the
+ * modal that used to host the editor is gone and resize — the other way to
+ * change an estimate — only exists for work already on the grid. Backlog work
+ * is by definition not on the grid, so without this it is stuck at whatever
+ * estimate it was created with. Clicking the badge swaps it for the field;
+ * blur, Enter or Escape swap it back.
  */
 function BacklogRow({
   item, onFocusItem,
@@ -30,6 +39,7 @@ function BacklogRow({
   item: BacklogItem;
   onFocusItem: (item: BacklogItem | null) => void;
 }) {
+  const [editingEstimate, setEditingEstimate] = useState(false);
   const data: PlanDragData = {
     kind: item.kind, id: item.id, goalId: item.goalId, title: item.title,
   };
@@ -50,10 +60,41 @@ function BacklogRow({
       }`}
     >
       <span className="flex-1 min-w-0 truncate">{item.title}</span>
-      {item.estimateMin !== undefined && (
-        <span className="flex-none font-mono text-[.56rem] text-faint tabular-nums">
-          {item.estimateMin}m
+      {editingEstimate ? (
+        // onBlur bubbles (React maps it to focusout), so this catches the
+        // field's own blur — whether it came from Enter, Escape or a click
+        // elsewhere — after the field's handler has already committed or
+        // reverted, and puts the badge back.
+        <span className="flex-none" onBlur={() => setEditingEstimate(false)}>
+          <EstimateField
+            minutes={item.estimateMin}
+            label={item.title}
+            onChange={(minutes) => {
+              if (item.kind === 'task') actions.setTaskEstimate(item.id, minutes);
+              else actions.setNodeEstimate(item.id, minutes);
+            }}
+          />
         </span>
+      ) : (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingEstimate(true);
+          }}
+          aria-label={`Set estimate for "${item.title}"`}
+          // An existing estimate stays legible at rest — it is information, not
+          // a control. A missing one only advertises itself on hover/focus, the
+          // rail's rule for everything that is purely an affordance.
+          className={`flex-none font-mono text-[.56rem] text-faint hover:text-ink-soft tabular-nums ${
+            item.estimateMin === undefined
+              ? 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity'
+              : ''
+          }`}
+        >
+          {item.estimateMin === undefined ? '+ est' : `${item.estimateMin}m`}
+        </button>
       )}
       <button
         type="button"

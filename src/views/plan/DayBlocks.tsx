@@ -44,8 +44,17 @@ export function DayBlocks({
   range: Interval;
   allDayBlocks: boolean;
   /**
-   * True on a past week — suppresses the remove (×) affordance, the completion
-   * (✓) affordance and the resize handle.
+   * True on a past week — suppresses the remove (×) affordance and the resize
+   * handle.
+   *
+   * Deliberately NOT the completion (✓) affordance. `readOnly` exists to stop
+   * you rescheduling history: moving, resizing or unscheduling work in a week
+   * that has already happened. Ticking something off is not editing the plan,
+   * it is recording what happened to it — and work scheduled last Thursday and
+   * finished but never ticked is not in the backlog either (it has a day and a
+   * start minute, so `backlogGroups` excludes it), so gating ✓ here would leave
+   * it with no route to done anywhere in the app. Do not "restore consistency"
+   * by adding `!readOnly` below.
    */
   readOnly?: boolean;
   onRemove: (kind: 'step' | 'task', id: string, goalId: string | null) => void;
@@ -128,7 +137,8 @@ export function DayBlocks({
               isWork && !readOnly ? () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId) : undefined
             }
             onComplete={
-              isWork && !readOnly ? () => onComplete(item.kind as 'step' | 'task', item.id!) : undefined
+              // Not gated on `readOnly` — see the prop's note above.
+              isWork ? () => onComplete(item.kind as 'step' | 'task', item.id!) : undefined
             }
             onResize={
               isWork && !readOnly ? (minutes) => onResize(item.kind as 'step' | 'task', item.id!, minutes) : undefined

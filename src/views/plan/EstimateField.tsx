@@ -6,20 +6,34 @@ import { parseEstimateInput, formatEstimateValue } from './estimateInput';
  * Unparseable input is rejected and the field reverts, so a typo can never
  * silently wipe an existing estimate.
  *
- * Escape does NOT just revert the draft in isolation: this field is always
- * rendered inside the planner's <Modal>, and Modal registers its keydown
- * listener on `window` in the CAPTURE phase (src/components/Modal.tsx).
- * That capture-phase listener runs before this field's own (bubble-phase,
- * React-synthetic) key handler ever fires, so pressing Escape here discards
- * the draft AND closes the surrounding planner overlay in the same
- * keystroke — there is no way for anything rendered below `window` to
- * preempt it. This is not a regression specific to this field; the same is
- * true of RailStep's break-into-tasks textarea in PlanWeekOverlay.tsx. A
- * real fix (having Escape revert the draft without closing the modal)
- * belongs in Modal.tsx, not here.
+ * Host: a backlog row (src/views/plan/sidebar/Backlog.tsx), mounted on demand
+ * when the row's estimate badge is clicked — hence `autoFocus`. This is the
+ * only route to `setTaskEstimate`/`setNodeEstimate` for unplaced work; work
+ * already on the grid changes its estimate by drag-resizing the block.
  *
- * Must be rendered OUTSIDE any element carrying @dnd-kit `listeners` —
- * see placement notes in PlanWeekOverlay.tsx.
+ * Two constraints were written here for an earlier <Modal> host that no longer
+ * exists. Both were re-derived for this one:
+ *
+ * - Escape. Under the modal, Modal's `window` keydown listener ran in the
+ *   CAPTURE phase (src/components/Modal.tsx), so it fired before this field's
+ *   own bubble-phase handler and Escape discarded the draft AND closed the
+ *   overlay in one keystroke. There is no modal ancestor here, so Escape now
+ *   does exactly what the branch below says and nothing more: revert the
+ *   draft, then blur — which is what unmounts the field. App.tsx's
+ *   `blur-target` Escape handling is a BUBBLE-phase `window` listener, and the
+ *   `stopPropagation` below halts the native event at React's root container
+ *   before it can reach `window`, so nothing else acts on the keystroke.
+ * - dnd-kit. The old note required this to render OUTSIDE any element carrying
+ *   @dnd-kit `listeners`. The backlog row spreads `listeners` on the row root,
+ *   so that placement is no longer available; the same guarantee is met by
+ *   stopping the two events dnd-kit activates on from reaching the row —
+ *   `onPointerDown` (PointerSensor) and `onKeyDown` (KeyboardSensor). Without
+ *   the first, a press on this input arms the drag sensor and a 5px twitch
+ *   drags the row instead of focusing the field.
+ *
+ * Typed digits cannot trigger the Plan view's 1–7 weekday placement:
+ * `resolvePlanKey` returns null for an `isEditableTarget`, which is true of
+ * any INPUT (src/lib/appKeyboard.ts).
  */
 export function EstimateField({
   minutes,
@@ -61,6 +75,10 @@ export function EstimateField({
 
   return (
     <input
+      // Only ever mounted in response to a click on the badge that replaces
+      // it, so focus belongs here — the click that opened the field lands on
+      // the badge, which is already gone by the time this renders.
+      autoFocus
       aria-label={`Estimate for ${label}`}
       value={shown}
       placeholder="est"
@@ -68,6 +86,7 @@ export function EstimateField({
       onBlur={commit}
       onKeyDown={onKeyDown}
       onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
       className="w-[34px] shrink-0 rounded-[5px] border border-transparent bg-transparent px-[3px] py-[1px] text-[.62rem] tabular-nums text-faint hover:border-line-2 focus:border-line-2 focus:text-ink-soft focus:outline-none"
     />
   );

@@ -49,6 +49,11 @@ export function EventBlock({
    * Marks the block's work done/undone in place. Without it the only route to
    * completion is unscheduling first, which is the opposite of what finishing
    * a piece of work means.
+   *
+   * Unlike `onRemove` and `onResize`, callers pass this on past weeks too:
+   * recording that something got done is not rescheduling history, and a block
+   * on a past week has no other route to done (it is placed, so it never
+   * appears in the backlog). See the `readOnly` note in DayBlocks.tsx.
    */
   onComplete?: () => void;
   /** Present only for placed work — a busy/calendar block is never draggable. */
