@@ -12,7 +12,9 @@
 
 This is **plan 2 of 2**. Plan 1 (`docs/superpowers/plans/2026-07-29-calendar-grid-foundation.md`, merged as `bd30630`) delivered the data layer and a working grid behind a fourth nav item.
 
-Spec: `docs/superpowers/specs/2026-07-29-plan-week-calendar-redesign-design.md`
+Specs:
+- `docs/superpowers/specs/2026-07-29-plan-week-calendar-redesign-design.md`
+- `docs/superpowers/specs/2026-07-30-plan-sidebar-density-and-polish-design.md` — amends Tasks 1, 6, 7 and 8 below. Those amendments are already folded into the task text; you do not need to reconcile anything yourself. Read it only if you want the reasoning behind the rail's geometry, its per-project cap, or its stripped-back row styling.
 
 ## Global Constraints
 
@@ -28,7 +30,8 @@ Spec: `docs/superpowers/specs/2026-07-29-plan-week-calendar-redesign-design.md`
 - New pure logic goes in `src/lib` with a sibling `*.test.ts`. Views stay thin and delegate to `actions`; views never touch `db`. `src/db/db.ts` is the only module touching IndexedDB.
 - Device preferences use `set()` plus their own save helper, never `setAndPersist` — follow `setAvailability`/`setAllDayBlocks`.
 - Destructive edits stay undo-aware via `withUndo`/`scheduleUndo`.
-- **Visual identity is locked.** Only tokens already in this codebase. No new colours, fonts or spacing scales.
+- **Visual identity is locked.** Only tokens already in this codebase. No new colours, fonts or spacing scales. The one sanctioned exception is the sidebar's own styling, which the 2026-07-30 spec changes deliberately and specifies exactly — and it changes it by *removing* borders and fills, not by adding anything.
+- **The sidebar must never be able to make the page taller.** It is bounded by the calendar's height and scrolls internally (Task 6). If a later task adds something to the rail, it goes inside the scroll region.
 - `"noUnusedParameters"` and `"noUnusedLocals"` are on — an unused import, prop or local is a hard compile error.
 - **`vitest` runs `environment: 'node'` — there is no DOM.** React components cannot be unit-tested. Do not add `jsdom` or a DOM environment. Component tasks are gated by `tsc -b` plus the manual smoke checklist each one specifies, and **no implementer may claim to have run a browser check.**
 
@@ -36,14 +39,14 @@ Spec: `docs/superpowers/specs/2026-07-29-plan-week-calendar-redesign-design.md`
 
 | File | Responsibility |
 |---|---|
-| `src/lib/backlog.ts` | **New.** One selector producing everything the backlog rail shows — unplanned steps *and* unplaced tasks — grouped by project with completion percentages. |
+| `src/lib/backlog.ts` | **New.** One selector producing everything the backlog rail shows — unplanned steps *and* unplaced tasks — grouped by project with completion percentages, plus the per-project cap (`capBacklog`) that keeps the rail a shortlist rather than an inventory. |
 | `src/lib/planKeyboard.ts` | **New.** Pure resolution of the Plan view's keys: `1`–`7`, `[`, `]`, `T`. |
 | `src/db/db.ts` | Adds load/save for the sidebar's open-panel preference, and puts the pre-migration snapshot into the backup export. |
 | `src/state/store.ts` | Adds `setSidebarPanels`; fixes two actions that leave a stale `startMin`. |
-| `src/views/plan/PlanSidebar.tsx` | **New.** The accordion shell: quick-add, pinned backlog, four collapsible panels. |
+| `src/views/plan/PlanSidebar.tsx` | **New.** The accordion shell: a rail bounded by the calendar's height, with quick-add pinned above a scroll region holding the backlog and four collapsible panels. |
 | `src/views/plan/sidebar/*.tsx` | **New.** `Backlog`, `Habits`, `Suggestions`, `Stats`, `Month` — the backlog is new, the other four relocate existing `today/` components. |
 | `src/views/plan/RecapPanel.tsx` | **New.** Last week's recap, inline and dismissible rather than a modal gate. |
-| `src/views/Plan.tsx` | Gains the sidebar, the recap and keyboard handling. |
+| `src/views/Plan.tsx` | Gains the sidebar, the recap and keyboard handling. Its two-column grid is rebuilt in Task 6 so the rail's column stretches to the calendar's height. |
 | `src/views/Today.tsx`, `src/views/today/*`, `src/views/plan/PlanWeekOverlay.tsx` | **Deleted** in the final task. |
 
 ---
@@ -60,6 +63,9 @@ Spec: `docs/superpowers/specs/2026-07-29-plan-week-calendar-redesign-design.md`
   - `interface BacklogItem { kind: 'step' | 'task'; id: string; goalId: string | null; title: string; estimateMin?: number }`
   - `interface BacklogGroup { goalId: string | null; goalTitle: string; pct: number; items: BacklogItem[] }`
   - `backlogGroups(goals: Goal[], tasks: Task[], week: string, today: string): BacklogGroup[]`
+  - `const BACKLOG_CAP = 5`, `const LOOSE_GROUP_KEY = 'loose'`
+  - `interface CappedGroup extends BacklogGroup { key: string; shown: BacklogItem[]; hidden: number; expandable: boolean }`
+  - `capBacklog(groups: BacklogGroup[], expanded: Set<string>): CappedGroup[]`
 
 This is where the task backlog finally exists. Plan 1 deliberately never cleared a task's `date` because nothing listed a dateless task; this selector is what makes that state visible, and it must also surface a task that has a `date` but no `startMin` — committed to a day, not placed on the grid.
 
@@ -267,21 +273,170 @@ Expected: PASS, 13 tests.
 Run: `./node_modules/.bin/tsc -b`
 Expected: no output.
 
-- [ ] **Step 5: Prove the tests discriminate**
+- [ ] **Step 5: Write the failing tests for the per-project cap**
+
+A project with 24 open steps floods the rail and buries every project below it. `capBacklog` is what turns the backlog into a shortlist: each group shows its first `BACKLOG_CAP` items behind a `+N more` row that expands it.
+
+This has to be a pure function rather than a `.slice()` inside the component. `vitest` runs `environment: 'node'` here — there is no DOM, so anything left in `Backlog.tsx` cannot be tested at all. In a function, "expanding one group leaves its siblings capped" gets a test that can actually fail.
+
+Append to `src/lib/backlog.test.ts`. Extend the file's **existing** `./backlog` import rather than adding a second statement for the same module — Step 1 wrote `import { backlogGroups } from './backlog';`, which becomes:
+
+```ts
+import { backlogGroups, BACKLOG_CAP, capBacklog, LOOSE_GROUP_KEY } from './backlog';
+import type { BacklogGroup } from './backlog';
+```
+
+Then the new block:
+
+```ts
+function group(goalId: string | null, count: number): BacklogGroup {
+  return {
+    goalId,
+    goalTitle: goalId ?? 'Loose tasks',
+    pct: 0,
+    items: Array.from({ length: count }, (_, i) => ({
+      kind: 'step' as const,
+      id: `${goalId ?? 'loose'}-${i}`,
+      goalId,
+      title: `Step ${i}`,
+    })),
+  };
+}
+
+describe('capBacklog', () => {
+  it('leaves a group shorter than the cap whole and not expandable', () => {
+    const [g] = capBacklog([group('g1', 3)], new Set());
+    expect(g.shown).toHaveLength(3);
+    expect(g.hidden).toBe(0);
+    expect(g.expandable).toBe(false);
+  });
+
+  it('caps a long group and reports how many are hidden', () => {
+    const [g] = capBacklog([group('g1', 24)], new Set());
+    expect(g.shown).toHaveLength(BACKLOG_CAP);
+    expect(g.hidden).toBe(24 - BACKLOG_CAP);
+    expect(g.expandable).toBe(true);
+  });
+
+  it('keeps the first items in order — the rail is the top of the project', () => {
+    const [g] = capBacklog([group('g1', 24)], new Set());
+    expect(g.shown.map((i) => i.id)).toEqual(['g1-0', 'g1-1', 'g1-2', 'g1-3', 'g1-4']);
+  });
+
+  it('shows everything for an expanded group, and it stays expandable', () => {
+    // `expandable` must NOT be derived from `hidden`: once expanded, hidden is
+    // 0, and a component reading only `hidden` would drop the "Show less" row
+    // the instant you expanded — leaving no way back.
+    const [g] = capBacklog([group('g1', 24)], new Set(['g1']));
+    expect(g.shown).toHaveLength(24);
+    expect(g.hidden).toBe(0);
+    expect(g.expandable).toBe(true);
+  });
+
+  it('expands one group without touching its siblings', () => {
+    const [a, b] = capBacklog([group('g1', 24), group('g2', 24)], new Set(['g1']));
+    expect(a.shown).toHaveLength(24);
+    expect(b.shown).toHaveLength(BACKLOG_CAP);
+  });
+
+  it('keys the loose group so it can be expanded like any other', () => {
+    const [g] = capBacklog([group(null, 24)], new Set([LOOSE_GROUP_KEY]));
+    expect(g.key).toBe(LOOSE_GROUP_KEY);
+    expect(g.shown).toHaveLength(24);
+  });
+
+  it('ignores an expanded key that matches no group', () => {
+    const [g] = capBacklog([group('g1', 24)], new Set(['nope']));
+    expect(g.shown).toHaveLength(BACKLOG_CAP);
+  });
+
+  it('leaves items intact so the caller can still count the true total', () => {
+    // The "To plan" count must report every unplanned item, not the visible
+    // subset — that number is the honest signal of over-commitment.
+    const capped = capBacklog([group('g1', 24), group('g2', 7)], new Set());
+    expect(capped.reduce((sum, g) => sum + g.items.length, 0)).toBe(31);
+  });
+});
+```
+
+- [ ] **Step 6: Run to verify they fail**
+
+Run: `./node_modules/.bin/vitest run --config vitest.config.ts src/lib/backlog.test.ts`
+Expected: FAIL — `capBacklog` is not exported.
+
+- [ ] **Step 7: Add `capBacklog` to `src/lib/backlog.ts`**
+
+Append below `backlogGroups`:
+
+```ts
+/** How many items a project shows before it collapses behind "+N more". */
+export const BACKLOG_CAP = 5;
+
+/** The `expanded` key for the group with no project. */
+export const LOOSE_GROUP_KEY = 'loose';
+
+/** A backlog group with the cap applied. `items` is left whole. */
+export interface CappedGroup extends BacklogGroup {
+  /** `goalId`, or `LOOSE_GROUP_KEY` — what `expanded` is tested against. */
+  key: string;
+  /** The first `BACKLOG_CAP` items, or all of them when expanded. */
+  shown: BacklogItem[];
+  /** `items.length - shown.length`. Zero when expanded or already short. */
+  hidden: number;
+  /** `items.length > BACKLOG_CAP`, whether or not it is currently expanded. */
+  expandable: boolean;
+}
+
+/**
+ * Apply the per-project cap.
+ *
+ * `items` is deliberately left untouched so callers can still count the true
+ * backlog size — the cap is a display device and must not shrink the number
+ * that says how much work is unplanned.
+ *
+ * `expandable` is a separate field rather than `hidden > 0` because those two
+ * differ exactly when a long group is expanded: hidden falls to 0, but the
+ * group still needs its "Show less" control. Deriving one from the other
+ * strands the user inside an expanded group.
+ */
+export function capBacklog(groups: BacklogGroup[], expanded: Set<string>): CappedGroup[] {
+  return groups.map((group) => {
+    const key = group.goalId ?? LOOSE_GROUP_KEY;
+    const expandable = group.items.length > BACKLOG_CAP;
+    const shown =
+      expandable && !expanded.has(key) ? group.items.slice(0, BACKLOG_CAP) : group.items;
+    return { ...group, key, shown, hidden: group.items.length - shown.length, expandable };
+  });
+}
+```
+
+- [ ] **Step 8: Run tests and typecheck**
+
+Run: `./node_modules/.bin/vitest run --config vitest.config.ts src/lib/backlog.test.ts`
+Expected: PASS, 21 tests (13 for `backlogGroups`, 8 for `capBacklog`).
+Run: `./node_modules/.bin/tsc -b`
+Expected: no output.
+
+- [ ] **Step 9: Prove the tests discriminate**
 
 Apply each mutation, run the file, record the real output, revert:
 
 1. Drop `&& n.plannedStartMin !== undefined` from `placed` → the "day but no start minute" test must fail.
 2. Change the task guard to `if (t.date !== undefined) continue;` → the "date but no start minute" test must fail.
 3. Remove the `loose.length > 0` ordering so loose comes first → the ordering test must fail.
+4. In `capBacklog`, drop the `.slice(0, BACKLOG_CAP)` and always use `group.items` → the caps-a-long-group test must fail.
+5. Change `expandable` to `group.items.length - shown.length > 0` → the expanded-group test must fail.
+6. Change `key` to `group.goalId as string` → the loose-group test must fail.
+7. Change `!expanded.has(key)` to `expanded.size === 0` → the siblings test must fail.
+8. Return `{ ...group, items: shown, … }` → the true-total test must fail.
 
 If any mutation survives, add the test that catches it before committing.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/lib/backlog.ts src/lib/backlog.test.ts
-git commit -m "feat(backlog): one selector for unplaced steps and tasks"
+git commit -m "feat(backlog): one selector for unplaced steps and tasks, capped per project"
 ```
 
 ---
@@ -797,9 +952,13 @@ Throughout tasks 6–10, `Today` and the old modal planner keep working. The fli
 
 **Interfaces:**
 - Consumes: `SidebarPanel` and `actions.setSidebarPanels` from Task 2.
-- Produces: `PlanSidebar({ children })` where `children` is the pinned backlog, plus a `SidebarSection` sub-component for the four collapsible panels.
+- Produces: `PlanSidebar({ pinned, children })` — `pinned?: ReactNode` never scrolls (Task 8 puts quick-add there), `children: ReactNode` is the scrolling region holding the backlog and the four panels. Plus a `SidebarSection` sub-component for those panels.
 
 The layout is the A2 decision from the spec: quick-add at the top, the backlog **pinned open** directly beneath it, then four one-line collapsible headers each showing a count. Nothing is hidden — folded panels still report their number, so "3 need a decision" is legible without expanding.
+
+**The rail is bounded by the calendar's height and scrolls internally**, which is the whole point of this task. The mechanism is CSS, not measurement: the two-column grid's row is sized by the calendar, the rail's column stretches to that row, and the rail itself is an absolutely-positioned layer inside it. An absolutely-positioned child contributes nothing to its parent's size, so the rail is *structurally incapable* of making the page taller. Do not replace this with a `ResizeObserver` — a measured height is a second source of truth for something CSS already knows. (One exception, in Step 4.)
+
+Everything here is `md:`-prefixed. Below `md` the layout is already a single column — see the existing `md:grid-cols-` in `Plan.tsx` — and a short scrollbox stacked above a calendar on an already-scrolling screen would be worse than no fix at all. This is a guard on existing responsive behaviour, not the "mobile layout" this plan excludes.
 
 - [ ] **Step 1: Create `src/views/plan/PlanSidebar.tsx`**
 
@@ -857,20 +1016,60 @@ export function SidebarSection({
 }
 
 /**
- * The Plan view's sidebar. The backlog arrives as `children` and is pinned
- * above every collapsible panel — it is the only section the user drags from,
- * so it never competes for space with the ones they merely read.
+ * The Plan view's sidebar: a rail exactly as tall as the calendar beside it,
+ * scrolling internally so it can never lengthen the page.
+ *
+ * The outer div is a stretched grid column — the grid's row is sized by the
+ * calendar. The inner aside is absolutely positioned, so it contributes no
+ * height of its own and cannot push the row taller no matter how much backlog
+ * it holds. That is the entire bounding mechanism; there is no measurement.
+ *
+ * `right-[18px]` rather than `inset-0` plus padding out here: an absolutely
+ * positioned element lays out against its ancestor's PADDING BOX, so padding
+ * on the wrapper would be ignored and the rows would run into the divider.
+ * The inset carries the gutter instead, which also keeps the scrollbar clear
+ * of the rule.
+ *
+ * `pinned` sits outside the scroll region — Task 8 puts quick-add there,
+ * because it is the one control you reach for without looking.
  */
-export function PlanSidebar({ children }: { children: ReactNode }) {
+export function PlanSidebar({ pinned, children }: { pinned?: ReactNode; children: ReactNode }) {
   return (
-    <aside className="min-w-0 flex flex-col gap-[6px]">{children}</aside>
+    <div className="min-w-0 md:relative md:border-r md:border-line">
+      <aside className="flex flex-col min-h-0 md:absolute md:inset-y-0 md:left-0 md:right-[18px]">
+        {pinned && <div className="flex-none pb-[8px]">{pinned}</div>}
+        <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+      </aside>
+    </div>
   );
 }
 ```
 
-- [ ] **Step 2: Render it from `Plan.tsx`**
+`min-h-0` on both the aside and the scroll region is load-bearing: a flex child's default `min-height: auto` refuses to shrink below its content, which would let the backlog push the scroller past the absolute box's bottom edge instead of scrolling inside it. Below `md` the aside is static with no definite height, so `flex-1` resolves to the content height and the region simply flows — which is what we want there.
 
-Replace the provisional backlog markup in `src/views/Plan.tsx` with `<PlanSidebar>`, leaving the existing provisional list inside it as its child for now — Task 7 replaces that child. Import `PlanSidebar` and keep the existing two-column grid.
+- [ ] **Step 2: Render it from `Plan.tsx`, and rebuild the two-column layout**
+
+Import `PlanSidebar` and wrap the existing provisional backlog markup in it — leave that provisional list in place as `children` for now; Task 7 replaces it.
+
+Then change the grid container. It currently reads:
+
+```tsx
+      <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
+```
+
+Replace it with:
+
+```tsx
+      <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
+```
+
+Three changes, each load-bearing:
+
+- **`items-start` is dropped.** It is what makes each column its own height today; the default `stretch` is what gives the rail's column the calendar's height to be absolute inside.
+- **`232px` → `272px`.** The rail now spends 18px on the gutter and 1px on the divider, so a smaller column would leave truncation roughly where it is. The arithmetic: `272 − 1 border − 18 gutter − 12 row padding = 241px` of text, against `232 − 12 − 2 border = 218px` today. The calendar gives up 40px for it.
+- **`gap-[18px] md:gap-0`.** The gap is kept below `md`, where the columns stack and it is the vertical space between them; at `md` the border and the scroller's inset replace it.
+
+Finally, add `md:pl-[18px]` to the calendar column's wrapper — the `<div className="min-w-0">` that holds `WeekHeader` and `WeekGrid` — so the calendar sits off the divider by the same 18px the rail does.
 
 - [ ] **Step 3: Typecheck and run the suite**
 
@@ -881,10 +1080,19 @@ Expected: PASS, no regressions.
 
 - [ ] **Step 4: Smoke checklist for the human**
 
-Record these in your report as unrun:
-1. The sidebar renders left of the grid with the provisional backlog visible.
-2. Nothing else on the Plan view has shifted or restyled.
-3. `Today`, `Goals`, `Timeline` and the old planner (`4`) all still work.
+Record these in your report as unrun. Checks 4 and 5 are the ones that can actually fail:
+
+1. The sidebar renders left of the grid with the provisional backlog visible, separated by a full-height vertical rule.
+2. **The rail is exactly as tall as the calendar, and the Plan page itself no longer scrolls** — even with a project long enough to overflow the rail. The rail scrolls internally instead.
+3. The divider runs the rail's full height and does not scroll away with the content.
+4. **Drag a backlog row from mid-scroll onto a day.** It is not clipped by the scroller, and it lands where the ghost showed. This is the one genuine risk in this task: a `DragOverlay` escaping an `overflow-y-auto` ancestor works in every browser until it doesn't.
+5. Auto-scroll near the rail's edge during a drag does not fight the drop.
+6. Shrink the window below the `md` breakpoint: the rail becomes a normal flowing block again — no short scrollbox.
+7. Toggle the availability warning banner (clear your working hours) — the calendar's height changes and the rail follows it.
+8. Nothing else on the Plan view has shifted or restyled.
+9. `Today`, `Goals`, `Timeline` and the old planner (`4`) all still work.
+
+**If check 4 fails**, the fallback is in the spec: drop `md:absolute md:inset-y-0 md:left-0 md:right-[18px]` from the aside and give it a `max-height` measured from the calendar column with a `ResizeObserver`, keeping `md:pr-[18px]` on the wrapper instead of the inset. No absolutely-positioned layer means no clipping ancestor. Everything else in this task is unaffected. **Report which version you shipped** — the rest of the plan assumes the absolute one.
 
 - [ ] **Step 5: Commit**
 
@@ -902,22 +1110,34 @@ git commit -m "feat(plan): sidebar shell with collapsible, counted panels"
 - Modify: `src/views/Plan.tsx`
 
 **Interfaces:**
-- Consumes: `backlogGroups`, `BacklogGroup`, `BacklogItem` from Task 1; `PlanDragData` from `src/views/plan/dropTarget.ts`.
+- Consumes: `backlogGroups`, `capBacklog`, `BacklogItem` from Task 1; `PlanDragData` from `src/views/plan/dropTarget.ts`. Note it does **not** import `BACKLOG_CAP` or `LOOSE_GROUP_KEY` — `capBacklog` already decides both, and `noUnusedLocals` makes an unused import a hard compile error.
 - Produces: `Backlog({ weekStart, today, onFocusItem })` — `weekStart: string`, `today: string`, and `onFocusItem: (item: BacklogItem | null) => void`, which reports the focused row so Task 10's `1`–`7` keys know what to place.
 
 Every row is a drag source. Its payload must match `PlanDragData` exactly — `{ kind, id, goalId, title }` — because `Plan.tsx`'s `handleDragEnd` routes on `kind` and requires `goalId` for steps.
 
 **Tasks are draggable here for the first time.** Plan 1 had a steps-only rail, so a task with no start minute had no way back onto the grid. That is the gap this closes.
 
+**The rows carry no borders.** The provisional rail wrapped every row in `border border-line-2 bg-panel rounded-[6px]`, which put two dozen outlined boxes down the side of the screen — borders that carry no information the line breaks don't already carry. The resting state here is text, and a hover tint is the only decoration. Do not add the boxes back.
+
 - [ ] **Step 1: Create `src/views/plan/sidebar/Backlog.tsx`**
 
 ```tsx
+import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { BacklogItem } from '../../../lib/backlog';
-import { backlogGroups } from '../../../lib/backlog';
+import { backlogGroups, capBacklog } from '../../../lib/backlog';
 import { useAppStore } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 
+/**
+ * One draggable row.
+ *
+ * No border, no fill, no radius at rest — the rail holds dozens of these and
+ * every border is a decision the eye has to process for nothing. The hover
+ * tint and `cursor-grab` are the whole affordance; a permanent grip glyph on
+ * every row would advertise what the cursor already says, and Task 10's
+ * `1`-`7` keys give a non-drag route regardless.
+ */
 function BacklogRow({
   item, onFocusItem,
 }: {
@@ -939,7 +1159,7 @@ function BacklogRow({
       {...listeners}
       onFocus={() => onFocusItem(item)}
       onBlur={() => onFocusItem(null)}
-      className={`flex items-center gap-[6px] text-[.78rem] text-ink-soft truncate px-[6px] py-[4px] mt-[3px] rounded-[6px] border border-line-2 bg-panel cursor-grab touch-none ${
+      className={`flex items-center gap-[6px] text-[.78rem] text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none ${
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       }`}
     >
@@ -954,11 +1174,15 @@ function BacklogRow({
 }
 
 /**
- * The pinned backlog: everything not placed on the grid, grouped by project.
+ * The pinned backlog: everything not placed on the grid, grouped by project,
+ * with each project capped to a shortlist.
  *
  * Both kinds of work are draggable. Tasks in particular are new here — the
  * earlier rail listed steps only, so an unplaced task had no route back onto
  * the grid at all.
+ *
+ * Expansion is local state, not a persisted preference: a shortlist that
+ * remembers you expanded everything last week is just the long list again.
  */
 export function Backlog({
   weekStart, today, onFocusItem,
@@ -968,25 +1192,39 @@ export function Backlog({
   onFocusItem: (item: BacklogItem | null) => void;
 }) {
   const { goals, tasks } = useAppStore();
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
   const groups = backlogGroups(goals, tasks, weekStart, today);
+  const capped = capBacklog(groups, expanded);
+  // Counted from `items`, never `shown`: the cap hides rows, but this number
+  // is what tells you how much is unplanned, and it must stay honest.
   const total = groups.reduce((sum, g) => sum + g.items.length, 0);
+
+  function toggle(key: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   return (
     <div>
-      <h3 className="flex items-baseline gap-[6px] font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold py-[6px]">
+      <h3 className="flex items-baseline gap-[6px] font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold py-[6px] px-[6px]">
         <span className="flex-1">To plan</span>
         <span className="text-faint tabular-nums">{total}</span>
       </h3>
 
-      {groups.length === 0 ? (
-        <div className="text-faint text-[.82rem] italic px-[4px]">
+      {capped.length === 0 ? (
+        <div className="text-faint text-[.82rem] italic px-[6px]">
           Nothing left to plan.
         </div>
       ) : (
-        groups.map((group) => (
-          <div key={group.goalId ?? 'loose'} className="mb-[10px]">
-            <div className="flex items-baseline gap-[6px] px-[2px]">
-              <span className="font-disp text-[.86rem] font-semibold flex-1 min-w-0 truncate">
+        capped.map((group, i) => (
+          <div key={group.key} className={i === 0 ? '' : 'mt-[14px]'}>
+            <div className="flex items-baseline gap-[6px] px-[6px]">
+              <span className="font-disp text-[.82rem] font-semibold text-ink flex-1 min-w-0 truncate">
                 {group.goalTitle}
               </span>
               {group.goalId && (
@@ -995,9 +1233,18 @@ export function Backlog({
                 </span>
               )}
             </div>
-            {group.items.map((item) => (
+            {group.shown.map((item) => (
               <BacklogRow key={`${item.kind}:${item.id}`} item={item} onFocusItem={onFocusItem} />
             ))}
+            {group.expandable && (
+              <button
+                type="button"
+                onClick={() => toggle(group.key)}
+                className="px-[6px] py-[3px] text-[.72rem] text-muted hover:text-ink"
+              >
+                {group.hidden > 0 ? `+${group.hidden} more` : 'Show less'}
+              </button>
+            )}
           </div>
         ))
       )}
@@ -1005,6 +1252,12 @@ export function Backlog({
   );
 }
 ```
+
+Three details worth not "simplifying":
+
+- **Groups separate by space alone** — `mt-[14px]` between them, none on the first — with no rule or chip. Display type (`font-disp`) appears nowhere else in the rail, which is what lets a heading read as a heading without extra weight.
+- **`px-[6px]` is repeated on the header, the group heading, the rows and the more-button** so every line in the rail shares one left edge.
+- **The more-button reads `Show less` when `hidden === 0`**, which is why `expandable` exists as its own field. Deriving the button's presence from `hidden > 0` would delete it the instant you expanded a group.
 
 The per-project percentage is what folds the old `GoalsCard` away, per the spec — it earns its place on a heading that already exists rather than taking a seventh section.
 
@@ -1029,7 +1282,12 @@ Expected: PASS.
 4. Dragging a **task** row onto a day schedules it.
 5. Dragging a **step** row still works as before.
 6. Placing an item removes it from the backlog; unscheduling it with `×` returns it.
-7. The count beside "To plan" matches the number of rows.
+7. **A project with more than 5 open steps shows 5 and a `+N more` row.** `N` is the real remainder.
+8. `+N more` expands that project in place and becomes `Show less`; `Show less` collapses it again.
+9. **Expanding one project leaves the others capped.**
+10. **The count beside "To plan" is the total across every project, including hidden rows** — it does not change when you expand or collapse anything. (It therefore will *not* match the number of visible rows; that is correct.)
+11. Rows have no borders or panel fill at rest — only a background tint under the pointer.
+12. Reloading collapses every project again; expansion is not remembered.
 
 - [ ] **Step 5: Commit**
 
@@ -1121,7 +1379,18 @@ export function Stats() {
 
 - [ ] **Step 3: Mount all four panels in `Plan.tsx`**
 
-Inside `<PlanSidebar>`, above the backlog, render `<QuickAdd …/>` with the local state it needs (mirror `Today.tsx`'s usage). Below the backlog:
+Quick-add goes in `PlanSidebar`'s **`pinned` prop**, not in `children` — it is the one control you reach for without looking, so it must not scroll away:
+
+```tsx
+        <PlanSidebar pinned={<QuickAdd … />}>
+          <Backlog … />
+          {/* the four sections below */}
+        </PlanSidebar>
+```
+
+Give it the local state it needs, mirroring `Today.tsx`'s usage. Everything else — the backlog and all four panels — stays inside `children` and scrolls as one region. A pinned footer for the panel counts was considered and rejected in the spec: it spends ~120px permanently on sections you *read* in order to protect them from the one section you *drag from*, and the per-project cap already keeps them near the fold.
+
+Below the backlog, still inside `children`:
 
 ```tsx
         <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
@@ -1153,7 +1422,10 @@ Expected: PASS. Any test importing a moved path needs its import updated — tha
 2. Expanding one persists across a reload; collapsing it persists too.
 3. Habits: check one off, add one, drag to reorder — all still work inside the sidebar.
 4. Quick-add creates a task, and it appears in the backlog under **Loose tasks**.
-5. `Today` still renders correctly with its moved imports.
+5. **Quick-add stays pinned at the top while the backlog scrolls under it.**
+6. **Expanding a panel scrolls the rail rather than lengthening the page** — the page still does not scroll, and the rail is still exactly as tall as the calendar.
+7. With the rail scrolled to the bottom, the four panel headers are reachable.
+8. `Today` still renders correctly with its moved imports.
 
 - [ ] **Step 6: Commit**
 
@@ -1411,6 +1683,8 @@ git commit -m "feat(plan): make the calendar the home view and delete Today"
 - `./node_modules/.bin/tsc -b` clean; full suite green.
 - The app opens on the calendar. Every card the old `Today` carried is reachable from the sidebar.
 - Steps **and** tasks can be dragged from the backlog and placed by keyboard.
+- **The Plan page does not scroll.** The rail is exactly as tall as the calendar and scrolls internally, whatever the backlog holds.
+- **No project shows more than 5 steps** until it is expanded, and the "To plan" count still reports the true total.
 - `src/views/Today.tsx`, `src/views/today/` and `PlanWeekOverlay.tsx` are gone.
 - `src/components/GoalTree.tsx` is still unstaged, uncommitted and byte-identical.
 
@@ -1419,5 +1693,7 @@ git commit -m "feat(plan): make the calendar the home view and delete Today"
 - **A restore button for the pre-migration snapshot.** Task 5 makes it readable and exports it; wiring a one-click restore is a separate decision about a destructive action.
 - **Relabelling the header's capacity figure.** A deferred Minor from plan 1: "planned" counts work committed to the week including items not placed on the grid, so after a bulk defer the header can read `6h planned` above a nearly empty grid. It is not a wrong number — `plannedWeek` is this codebase's uniform definition of planned — and this plan makes the gap far less confusing by putting that unplaced work in a visible backlog beside the grid. Revisit the wording only if it still misleads once the sidebar is in use.
 - **Recurring steps.** Raised in feedback, still out of scope.
-- **A mobile or narrow layout.** Phase ships as a desktop Electron app.
+- **A mobile or narrow layout.** Phase ships as a desktop Electron app. Task 6's `md:` prefixes are not a mobile layout — they are a guard so the bounded rail does not apply where `Plan.tsx`'s existing `md:grid-cols-` has already stacked the columns.
+- **A fluid-height calendar.** The Notion-style fixed app frame — no page scroll, grid filling the viewport — is the right end state, but `GRID_HEIGHT_PX` is the divisor that turns a drop's pixel offset into a minute (`aimMinuteFor`), so making it fluid means threading a measured height through the drop math and re-verifying every placement. Task 6 leaves that unblocked: "the rail is as tall as the calendar" and "the rail is as tall as the frame" become the same statement once the calendar fills the frame.
+- **Polishing the week header or the grid interior.** The header's cramped capacity run and the grid's pale rules were both raised alongside the sidebar work and deliberately deferred — the grid especially, since it is hard to judge while it holds no scheduled work.
 - **Removing `plannedWeek`.** Now genuinely redundant, but its own change with its own review.
