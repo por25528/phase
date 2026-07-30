@@ -176,6 +176,35 @@ describe('importStateFromFile', () => {
     expect(await isSlotMigrationDone()).toBe(false);
     expect(await db.settings.get('preSlotMigrationSnapshot')).toBeUndefined();
   });
+
+  // The pre-migration snapshot is a device's only recovery copy. An import
+  // clears it rather than adopting a foreign snapshot from the backup file.
+  // This ensures that if someone later wires the key through, the test catches it.
+  it('ignores an incoming preSlotMigrationSnapshot and does not adopt foreign data', async () => {
+    // Save this device's own snapshot first.
+    const deviceSnapshot = [goal('device-recovery-copy')];
+    const deviceTasks = [{ id: 't-device', title: 'Device task', date: '2026-07-15', done: false, goalId: null }];
+    await saveSlotMigrationSnapshot(deviceSnapshot, deviceTasks);
+    await markSlotMigrationDone();
+
+    // Import a backup carrying a completely different snapshot from another device.
+    const foreignSnapshot = [goal('foreign-device-data')];
+    const foreignTasks = [{ id: 't-foreign', title: 'Foreign task', date: '2026-07-20', done: false, goalId: null }];
+    const backup = {
+      goals: [goal('g1')],
+      habits: [],
+      tasks: [],
+      sessions: [],
+      pxPerDay: 40,
+      preSlotMigrationSnapshot: { goals: foreignSnapshot, tasks: foreignTasks },
+    };
+    await importStateFromFile(fileOf(JSON.stringify(backup)));
+
+    // The foreign snapshot was cleared, not adopted. loadSlotMigrationSnapshot
+    // returns null because resetSlotMigration cleared the row, not because we
+    // inherited the foreign data instead.
+    expect(await loadSlotMigrationSnapshot()).toBeNull();
+  });
 });
 
 describe('loadState', () => {
