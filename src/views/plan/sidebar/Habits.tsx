@@ -8,15 +8,15 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useAppStore } from '../../state/store';
-import { CardSection } from '../../components/CardSection';
-import { Tag } from '../../components/Tag';
-import { TodayCheckbox } from './TodayCheckbox';
+import { useAppStore } from '../../../state/store';
+import { CardSection } from '../../../components/CardSection';
+import { Tag } from '../../../components/Tag';
+import { TodayCheckbox } from '../../today/TodayCheckbox';
 import { GripIcon } from './GripIcon';
 import { HabitDots } from './HabitDots';
-import { useReducedMotion } from './useReducedMotion';
-import { todayStr, addDays, weekDates, streak } from '../../lib/dates';
-import type { Cadence, Habit } from '../../db/types';
+import { useReducedMotion } from '../../today/useReducedMotion';
+import { todayStr, addDays, weekDates, streak } from '../../../lib/dates';
+import type { Cadence, Habit } from '../../../db/types';
 
 function PencilIcon() {
   return (
@@ -284,7 +284,7 @@ function SortableHabitRow({
   );
 }
 
-export function HabitsCard() {
+export function Habits() {
   const { habits, goals, actions } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();

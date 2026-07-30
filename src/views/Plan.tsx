@@ -22,8 +22,10 @@ import { tasksForWeek } from '../lib/dailyWork';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
-import { PlanSidebar } from './plan/PlanSidebar';
+import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
 import { Backlog } from './plan/sidebar/Backlog';
+import { Habits } from './plan/sidebar/Habits';
+import { Stats } from './plan/sidebar/Stats';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
 
 /**
@@ -56,8 +58,9 @@ const collisionDetection: CollisionDetection = (args) => {
  * The week calendar. Owns which week is shown; everything else is derived.
  */
 export function Plan() {
-  const { goals, tasks, hydration, availability, allDayBlocks } = useAppStore();
+  const { goals, tasks, habits, hydration, availability, allDayBlocks } = useAppStore();
   const today = todayStr();
+  const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
   const days = weekDates(weekStart);
   const scheduledSpans: LaneSpan[] = days.flatMap((date) => spansOn(goals, tasks, date));
@@ -151,6 +154,12 @@ export function Plan() {
       <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
         <PlanSidebar>
           <Backlog weekStart={weekStart} today={today} onFocusItem={() => {}} />
+          <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
+            <Habits />
+          </SidebarSection>
+          <SidebarSection panel="stats" title="This week">
+            <Stats />
+          </SidebarSection>
         </PlanSidebar>
 
         <div className="min-w-0 md:pl-[18px]">

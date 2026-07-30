@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef } from 'react';
 import { Hero } from './today/Hero';
 import { WeekStrip } from './today/WeekStrip';
-import { HabitsCard } from './today/HabitsCard';
+import { Habits } from './plan/sidebar/Habits';
 import { TodayWorkCard } from './today/TodayWorkCard';
 import { WorthConsideringCard } from './today/WorthConsideringCard';
 import { GoalsCard } from './today/GoalsCard';
@@ -41,7 +41,7 @@ export function Today() {
       {/* Main grid */}
       <div className="today-main grid gap-[20px] items-start mt-[14px]">
         <div className="flex flex-col gap-[14px] min-w-0">
-          <HabitsCard />
+          <Habits />
           <TodayWorkCard sections={dailyWork} today={today} />
           <WorthConsideringCard sections={dailyWork} today={today} />
         </div>
