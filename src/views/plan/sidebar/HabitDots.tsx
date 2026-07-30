@@ -1,6 +1,6 @@
-import type { Habit } from '../../db/types';
-import { lastNDays } from '../../lib/today';
-import { fmtD } from '../../lib/dates';
+import type { Habit } from '../../../db/types';
+import { lastNDays } from '../../../lib/today';
+import { fmtD } from '../../../lib/dates';
 
 // The 15-day trail. Decorative by default; when `onToggleDay` is supplied each
 // day the habit already existed on becomes a click target so a missed day can be

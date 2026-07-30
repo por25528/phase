@@ -452,8 +452,9 @@ export function formatLoggedMinutes(minutes: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-// Unchecked day-pinned leaves per day — powers MiniCalendar dots and the
-// timeline's per-day counts.
+// Unchecked day-pinned leaves per day. Currently UNUSED — it has no callers.
+// It fed the Today view's mini-calendar dots and the timeline's per-day counts;
+// both consumers are gone (see the note at the top of DaysLane.tsx).
 export function pinnedDayCounts(goals: Goal[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const g of goals) {

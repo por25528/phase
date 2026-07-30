@@ -3,22 +3,29 @@
 // click both dismiss it, wired from App's global key handler and onClose here.
 
 const SHORTCUTS: { keys: string[]; label: string }[] = [
-  { keys: ['1'], label: 'Today' },
+  { keys: ['1'], label: 'Plan' },
   { keys: ['2'], label: 'Goals' },
   { keys: ['3'], label: 'Timeline' },
-  { keys: ['5'], label: 'Plan' },
-  { keys: ['4'], label: 'Plan your week (old planner)' },
-  { keys: ['T'], label: 'Jump to today' },
+  // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
+  // app-level binding that used to sit here set a `selDate` nothing reads.
   { keys: ['⌘', 'N'], label: 'Add a task' },
   { keys: ['?'], label: 'This cheat sheet' },
   { keys: ['Esc'], label: 'Close drawer or dialog' },
 ];
 
-// Context keys — they act only on a focused step inside the planner, so the
-// overlay groups them separately rather than implying they work everywhere.
+// Context keys — they act only inside the Plan view, so the overlay groups
+// them separately rather than implying they work everywhere. `1`-`7` also
+// require a focused backlog row; `[`, `]` and `t` work regardless of focus.
+//
+// `1`-`3` deliberately appear in both lists: with a backlog row focused they
+// place work, because Plan's capture-phase listener consumes them before the
+// view switcher above ever sees them. With nothing focused they fall through
+// and switch view.
 const PLANNER_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['1–7'], label: 'Put the focused step on that weekday' },
-  { keys: ['0'], label: 'Any day this week' },
+  { keys: ['['], label: 'Previous week' },
+  { keys: [']'], label: 'Next week' },
+  { keys: ['t'], label: 'Back to this week' },
 ];
 
 function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {

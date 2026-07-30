@@ -4,7 +4,8 @@ import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
   loadAllDayBlocks, saveAllDayBlocks,
-  isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone,
+  loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
+  isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
 } from '../db/db';
 import { clampScale } from '../lib/timeline';
 import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
@@ -39,15 +40,13 @@ import {
   cloneGoals,
 } from '../lib/tree';
 
-export type ViewName = 'today' | 'goals' | 'timeline' | 'plan';
+export type ViewName = 'plan' | 'goals' | 'timeline';
 
 interface UIState {
   view: ViewName;
   selDate: string;
   openGoalId: string | null;
   drawerFocusNodeId: string | null; // node the drawer should scroll to + highlight
-  planOpen: boolean; // the weekly Plan modal — a global overlay like the drawer
-  planFocusGoalId: string | null; // board "Plan next step" deep-link target
   expanded: Set<string>;
   toast: string | null;
   pendingUndo: { label: string } | null;
@@ -59,6 +58,7 @@ interface UIState {
   planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
   availability: AvailabilityWindow[]; // per-weekday planning window (device preference)
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
+  sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
 }
 
 interface FullState extends AppState, UIState {}
@@ -68,12 +68,10 @@ let state: FullState = {
   habits: [],
   tasks: [],
   sessions: [],
-  view: 'today',
+  view: 'plan',
   selDate: todayStr(),
   openGoalId: null,
   drawerFocusNodeId: null,
-  planOpen: false,
-  planFocusGoalId: null,
   expanded: new Set(),
   toast: null,
   pendingUndo: null,
@@ -84,6 +82,7 @@ let state: FullState = {
   planReview: null,
   availability: DEFAULT_AVAILABILITY,
   allDayBlocks: true,
+  sidebarPanels: [],
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
   // non-DOM contexts (tests).
@@ -154,8 +153,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -189,6 +188,7 @@ export async function initStore(): Promise<void> {
       planReview,
       availability,
       allDayBlocks,
+      sidebarPanels,
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -431,7 +431,8 @@ export const actions = {
     actions.addGoals([sampleProject(todayStr(), uid)]);
   },
 
-  // Convenience wrapper (QuickAdd, tests): a bare goal in the highest column.
+  // Convenience wrapper (tests, callers with only a title): a bare goal in the
+  // highest column.
   addGoal(title: string) {
     const trimmed = title.trim();
     if (!trimmed) return;
@@ -587,9 +588,15 @@ export const actions = {
   rescheduleTask(taskId: string, date: string): void {
     const task = state.tasks.find((item) => item.id === taskId);
     if (!task || !isValidLocalDate(date) || task.date === date) return;
-    const tasks = state.tasks.map((task) => (
-      task.id === taskId ? { ...task, date } : task
-    ));
+    const tasks = state.tasks.map((item) => {
+      if (item.id !== taskId) return item;
+      // A different day cannot inherit this day's minute: the new day may have
+      // no room there, or no availability window at all. Clearing it returns
+      // the task to that day's backlog rather than parking it in dead time.
+      const moved = { ...item, date };
+      delete moved.startMin;
+      return moved;
+    });
     setAndPersist({ tasks });
   },
 
@@ -690,6 +697,13 @@ export const actions = {
     if (value === state.allDayBlocks) return;
     set({ allDayBlocks: value });
     void saveAllDayBlocks(value);
+  },
+
+  // A device preference, like availability and the all-day setting: set() plus
+  // its own save, never setAndPersist — this is not app data.
+  setSidebarPanels(panels: SidebarPanel[]): void {
+    set({ sidebarPanels: panels });
+    void saveSidebarPanels(panels);
   },
 
   // Goal date editing
@@ -1012,17 +1026,6 @@ export const actions = {
     set({ openGoalId: null, drawerFocusNodeId: null });
   },
 
-  // The weekly Plan modal is a global overlay (like the drawer): the header
-  // button, the `4` shortcut, and the board "Plan next step" deep-link all open
-  // the single App-level <PlanWeekOverlay> through here.
-  openPlan(focusGoalId?: string | null) {
-    set({ planOpen: true, planFocusGoalId: focusGoalId ?? null });
-  },
-
-  closePlan() {
-    set({ planOpen: false, planFocusGoalId: null });
-  },
-
   showToast(msg: string) {
     if (toastTimer) clearTimeout(toastTimer);
     set({ toast: msg });
@@ -1030,13 +1033,20 @@ export const actions = {
   },
 
   // IO
-  exportBackup() {
+  async exportBackup() {
+    // Non-fatal: the snapshot is a nicety, the backup is the point. A rejected
+    // IndexedDB read here would otherwise skip exportState entirely — no file
+    // written, no toast, and an unhandled rejection, because the call site
+    // neither awaits nor catches. Degrade to "backup without a snapshot",
+    // never to "no backup".
+    const preSlotMigrationSnapshot = await loadSlotMigrationSnapshot().catch(() => null);
     exportState(
       { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
       state.pxPerDay,
       state.planReview,
       state.availability,
       state.allDayBlocks,
+      preSlotMigrationSnapshot,
     );
     actions.showToast('Backup exported');
   },

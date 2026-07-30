@@ -8,15 +8,14 @@ import {
   SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useAppStore } from '../../state/store';
-import { CardSection } from '../../components/CardSection';
-import { Tag } from '../../components/Tag';
-import { TodayCheckbox } from './TodayCheckbox';
+import { useAppStore } from '../../../state/store';
+import { Tag } from '../../../components/Tag';
+import { TodayCheckbox } from '../../../components/TodayCheckbox';
 import { GripIcon } from './GripIcon';
 import { HabitDots } from './HabitDots';
-import { useReducedMotion } from './useReducedMotion';
-import { todayStr, addDays, weekDates, streak } from '../../lib/dates';
-import type { Cadence, Habit } from '../../db/types';
+import { useReducedMotion } from '../../../components/useReducedMotion';
+import { todayStr, addDays, weekDates, streak } from '../../../lib/dates';
+import type { Cadence, Habit } from '../../../db/types';
 
 function PencilIcon() {
   return (
@@ -284,12 +283,20 @@ function SortableHabitRow({
   );
 }
 
-export function HabitsCard() {
+/**
+ * The habits panel body — deliberately bare.
+ *
+ * The title and the done-count live on `SidebarSection`'s own header, which
+ * wraps this in `Plan.tsx`; rendering a `CardSection` here as well printed both
+ * twice inside a bordered, filled, shadowed box, in the one rail whose rule is
+ * that the resting state is text and controls appear on hover. The panel body
+ * is now flat, exactly like the sibling `Stats` panel.
+ */
+export function Habits() {
   const { habits, goals, actions } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
   const [adding, setAdding] = useState(false);
-  const done = habits.filter((h) => h.checkins.includes(today)).length;
 
   const sensors = useSensors(
     // Require a small drag before the whole-row handle activates, so a plain
@@ -306,23 +313,7 @@ export function HabitsCard() {
   }
 
   return (
-    <CardSection
-      label="Habits — today"
-      meta={
-        <span className="font-mono text-[.72rem] text-faint">
-          {done} OF {habits.length} DONE
-        </span>
-      }
-      right={
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="px-[13px] py-[6px] rounded-field bg-ink text-paper text-[.8rem] font-semibold hover:bg-ink-hover"
-        >
-          + Habit
-        </button>
-      }
-    >
+    <div>
       {habits.length === 0 && !adding && (
         <div className="text-faint text-[.85rem] italic py-[6px]">No habits yet. Add one to start a streak.</div>
       )}
@@ -343,7 +334,21 @@ export function HabitsCard() {
           ))}
         </SortableContext>
       </DndContext>
-      {adding && <AddHabitForm onAdd={(n, c, t) => { actions.addHabit(n, c, t); setAdding(false); }} onCancel={() => setAdding(false)} />}
-    </CardSection>
+      {/*
+        The add affordance used to be `CardSection`'s `right` slot. With the
+        card gone it follows the rows instead; its own styling is untouched.
+      */}
+      {adding ? (
+        <AddHabitForm onAdd={(n, c, t) => { actions.addHabit(n, c, t); setAdding(false); }} onCancel={() => setAdding(false)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="mt-[8px] px-[13px] py-[6px] rounded-field bg-ink text-paper text-[.8rem] font-semibold hover:bg-ink-hover"
+        >
+          + Habit
+        </button>
+      )}
+    </div>
   );
 }

@@ -106,4 +106,28 @@ describe('deferOpenWork', () => {
 
     expect(result.count).toBe(0);
   });
+
+  // Regression guard: replanNodes already clears plannedDay and plannedStartMin
+  // together (see the comment above it) to hold the "never present without
+  // plannedDay" invariant. This nails that shape down so a future edit that
+  // clears only one of the two gets caught here.
+  //
+  // The brief's original literal dates ('2026-07-15' plannedWeek against a
+  // '2026-07-15' today) don't actually slip — that plannedWeek's Monday
+  // equals currentWeek, so dailyWork's `plannedWeek < currentWeek` carry-over
+  // test excludes it and deferOpenWork is a no-op. Using this file's TODAY/
+  // THIS_WEEK constants with a plannedWeek from the week before makes it a
+  // genuine carry-over, and still exercises plannedDay/plannedStartMin.
+  it('drops a start minute when deferring a placed step to another week', () => {
+    const goals: Goal[] = [
+      goal('g', [
+        { id: 'n1', title: 'Draft', plannedWeek: '2026-07-13', plannedDay: '2026-07-15', plannedStartMin: 600 },
+      ]),
+    ];
+    const { goals: next } = deferOpenWork(goals, [], TODAY, NEXT_WEEK);
+    const node = next[0].nodes[0];
+    expect(node.plannedWeek).toBe(NEXT_WEEK);
+    expect('plannedDay' in node).toBe(false);
+    expect('plannedStartMin' in node).toBe(false);
+  });
 });

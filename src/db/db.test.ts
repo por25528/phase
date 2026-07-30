@@ -4,7 +4,8 @@ import {
   db, persist, importStateFromFile, loadState,
   loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
   isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
-  resetSlotMigration,
+  resetSlotMigration, loadSlotMigrationSnapshot,
+  loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
 } from './db';
 import type { AppState, Goal } from './types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
@@ -175,6 +176,35 @@ describe('importStateFromFile', () => {
     expect(await isSlotMigrationDone()).toBe(false);
     expect(await db.settings.get('preSlotMigrationSnapshot')).toBeUndefined();
   });
+
+  // The pre-migration snapshot is a device's only recovery copy. An import
+  // clears it rather than adopting a foreign snapshot from the backup file.
+  // This ensures that if someone later wires the key through, the test catches it.
+  it('ignores an incoming preSlotMigrationSnapshot and does not adopt foreign data', async () => {
+    // Save this device's own snapshot first.
+    const deviceSnapshot = [goal('device-recovery-copy')];
+    const deviceTasks = [{ id: 't-device', title: 'Device task', date: '2026-07-15', done: false, goalId: null }];
+    await saveSlotMigrationSnapshot(deviceSnapshot, deviceTasks);
+    await markSlotMigrationDone();
+
+    // Import a backup carrying a completely different snapshot from another device.
+    const foreignSnapshot = [goal('foreign-device-data')];
+    const foreignTasks = [{ id: 't-foreign', title: 'Foreign task', date: '2026-07-20', done: false, goalId: null }];
+    const backup = {
+      goals: [goal('g1')],
+      habits: [],
+      tasks: [],
+      sessions: [],
+      pxPerDay: 40,
+      preSlotMigrationSnapshot: { goals: foreignSnapshot, tasks: foreignTasks },
+    };
+    await importStateFromFile(fileOf(JSON.stringify(backup)));
+
+    // The foreign snapshot was cleared, not adopted. loadSlotMigrationSnapshot
+    // returns null because resetSlotMigration cleared the row, not because we
+    // inherited the foreign data instead.
+    expect(await loadSlotMigrationSnapshot()).toBeNull();
+  });
 });
 
 describe('loadState', () => {
@@ -290,5 +320,74 @@ describe('slot migration flag and snapshot', () => {
       const stored = JSON.parse(row!.value);
       expect(stored.goals).toEqual([importedGoal]);
     });
+  });
+
+  describe('loadSlotMigrationSnapshot', () => {
+    it('returns null when no snapshot has been taken', async () => {
+      expect(await loadSlotMigrationSnapshot()).toBeNull();
+    });
+
+    it('reads back a snapshot that was written', async () => {
+      const goals = [{ id: 'g1', title: 'Thesis', nodes: [] }];
+      const tasks = [{ id: 't1', title: 'Email', date: '2026-07-15', done: false, goalId: null }];
+      await saveSlotMigrationSnapshot(goals as unknown as Goal[], tasks as unknown as AppState['tasks']);
+      expect(await loadSlotMigrationSnapshot()).toEqual({ goals, tasks });
+    });
+
+    it('returns null rather than throwing on a corrupt snapshot row', async () => {
+      await db.settings.put({ key: 'preSlotMigrationSnapshot', value: '{ not json' });
+      expect(await loadSlotMigrationSnapshot()).toBeNull();
+    });
+
+    // The round-trip test above writes well-formed data via saveSlotMigrationSnapshot,
+    // so it can never exercise the Array.isArray shape guard inside
+    // loadSlotMigrationSnapshot — only the JSON.parse throw path. This writes valid
+    // JSON of the WRONG shape directly, bypassing saveSlotMigrationSnapshot entirely,
+    // so the guard is the only thing standing between this row and a bad return value.
+    it('returns null when the parsed row has valid JSON but the wrong shape', async () => {
+      await db.settings.put({
+        key: 'preSlotMigrationSnapshot',
+        value: JSON.stringify({ goals: 'nope', tasks: [] }),
+      });
+      expect(await loadSlotMigrationSnapshot()).toBeNull();
+    });
+  });
+});
+
+describe('sidebar panels', () => {
+  it('defaults to no expanded panels', async () => {
+    expect(await loadSidebarPanels()).toEqual([]);
+  });
+
+  it('round-trips a saved selection', async () => {
+    await saveSidebarPanels(['habits', 'stats']);
+    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+  });
+
+  it('drops unknown panel names rather than storing them', async () => {
+    await saveSidebarPanels(['habits', 'bogus' as SidebarPanel]);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
+  });
+
+  it('falls back to empty for malformed stored JSON', async () => {
+    await db.settings.put({ key: 'sidebarPanels', value: 'not json' });
+    expect(await loadSidebarPanels()).toEqual([]);
+  });
+
+  it('deduplicates repeated panels', async () => {
+    await saveSidebarPanels(['stats', 'stats']);
+    expect(await loadSidebarPanels()).toEqual(['stats']);
+  });
+
+  it('filters and deduplicates on read, not just on write', async () => {
+    // Bypasses saveSidebarPanels: its identical write-side filter would
+    // otherwise clean the data before parseSidebarPanels ever sees it,
+    // leaving the read-path filter unexercised. This is the path that
+    // defends against a row written by a different version of the app.
+    await db.settings.put({
+      key: 'sidebarPanels',
+      value: JSON.stringify(['habits', 'bogus', 'stats', 'stats']),
+    });
+    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
   });
 });

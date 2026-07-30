@@ -61,21 +61,25 @@ describe('resolveAppKeyCommand', () => {
 
   it('preserves the existing unmodified app shortcuts', () => {
     expect(resolveAppKeyCommand({ key: 'Escape' })).toBe('close-drawer');
-    expect(resolveAppKeyCommand({ key: '1' })).toBe('view-today');
-    expect(resolveAppKeyCommand({ key: '2' })).toBe('view-goals');
-    expect(resolveAppKeyCommand({ key: '3' })).toBe('view-timeline');
-    expect(resolveAppKeyCommand({ key: 't' })).toBe('go-today');
+    // `t` is the Plan view's own key (jump the week back to today), handled on
+    // its capture-phase listener. There is deliberately no app-level binding:
+    // the old one only called `goToToday`, and nothing reads the `selDate` it
+    // sets — it appeared to work because Plan remounts on the current week.
+    expect(resolveAppKeyCommand({ key: 't' })).toBeNull();
     expect(resolveAppKeyCommand({ key: 'T' })).toBeNull();
   });
 
-  it('routes 4 to the plan overlay, but not while typing', () => {
-    expect(resolveAppKeyCommand({ key: '4' })).toBe('open-plan');
-    expect(resolveAppKeyCommand({ key: '4', target: inputTarget })).toBeNull();
+  it('maps 1-3 to the three views in nav order, but not while typing', () => {
+    expect(resolveAppKeyCommand({ key: '1' })).toBe('view-plan');
+    expect(resolveAppKeyCommand({ key: '2' })).toBe('view-goals');
+    expect(resolveAppKeyCommand({ key: '3' })).toBe('view-timeline');
+    expect(resolveAppKeyCommand({ key: '1', target: inputTarget })).toBeNull();
+    expect(resolveAppKeyCommand({ key: '3', target: inputTarget })).toBeNull();
   });
 
-  it('routes 5 to the Plan view, but not while typing', () => {
-    expect(resolveAppKeyCommand({ key: '5' })).toBe('view-plan');
-    expect(resolveAppKeyCommand({ key: '5', target: inputTarget })).toBeNull();
+  it('leaves 4 and 5 unmapped now that Today and the modal planner are gone', () => {
+    expect(resolveAppKeyCommand({ key: '4' })).toBeNull();
+    expect(resolveAppKeyCommand({ key: '5' })).toBeNull();
   });
 
   it('toggles the shortcut cheat sheet on ? (Shift+/), but not while typing', () => {

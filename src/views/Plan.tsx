@@ -8,22 +8,29 @@ import {
   rectIntersection,
   useSensor,
   useSensors,
-  useDraggable,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates } from '../lib/dates';
-import { weekOf, attentionRank, unplannedOpenLeaves, plannedLeaves } from '../lib/plan';
+import { weekOf, plannedLeaves } from '../lib/plan';
 import { visibleRange, type LaneSpan } from '../lib/grid';
 import { spansOn } from '../lib/scheduled';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { tasksForWeek } from '../lib/dailyWork';
+import { resolvePlanKey } from '../lib/planKeyboard';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
+import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
+import { RecapPanel } from './plan/RecapPanel';
+import { AvailabilitySettings } from './plan/AvailabilitySettings';
+import { Backlog } from './plan/sidebar/Backlog';
+import { Habits } from './plan/sidebar/Habits';
+import { Stats } from './plan/sidebar/Stats';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
+import type { BacklogItem } from '../lib/backlog';
 
 /**
  * Resolve the drop target against the pointer when there is one, falling
@@ -53,13 +60,11 @@ const collisionDetection: CollisionDetection = (args) => {
 
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
- *
- * The backlog list below is SCAFFOLDING — plan 2 replaces it with the sidebar
- * accordion. It exists so there is something to drag from.
  */
 export function Plan() {
-  const { goals, tasks, hydration, availability, allDayBlocks } = useAppStore();
+  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels } = useAppStore();
   const today = todayStr();
+  const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
   const days = weekDates(weekStart);
   const scheduledSpans: LaneSpan[] = days.flatMap((date) => spansOn(goals, tasks, date));
@@ -92,10 +97,57 @@ export function Plan() {
   });
 
   const [dragTitle, setDragTitle] = useState<string | null>(null);
+  const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   );
+
+  // Keyboard placement. The aim is the start of the visible range, so the
+  // store snaps to that day's earliest fitting gap — the same semantic the
+  // data migration uses. Refusals surface the store's own toast.
+  //
+  // Registered on the capture phase: App.tsx's own `keydown` listener is also
+  // on `window`, and `stopPropagation` on a bubble-phase listener would not
+  // stop a sibling bubble-phase listener on the same node — it only stops
+  // propagation to other nodes. A capture-phase listener on `window` always
+  // runs before any bubble-phase listener on `window`, regardless of mount
+  // order, so calling `stopPropagation` here reliably keeps App's handler
+  // from ever seeing a key this view has consumed.
+  //
+  // Depends on `weekStart` rather than `days`: `weekDates(weekStart)` builds
+  // a new array every render, so depending on `days` would tear down and
+  // re-register this listener on every render instead of only when the week
+  // actually changes. The target date is derived from `weekStart` inside the
+  // handler instead.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const command = resolvePlanKey(e);
+      if (!command) return;
+
+      if (command.kind === 'week') {
+        e.preventDefault();
+        e.stopPropagation();
+        setWeekStart((current) => addDays(current, command.delta * 7));
+        return;
+      }
+      if (command.kind === 'today') {
+        e.preventDefault();
+        e.stopPropagation();
+        setWeekStart(weekOf(todayStr()));
+        return;
+      }
+      // command.kind === 'place'
+      if (!focusedItem) return; // nothing selected — let the digit fall through (e.g. view switching)
+      e.preventDefault();
+      e.stopPropagation();
+      const date = weekDates(weekStart)[command.dow];
+      if (focusedItem.kind === 'task') actions.scheduleTask(focusedItem.id, date, range.startMin);
+      else if (focusedItem.goalId) actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, range.startMin);
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [focusedItem, weekStart, range.startMin]);
 
   function handleDragStart(e: DragStartEvent) {
     setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
@@ -115,9 +167,10 @@ export function Plan() {
     // e.over.rect is measured at drag START, and dnd-kit's e.delta is already
     // scroll-adjusted (translate + any scroll since drag start) to pair with
     // that same start-of-drag measurement. Re-reading the column's rect live
-    // from the DOM here would apply the scroll offset a second time — auto-scroll
-    // is on by default, so that drifts the aim by roughly a minute per pixel
-    // scrolled mid-drag. Do not "fix" this by swapping in a live rect.
+    // from the DOM here would apply any scroll offset a second time and drift
+    // the aim by roughly a minute per pixel scrolled mid-drag. Do not "fix"
+    // this by swapping in a live rect. (Auto-scroll is disabled on the
+    // DndContext below for the mirror-image reason.)
     const rect = e.over.rect;
 
     // The top edge of the thing being dragged — not the pointer — is the aim
@@ -142,38 +195,42 @@ export function Plan() {
     return <div className="text-muted text-[.85rem] py-[40px]">Loading…</div>;
   }
 
-  const backlog = attentionRank(goals, today)
-    .map((goal) => ({ goal, leaves: unplannedOpenLeaves(goal, weekStart) }))
-    .filter((g) => g.leaves.length > 0);
-
   return (
     <DndContext
       sensors={sensors}
+      // Auto-scroll OFF, and it must stay off. `handleDragEnd` pairs
+      // `e.over.rect` (measured at drag start) with `e.delta` (scroll-adjusted
+      // over the DRAGGABLE's scrollable ancestors). The backlog rail is now a
+      // scroller, so an auto-scroll of the rail mid-drag adds its offset to
+      // `delta.y` while the day column's start-of-drag `rect.top` stays put —
+      // the aim minute drifts by that many pixels' worth of grid and the block
+      // lands away from its ghost. Nothing here needs auto-scroll: the grid is
+      // a fixed GRID_HEIGHT_PX and the sidebar is bounded to it, so there is
+      // no scrolling a drag has to do. Re-enabling this means re-deriving the
+      // aim arithmetic against a live rect first.
+      autoScroll={false}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
-        <div className="min-w-0">
-          <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold mb-[8px]">
-            To plan
-          </h3>
-          {backlog.length === 0 ? (
-            <div className="text-faint text-[.82rem] italic">Nothing left to plan.</div>
-          ) : (
-            backlog.map(({ goal, leaves }) => (
-              <div key={goal.id} className="mb-[10px]">
-                <div className="font-disp text-[.86rem] font-semibold truncate">{goal.title}</div>
-                {leaves.map((leaf) => (
-                  <BacklogRow key={leaf.id} goalId={goal.id} nodeId={leaf.id} title={leaf.title} />
-                ))}
-              </div>
-            ))
-          )}
-        </div>
+      <RecapPanel />
 
-        <div className="min-w-0">
+      <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
+        <PlanSidebar>
+          <Backlog weekStart={weekStart} today={today} onFocusItem={setFocusedItem} />
+          <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
+            <Habits />
+          </SidebarSection>
+          <SidebarSection panel="stats" title="This week">
+            <Stats />
+          </SidebarSection>
+          <SidebarSection panel="availability" title="Working hours">
+            <AvailabilitySettings />
+          </SidebarSection>
+        </PlanSidebar>
+
+        <div className="min-w-0 md:pl-[18px]">
           <WeekHeader
             weekStart={weekStart}
             isPast={isPast}
@@ -188,7 +245,14 @@ export function Plan() {
               No working hours set — every day is off, so nothing can be scheduled.{' '}
               <button
                 type="button"
-                onClick={() => actions.openPlan()}
+                // Expands the sidebar's "Working hours" panel rather than
+                // navigating: the editor is already on this page, beside the
+                // banner. Guarded against re-adding an already-open panel so a
+                // second click can't duplicate the entry.
+                onClick={() => {
+                  if (sidebarPanels.includes('availability')) return;
+                  actions.setSidebarPanels([...sidebarPanels, 'availability']);
+                }}
                 className="font-semibold text-accent hover:text-accent-deep"
               >
                 Set your availability
@@ -218,6 +282,12 @@ export function Plan() {
                   if (kind === 'task') actions.unscheduleTask(id);
                   else if (goalId) actions.unscheduleNode(goalId, id);
                 }}
+                // Fires on past weeks too: `readOnly` above stops history being
+                // rescheduled, not recorded. See DayBlocks' `readOnly` note.
+                onComplete={(kind, id) => {
+                  if (kind === 'task') actions.toggleTask(id);
+                  else actions.toggleLeaf(id);
+                }}
                 onResize={(kind, id, minutes) => {
                   if (kind === 'task') actions.resizeTask(id, minutes);
                   else actions.resizeNode(id, minutes);
@@ -236,26 +306,5 @@ export function Plan() {
         ) : null}
       </DragOverlay>
     </DndContext>
-  );
-}
-
-/** One backlog row — the drag source for a not-yet-planned step. */
-function BacklogRow({ goalId, nodeId, title }: { goalId: string; nodeId: string; title: string }) {
-  const drag: PlanDragData = { kind: 'step', id: nodeId, goalId, title };
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `step:${nodeId}`,
-    data: drag,
-  });
-  return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      className={`text-[.78rem] text-ink-soft truncate px-[6px] py-[4px] rounded-[6px] border border-line-2 bg-panel mt-[3px] cursor-grab touch-none ${
-        isDragging ? 'opacity-40' : ''
-      }`}
-    >
-      {title}
-    </div>
   );
 }

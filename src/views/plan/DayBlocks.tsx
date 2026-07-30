@@ -34,7 +34,8 @@ interface DayItem extends LaneSpan {
  * currently unexercised. It still has to be correct when it lights up.
  */
 export function DayBlocks({
-  date, goals, tasks, blocks, range, allDayBlocks, readOnly, onRemove, onResize, gridHeightPx,
+  date, goals, tasks, blocks, range, allDayBlocks, readOnly, onRemove, onComplete, onResize,
+  gridHeightPx,
 }: {
   date: string;
   goals: Goal[];
@@ -42,9 +43,23 @@ export function DayBlocks({
   blocks: BusyBlock[];
   range: Interval;
   allDayBlocks: boolean;
-  /** True on a past week — suppresses the remove (×) affordance and the resize handle. */
+  /**
+   * True on a past week — suppresses the remove (×) affordance and the resize
+   * handle.
+   *
+   * Deliberately NOT the completion (✓) affordance. `readOnly` exists to stop
+   * you rescheduling history: moving, resizing or unscheduling work in a week
+   * that has already happened. Ticking something off is not editing the plan,
+   * it is recording what happened to it — and work scheduled last Thursday and
+   * finished but never ticked is not in the backlog either (it has a day and a
+   * start minute, so `backlogGroups` excludes it), so gating ✓ here would leave
+   * it with no route to done anywhere in the app. Do not "restore consistency"
+   * by adding `!readOnly` below.
+   */
   readOnly?: boolean;
   onRemove: (kind: 'step' | 'task', id: string, goalId: string | null) => void;
+  /** No `goalId`: both `toggleTask` and `toggleLeaf` key off the id alone. */
+  onComplete: (kind: 'step' | 'task', id: string) => void;
   onResize: (kind: 'step' | 'task', id: string, minutes: number) => void;
   gridHeightPx: number;
 }) {
@@ -120,6 +135,10 @@ export function DayBlocks({
             drag={drag}
             onRemove={
               isWork && !readOnly ? () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId) : undefined
+            }
+            onComplete={
+              // Not gated on `readOnly` — see the prop's note above.
+              isWork ? () => onComplete(item.kind as 'step' | 'task', item.id!) : undefined
             }
             onResize={
               isWork && !readOnly ? (minutes) => onResize(item.kind as 'step' | 'task', item.id!, minutes) : undefined

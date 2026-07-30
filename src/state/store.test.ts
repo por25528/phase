@@ -15,15 +15,18 @@ const dbMocks = vi.hoisted(() => ({
     { dow: 4, startMin: 540, endMin: 1080 },
   ]),
   loadAllDayBlocks: vi.fn(async () => true),
+  loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
   saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
+  saveSidebarPanels: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
   isSlotMigrationDone: vi.fn(async () => true),
   saveSlotMigrationSnapshot: vi.fn(async () => {}),
+  loadSlotMigrationSnapshot: vi.fn(async () => null),
   markSlotMigrationDone: vi.fn(async () => {}),
 }));
 
@@ -177,6 +180,31 @@ describe('store actions', () => {
       actions.rescheduleTask('missing', '2026-07-24');
 
       expect(dbMocks.persist).not.toHaveBeenCalled();
+    });
+
+    it('drops the start minute when a task moves to a different day', async () => {
+      // The new day may have no room at that minute, or no availability at all.
+      // Returning it to the backlog is honest; carrying the time over is not.
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Email', '2026-07-15');
+      const id = getState().tasks[0].id;
+      actions.scheduleTask(id, '2026-07-15', 600);
+      expect(getState().tasks[0].startMin).toBe(600);
+
+      actions.rescheduleTask(id, '2026-07-16');
+      expect(getState().tasks[0].date).toBe('2026-07-16');
+      expect('startMin' in getState().tasks[0]).toBe(false);
+    });
+
+    it('keeps the start minute when rescheduling to the same day', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Email', '2026-07-15');
+      const id = getState().tasks[0].id;
+      actions.scheduleTask(id, '2026-07-15', 600);
+      actions.rescheduleTask(id, '2026-07-15');
+      expect(getState().tasks[0].startMin).toBe(600);
     });
 
     it('removes a task with undo support and restores the same id', async () => {
@@ -1368,12 +1396,27 @@ describe('store actions', () => {
       const { exportState } = await import('../db/db');
       vi.mocked(exportState).mockClear();
 
-      store.actions.exportBackup();
+      await store.actions.exportBackup();
 
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith({
         goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
-      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks);
+      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks, null);
+    });
+
+    it('loads the pre-migration snapshot and carries it into the export', async () => {
+      const { store } = await freshStoreWithLegacyData();
+      const { exportState, loadSlotMigrationSnapshot } = await import('../db/db');
+      vi.mocked(exportState).mockClear();
+      const snapshot = { goals: [], tasks: [] };
+      vi.mocked(loadSlotMigrationSnapshot).mockResolvedValueOnce(snapshot);
+
+      await store.actions.exportBackup();
+
+      expect(exportState).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+        snapshot,
+      );
     });
   });
 
@@ -1676,29 +1719,10 @@ describe('toggleHabitOn (backfill)', () => {
   });
 });
 
-describe('plan overlay', () => {
-  it('openPlan opens the overlay and records the focus target', async () => {
-    const { actions, getState } = await freshStore();
-    expect(getState().planOpen).toBe(false);
-    expect(getState().planFocusGoalId).toBeNull();
-    actions.openPlan('g1');
-    expect(getState().planOpen).toBe(true);
-    expect(getState().planFocusGoalId).toBe('g1');
-  });
-
-  it('openPlan with no argument opens the overlay focused on nothing', async () => {
-    const { actions, getState } = await freshStore();
-    actions.openPlan();
-    expect(getState().planOpen).toBe(true);
-    expect(getState().planFocusGoalId).toBeNull();
-  });
-
-  it('closePlan clears both the overlay flag and the focus target', async () => {
-    const { actions, getState } = await freshStore();
-    actions.openPlan('g1');
-    actions.closePlan();
-    expect(getState().planOpen).toBe(false);
-    expect(getState().planFocusGoalId).toBeNull();
+describe('view', () => {
+  it('opens on the Plan calendar', async () => {
+    const { getState } = await freshStore();
+    expect(getState().view).toBe('plan');
   });
 
   describe('addChild and addChildren clear leaf-only fields when creating a container', () => {

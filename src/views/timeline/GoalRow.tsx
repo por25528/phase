@@ -7,7 +7,7 @@ import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
 import { NodeLane, CanvasGrid } from './NodeLane';
 import { BehindChip } from '../../components/BehindChip';
-import { useReducedMotion } from '../today/useReducedMotion';
+import { useReducedMotion } from '../../components/useReducedMotion';
 import { paceStatus } from '../../lib/plan';
 import { roadmapWarnings } from '../../lib/roadmap';
 import { hasTrustedSchedule, type GoalWithSpan } from '../../lib/schedule';

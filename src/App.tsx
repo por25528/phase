@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore, initStore } from './state/store';
-import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { Plan } from './views/Plan';
 import { GoalDrawer } from './components/GoalDrawer';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
-import { PlanWeekOverlay } from './views/plan/PlanWeekOverlay';
 import { useLocalDate } from './hooks/useLocalDate';
 import {
   resolveAppKeyCommand,
@@ -48,7 +46,7 @@ function MoonIcon() {
 }
 
 export function App() {
-  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, hydration, secondTab, theme, planOpen, planFocusGoalId, planReview, actions } = useAppStore();
+  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, hydration, secondTab, theme, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -110,25 +108,17 @@ export function App() {
       }
       if (command === 'close-drawer') actions.closeDrawer();
       // View/navigation shortcuts must not fire underneath an open dialog — inside
-      // the planner, 1–7 mean "plan this step on that weekday", not "switch view".
+      // a dialog, 1–7 mean "plan this step on that weekday", not "switch view".
       if (modalRegistry.hasOpenModal()) return;
-      if (command === 'view-today') actions.setView('today');
+      if (command === 'view-plan') actions.setView('plan');
       if (command === 'view-goals') actions.setView('goals');
       if (command === 'view-timeline') actions.setView('timeline');
-      if (command === 'view-plan') actions.setView('plan');
-      if (command === 'open-plan') actions.openPlan();
-      if (command === 'go-today') {
-        actions.setView('today');
-        actions.goToToday();
-      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [actions, hydration, openGoalId, showShortcuts]);
 
   const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
-  // Mirror the Today card's cue: a pending, unreviewed recap flags the nav button.
-  const reviewWaiting = Boolean(planReview && planReview.entries.length > 0 && !planReview.reviewed);
 
   return (
     <>
@@ -139,10 +129,9 @@ export function App() {
             Phase<span className="text-accent">.</span>
           </span>
         </div>
-        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · 5 plan · 4 old planner · T today · ⌘N add task · ? shortcuts · Esc closes">
+        <nav className="flex gap-[4px]" title="Keyboard: 1–3 switch views · ⌘N add task · ? shortcuts · Esc closes">
           {(
             [
-              ['today', 'Today'],
               ['plan', 'Plan'],
               ['goals', 'Goals'],
               ['timeline', 'Timeline'],
@@ -161,16 +150,6 @@ export function App() {
               {label}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => actions.openPlan()}
-            aria-haspopup="dialog"
-            title="Old planner (4)"
-            className="px-[14px] py-[6px] rounded-full text-[.86rem] font-medium text-muted border border-line-2 hover:bg-hover hover:text-ink"
-          >
-            Old planner
-            {reviewWaiting && <span className="text-accent"> · review</span>}
-          </button>
         </nav>
         <div className="flex-1" />
         <button
@@ -246,11 +225,7 @@ export function App() {
               Reload
             </button>
           </div>
-        ) : hydration === 'loading' ? null : view === 'today' ? (
-          <div className="max-w-[1280px] mx-auto px-[16px] sm:px-[36px] pb-[40px]">
-            <Today />
-          </div>
-        ) : view === 'plan' ? (
+        ) : hydration === 'loading' ? null : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[24px]">
             <Plan />
           </div>
@@ -273,7 +248,6 @@ export function App() {
         onClose={() => setTaskCapture((current) => closeTaskCapture(current))}
       />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
-      <PlanWeekOverlay open={planOpen} focusGoalId={planFocusGoalId} onClose={actions.closePlan} />
 
       {/* Undo toast */}
       <div

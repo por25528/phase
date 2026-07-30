@@ -110,6 +110,43 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
   await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
+/** Which sidebar panels are expanded. The backlog is pinned and never listed. */
+export type SidebarPanel = 'habits' | 'stats' | 'availability';
+
+// Stored order — `saveSidebarPanels` writes panels in this order, so append
+// new members rather than inserting them.
+const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'stats', 'availability'];
+const SIDEBAR_PANELS_KEY = 'sidebarPanels';
+
+/**
+ * Total parse: a malformed or partly-unknown value yields the default rather
+ * than a half-trusted list, mirroring `parseAvailability`. Collapsing every
+ * panel is a harmless fallback — the backlog, the only section that matters
+ * for placing work, is pinned open regardless.
+ */
+function parseSidebarPanels(raw: string | undefined): SidebarPanel[] {
+  if (!raw) return [];
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(value)) return [];
+  const kept = SIDEBAR_PANELS.filter((panel) => value.includes(panel));
+  return [...kept];
+}
+
+export async function loadSidebarPanels(): Promise<SidebarPanel[]> {
+  const row = await db.settings.get(SIDEBAR_PANELS_KEY);
+  return parseSidebarPanels(row?.value);
+}
+
+export async function saveSidebarPanels(panels: SidebarPanel[]): Promise<void> {
+  const clean = SIDEBAR_PANELS.filter((panel) => panels.includes(panel));
+  await db.settings.put({ key: SIDEBAR_PANELS_KEY, value: JSON.stringify(clean) });
+}
+
 // One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
 // Not a Dexie version: the migration adds optional fields to existing objects,
 // which changes no store and no index.
@@ -146,6 +183,23 @@ export async function saveSlotMigrationSnapshot(goals: Goal[], tasks: Task[]): P
     if (existing) return;
     await db.settings.put({ key: SLOT_SNAPSHOT_KEY, value: JSON.stringify({ goals, tasks }) });
   });
+}
+
+/**
+ * The pre-migration copy of goals and tasks, or null if none was taken or the
+ * row is unreadable. A corrupt row must not throw: this is a recovery path,
+ * and failing loudly here would block the very export that rescues the data.
+ */
+export async function loadSlotMigrationSnapshot(): Promise<{ goals: Goal[]; tasks: Task[] } | null> {
+  const row = await db.settings.get(SLOT_SNAPSHOT_KEY);
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value) as { goals?: Goal[]; tasks?: Task[] };
+    if (!Array.isArray(parsed.goals) || !Array.isArray(parsed.tasks)) return null;
+    return { goals: parsed.goals, tasks: parsed.tasks };
+  } catch {
+    return null;
+  }
 }
 
 export async function markSlotMigrationDone(): Promise<void> {
@@ -204,6 +258,7 @@ export function exportState(
   planReview: PlanReview | null,
   availability: AvailabilityWindow[],
   allDayBlocks: boolean,
+  preSlotMigrationSnapshot?: { goals: Goal[]; tasks: Task[] } | null,
 ): void {
   const backup = {
     ...state,
@@ -211,6 +266,7 @@ export function exportState(
     availability,
     allDayBlocks,
     ...(planReview ? { planReview } : {}),
+    ...(preSlotMigrationSnapshot ? { preSlotMigrationSnapshot } : {}),
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -241,6 +297,14 @@ export async function importStateFromFile(
       zoom?: string;
       availability?: unknown;
       allDayBlocks?: unknown;
+      // Present on backups exported by this feature, but deliberately NOT part
+      // of the type below and never read: it records a PREVIOUS DEVICE's
+      // pre-migration state. Importing it must never overwrite this device's
+      // own snapshot (see saveSlotMigrationSnapshot's write-once contract) —
+      // this device's snapshot, if any, is the only one that protects THIS
+      // device's data, and resetSlotMigration (below) clears it deliberately
+      // so a fresh one can be taken for the just-imported data on next launch.
+      preSlotMigrationSnapshot?: unknown;
     }
   >;
   try {

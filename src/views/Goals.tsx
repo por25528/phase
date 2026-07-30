@@ -159,10 +159,12 @@ export function Goals() {
   }, [filter, summary]);
   const filtering = matchIds != null && matchIds.size > 0;
 
-  // Board "Plan next step" opens the planner focused on this project (T9): the
-  // planner jumps to planning, scrolls to the project's rail group, and pulses it.
-  function onPlan(id: string) {
-    actions.openPlan(id);
+  // Board "Plan next step" switches to the calendar. The old modal planner also
+  // scrolled to this project's rail group and pulsed it; that deep-link died with
+  // the modal, so this is plain navigation and the project is found by hand in
+  // the Plan sidebar's backlog.
+  function onPlan() {
+    actions.setView('plan');
   }
 
   function reviewUnconfirmedDates() {

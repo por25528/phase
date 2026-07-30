@@ -514,9 +514,23 @@ it('deduplicates repeated panels', async () => {
   await saveSidebarPanels(['stats', 'stats']);
   expect(await loadSidebarPanels()).toEqual(['stats']);
 });
+
+it('filters and deduplicates on read, not just on write', async () => {
+  // Bypasses saveSidebarPanels: its identical write-side filter would
+  // otherwise clean the data before parseSidebarPanels ever sees it,
+  // leaving the read-path filter unexercised. This is the path that
+  // defends against a row written by a different version of the app.
+  await db.settings.put({
+    key: 'sidebarPanels',
+    value: JSON.stringify(['habits', 'bogus', 'stats', 'stats']),
+  });
+  expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+});
 ```
 
 Add `loadSidebarPanels`, `saveSidebarPanels`, `type SidebarPanel` to that file's imports from `./db`.
+
+The last test is the only one that reaches `parseSidebarPanels`'s filter. Every other case here writes through `saveSidebarPanels`, which filters identically, so the row is already clean by the time it is read back — see Step 6.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -584,13 +598,15 @@ In `src/state/store.ts`: add `loadSidebarPanels, saveSidebarPanels, type Sidebar
 - [ ] **Step 5: Run the suite and typecheck**
 
 Run: `./node_modules/.bin/vitest run --config vitest.config.ts`
-Expected: PASS, including 5 new cases.
+Expected: PASS, including 6 new cases.
 Run: `./node_modules/.bin/tsc -b`
 Expected: no output.
 
 - [ ] **Step 6: Prove the tests discriminate**
 
-Mutate `parseSidebarPanels` to `return value as SidebarPanel[]` (skipping the filter); the unknown-name and dedup tests must fail. Revert and record the output.
+Mutate `parseSidebarPanels` to `return value as SidebarPanel[]` (skipping the filter). **This alone will NOT fail the unknown-name and dedup tests** — those go through `saveSidebarPanels`, which applies the identical filter on write, so the stored row is already clean before the mutated parser reads it. That is precisely why Step 1 includes a test writing a dirty array **directly** via `db.settings.put`: it is the only one that reaches the read-path filter.
+
+Under this mutation, that direct-write test must fail while the three save-then-load tests keep passing. Record both halves — the asymmetry is the evidence. To confirm the write path too, mutate `saveSidebarPanels`'s filter separately and check the round-trip tests fail then.
 
 - [ ] **Step 7: Commit**
 
@@ -1071,7 +1087,11 @@ export function PlanSidebar({ children }: { children: ReactNode }) {
 }
 ```
 
-`min-h-0` on both the aside and the scroll region is load-bearing: a flex child's default `min-height: auto` refuses to shrink below its content, which would let the backlog push the scroller past the absolute box's bottom edge instead of scrolling inside it. Below `md` the aside is static with no definite height, so `flex-1` resolves to the content height and the region simply flows — which is what we want there.
+`min-h-0` **on the inner scroll region** is load-bearing: a flex child's default `min-height: auto` refuses to shrink below its content, which would let the backlog push the scroller past the absolute box's bottom edge instead of scrolling inside it. Below `md` the aside is static with no definite height, so `flex-1` resolves to the content height and the region simply flows — which is what we want there.
+
+The `min-h-0` on the **aside** is inert, and kept only for symmetry: at `md` the aside is out of flow (`absolute` with `inset-y-0`), and below `md` its parent is a plain block, so it is never a flex *item* subject to the `min-height: auto` clamp. Do not cite it as the reason the bounding works — the scroller's is the one doing the work.
+
+**A related claim that is NOT wrong, despite looking it.** The `PlanSidebar` JSDoc says wrapper padding "would be ignored" by the absolutely-positioned aside. A reviewer challenged this as backwards. It is correct: CSS 2.1 §10.1 forms an absolutely-positioned element's containing block from the ancestor's **padding edge** — the *outer* edge of the padding, level with the inner edge of the border. `right: 0` therefore puts the child's edge there, so the child spans *across* the padding area rather than being inset by it. Wrapper padding does not push an absolute child inward, which is exactly why the gutter has to live in the inset. Leave that comment alone.
 
 - [ ] **Step 2: Render it from `Plan.tsx`, and rebuild the two-column layout**
 
