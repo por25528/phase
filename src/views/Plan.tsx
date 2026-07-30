@@ -23,6 +23,7 @@ import { tasksForWeek } from '../lib/dailyWork';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
+import { PlanSidebar } from './plan/PlanSidebar';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
 
 /**
@@ -154,8 +155,8 @@ export function Plan() {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="grid grid-cols-1 md:grid-cols-[232px_1fr] gap-[18px] items-start">
-        <div className="min-w-0">
+      <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
+        <PlanSidebar>
           <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold mb-[8px]">
             To plan
           </h3>
@@ -171,9 +172,9 @@ export function Plan() {
               </div>
             ))
           )}
-        </div>
+        </PlanSidebar>
 
-        <div className="min-w-0">
+        <div className="min-w-0 md:pl-[18px]">
           <WeekHeader
             weekStart={weekStart}
             isPast={isPast}
