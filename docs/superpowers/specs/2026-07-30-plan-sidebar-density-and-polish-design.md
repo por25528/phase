@@ -3,6 +3,18 @@
 **Status:** approved, pending implementation
 **Amends:** `docs/superpowers/plans/2026-07-30-plan-sidebar-and-flip.md` (commit `a13a48d`), Tasks 1, 6, 7, 8
 **Builds on:** `docs/superpowers/specs/2026-07-29-plan-week-calendar-redesign-design.md`
+**Superseded in part by:** `docs/superpowers/specs/2026-07-30-today-calm-surfaces-design.md`
+
+> **⚠ Later amendment — 2026-07-30.** The Today spec above deletes Quick add,
+> Worth considering and the month calendar, so the rail has **no pinned
+> quick-add and two collapsible panels** (Habits, Stats), not four.
+>
+> Everything this document says about *geometry, density and calm* stands
+> unchanged — the bounded rail, the per-project cap, the de-boxed rows. Only
+> the rail's **contents** shrink. Concretely: ignore the `quick-add` line in
+> the sketch below and the pinned-slot rows in the amendment table, and read
+> "4 panel headers" as "2 panel headers". Since nothing is pinned any more,
+> the scroller holds the backlog and both panels as one region.
 
 ## Problem
 
