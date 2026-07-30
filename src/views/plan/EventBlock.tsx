@@ -132,7 +132,9 @@ export function EventBlock({
           // announced as "Complete" that actually reopens the work is the same
           // lie as a button naming a date it does not open.
           aria-label={`${block.done ? 'Reopen' : 'Complete'} ${block.title}`}
-          className="absolute top-0 right-[14px] text-faint hover:text-accent text-meta leading-none px-[2px]"
+          className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent text-meta leading-none ${
+            compact ? 'top-1/2 -translate-y-1/2 right-[22px] bg-panel/90 rounded-[4px]' : 'top-0 right-[20px]'
+          }`}
         >
           ✓
         </button>

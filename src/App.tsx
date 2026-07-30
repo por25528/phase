@@ -364,7 +364,7 @@ export function App() {
       >
         <span>{pendingUndo?.label}</span>
         <button
-          className="font-semibold underline hover:no-underline focus-visible:outline-paper focus-visible:outline-offset-2 focus-visible:rounded-[4px]"
+          className="font-semibold underline hover:no-underline min-h-[24px] px-[4px] inline-flex items-center focus-visible:outline-paper focus-visible:outline-offset-2 focus-visible:rounded-[4px]"
           onClick={() => actions.undoLastDelete()}
           tabIndex={pendingUndo ? 0 : -1}
         >

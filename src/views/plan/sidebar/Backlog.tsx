@@ -95,7 +95,7 @@ function BacklogRow({
           // An existing estimate stays legible at rest — it is information, not
           // a control. A missing one only advertises itself on hover/focus, the
           // rail's rule for everything that is purely an affordance.
-          className={`flex-none font-mono text-eyebrow text-faint hover:text-ink-soft tabular-nums ${
+          className={`flex-none font-mono text-eyebrow text-muted hover:text-ink-soft tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover ${
             item.estimateMin === undefined
               ? 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity'
               : ''
@@ -113,7 +113,7 @@ function BacklogRow({
           else actions.toggleLeaf(item.id);
         }}
         aria-label={`Complete "${item.title}"`}
-        className="flex-none text-meta text-muted hover:text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+        className="flex-none text-meta text-muted hover:text-ink min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
       >
         ✓
       </button>
@@ -131,7 +131,7 @@ function BacklogRow({
             actions.removeTask(item.id);
           }}
           aria-label={`Delete "${item.title}"`}
-          className="flex-none text-meta text-muted hover:text-warn opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          className="flex-none text-meta text-muted hover:text-warn min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
         >
           ✕
         </button>
