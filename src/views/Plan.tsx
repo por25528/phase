@@ -8,14 +8,13 @@ import {
   rectIntersection,
   useSensor,
   useSensors,
-  useDraggable,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates } from '../lib/dates';
-import { weekOf, attentionRank, unplannedOpenLeaves, plannedLeaves } from '../lib/plan';
+import { weekOf, plannedLeaves } from '../lib/plan';
 import { visibleRange, type LaneSpan } from '../lib/grid';
 import { spansOn } from '../lib/scheduled';
 import { weekCapacity, type Now } from '../lib/capacity';
@@ -24,6 +23,7 @@ import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
 import { PlanSidebar } from './plan/PlanSidebar';
+import { Backlog } from './plan/sidebar/Backlog';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
 
 /**
@@ -54,9 +54,6 @@ const collisionDetection: CollisionDetection = (args) => {
 
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
- *
- * The backlog list below is SCAFFOLDING — plan 2 replaces it with the sidebar
- * accordion. It exists so there is something to drag from.
  */
 export function Plan() {
   const { goals, tasks, hydration, availability, allDayBlocks } = useAppStore();
@@ -143,10 +140,6 @@ export function Plan() {
     return <div className="text-muted text-[.85rem] py-[40px]">Loading…</div>;
   }
 
-  const backlog = attentionRank(goals, today)
-    .map((goal) => ({ goal, leaves: unplannedOpenLeaves(goal, weekStart) }))
-    .filter((g) => g.leaves.length > 0);
-
   return (
     <DndContext
       sensors={sensors}
@@ -157,21 +150,7 @@ export function Plan() {
     >
       <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
         <PlanSidebar>
-          <h3 className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold mb-[8px]">
-            To plan
-          </h3>
-          {backlog.length === 0 ? (
-            <div className="text-faint text-[.82rem] italic">Nothing left to plan.</div>
-          ) : (
-            backlog.map(({ goal, leaves }) => (
-              <div key={goal.id} className="mb-[10px]">
-                <div className="font-disp text-[.86rem] font-semibold truncate">{goal.title}</div>
-                {leaves.map((leaf) => (
-                  <BacklogRow key={leaf.id} goalId={goal.id} nodeId={leaf.id} title={leaf.title} />
-                ))}
-              </div>
-            ))
-          )}
+          <Backlog weekStart={weekStart} today={today} onFocusItem={() => {}} />
         </PlanSidebar>
 
         <div className="min-w-0 md:pl-[18px]">
@@ -237,26 +216,5 @@ export function Plan() {
         ) : null}
       </DragOverlay>
     </DndContext>
-  );
-}
-
-/** One backlog row — the drag source for a not-yet-planned step. */
-function BacklogRow({ goalId, nodeId, title }: { goalId: string; nodeId: string; title: string }) {
-  const drag: PlanDragData = { kind: 'step', id: nodeId, goalId, title };
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `step:${nodeId}`,
-    data: drag,
-  });
-  return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      className={`text-[.78rem] text-ink-soft truncate px-[6px] py-[4px] rounded-[6px] border border-line-2 bg-panel mt-[3px] cursor-grab touch-none ${
-        isDragging ? 'opacity-40' : ''
-      }`}
-    >
-      {title}
-    </div>
   );
 }
