@@ -318,4 +318,16 @@ describe('sidebar panels', () => {
     await saveSidebarPanels(['stats', 'stats']);
     expect(await loadSidebarPanels()).toEqual(['stats']);
   });
+
+  it('filters and deduplicates on read, not just on write', async () => {
+    // Bypasses saveSidebarPanels: its identical write-side filter would
+    // otherwise clean the data before parseSidebarPanels ever sees it,
+    // leaving the read-path filter unexercised. This is the path that
+    // defends against a row written by a different version of the app.
+    await db.settings.put({
+      key: 'sidebarPanels',
+      value: JSON.stringify(['habits', 'bogus', 'stats', 'stats']),
+    });
+    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+  });
 });
