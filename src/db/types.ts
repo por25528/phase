@@ -96,6 +96,35 @@ export interface Session {
   date: string;          // 'YYYY-MM-DD'
   minutes: number;
   note: string;
+  /**
+   * The specific commitment this time went to. Optional and mutually
+   * exclusive: a session carries at most one of them, and may carry neither
+   * (time logged against a project as a whole, or a legacy/imported session
+   * written before these existed).
+   *
+   * They exist so actual time can be set against the ESTIMATE that predicted
+   * it. `goalId` alone cannot do that — an estimate is a property of a leaf or
+   * a task, not of a project — so without these, "you planned 90m and it took
+   * 145m" is unanswerable and the only honest report is a weekly total.
+   *
+   * Like every other time field in Phase, these NEVER affect the pct roll-up.
+   * Logging time against a step does not complete it or advance it; ticking the
+   * checkbox remains the only thing that moves a number.
+   *
+   * A reference may DANGLE: deleting a step or task leaves its sessions behind.
+   * That is deliberate, and it must not be "fixed" by cascading the delete.
+   * `withUndo` snapshots exactly one slice, so a delete that removed both the
+   * node (`goals`) and its sessions (`sessions`) could only restore one of them
+   * — the undo would bring the step back with its history silently gone. An
+   * orphan is inert by comparison: `projectCalibration` walks live leaves and
+   * never sees it, and the weekly total still counting it is consistent with
+   * `PlanReview` storing titles so deleted work still appears in the recap. The
+   * time was really spent.
+   *
+   * Cascading safely needs multi-slice undo first.
+   */
+  nodeId?: string;
+  taskId?: string;
 }
 
 export interface AppState {

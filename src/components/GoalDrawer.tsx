@@ -7,11 +7,13 @@ import { ProgressBar } from './ProgressBar';
 import { InlineEdit } from './InlineEdit';
 import { SubtaskAiModal } from './SubtaskAiModal';
 import { firstOpenLeaf } from '../lib/tree';
-import { goalPct } from '../lib/pct';
+import { goalPct, goalPctBasis } from '../lib/pct';
 import { leafCount } from '../lib/board';
 import { expectedPct, behindPaceBy } from '../lib/timeline';
 import { todayStr, daysLeftLabel, fmtD } from '../lib/dates';
 import { plannedLeaves, weekOf, paceStatus } from '../lib/plan';
+import { projectVelocity, describeVelocity } from '../lib/velocity';
+import { projectCalibration, describeCalibration } from '../lib/actuals';
 import {
   goalDateDraftIsDirty,
   hasTrustedSchedule,
@@ -145,6 +147,7 @@ function DrawerHeader({
   goal: Goal;
   actions: ReturnType<typeof useAppStore>['actions'];
 }) {
+  const { sessions } = useAppStore();
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftStart, setDraftStart] = useState(g.start ?? '');
   const [draftDeadline, setDraftDeadline] = useState(g.deadline ?? '');
@@ -156,6 +159,8 @@ function DrawerHeader({
 
   const today = todayStr();
   const pct = Math.round(goalPct(g));
+  const basis = goalPctBasis(g);
+  const { total, done } = leafCount(g.nodes);
   const trustedSchedule = hasTrustedSchedule(g);
   const datesUnconfirmed = needsDateConfirmation(g);
   const dateError = projectDateError(draftStart || undefined, draftDeadline || undefined);
@@ -187,18 +192,39 @@ function DrawerHeader({
   const next = firstOpenLeaf(g.nodes);
   const isCompleted = !!g.completedAt;
 
+  /*
+   * A project with no confirmed start AND deadline cannot have a pace — but it
+   * can still be moving or stalled, and `doneAt` has always known which.
+   * "No project schedule" was the app's best information design replaced by a
+   * statement of its own inapplicability, on exactly the work where progress
+   * is hardest to judge unaided.
+   */
+  const velocityLine = trustedSchedule
+    ? null
+    : describeVelocity(projectVelocity(g, today));
+
   const paceLine =
     pace === 'complete'
       ? 'every step done — ready to complete'
       : datesUnconfirmed
         ? 'Dates unconfirmed'
         : !trustedSchedule
-          ? 'No project schedule'
+          // Falls back to the old wording only when there is genuinely nothing
+          // to report — a project with no steps at all.
+          ? (velocityLine ?? 'no steps yet — add one to start tracking progress')
           : pace === 'behind'
             ? `${behind} pts behind pace · expected ${expected}% by today`
             : pace === 'needs-breakdown'
               ? `define next step · expected ${expected}% by today`
               : `on pace · expected ${expected}% by today`;
+
+  /*
+   * How this project's past estimates compared to the time actually logged
+   * against them. Read-only and advisory: it sits BESIDE the user's numbers and
+   * never rewrites one. Silent until there is enough completed, timed history
+   * to mean anything (see MIN_CALIBRATION_SAMPLES).
+   */
+  const calibration = describeCalibration(projectCalibration(g, sessions));
 
   return (
     <div className="flex-none px-[30px] pt-[26px] pb-[18px] border-b border-line">
@@ -287,10 +313,36 @@ function DrawerHeader({
         <ProgressBar pct={pct} />
       </div>
       <div className="mt-[7px] flex flex-wrap items-center gap-x-[10px] gap-y-[3px] text-compact text-muted tabular-nums">
+        {/* The percentage's own basis, stated where the percentage is read.
+            `goalPct` weights by `estimateMin` when every sibling in a set has
+            one and falls back to an equal mean otherwise — so the same number
+            means two different things depending on how much has been
+            estimated. Which one it is has to be visible, or the figure is
+            quietly ambiguous. The step count is here for the same reason: most
+            people read a percentage as "fraction of steps done", and on a
+            lopsided tree it is not. */}
+        {total > 0 && (
+          <span title={
+            basis === 'weighted'
+              ? 'Weighted by each step’s estimate, so a long step counts for more than a short one'
+              : 'Every step counts equally — estimate them all to weight this by effort'
+          }>
+            {done}/{total} steps{basis === 'weighted' ? ', weighted by estimate' : ''}
+          </span>
+        )}
+        {total > 0 && <Dot />}
         <span className={pace === 'behind' ? 'text-warn' : ''}>{paceLine}</span>
         {wk.length > 0 && (<><Dot /><span>{wkDone}/{wk.length} planned this week</span></>)}
         {next && !isCompleted && (
           <><Dot /><span className="truncate max-w-[320px] text-ink-soft">Next: {next.title}</span></>
+        )}
+        {calibration && (
+          <>
+            <Dot />
+            <span title="Based on time you logged against completed steps in this project. Your estimates are never changed automatically.">
+              {calibration}
+            </span>
+          </>
         )}
       </div>
 

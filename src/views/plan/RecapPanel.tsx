@@ -1,5 +1,20 @@
 import { useAppStore } from '../../state/store';
 import { weekRecap, loggedTimeForWeek, formatLoggedMinutes } from '../../lib/plan';
+import { weekEffort, type WeekEffort } from '../../lib/actuals';
+import { weekDates } from '../../lib/dates';
+
+/**
+ * The overrun, in words, or nothing when the week landed close enough that
+ * naming a ratio would be noise. Same 15% dead band as `describeCalibration`,
+ * for the same reason: a figure that fires on every week trains the reader to
+ * skip the line.
+ */
+function describeWeekRatio(effort: WeekEffort): string {
+  const ratio = effort.loggedMin / effort.estimatedMin;
+  if (ratio >= 1.15) return ` — ${ratio.toFixed(1)}× longer than planned.`;
+  if (ratio <= 0.85) return ` — quicker than planned.`;
+  return ' — about as planned.';
+}
 
 /**
  * Last week's recap, inline and dismissible.
@@ -9,11 +24,15 @@ import { weekRecap, loggedTimeForWeek, formatLoggedMinutes } from '../../lib/pla
  * blocking this week's planning behind.
  */
 export function RecapPanel() {
-  const { goals, sessions, planReview, actions } = useAppStore();
+  const { goals, tasks, sessions, planReview, actions } = useAppStore();
   if (!planReview || planReview.reviewed || planReview.entries.length === 0) return null;
 
   const r = weekRecap(planReview, goals);
   const logged = loggedTimeForWeek(sessions, planReview.week);
+  // What the week was estimated to cost, against what it actually took. Only
+  // computed over work that was genuinely timed, so it stays silent rather
+  // than reporting a flattering comparison against an empty ledger.
+  const effort = weekEffort(goals, tasks, sessions, weekDates(planReview.week));
 
   return (
     <section className="mb-[14px] p-[12px] rounded-card border border-line-2 bg-panel">
@@ -31,6 +50,21 @@ export function RecapPanel() {
             </span>
           )}
         </p>
+
+        {/* Estimated against actual, for the work that was actually timed.
+            Shown only when both sides exist: a comparison against an empty
+            ledger would read as "you were spot on" for work nobody measured.
+            This is a REPORT, never a correction — no estimate is rewritten
+            from it. */}
+        {effort.estimatedMin > 0 && effort.loggedMin > 0 && (
+          <p className="text-ui text-muted tabular-nums">
+            Timed work was estimated at{' '}
+            <span className="font-semibold text-ink-soft">{formatLoggedMinutes(effort.estimatedMin)}</span>
+            {' '}and took{' '}
+            <span className="font-semibold text-ink-soft">{formatLoggedMinutes(effort.loggedMin)}</span>
+            {describeWeekRatio(effort)}
+          </p>
+        )}
 
         {r.nowComplete.length > 0 && (
           <section>

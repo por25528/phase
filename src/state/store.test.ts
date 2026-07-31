@@ -2083,6 +2083,337 @@ describe('estimates', () => {
     // Key ABSENCE, not just an undefined value — see the node-clearing test above.
     expect('estimateMin' in store.getState().tasks[0]).toBe(false);
   });
+
+  // The estimate control now sits on the drawer's step tree as well as the
+  // rail — the surface where people type fast and mis-click. Overwriting an
+  // estimate destroys the number that was there; clearing one destroys it
+  // outright. Both have to be recoverable.
+  it('undoes an estimate change back to the previous value', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+
+    store.actions.setNodeEstimate('n1', 45);
+    store.actions.setNodeEstimate('n1', 120);
+    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBe(120);
+    expect(store.getState().pendingUndo?.label).toContain('was 45m');
+
+    store.actions.undoLastDelete();
+    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBe(45);
+  });
+
+  it('undoes a cleared estimate', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+
+    store.actions.setNodeEstimate('n1', 90);
+    store.actions.setNodeEstimate('n1', null);
+    expect('estimateMin' in findInAll(store.getState().goals, 'n1')!).toBe(false);
+
+    store.actions.undoLastDelete();
+    expect(findInAll(store.getState().goals, 'n1')?.estimateMin).toBe(90);
+  });
+
+  it('undoes a task estimate change', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addTask('T', '2026-07-28', null);
+    const id = store.getState().tasks[0].id;
+
+    store.actions.setTaskEstimate(id, 30);
+    store.actions.setTaskEstimate(id, 60);
+    store.actions.undoLastDelete();
+    expect(store.getState().tasks[0].estimateMin).toBe(30);
+  });
+
+  /*
+   * Re-picking the value a step already carries must not arm an undo.
+   *
+   * `EstimateControl` puts six preset buttons a click apart, so pressing the
+   * one already set is an ordinary slip. Every undoable edit's write sweeps the
+   * non-surgical restores before it (see setAndPersist), so without this guard
+   * that slip would silently discard a pending project delete — consuming the
+   * recovery path for a write that changed nothing at all.
+   */
+  it('does not arm an undo when the estimate is unchanged', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+    store.actions.setNodeEstimate('n1', 60);
+
+    store.actions.removeGoal('g1');
+    const armed = store.getState().pendingUndo?.label;
+    expect(armed).toContain('Deleted');
+
+    store.actions.setNodeEstimate('n1', 60); // same value — a no-op
+    expect(store.getState().pendingUndo?.label).toBe(armed);
+
+    store.actions.undoLastDelete();
+    expect(store.getState().goals).toHaveLength(1);
+  });
+
+  it('formats the previous value in the undo label, even from imported data', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'gf', title: 'Imported',
+      nodes: [{ id: 'nf', title: 'Step', done: false, estimateMin: 90.4 }],
+    }]);
+
+    store.actions.setNodeEstimate('nf', 60);
+    // The raw stored value formatted as "1h30.399999999999999".
+    expect(store.getState().pendingUndo?.label).toBe('"Step" is now 1h (was 1h30)');
+  });
+
+  it('does not arm an undo when clearing an already-absent estimate', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithLeaf)]);
+
+    store.actions.setNodeEstimate('n1', null);
+    expect(store.getState().pendingUndo).toBeNull();
+  });
+
+  // Imported data carries whatever the file said. A fractional estimate must
+  // normalise rather than land as-is — every capacity figure downstream
+  // assumes a positive integer number of minutes.
+  it('normalises a fractional estimate rather than trusting it', async () => {
+    const { findInAll } = await import('../lib/tree');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'gi', title: 'Imported',
+      nodes: [{ id: 'ni', title: 'Step', done: false, estimateMin: 90.4 }],
+    }]);
+
+    store.actions.setNodeEstimate('ni', 45.6);
+    expect(findInAll(store.getState().goals, 'ni')?.estimateMin).toBe(46);
+  });
+});
+
+/*
+ * `Session` shipped with a type, a table, a backup round trip and
+ * `loggedTimeForWeek` — and no producer. The week recap's "You logged N
+ * minutes across M sessions" sat behind `logged.sessions > 0`, which nothing
+ * could ever make true. These cover the action that closes that.
+ */
+describe('logging actual time', () => {
+  const goalWithStep: Goal = {
+    id: 'g1', title: 'P', column: 0,
+    nodes: [{ id: 'n1', title: 'Step', done: false, estimateMin: 60 }],
+  };
+
+  it('records a session against a step', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+
+    expect(store.actions.logSession('step', 'n1', 90, '2026-07-28')).toBe(true);
+    const [s] = store.getState().sessions;
+    expect(s).toMatchObject({ nodeId: 'n1', goalId: 'g1', minutes: 90, date: '2026-07-28' });
+    expect(s.taskId).toBeUndefined();
+  });
+
+  it('records a session against a task', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addTask('T', '2026-07-28', null);
+    const id = store.getState().tasks[0].id;
+
+    expect(store.actions.logSession('task', id, 25, '2026-07-28')).toBe(true);
+    const [s] = store.getState().sessions;
+    expect(s).toMatchObject({ taskId: id, minutes: 25 });
+    expect(s.nodeId).toBeUndefined();
+  });
+
+  it('appends rather than overwriting — a second sitting is a second session', async () => {
+    const { loggedForNode } = await import('../lib/actuals');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+
+    store.actions.logSession('step', 'n1', 45, '2026-07-28');
+    store.actions.logSession('step', 'n1', 30, '2026-07-29');
+    expect(store.getState().sessions).toHaveLength(2);
+    expect(loggedForNode(store.getState().sessions, 'n1')).toBe(75);
+  });
+
+  it('logging never moves the percentage', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+
+    const before = goalPct(store.getState().goals[0]);
+    store.actions.logSession('step', 'n1', 240, '2026-07-28');
+    // Time is journalled, never scored. Ticking the checkbox is still the only
+    // thing that moves a number — the invariant the whole progress model rests
+    // on, now that a second time field exists to tempt it.
+    expect(goalPct(store.getState().goals[0])).toBe(before);
+  });
+
+  it('refuses a non-positive or unparseable duration', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+
+    expect(store.actions.logSession('step', 'n1', 0, '2026-07-28')).toBe(false);
+    expect(store.actions.logSession('step', 'n1', -30, '2026-07-28')).toBe(false);
+    expect(store.actions.logSession('step', 'n1', Number.NaN, '2026-07-28')).toBe(false);
+    expect(store.getState().sessions).toEqual([]);
+  });
+
+  it('refuses an invalid date', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+
+    expect(store.actions.logSession('step', 'n1', 60, 'not-a-date')).toBe(false);
+    expect(store.getState().sessions).toEqual([]);
+  });
+
+  it('refuses an unknown step or task', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.actions.logSession('step', 'nope', 60, '2026-07-28')).toBe(false);
+    expect(store.actions.logSession('task', 'nope', 60, '2026-07-28')).toBe(false);
+    expect(store.getState().sessions).toEqual([]);
+  });
+
+  it('refuses a container — it holds no estimate to measure against', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g2', title: 'G',
+      nodes: [{ id: 'c1', title: 'C', children: [{ id: 'k1', title: 'K', done: false }] }],
+    }]);
+
+    expect(store.actions.logSession('step', 'c1', 60, '2026-07-28')).toBe(false);
+    expect(store.getState().sessions).toEqual([]);
+  });
+
+  it('undoes a logged session', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+
+    store.actions.logSession('step', 'n1', 90, '2026-07-28');
+    expect(store.getState().pendingUndo?.label).toContain('Logged 1h30');
+
+    store.actions.undoLastDelete();
+    expect(store.getState().sessions).toEqual([]);
+  });
+
+  it('clears every session for one item, undoably', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+    store.actions.addTask('T', '2026-07-28', null);
+    const taskId = store.getState().tasks[0].id;
+
+    store.actions.logSession('step', 'n1', 45, '2026-07-28');
+    store.actions.logSession('step', 'n1', 30, '2026-07-28');
+    store.actions.logSession('task', taskId, 20, '2026-07-28');
+
+    expect(store.actions.clearSessionsFor('step', 'n1')).toBe(true);
+    // Only that item's ledger. The task's session is a different record and
+    // must survive.
+    expect(store.getState().sessions).toHaveLength(1);
+    expect(store.getState().sessions[0].taskId).toBe(taskId);
+
+    store.actions.undoLastDelete();
+    expect(store.getState().sessions).toHaveLength(3);
+  });
+
+  it('reports a refusal when there is nothing to clear', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+    // Callers must not report success on a refusal, so this cannot return true
+    // for a no-op — and it must not arm an undo that would revert something else.
+    expect(store.actions.clearSessionsFor('step', 'n1')).toBe(false);
+    expect(store.getState().pendingUndo).toBeNull();
+  });
+
+  it('names the count and the item when clearing', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+    store.actions.logSession('step', 'n1', 45, '2026-07-28');
+    store.actions.logSession('step', 'n1', 30, '2026-07-28');
+
+    store.actions.clearSessionsFor('step', 'n1');
+    expect(store.getState().pendingUndo?.label).toBe('Cleared 2 time entries on "Step"');
+  });
+
+  /*
+   * Deleting a step leaves its sessions behind, ON PURPOSE.
+   *
+   * `withUndo` snapshots exactly one slice, so a cascade that removed the node
+   * (`goals`) and its sessions (`sessions`) could only restore one of them —
+   * undo would bring the step back with its history silently gone. An orphan is
+   * inert by comparison. This test exists so that a future "tidy up orphaned
+   * sessions" change has to confront the undo consequence rather than discover
+   * it in production.
+   */
+  it('leaves sessions intact when the step is deleted, so undo restores both', async () => {
+    const { loggedForNode } = await import('../lib/actuals');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+    store.actions.logSession('step', 'n1', 90, '2026-07-28');
+
+    store.actions.removeNode('n1');
+    expect(store.getState().sessions).toHaveLength(1);
+
+    store.actions.undoLastDelete();
+    const { findInAll } = await import('../lib/tree');
+    expect(findInAll(store.getState().goals, 'n1')).not.toBeNull();
+    expect(loggedForNode(store.getState().sessions, 'n1')).toBe(90);
+  });
+
+  it('ignores orphaned sessions in a project’s calibration', async () => {
+    const { projectCalibration } = await import('../lib/actuals');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+    store.actions.logSession('step', 'n1', 90, '2026-07-28');
+    store.actions.removeNode('n1');
+
+    // Calibration walks LIVE leaves, so a dangling session cannot skew it.
+    expect(projectCalibration(store.getState().goals[0], store.getState().sessions)).toBeNull();
+  });
+
+  it('refuses to log against a completed project’s step', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+    store.actions.toggleLeaf('n1');
+    store.actions.completeGoal('g1');
+
+    // `setNodeEstimate` has always been frozen on a completed project. The two
+    // controls sit on the same row, so they must agree about whether the
+    // project is editable.
+    expect(store.actions.logSession('step', 'n1', 60, '2026-07-28')).toBe(false);
+    expect(store.getState().sessions).toEqual([]);
+  });
+
+  it('makes the week recap’s logged-time figure reachable', async () => {
+    const { loggedTimeForWeek } = await import('../lib/plan');
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([structuredClone(goalWithStep)]);
+
+    store.actions.logSession('step', 'n1', 45, '2026-07-28');
+    store.actions.logSession('step', 'n1', 60, '2026-07-30');
+    // '2026-07-27' is the Monday of that week. This is the exact call
+    // RecapPanel makes, and it could never return anything but zero before.
+    expect(loggedTimeForWeek(store.getState().sessions, '2026-07-27')).toEqual({
+      minutes: 105, sessions: 2,
+    });
+  });
 });
 
 // C-7: the undo was a single slot behind a 5s toast. Deleting a project and

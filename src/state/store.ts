@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, AppState, PlanReview, Task, AvailabilityWindow } from '../db/types';
+import type { Goal, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
@@ -23,6 +23,7 @@ import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted, leafCount } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
+import { formatEstimateValue } from '../lib/estimateInput';
 import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN } from '../lib/slot';
 import { spansOn } from '../lib/scheduled';
 import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
@@ -467,6 +468,30 @@ function describeResizeRefused(title: string): string {
 }
 
 /**
+ * The undo label for an estimate edit. Names the OLD value when there was one,
+ * because the thing being offered back is the number that was just overwritten
+ * — "Changed X to 2h" tells you what happened, "was 45m" tells you what Undo
+ * would give you back, and only the second is decision-relevant.
+ *
+ * Never ends in the word "Undo": the toast renders a real Undo button beside
+ * this string (see undoLabels.test.ts).
+ *
+ * `before` is normalised before formatting because it is the RAW stored value,
+ * and an imported file can carry a fractional one. `formatEstimateValue(90.4)`
+ * renders "1h30.399999999999999".
+ */
+function describeEstimateChange(
+  title: string,
+  rawBefore: number | undefined,
+  next: number | undefined,
+): string {
+  const before = normalizeEstimate(rawBefore);
+  if (next === undefined) return `Cleared the estimate on "${title}" (was ${formatEstimateValue(before)})`;
+  if (before === undefined) return `Estimated "${title}" at ${formatEstimateValue(next)}`;
+  return `"${title}" is now ${formatEstimateValue(next)} (was ${formatEstimateValue(before)})`;
+}
+
+/**
  * Warn when a new estimate makes an already-placed item outgrow the gap it
  * sits in.
  *
@@ -653,21 +678,34 @@ export const actions = {
     setAndPersist({ goals });
   },
 
+  /**
+   * Set or clear a leaf's estimate.
+   *
+   * Undoable, because clearing one destroys a number the user typed and
+   * overwriting one destroys the number that was there before — and this is now
+   * reachable from the drawer's step tree as well as the rail, i.e. from the
+   * surface where people are typing fast and mis-clicking. A no-op change arms
+   * nothing: re-picking the preset a step already carries must not burn the undo
+   * slot that is holding a delete.
+   */
   setNodeEstimate(nodeId: string, minutes: number | null): void {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = state.goals.map((g) => ({ ...g, nodes: structuredClone(g.nodes) }));
     const node = findInAll(goals, nodeId);
     if (!node || node.children) return; // leaves only
+    const before = node.estimateMin;
     const next = minutes === null ? undefined : normalizeEstimate(minutes);
+    if (before === next) return;
     if (next === undefined) delete node.estimateMin;
     else node.estimateMin = next;
     warnIfEstimateOverflows(node.title, node.plannedDay, node.plannedStartMin, next, nodeId);
-    setAndPersist({ goals });
+    withUndo(describeEstimateChange(node.title, before, next), 'goals', goals);
   },
 
   setTaskEstimate(taskId: string, minutes: number | null): void {
     const next = minutes === null ? undefined : normalizeEstimate(minutes);
     const target = state.tasks.find((t) => t.id === taskId);
+    if (!target || target.estimateMin === next) return;
     const tasks = state.tasks.map((t) => {
       if (t.id !== taskId) return t;
       const copy = { ...t };
@@ -675,8 +713,8 @@ export const actions = {
       else copy.estimateMin = next;
       return copy;
     });
-    if (target) warnIfEstimateOverflows(target.title, target.date, target.startMin, next, taskId);
-    setAndPersist({ tasks });
+    warnIfEstimateOverflows(target.title, target.date, target.startMin, next, taskId);
+    withUndo(describeEstimateChange(target.title, target.estimateMin, next), 'tasks', tasks);
   },
 
   removeNode(nodeId: string) {
@@ -989,6 +1027,98 @@ export const actions = {
   },
 
   // Tasks
+  /**
+   * Record time actually spent on a step or a task.
+   *
+   * The producer `Session` never had. The type, the table, the backup round
+   * trip and `loggedTimeForWeek` all shipped and were tested, and the week
+   * recap renders "You logged N minutes across M sessions" behind a
+   * `logged.sessions > 0` gate — which, with nothing anywhere creating a
+   * session, could never open. That branch was unreachable code guarded by a
+   * passing test.
+   *
+   * Append-only: a second sitting on the same step is a second session, not an
+   * overwrite, so `loggedForNode` sums them. Time is never INFERRED from a
+   * scheduled block — a block is what you set aside, not what you spent, and
+   * recording the former as the latter would invent exactly the kind of
+   * authoritative-looking figure `capacityParts` refuses to produce.
+   *
+   * Returns whether it wrote, so callers cannot report success on a refusal.
+   */
+  logSession(
+    kind: 'step' | 'task',
+    id: string,
+    minutes: number,
+    date = todayStr(),
+  ): boolean {
+    const normalized = normalizeEstimate(minutes);
+    if (normalized === undefined || !isValidLocalDate(date)) return false;
+
+    let title: string;
+    let goalId: string | null;
+    if (kind === 'step') {
+      // Frozen on a completed project, exactly as `setNodeEstimate` is. The
+      // drawer already blocks the whole tree with `pointer-events-none`, so
+      // this is unreachable from the UI today — but the two controls sit on the
+      // same row and must not disagree about whether the project is editable
+      // the moment any other surface calls in.
+      if (!isActiveNode(id)) return false;
+      const goal = goalOfNode(id);
+      const node = goal ? findNode(goal.nodes, id) : null;
+      // Containers hold no estimate (see `addChild`), so there is nothing for
+      // logged time to be measured against.
+      if (!goal || !node || node.children) return false;
+      title = node.title;
+      goalId = goal.id;
+    } else {
+      const task = state.tasks.find((t) => t.id === id);
+      if (!task) return false;
+      title = task.title;
+      goalId = task.goalId;
+    }
+
+    const session: Session = {
+      id: uid(),
+      goalId,
+      date,
+      minutes: normalized,
+      note: '',
+      ...(kind === 'step' ? { nodeId: id } : { taskId: id }),
+    };
+    withUndo(
+      `Logged ${formatEstimateValue(normalized)} on "${title}"`,
+      'sessions',
+      [...state.sessions, session],
+    );
+    return true;
+  },
+
+  /**
+   * Discard every session recorded against one item.
+   *
+   * The symmetric partner to clearing an estimate: a mis-logged entry is
+   * otherwise permanent, since sessions are append-only and carry no edit
+   * route. Undoable like everything else that destroys a number the user typed.
+   */
+  clearSessionsFor(kind: 'step' | 'task', id: string): boolean {
+    const key = kind === 'step' ? 'nodeId' : 'taskId';
+    const remaining = state.sessions.filter((s) => s[key] !== id);
+    const dropped = state.sessions.length - remaining.length;
+    if (dropped === 0) return false;
+    const title = kind === 'step'
+      ? findInAll(state.goals, id)?.title
+      : state.tasks.find((t) => t.id === id)?.title;
+    // Names the item and the cost, as every other destructive label here does:
+    // once the control collapses, the ledger this discards is not visible
+    // anywhere, so the toast is the only chance to say what was thrown away.
+    withUndo(
+      `Cleared ${dropped} time entr${dropped === 1 ? 'y' : 'ies'} on "${title ?? 'that item'}"`,
+      'sessions',
+      remaining,
+    );
+    return true;
+  },
+
   addTask(title: string, date = todayStr(), goalId: string | null = null): void {
     const trimmed = title.trim();
     if (!trimmed || !isValidLocalDate(date)) return;

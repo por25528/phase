@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useId } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { GoalNode } from '../db/types';
+import type { GoalNode, Session } from '../db/types';
 import { useAppStore } from '../state/store';
 import { nodePct } from '../lib/pct';
 import {
@@ -20,6 +20,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { InlineEdit } from './InlineEdit';
+import { EstimateControl } from './EstimateControl';
+import { LogTimeControl } from './LogTimeControl';
+import { loggedForNode } from '../lib/actuals';
 import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -140,6 +143,9 @@ interface SharedProps {
   onSelect: (id: string, mode: SelectMode) => void;
   /** Runs the selection's bulk action from a row's keyboard handler. */
   onBulk: (action: 'complete' | 'delete') => void;
+  /** The whole ledger; each leaf sums its own. Small enough that filtering per
+   *  row is cheaper than building a map on every store notification. */
+  sessions: Session[];
 }
 
 /**
@@ -233,7 +239,7 @@ function SelectionBar({
 // ── GoalTree (public export, owns DndContext) ─────────────────────────────────
 
 export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: number }) {
-  const { expanded, actions, newNodeId } = useAppStore();
+  const { expanded, actions, newNodeId, sessions } = useAppStore();
   const reducedMotion = usePrefersReducedMotion();
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -338,6 +344,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
           selected={selected}
           onSelect={onSelect}
           onBulk={onBulk}
+          sessions={sessions}
         />
       </div>
     </DndContext>
@@ -368,6 +375,7 @@ function GoalTreeNode({
   selected,
   onSelect,
   onBulk,
+  sessions,
 }: { n: GoalNode } & SharedProps) {
   // A row created by Enter mounts straight into its editor, so the sequence is
   // "Enter, type, Enter" rather than "Enter, hunt for the row, double-click,
@@ -698,6 +706,37 @@ function GoalTreeNode({
           </span>
         )}
 
+        {/* Estimate — LEAVES only, matching `setNodeEstimate`'s own guard: a
+            container's duration is the sum of its children's, not a figure of
+            its own, and `addChild` deletes `estimateMin` when a leaf becomes a
+            container for exactly that reason.
+
+            This is the point of decomposition, and until now it was the one
+            place you could NOT say how long a step takes — the rail was the
+            sole host, and it shows only unplaced work from Now/Next projects.
+            So a Later project's steps, and anything already on the calendar,
+            had no estimate route at all. */}
+        {!hasKids && (
+          <EstimateControl
+            minutes={n.estimateMin}
+            label={n.title}
+            onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+          />
+        )}
+
+        {/* Actual time, beside the estimate that predicted it — the other half
+            of the loop. Explicit only: nothing infers minutes from a scheduled
+            block, because a block is what you set aside, not what you spent. */}
+        {!hasKids && (
+          <LogTimeControl
+            loggedMin={loggedForNode(sessions, n.id)}
+            estimateMin={n.estimateMin}
+            label={n.title}
+            onLog={(minutes) => actions.logSession('step', n.id, minutes)}
+            onClear={() => actions.clearSessionsFor('step', n.id)}
+          />
+        )}
+
         {/* Rename. Double-clicking the title still works, but it was the ONLY
             route — an invisible affordance on the single most common edit, and
             the one place a hover control was missing while drag, + sub and
@@ -776,6 +815,7 @@ function GoalTreeNode({
               selected={selected}
               onSelect={onSelect}
               onBulk={onBulk}
+              sessions={sessions}
             />
             <AddChildInput
               indent={(depth + 1) * 22}

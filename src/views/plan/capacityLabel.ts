@@ -30,14 +30,35 @@ export interface CapacityFigures {
  * data" caveat lives separately, in `capacityNote`.
  */
 export function capacityParts(c: CapacityFigures): string[] {
+  const unestimated = unestimatedLabel(c);
+  return unestimated ? [...loadParts(c), unestimated] : loadParts(c);
+}
+
+/**
+ * The priced part of the readout: free, planned, and committed-but-not-placed.
+ *
+ * Split out of `capacityParts` because the unestimated count is the one part
+ * that is a CONTROL rather than a statement — it names work whose price is
+ * unknown, and the only useful response is to go and price it. The week header
+ * renders these as text and the count as a button; `capacityParts` still joins
+ * all of them for the day heading's plain-text `title` tooltip, where nothing
+ * can be clicked.
+ */
+export function loadParts(
+  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'>,
+): string[] {
   const parts = [`${formatMinutes(c.freeMin)} free`];
   if (c.plannedMin > 0) parts.push(`${formatMinutes(c.plannedMin)} planned`);
   // Separate from "planned", because it is exactly the work the rail beside
   // this is listing under "To plan". Folding the two together made the header
   // claim hours were scheduled onto days that were visibly empty.
   if (c.backlogMin > 0) parts.push(`${formatMinutes(c.backlogMin)} to place`);
-  if (c.unestimated > 0) parts.push(`${c.unestimated} unestimated`);
   return parts;
+}
+
+/** `null` when everything is priced — there is then nothing to act on. */
+export function unestimatedLabel(c: Pick<CapacityFigures, 'unestimated'>): string | null {
+  return c.unestimated > 0 ? `${c.unestimated} unestimated` : null;
 }
 
 /**

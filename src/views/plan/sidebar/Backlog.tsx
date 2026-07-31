@@ -7,7 +7,7 @@ import { countOpenCarryOver } from '../../../lib/deferWork';
 import { weekOf } from '../../../lib/plan';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
-import { EstimateField } from '../EstimateField';
+import { EstimateControl } from '../../../components/EstimateControl';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 
 /**
@@ -29,13 +29,11 @@ import { containerDragAttributes } from '../../../lib/dragAttributes';
  * spread onto the row itself, so an un-stopped press would arm the drag sensor
  * and a 5px twitch would turn the click into a drag instead of an action.
  *
- * The estimate badge is the same idea taken one step further: it is the only
- * route to `setTaskEstimate`/`setNodeEstimate` left in the app, because the
- * modal that used to host the editor is gone and resize — the other way to
- * change an estimate — only exists for work already on the grid. Backlog work
- * is by definition not on the grid, so without this it is stuck at whatever
- * estimate it was created with. Clicking the badge swaps it for the field;
- * blur, Enter or Escape swap it back.
+ * The estimate is `EstimateControl` — the shared badge/field/preset control,
+ * identical here and in the drawer's step tree. It used to be inline here, and
+ * that was the whole problem: the rail lists only unplaced work from Now/Next
+ * projects, so being the sole host made `estimateMin` unreachable for most of
+ * the data the capacity engine reads.
  */
 function BacklogRow({
   item, onFocusItem, revealed, today,
@@ -46,7 +44,6 @@ function BacklogRow({
   revealed: boolean;
   today: string;
 }) {
-  const [editingEstimate, setEditingEstimate] = useState(false);
   const due = dueChip(item.due, today);
   const data: PlanDragData = {
     kind: item.kind, id: item.id, goalId: item.goalId, title: item.title,
@@ -91,42 +88,14 @@ function BacklogRow({
           {due.text}
         </span>
       )}
-      {editingEstimate ? (
-        // onBlur bubbles (React maps it to focusout), so this catches the
-        // field's own blur — whether it came from Enter, Escape or a click
-        // elsewhere — after the field's handler has already committed or
-        // reverted, and puts the badge back.
-        <span className="flex-none" onBlur={() => setEditingEstimate(false)}>
-          <EstimateField
-            minutes={item.estimateMin}
-            label={item.title}
-            onChange={(minutes) => {
-              if (item.kind === 'task') actions.setTaskEstimate(item.id, minutes);
-              else actions.setNodeEstimate(item.id, minutes);
-            }}
-          />
-        </span>
-      ) : (
-        <button
-          type="button"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditingEstimate(true);
-          }}
-          aria-label={`Set estimate for "${item.title}"`}
-          // An existing estimate stays legible at rest — it is information, not
-          // a control. A missing one only advertises itself on hover/focus, the
-          // rail's rule for everything that is purely an affordance.
-          className={`flex-none font-mono text-eyebrow text-muted hover:text-ink-soft tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover ${
-            item.estimateMin === undefined
-              ? 'quiet-control'
-              : ''
-          }`}
-        >
-          {item.estimateMin === undefined ? '+ est' : `${item.estimateMin}m`}
-        </button>
-      )}
+      <EstimateControl
+        minutes={item.estimateMin}
+        label={item.title}
+        onChange={(minutes) => {
+          if (item.kind === 'task') actions.setTaskEstimate(item.id, minutes);
+          else actions.setNodeEstimate(item.id, minutes);
+        }}
+      />
       <button
         type="button"
         onPointerDown={(e) => e.stopPropagation()}

@@ -102,11 +102,30 @@ export interface Workload {
   unestimated: number; // unfinished commitments carrying no usable estimate
 }
 
-/** The one definition of a usable estimate, shared by the store and the math. */
+/**
+ * The one definition of a usable estimate, shared by the store and the math.
+ *
+ * Rounds FIRST, then rejects — the two orders disagree on the interval
+ * `0 < v < 0.5`. Testing `v > 0` before rounding let `0.4` through and returned
+ * `Math.round(0.4)` = **0**, which is not `undefined`, so every caller treated
+ * it as a perfectly good estimate of zero minutes:
+ *
+ * - `workloadOf` added 0 to `plannedMin` and did NOT count it as unestimated,
+ *   so the work was invisible to capacity while claiming to be priced — and
+ *   unreachable from the "N unestimated" list that exists to find exactly that.
+ * - `pct.ts` uses it as a weight, so a completed step could be worth literally
+ *   nothing: one done leaf at `estimateMin: 0.4` beside an open 60m leaf rolls
+ *   up to 0% while `goalPctBasis` reports "weighted by estimate".
+ *
+ * Sub-minute values cannot come from `parseEstimateInput` — its regexes require
+ * whole minutes, and fractional hours are multiplied by 60 before rounding — so
+ * this only ever arrives from an imported or hand-edited file, which is
+ * precisely the input that must not be trusted.
+ */
 export function normalizeEstimate(v: unknown): number | undefined {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0
-    ? Math.round(v)
-    : undefined;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
+  const rounded = Math.round(v);
+  return rounded > 0 ? rounded : undefined;
 }
 
 function usableEstimate(v: number | undefined): number | null {

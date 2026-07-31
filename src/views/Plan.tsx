@@ -18,6 +18,7 @@ import { weekOf, plannedLeaves } from '../lib/plan';
 import { visibleRange, type LaneSpan } from '../lib/grid';
 import { scheduledByDate } from '../lib/scheduled';
 import { weekCapacity, type Now } from '../lib/capacity';
+import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
 import { resolvePlanKey } from '../lib/planKeyboard';
 import { showPlanHint } from '../lib/planHint';
@@ -26,6 +27,7 @@ import { useReducedMotion } from '../components/useReducedMotion';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
+import { UnestimatedPanel } from './plan/UnestimatedPanel';
 import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
 import { RecapPanel } from './plan/RecapPanel';
 import { AvailabilitySettings } from './plan/AvailabilitySettings';
@@ -208,6 +210,32 @@ export function Plan() {
 
   const [dragTitle, setDragTitle] = useState<string | null>(null);
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
+  const [showUnestimated, setShowUnestimated] = useState(false);
+  /*
+   * The items behind the header's count. Derived from the SAME week sets
+   * `weekCapacity` was handed, so the list and the number cannot disagree —
+   * see unestimated.ts, which asserts that against `workloadOf` directly.
+   */
+  const goalTitleById = useMemo(
+    () => new Map(goals.map((g) => [g.id, g.title])),
+    [goals],
+  );
+  const unestimatedItems = useMemo(
+    () => unestimatedCommitments(weekLeaves, weekTasks, goalTitleById),
+    [weekLeaves, weekTasks, goalTitleById],
+  );
+  /*
+   * Retire the panel once its work is done.
+   *
+   * The flag alone would survive the list emptying, so pricing everything hid
+   * the panel (it renders only when there are items) while leaving it armed —
+   * and the next unestimated step to appear, or a step over on next week, would
+   * pop it open again unprompted. A panel the user never asked for reopening
+   * itself reads as a bug, so the flag retires with the last row.
+   */
+  useEffect(() => {
+    if (unestimatedItems.length === 0) setShowUnestimated(false);
+  }, [unestimatedItems.length]);
   // Scoped to the rail so the placement handler can focus the successor row
   // without querying the whole document.
   const railRef = useRef<HTMLDivElement>(null);
@@ -384,7 +412,19 @@ export function Plan() {
             onPrev={() => setWeekStart(addDays(weekStart, -7))}
             onNext={() => setWeekStart(addDays(weekStart, 7))}
             onToday={() => setWeekStart(weekOf(today))}
+            unestimatedOpen={showUnestimated}
+            onToggleUnestimated={() => setShowUnestimated((was) => !was)}
           />
+
+          {/* Opened from the header's count. Closes itself once nothing is
+              left unestimated, so the panel and the number it explains retire
+              together — a list that stays up empty reads as a failed action. */}
+          {showUnestimated && unestimatedItems.length > 0 && (
+            <UnestimatedPanel
+              items={unestimatedItems}
+              onClose={() => setShowUnestimated(false)}
+            />
+          )}
 
           {availability.length === 0 && (
             <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
