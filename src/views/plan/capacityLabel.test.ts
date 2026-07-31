@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { DayCapacity, WeekCapacity } from '../../lib/capacity';
 import {
   formatMinutes, capacityParts, capacityNote, isOverCommitted, dayLoadLabel, dayLoadHint,
+  loadParts, unestimatedLabel,
 } from './capacityLabel';
 
 function day(over: Partial<DayCapacity> = {}): DayCapacity {
@@ -45,6 +46,43 @@ describe('capacityParts', () => {
       .toEqual(['3h 15m free', '2h planned']);
     expect(capacityParts(day({ hasData: false, freeMin: 195, plannedMin: 120 })))
       .toEqual(['3h 15m free', '2h planned']);
+  });
+});
+
+/*
+ * The week header renders the priced parts as text and the unestimated count
+ * as a button, so the two are split. `capacityParts` still concatenates them
+ * for the day heading's plain-text tooltip — these assert the split cannot
+ * drift from the whole.
+ */
+describe('loadParts / unestimatedLabel', () => {
+  it('leaves the unestimated count out of the priced parts', () => {
+    expect(loadParts(day({ freeMin: 195, plannedMin: 120, unestimated: 4 })))
+      .toEqual(['3h 15m free', '2h planned']);
+  });
+
+  it('includes work committed but not placed', () => {
+    expect(loadParts(day({ freeMin: 195, plannedMin: 120, backlogMin: 30 })))
+      .toEqual(['3h 15m free', '2h planned', '30m to place']);
+  });
+
+  it('is null when everything is priced', () => {
+    expect(unestimatedLabel({ unestimated: 0 })).toBeNull();
+  });
+
+  it('names the count when something is not', () => {
+    expect(unestimatedLabel({ unestimated: 1 })).toBe('1 unestimated');
+    expect(unestimatedLabel({ unestimated: 4 })).toBe('4 unestimated');
+  });
+
+  it('still composes into capacityParts unchanged', () => {
+    const c = day({ freeMin: 195, plannedMin: 120, backlogMin: 30, unestimated: 2 });
+    expect(capacityParts(c)).toEqual([...loadParts(c), unestimatedLabel(c)]);
+  });
+
+  it('composes to exactly the priced parts when nothing is unestimated', () => {
+    const c = day({ unestimated: 0 });
+    expect(capacityParts(c)).toEqual(loadParts(c));
   });
 });
 

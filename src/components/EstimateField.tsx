@@ -1,15 +1,20 @@
 import { useState, type KeyboardEvent } from 'react';
-import { parseEstimateInput, formatEstimateValue } from './estimateInput';
+import { parseEstimateInput, formatEstimateValue } from '../lib/estimateInput';
 
 /**
  * A one-keystroke estimate entry. Blur or Enter commits.
  * Unparseable input is rejected and the field reverts, so a typo can never
  * silently wipe an existing estimate.
  *
- * Host: a backlog row (src/views/plan/sidebar/Backlog.tsx), mounted on demand
- * when the row's estimate badge is clicked — hence `autoFocus`. This is the
- * only route to `setTaskEstimate`/`setNodeEstimate` for unplaced work; work
- * already on the grid changes its estimate by drag-resizing the block.
+ * Host: `EstimateControl`, which owns the badge this replaces and mounts this
+ * field on demand when the badge is clicked — hence `autoFocus`. Do not mount
+ * it directly; the control carries the focusout handling that keeps the preset
+ * buttons reachable, and every surface has to enter an estimate the same way.
+ *
+ * Both `setNodeEstimate` and `setTaskEstimate` accept a change whether or not
+ * the item is on the grid — an estimate is a fact about the WORK, so it is
+ * warned about but never clamped (see `warnIfEstimateOverflows` in the store).
+ * Drag-resize is a second, equivalent route for placed work, not the only one.
  *
  * Two constraints were written here for an earlier <Modal> host that no longer
  * exists. Both were re-derived for this one:

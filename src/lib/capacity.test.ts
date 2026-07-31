@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { BusyBlock, AvailabilityWindow, Task } from '../db/types';
 import type { PlannedLeaf } from './plan';
-import { freeMinutes, mergeIntervals, workloadOf, weekCapacity, type Now } from './capacity';
+import { freeMinutes, mergeIntervals, workloadOf, weekCapacity, normalizeEstimate, type Now } from './capacity';
 
 // Mon–Fri 09:00–18:00 (540 min window), weekend off.
 const WINDOWS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({
@@ -440,5 +440,59 @@ describe('weekCapacity in the past tense', () => {
     expect(out.freeMin).toBe(540 * 5);
     expect(out.plannedMin).toBe(120);
     expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(false);
+  });
+});
+
+/*
+ * `normalizeEstimate` is the single definition of "a usable estimate", read by
+ * capacity, the weighted roll-up, the unestimated list and the store. It had no
+ * direct tests, and that is exactly how it shipped returning 0.
+ */
+describe('normalizeEstimate', () => {
+  it('rounds a usable value to whole minutes', () => {
+    expect(normalizeEstimate(45)).toBe(45);
+    expect(normalizeEstimate(45.6)).toBe(46);
+    expect(normalizeEstimate(45.4)).toBe(45);
+  });
+
+  it('rejects anything that rounds away to nothing', () => {
+    // The regression. `v > 0` was tested BEFORE rounding, so 0.4 passed the
+    // guard and came back as Math.round(0.4) = 0 — not undefined, so every
+    // caller treated it as a real estimate of zero minutes. Capacity then
+    // counted the work as priced while adding nothing to plannedMin, and the
+    // weighted roll-up gave a completed step a weight of 0.
+    expect(normalizeEstimate(0.4)).toBeUndefined();
+    expect(normalizeEstimate(0.49)).toBeUndefined();
+    expect(normalizeEstimate(Number.MIN_VALUE)).toBeUndefined();
+  });
+
+  it('keeps the smallest value that survives rounding', () => {
+    expect(normalizeEstimate(0.5)).toBe(1);
+    expect(normalizeEstimate(1)).toBe(1);
+  });
+
+  it('rejects non-positive and non-finite values', () => {
+    for (const bad of [0, -1, -0.4, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(normalizeEstimate(bad)).toBeUndefined();
+    }
+  });
+
+  it('rejects non-numbers, which imported data can carry', () => {
+    for (const bad of [undefined, null, '45', {}, [], true]) {
+      expect(normalizeEstimate(bad)).toBeUndefined();
+    }
+  });
+
+  it('makes a sub-minute estimate count as unestimated in the workload', () => {
+    const leaf = (over: Partial<PlannedLeaf>): PlannedLeaf => ({
+      goalId: 'g', goalTitle: 'G', nodeId: 'n', title: 'T',
+      done: false, plannedWeek: MON, ...over,
+    });
+    // Previously: plannedMin += 0 and unestimated stayed 0, so the work was
+    // invisible to capacity AND absent from the "N unestimated" list that
+    // exists to find precisely this.
+    expect(workloadOf([leaf({ estimateMin: 0.4 })], [])).toEqual({
+      plannedMin: 0, unestimated: 1,
+    });
   });
 });
