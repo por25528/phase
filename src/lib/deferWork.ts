@@ -31,6 +31,18 @@ function replanNodes(nodes: GoalNode[], stepIds: Set<string>, week: string): Goa
   });
 }
 
+/**
+ * How many items `deferOpenWork` would move, without building the new arrays.
+ *
+ * A control offering a bulk action has to know whether there is anything to act
+ * on before it renders, and it re-renders far more often than it is clicked.
+ * Counting through `deferOpenWork` would clone every goal tree on each pass
+ * just to read `.count` off the end.
+ */
+export function countOpenCarryOver(goals: Goal[], tasks: Task[], today: string): number {
+  return buildDailyWork(goals, tasks, today).carryOvers.length;
+}
+
 // Bulk-triage every "Needs a decision" carry-over onto `targetWeekMonday`: overdue
 // tasks get that date, slipped planned steps get that plannedWeek with their day
 // pin cleared. The carry-over set is read straight from buildDailyWork, so this
@@ -52,9 +64,22 @@ export function deferOpenWork(
   if (taskIds.size === 0 && stepIds.size === 0) {
     return { goals, tasks, count: 0 };
   }
+  // The day pin goes with the day — for tasks exactly as `replanNodes` above
+  // already does it for steps. Carrying `startMin` across meant two overdue
+  // tasks both pinned at 10:00 landed on top of each other on the target
+  // Monday, and one pinned at 19:00 landed at 19:00 on a day whose window
+  // closes at 18:00. This bulk path never consults availability, so it was
+  // manufacturing precisely the overlaps `resolveSlot` gatekeeps every other
+  // route against. `rescheduleTask` states the rule: a different day cannot
+  // inherit this day's minute.
   const nextTasks = taskIds.size === 0
     ? tasks
-    : tasks.map((t) => (taskIds.has(t.id) ? { ...t, date: targetWeekMonday } : t));
+    : tasks.map((t) => {
+      if (!taskIds.has(t.id)) return t;
+      const next: Task = { ...t, date: targetWeekMonday };
+      delete next.startMin;
+      return next;
+    });
   const nextGoals = stepIds.size === 0
     ? goals
     : goals.map((g) => ({ ...g, nodes: replanNodes(g.nodes, stepIds, targetWeekMonday) }));

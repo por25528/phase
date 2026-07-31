@@ -127,8 +127,24 @@ describe('expectedPct', () => {
   it('returns 100 after deadline', () => {
     expect(expectedPct('2026-01-01', '2026-06-30', '2026-12-31')).toBe(100);
   });
-  it('returns 100 when start equals deadline', () => {
-    expect(expectedPct('2026-06-01', '2026-06-01', '2026-06-01')).toBe(100);
+  /**
+   * A one-day project is all-or-nothing, and WHICH of the two depends on the
+   * day. The zero-length branch used to answer a flat 100 — a divide-by-zero
+   * guard that happened to return a wrong number — so a single-day project
+   * created for a date months out reported "100% expected by today" from the
+   * moment it existed, and the board, drawer and Timeline all badged it 100
+   * points behind pace before it contained any work to be behind on.
+   */
+  describe('a zero-length span (start === deadline)', () => {
+    it('expects everything once the day has arrived', () => {
+      expect(expectedPct('2026-06-01', '2026-06-01', '2026-06-01')).toBe(100);
+      expect(expectedPct('2026-06-01', '2026-06-01', '2026-06-02')).toBe(100);
+    });
+
+    it('expects nothing before it', () => {
+      expect(expectedPct('2026-06-01', '2026-06-01', '2026-05-31')).toBe(0);
+      expect(behindPaceBy(0, '2026-06-01', '2026-06-01', '2026-01-01')).toBe(0);
+    });
   });
   it('returns ~50 at midpoint', () => {
     // 100 days: Jan 1 → Apr 11 (31-1 in Jan + 28 Feb + 31 Mar + 11 Apr = 100)

@@ -38,7 +38,7 @@ export function Column({
           {col.label}
         </span>
         <span
-          className={`font-mono text-chip tabular-nums ml-auto ${
+          className={`font-mono text-badge tabular-nums ml-auto ${
             over ? 'text-warn font-semibold' : 'text-muted'
           }`}
         >

@@ -4,6 +4,7 @@ import type { Interval } from '../../lib/capacity';
 import { minuteToPct } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
 import type { PlanDragData } from './dropTarget';
+import { containerDragAttributes } from '../../lib/dragAttributes';
 
 /**
  * A block on the grid — either committed work or a calendar event.
@@ -32,6 +33,7 @@ const COMPACT_BLOCK_PX = 40;
 
 export function EventBlock({
   block, lane, laneCount, range, onRemove, onComplete, drag, onResize, gridHeightPx,
+  domId, revealed = false,
 }: {
   block: GridBlock;
   lane: number;
@@ -53,16 +55,22 @@ export function EventBlock({
   drag?: PlanDragData;
   onResize?: (minutes: number) => void;
   gridHeightPx: number;
+  /** Stable DOM id so the command palette can scroll to this block. */
+  domId?: string;
+  /** The palette is pointing at this block — mark it. */
+  revealed?: boolean;
 }) {
   const isBusy = block.kind === 'busy';
 
   // Hooks cannot be conditional, so useDraggable is always called with a
   // stable id; `disabled: !drag` (busy/calendar blocks) makes `listeners`
-  // undefined. `attributes` (role="button", tabIndex, aria-roledescription)
-  // is returned unconditionally by dnd-kit regardless of `disabled` — so it
-  // must be spread only when `drag` is set, same as `ref`/`listeners` below,
-  // or every busy block gets announced as a focusable draggable button and
-  // ends up nesting an interactive element inside the real `<button>` below.
+  // undefined. `attributes` is returned unconditionally by dnd-kit regardless
+  // of `disabled` — so it must be spread only when `drag` is set, same as
+  // `ref`/`listeners` below, or a busy block becomes focusable for a drag it
+  // cannot start. What it carries beyond `tabIndex` is stripped by
+  // `containerDragAttributes`: this element holds real buttons, so it must not
+  // claim `role="button"` itself. That fix used to live here as "don't spread
+  // it for busy blocks"; it now applies to work blocks too.
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: drag ? `${drag.kind}:${drag.id}` : `busy:${block.key}`,
     data: drag,
@@ -89,13 +97,17 @@ export function EventBlock({
   return (
     <div
       ref={drag ? setNodeRef : undefined}
-      {...(drag ? attributes : {})}
+      id={domId}
+      {...(drag ? containerDragAttributes(attributes, { keyboardDraggable: true }) : {})}
       {...(drag ? listeners : {})}
-      className={`group/blk absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-chip leading-[1.2] border ${
+      // The block's own name. Without it the accessible name fell back to the
+      // concatenation of its children — "pset Complete pset Unschedule pset".
+      aria-label={`${block.title}, ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}`}
+      className={`group/blk absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] border ${
         isBusy
           ? 'bg-hover border-line-2 text-muted italic'
           : `bg-panel border-line-2 border-l-[3px] border-l-accent text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? '' : 'border-dashed'} cursor-grab`
-      } ${isDragging ? 'opacity-40' : ''}`}
+      } ${isDragging ? 'opacity-40' : ''} ${revealed ? 'ring-2 ring-inset ring-accent z-10' : ''}`}
       style={{
         top: `${top}%`,
         height: `${height}%`,

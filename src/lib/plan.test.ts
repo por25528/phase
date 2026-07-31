@@ -10,6 +10,7 @@ import {
   loggedTimeForWeek, formatLoggedMinutes,
 } from './plan';
 import type { PlannedLeaf } from './plan';
+import { leafCount } from './board';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
 const TODAY = '2026-07-15';
@@ -80,7 +81,23 @@ describe('plannedLeaves', () => {
 describe('paceStatus', () => {
   it('zero leaves → needs-breakdown', () => {
     expect(paceStatus(goal({ nodes: [] }), TODAY)).toBe('needs-breakdown');
-    expect(paceStatus(goal({ nodes: [{ id: 'c', title: 'C', children: [] }] }), TODAY)).toBe('needs-breakdown');
+  });
+
+  /**
+   * `children: []` is a LEAF, not an empty container.
+   *
+   * `removeNode` splices a child out and leaves the array behind, so this is
+   * exactly the shape a step has after you delete its last subtask.
+   * `leafCount`, `nodePct`, `walkLeaves` and `firstOpenLeaf` all read it as a
+   * leaf; only `hasLeaf` disagreed, and this test used to assert the
+   * disagreement. The user-visible symptom was a board card showing "Next · C"
+   * and a "Needs a first step" badge at the same time, above the very step it
+   * claimed was missing, while the drawer beside it counted "0/1 done".
+   */
+  it('treats a childless container as the leaf every other reader sees', () => {
+    const g = goal({ nodes: [{ id: 'c', title: 'C', children: [] }] });
+    expect(paceStatus(g, TODAY)).not.toBe('needs-breakdown');
+    expect(leafCount(g.nodes)).toEqual({ total: 1, done: 0 });
   });
 
   it('all leaves done → complete, never needs-breakdown', () => {

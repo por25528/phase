@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -16,10 +16,13 @@ import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates } from '../lib/dates';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { visibleRange, type LaneSpan } from '../lib/grid';
-import { spansOn } from '../lib/scheduled';
+import { scheduledByDate } from '../lib/scheduled';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { tasksForWeek } from '../lib/dailyWork';
 import { resolvePlanKey } from '../lib/planKeyboard';
+import { showPlanHint } from '../lib/planHint';
+import { revealDomId, weekForReveal, REVEAL_MS } from '../lib/reveal';
+import { useReducedMotion } from '../components/useReducedMotion';
 import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
@@ -59,16 +62,56 @@ const collisionDetection: CollisionDetection = (args) => {
 };
 
 /**
+ * The week the user was last looking at, remembered across unmounts.
+ *
+ * `App` renders the three views conditionally, so switching to Projects
+ * UNMOUNTS Plan and `useState(() => weekOf(today))` runs again on the way back.
+ * Planning next week, stepping over to check a project, and returning put you
+ * silently back on this week with no indication the view had moved. Module
+ * scope rather than store state because this is genuinely ephemeral: it is not
+ * data, it should not persist to disk, and a fresh launch opening on the
+ * current week is the right default.
+ */
+let lastViewedWeek: string | null = null;
+
+/**
  * The week calendar. Owns which week is shown; everything else is derived.
  */
 export function Plan() {
-  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels } = useAppStore();
+  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels, revealItem } = useAppStore();
   const today = todayStr();
+  const reducedMotion = useReducedMotion();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
-  const [weekStart, setWeekStart] = useState(() => weekOf(today));
-  const days = weekDates(weekStart);
-  const scheduledSpans: LaneSpan[] = days.flatMap((date) => spansOn(goals, tasks, date));
-  const range = visibleRange(days, availability, [], scheduledSpans);
+  const [weekStart, setWeekStart] = useState(() => lastViewedWeek ?? weekOf(today));
+  useEffect(() => {
+    lastViewedWeek = weekStart;
+  }, [weekStart]);
+  /*
+   * Everything derived from the week's data is memoised on the data, NOT
+   * recomputed per render — because the now-line ticks every 60 seconds and
+   * re-renders this whole subtree for a single CSS `top`. Before this, each of
+   * those ticks re-walked every goal's leaf tree fourteen times: seven for
+   * `scheduledSpans` here, and seven more inside the `DayBlocks` children,
+   * which each called `scheduledOn` again for their own day. `scheduledByDate`
+   * makes it one pass, and the memo makes it one pass per edit rather than per
+   * render.
+   *
+   * `days` is memoised for a second reason: `weekDates` returns a fresh array
+   * every call, and two effects downstream key off its identity.
+   */
+  const days = useMemo(() => weekDates(weekStart), [weekStart]);
+  const scheduledByDay = useMemo(
+    () => scheduledByDate(goals, tasks, days),
+    [goals, tasks, days],
+  );
+  const scheduledSpans: LaneSpan[] = useMemo(
+    () => [...scheduledByDay.values()].flat(),
+    [scheduledByDay],
+  );
+  const range = useMemo(
+    () => visibleRange(days, availability, [], scheduledSpans),
+    [days, availability, scheduledSpans],
+  );
   const isPast = weekStart < weekOf(today);
 
   // Re-render each minute so the now-line moves.
@@ -85,19 +128,89 @@ export function Plan() {
   }, []);
 
   const now: Now = { date: today, minute: nowMinute };
+  // The two commitment scans are memoised on the data; `weekCapacity` itself
+  // genuinely depends on the minute (today's free time shrinks as the day goes
+  // on) and is seven days of arithmetic, so it is left to recompute.
+  const weekLeaves = useMemo(() => plannedLeaves(goals, weekStart), [goals, weekStart]);
+  const weekTasks = useMemo(() => tasksForWeek(tasks, weekStart), [tasks, weekStart]);
+  // Memoised for the same reason as everything above it: this is another walk
+  // of every goal's leaf tree, and it was being redone on every render — the
+  // 60-second now-line tick included — two hundred lines below the note
+  // claiming those scans had been eliminated.
+  const planHint = useMemo(
+    () => showPlanHint(goals, tasks, availability.length > 0),
+    [goals, tasks, availability],
+  );
   const capacity = weekCapacity({
     week: weekStart,
     windows: availability,
     blocks: [],
-    leaves: plannedLeaves(goals, weekStart),
-    tasks: tasksForWeek(tasks, weekStart),
+    leaves: weekLeaves,
+    tasks: weekTasks,
     now,
     allDayBlocks,
     hasData: false, // slice 2 flips this when a calendar is connected
   });
 
+  /**
+   * Reveal a task/habit chosen in the command palette.
+   *
+   * Keyed on the nonce alone, deliberately. Depending on `tasks` would re-run
+   * the week jump on every task edit for as long as the highlight is up, so
+   * dragging the just-revealed task onto a different week would immediately
+   * yank the view back to where it came from. The task list is read through a
+   * ref for the same reason: it's an input to a one-shot decision, not a
+   * trigger.
+   *
+   * Opening whatever hides the row is NOT done here — the backlog derives its
+   * expansion from `revealItem` (see Backlog) and the habits panel is opened by
+   * the store action. Both are therefore already correct in the commit this
+   * effect's rAF observes, so there is one paint to wait for rather than a
+   * chain of them.
+   */
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const revealRef = useRef(revealItem);
+  revealRef.current = revealItem;
+  const revealNonce = revealItem?.nonce ?? null;
+  useEffect(() => {
+    if (!revealItem) return;
+    setWeekStart((current) => weekForReveal(revealItem, tasksRef.current, current));
+    const raf = requestAnimationFrame(() => {
+      document
+        .getElementById(revealDomId(revealItem.kind, revealItem.id))
+        ?.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
+    });
+    const timer = setTimeout(() => actions.clearReveal(), REVEAL_MS);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      /*
+       * Retire the reveal if this view is going away while one is still armed.
+       *
+       * `App` renders the views conditionally, so switching to Projects inside
+       * the 2.6s window unmounted Plan and cancelled the only timer that ever
+       * calls `clearReveal` — leaving `revealItem` set in the store forever.
+       * That permanently force-expanded the revealed row's capped backlog group,
+       * and coming back to Plan re-ran this effect on the same nonce: the week
+       * jumped and the row was re-highlighted, minutes later, unprompted.
+       *
+       * The nonce comparison distinguishes the two reasons this cleanup runs.
+       * On a NEW reveal, React has already re-rendered (so `revealRef.current`
+       * holds the new target) before cleanup — nonces differ, and the incoming
+       * reveal is left alone. On unmount there is no such render, the nonces
+       * match, and it is retired.
+       */
+      if (revealRef.current?.nonce === revealItem.nonce) actions.clearReveal();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot per reveal; see above
+  }, [revealNonce]);
+
   const [dragTitle, setDragTitle] = useState<string | null>(null);
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
+  // Scoped to the rail so the placement handler can focus the successor row
+  // without querying the whole document.
+  const railRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
@@ -141,13 +254,46 @@ export function Plan() {
       if (!focusedItem) return; // nothing selected — let the digit fall through (e.g. view switching)
       e.preventDefault();
       e.stopPropagation();
+      // The grid refuses drops on a past week via disabled droppables, but this
+      // path never asked. Pressing `3` on last week ran the placement anyway and
+      // answered with "no free time left that day" — a refusal about capacity,
+      // for something that is actually about the week being history.
+      if (isPast) {
+        actions.showToast('That week has already happened — it’s read-only.');
+        return;
+      }
       const date = weekDates(weekStart)[command.dow];
-      if (focusedItem.kind === 'task') actions.scheduleTask(focusedItem.id, date, range.startMin);
-      else if (focusedItem.goalId) actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, range.startMin);
+      const placed = focusedItem.kind === 'task'
+        ? actions.scheduleTask(focusedItem.id, date, range.startMin)
+        : focusedItem.goalId
+          ? actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, range.startMin)
+          : false;
+
+      /*
+       * Keep the keyboard in the rail.
+       *
+       * A placed item leaves the backlog immediately, so its row unmounts and
+       * focus fell to `document.body` — after every single placement. Planning
+       * twelve items meant tabbing in from the top of the page twelve times,
+       * which is the whole reason to have `1`-`7` in the first place. The next
+       * row has by then slid into the vacated slot, so that is where focus
+       * belongs; the rAF waits for the commit that removes the old row.
+       */
+      if (!placed) return;
+      const rail = railRef.current;
+      const index = rail
+        ? Array.from(rail.querySelectorAll<HTMLElement>('[data-backlog-row]'))
+          .findIndex((el) => el.id === revealDomId(focusedItem.kind, focusedItem.id))
+        : -1;
+      requestAnimationFrame(() => {
+        const rows = rail?.querySelectorAll<HTMLElement>('[data-backlog-row]');
+        if (!rows || rows.length === 0) return;
+        (rows[Math.min(Math.max(index, 0), rows.length - 1)]).focus();
+      });
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [focusedItem, weekStart, range.startMin]);
+  }, [focusedItem, weekStart, range.startMin, isPast]);
 
   function handleDragStart(e: DragStartEvent) {
     setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
@@ -217,10 +363,10 @@ export function Plan() {
       <RecapPanel />
 
       <div className="grid grid-cols-1 md:grid-cols-[272px_1fr] gap-[18px] md:gap-0">
-        <PlanSidebar>
-          <Backlog weekStart={weekStart} today={today} onFocusItem={setFocusedItem} />
+        <PlanSidebar railRef={railRef}>
+          <Backlog weekStart={weekStart} today={today} onFocusItem={setFocusedItem} reveal={revealItem} />
           <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
-            <Habits />
+            <Habits reveal={revealItem} />
           </SidebarSection>
           <SidebarSection panel="stats" title="This week">
             <Stats />
@@ -260,6 +406,28 @@ export function Plan() {
             </div>
           )}
 
+          {/*
+            First-run hint. Both routes onto the grid are invisible affordances
+            — the rail rows carry no grip glyph, and `1`-`7` is announced
+            nowhere — so a new user can sit in front of a full backlog and an
+            empty week with no idea the two are connected.
+
+            No dismiss control and no persisted flag: `showPlanHint` retires it
+            the moment anything is placed, which is the exact moment the lesson
+            has landed. A ✕ here would only let someone dismiss the answer to
+            the question they still have.
+          */}
+          {planHint && (
+            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-dashed border-line-2 bg-panel text-body text-ink-soft">
+              Drag anything from <span className="font-semibold text-ink">To plan</span> onto a day
+              to schedule it — or click a row and press{' '}
+              <kbd className="font-mono text-kbd border border-line-2 rounded-[4px] px-[4px] py-[1px] text-muted">1</kbd>
+              –
+              <kbd className="font-mono text-kbd border border-line-2 rounded-[4px] px-[4px] py-[1px] text-muted">7</kbd>{' '}
+              for Mon–Sun.
+            </div>
+          )}
+
           <WeekGrid
             days={days}
             today={today}
@@ -267,17 +435,18 @@ export function Plan() {
             windows={availability}
             range={range}
             readOnly={isPast}
+            dayCapacity={capacity.days}
           >
             {(date) => (
               <DayBlocks
                 date={date}
-                goals={goals}
-                tasks={tasks}
+                items={scheduledByDay.get(date) ?? []}
                 blocks={[]}
                 range={range}
                 allDayBlocks={allDayBlocks}
                 readOnly={isPast}
                 gridHeightPx={GRID_HEIGHT_PX}
+                reveal={revealItem}
                 onRemove={(kind, id, goalId) => {
                   if (kind === 'task') actions.unscheduleTask(id);
                   else if (goalId) actions.unscheduleNode(goalId, id);

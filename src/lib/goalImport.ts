@@ -1,4 +1,4 @@
-import type { Goal, GoalNode } from '../db/types';
+import type { Goal, GoalNode, Habit } from '../db/types';
 import { uid } from './tree';
 import { clampSpan } from './timeline';
 import { isValidLocalDate, projectDateError } from './schedule';
@@ -28,6 +28,39 @@ export function priorityToColumn(word?: unknown): number {
   return legacy === -1 ? 0 : legacy;
 }
 
+/**
+ * Whether `priority` is a word this format actually knows.
+ *
+ * `priorityToColumn` answers 0 — Now — for anything unrecognised, which is the
+ * right default for an ABSENT field and the wrong answer for a present one: an
+ * LLM writing `"priority": "urgent"` or `"high-priority"` silently landed the
+ * project in Now, against the horizon's WIP limit, and nothing said so. Absent
+ * still means Now.
+ */
+export function isKnownPriority(word: unknown): boolean {
+  // `undefined`, `null` and `""` all mean "unset", and unset means Now. Only a
+  // word that was actually written and is not a horizon is an error — rejecting
+  // `""` would turn a field the model left blank into a failed paste.
+  if (word === undefined || word === null) return true;
+  if (typeof word !== 'string') return false;
+  const w = word.trim().toLowerCase();
+  if (w === '') return true;
+  return (PRIORITY_WORDS as readonly string[]).includes(w)
+    || (LEGACY_PRIORITY_WORDS as readonly string[]).includes(w);
+}
+
+/**
+ * Whether `subgoals` was written as something that is not a list.
+ *
+ * `null` counts as absent, not malformed — it is the ordinary JSON way to say
+ * "none", and an LLM emitting `"subgoals": null` means a project with no steps.
+ * The case worth rejecting is the one that silently loses data:
+ * `"subgoals": "Pset 1, Pset 2"`, which used to import zero steps.
+ */
+function isMalformedSubgoals(subgoals: unknown): boolean {
+  return subgoals !== undefined && subgoals !== null && !Array.isArray(subgoals);
+}
+
 export function columnToPriority(column?: number): PriorityWord {
   return PRIORITY_WORDS[Math.min(Math.max(column ?? 0, 0), PRIORITY_WORDS.length - 1)];
 }
@@ -50,19 +83,48 @@ type SubgoalSpec =
  * leaf-XOR-container invariant: a spec with a non-empty `subgoals` array becomes
  * a container (children, no `done`); everything else is a leaf (`done:false`).
  * Returns null for specs with no usable title so callers can skip them.
+ *
+ * `issues`, when supplied, collects a plain-English reason for every skip.
+ * Dropping a step silently was survivable for a stray empty string, and not at
+ * all for the shape an LLM actually produces: a GROUP object that came back
+ * without a `title` returned null and took its entire subtree with it, so
+ * "Imported 1 project" could mean half the psets were missing. `parseGoalImport`
+ * is strict about the goal's own title; it has no business being lax one level
+ * down.
  */
-export function buildNode(spec: SubgoalSpec): GoalNode | null {
+export function buildNode(spec: SubgoalSpec, issues?: string[]): GoalNode | null {
   if (typeof spec === 'string') {
+    // A blank string in a list is a trailing-comma artifact, not lost work —
+    // skipped silently. Rejecting the whole paste over one is the opposite of
+    // the point, which is that a titleless GROUP takes its subtree with it.
     const title = spec.trim();
     return title ? { id: uid(), title, done: false } : null;
   }
-  if (!spec || typeof spec !== 'object') return null;
+  if (!spec || typeof spec !== 'object') {
+    issues?.push('a step is neither a string nor an object');
+    return null;
+  }
 
   const title = typeof spec.title === 'string' ? spec.title.trim() : '';
-  if (!title) return null;
+  if (!title) {
+    const nested = Array.isArray(spec.subgoals) ? spec.subgoals.length : 0;
+    issues?.push(
+      nested > 0
+        ? `a group of ${nested} step${nested === 1 ? '' : 's'} has no "title"`
+        : 'a step has no "title"',
+    );
+    return null;
+  }
+
+  if (isMalformedSubgoals(spec.subgoals)) {
+    issues?.push(`"${title}" has a "subgoals" that is not a list`);
+    return null;
+  }
 
   const children = Array.isArray(spec.subgoals)
-    ? (spec.subgoals as SubgoalSpec[]).map(buildNode).filter((n): n is GoalNode => n !== null)
+    ? (spec.subgoals as SubgoalSpec[])
+      .map((child) => buildNode(child, issues))
+      .filter((n): n is GoalNode => n !== null)
     : [];
 
   if (children.length > 0) {
@@ -123,9 +185,14 @@ type GoalSpec = {
   subgoals?: unknown;
 };
 
-function buildImportedGoal(spec: GoalSpec): Goal {
+function buildImportedGoal(spec: GoalSpec, issues: string[]): Goal {
+  if (isMalformedSubgoals(spec.subgoals)) {
+    issues.push('"subgoals" is not a list');
+  }
   const nodes = Array.isArray(spec.subgoals)
-    ? (spec.subgoals as SubgoalSpec[]).map(buildNode).filter((n): n is GoalNode => n !== null)
+    ? (spec.subgoals as SubgoalSpec[])
+      .map((child) => buildNode(child, issues))
+      .filter((n): n is GoalNode => n !== null)
     : [];
   const goal: Goal = {
     id: uid(),
@@ -154,6 +221,91 @@ export function sanitizeBackupGoal(goal: Goal): Goal {
 }
 
 /**
+ * Normalise a habit's check-ins on the way in from a backup.
+ *
+ * Goals go through `sanitizeBackupGoal`; habits were passed straight through
+ * untouched. `toggleHabitOn` removes ONE matching index, so a duplicated date —
+ * from a hand-edited backup, a merge, or anything that wrote the same day twice
+ * — made clearing that day take two clicks, with the dot still filled and the
+ * streak still counting it after the first. Sorting is a free bonus: `streak`
+ * and the weekly count both read this list.
+ */
+export function sanitizeBackupHabit(habit: Habit): Habit {
+  // A hand-edited backup can carry a null in the habits array; `.map` over it
+  // would throw out of `importStateFromFile` and surface as "Could not read
+  // that file", which blames the file for one bad row.
+  if (!habit || typeof habit !== 'object') return habit;
+  const raw = habit.checkins;
+  if (!Array.isArray(raw)) return { ...habit, checkins: [] };
+  const clean = [...new Set(raw.filter(isValidLocalDate))].sort();
+  // Compared against the RAW field, not a normalised copy of it — comparing
+  // against the copy makes a missing `checkins` look unchanged and hands back
+  // the original, undefined field and all.
+  const unchanged = clean.length === raw.length && clean.every((d, i) => d === raw[i]);
+  return unchanged ? habit : { ...habit, checkins: clean };
+}
+
+
+// ── Getting JSON out of an AI reply ───────────────────────────────────────────
+//
+// Both import surfaces are fed by pasting a chat response, and a chat response
+// is almost never a bare JSON literal. It arrives fenced, wrapped in "Sure!
+// Here is your project:", smart-quoted by a rich-text field, or with a trailing
+// comma. The SUBTASK importer has tolerated all of that from the start; the
+// PROJECT importer — the one the format and the copy-the-prompt button exist
+// for — called `JSON.parse` on the raw paste and answered every one of those
+// shapes with "That's not valid JSON — check for a missing comma, quote, or
+// bracket", which is both a refusal and a wrong diagnosis.
+
+/** Curly quotes are what you get when a reply passes through a rich-text field. */
+function normaliseQuotes(text: string): string {
+  return text.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+}
+
+/** Pull the body out of a ```json … ``` block, prose and all. */
+function stripCodeFence(text: string): string {
+  const fenced = text.match(/```[a-zA-Z]*\s*\n?([\s\S]*?)```/);
+  return (fenced ? fenced[1] : text).trim();
+}
+
+/** Trailing commas before a closer — legal in JS, not in JSON, common from models. */
+function dropTrailingCommas(text: string): string {
+  return text.replace(/,(\s*[}\]])/g, '$1');
+}
+
+/**
+ * The JSON value inside an AI reply, or null when there is not one.
+ *
+ * Deliberately bounded: it unwraps a fence, normalises quotes, drops trailing
+ * commas, and — only if the whole string still will not parse — takes the span
+ * from the first `{`/`[` to its matching last `}`/`]`. It never repairs the
+ * JSON itself, so a genuinely malformed paste still fails and still gets the
+ * syntax message, which is then accurate.
+ */
+function extractJson(raw: string): unknown | null {
+  const cleaned = dropTrailingCommas(normaliseQuotes(stripCodeFence(raw)));
+  const attempt = (text: string): unknown | null => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  };
+  const whole = attempt(cleaned);
+  if (whole !== null) return whole;
+
+  // Prose on either side: take the outermost object or array and try again.
+  for (const [open, close] of [['{', '}'], ['[', ']']] as const) {
+    const start = cleaned.indexOf(open);
+    const end = cleaned.lastIndexOf(close);
+    if (start === -1 || end <= start) continue;
+    const span = attempt(cleaned.slice(start, end + 1));
+    if (span !== null) return span;
+  }
+  return null;
+}
+
+/**
  * Parse pasted JSON into ready-to-store Goal objects. Accepts a single goal
  * object or an array. Forgiving on optional fields (defaults applied), strict on
  * `title` and JSON validity, all-or-nothing: any bad goal rejects the whole paste.
@@ -165,10 +317,8 @@ export function parseGoalImport(
   const text = raw.trim();
   if (!text) return { error: 'Paste some JSON first.' };
 
-  let data: unknown;
-  try {
-    data = JSON.parse(text);
-  } catch {
+  const data = extractJson(text);
+  if (data === null) {
     return { error: "That's not valid JSON — check for a missing comma, quote, or bracket." };
   }
 
@@ -188,7 +338,22 @@ export function parseGoalImport(
     const goalSpec = spec as GoalSpec;
     const dateError = projectDateError(goalSpec.start, goalSpec.deadline);
     if (dateError) return { error: `Goal #${i + 1}: ${dateError}` };
-    goals.push(buildImportedGoal(goalSpec));
+    if (!isKnownPriority(goalSpec.priority)) {
+      return {
+        error: `Goal #${i + 1}: "${String(goalSpec.priority)}" isn't a horizon — use now, next, later or someday.`,
+      };
+    }
+    // Node-level problems reject the paste, exactly as a missing goal title
+    // does. Silently dropping them meant "Imported 1 project" could be true
+    // while half the steps were gone — and the one thing a paste has to be is
+    // trustworthy, because the user cannot diff JSON against a board by eye.
+    const issues: string[] = [];
+    const goal = buildImportedGoal(goalSpec, issues);
+    if (issues.length > 0) {
+      const more = issues.length > 1 ? ` (+${issues.length - 1} more)` : '';
+      return { error: `Goal #${i + 1}: ${issues[0]}${more}` };
+    }
+    goals.push(goal);
   }
   return { goals };
 }
@@ -266,17 +431,6 @@ Output ONLY a JSON array of short strings — no prose, no markdown code fences.
 
 Example:
 ["Draft the outline", "Write the first section", "Write the second section", "Edit and polish"]`;
-}
-
-/** Curly quotes are what you get when a reply passes through a rich-text field. */
-function normaliseQuotes(text: string): string {
-  return text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
-}
-
-/** Pull the body out of a ```json … ``` block, prose and all. */
-function stripCodeFence(text: string): string {
-  const fenced = text.match(/```[a-zA-Z]*\s*\n?([\s\S]*?)```/);
-  return (fenced ? fenced[1] : text).trim();
 }
 
 /** `- `, `* `, `• `, `1. `, `2) ` — whatever a model decided a bullet is. */

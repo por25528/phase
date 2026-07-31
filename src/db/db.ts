@@ -2,7 +2,7 @@ import Dexie, { type Table } from 'dexie';
 import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
-import { sanitizeBackupGoal } from '../lib/goalImport';
+import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
 import { parseAvailability, serializeAvailability } from '../lib/availability';
 
 class PhaseDB extends Dexie {
@@ -258,6 +258,11 @@ export function exportState(
   planReview: PlanReview | null,
   availability: AvailabilityWindow[],
   allDayBlocks: boolean,
+  // Persisted like availability and allDayBlocks, and it was the one device
+  // preference the backup left out — so "the backup contains everything
+  // persisted" was not true, and the next preference added would have copied
+  // the omission.
+  sidebarPanels: SidebarPanel[],
   preSlotMigrationSnapshot?: { goals: Goal[]; tasks: Task[] } | null,
 ): void {
   const backup = {
@@ -265,6 +270,7 @@ export function exportState(
     pxPerDay,
     availability,
     allDayBlocks,
+    sidebarPanels,
     ...(planReview ? { planReview } : {}),
     ...(preSlotMigrationSnapshot ? { preSlotMigrationSnapshot } : {}),
   };
@@ -283,7 +289,12 @@ function isEntityArray(v: unknown): boolean {
 
 export async function importStateFromFile(
   file: File,
-): Promise<AppState & { pxPerDay: number; availability: AvailabilityWindow[]; allDayBlocks: boolean }> {
+): Promise<AppState & {
+  pxPerDay: number;
+  availability: AvailabilityWindow[];
+  allDayBlocks: boolean;
+  sidebarPanels: SidebarPanel[];
+}> {
   let text: string;
   try {
     text = await file.text();
@@ -297,6 +308,7 @@ export async function importStateFromFile(
       zoom?: string;
       availability?: unknown;
       allDayBlocks?: unknown;
+      sidebarPanels?: unknown;
       // Present on backups exported by this feature, but deliberately NOT part
       // of the type below and never read: it records a PREVIOUS DEVICE's
       // pre-migration state. Importing it must never overwrite this device's
@@ -339,9 +351,18 @@ export async function importStateFromFile(
     raw.allDayBlocks === undefined
       ? await loadAllDayBlocks()
       : raw.allDayBlocks !== 'false' && raw.allDayBlocks !== false;
+  // Same absent-vs-malformed rule as availability above: an absent key means
+  // the backup is silent about this preference, so keep what this device has.
+  // Re-stringified so it goes through the SAME total validator the settings row
+  // uses: `parseSidebarPanels` takes the stored JSON string, while a backup
+  // carries a real array. Anything malformed (null, a string, unknown panel
+  // names) collapses to `[]` in there rather than being half-trusted here.
+  const sidebarPanels = raw.sidebarPanels === undefined
+    ? await loadSidebarPanels()
+    : parseSidebarPanels(JSON.stringify(raw.sidebarPanels));
   const parsed: AppState = {
     goals: (raw.goals ?? []).map(sanitizeBackupGoal),
-    habits: raw.habits ?? [],
+    habits: (raw.habits ?? []).map(sanitizeBackupHabit),
     tasks: raw.tasks ?? [],
     sessions: raw.sessions ?? [],
   };
@@ -349,6 +370,7 @@ export async function importStateFromFile(
   await saveScale(pxPerDay);
   await saveAvailability(availability);
   await saveAllDayBlocks(allDayBlocks);
+  await saveSidebarPanels(sidebarPanels);
   // Every backup predates the calendar-grid migration, and this device's own
   // done-flag (already true from its own first launch) would otherwise skip
   // it for the just-imported data. Re-arm it so the NEXT hydration — the next
@@ -364,5 +386,5 @@ export async function importStateFromFile(
   } else {
     await db.planReview.clear();
   }
-  return { ...parsed, pxPerDay, availability, allDayBlocks };
+  return { ...parsed, pxPerDay, availability, allDayBlocks, sidebarPanels };
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
@@ -20,6 +20,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { InlineEdit } from './InlineEdit';
+import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,11 @@ function LeafCheckbox({
       role="checkbox"
       aria-checked={checked}
       aria-label={label}
+      // -1 like every other control on the row. It was the one tabbable child,
+      // so focus landed on it between rows — and from there the row's
+      // `e.target !== e.currentTarget` guard swallowed ↑/↓ and ⌘]/⌘[. The row
+      // itself is the focusable unit and handles Space, so nothing is lost.
+      tabIndex={-1}
       className="w-[24px] h-[24px] -m-[3px] flex-shrink-0 grid place-items-center group/cb"
       onClick={(e) => {
         e.stopPropagation();
@@ -123,17 +129,172 @@ type Actions = ReturnType<typeof useAppStore>['actions'];
 
 interface SharedProps {
   depth: number;
-  parentId: string | null;
   expanded: Set<string>;
   actions: Actions;
   reducedMotion: boolean;
+  /** The step just created by Enter — it opens ready to type. */
+  newNodeId: string | null;
+  /** Multi-selection, for bulk complete/delete. Empty for the ordinary case. */
+  selected: Set<string>;
+  /** How a row reports a click or a shift-arrow to the tree that owns the set. */
+  onSelect: (id: string, mode: SelectMode) => void;
+  /** Runs the selection's bulk action from a row's keyboard handler. */
+  onBulk: (action: 'complete' | 'delete') => void;
+}
+
+/**
+ * `toggle` — Cmd/Ctrl-click, add or remove one row.
+ * `range`  — Shift-click / Shift+Arrow, the run from the anchor to here.
+ * `clear`  — a plain click while a selection exists: dismiss it and do nothing
+ *            else, so the click that ends a selection cannot also tick a box.
+ */
+export type SelectMode = 'toggle' | 'range' | 'clear';
+
+// ── SelectionBar ──────────────────────────────────────────────────────────────
+
+/**
+ * What a multi-selection can do, and how many rows it holds.
+ *
+ * Always mounted, height-collapsed when empty, so the `aria-live` region below
+ * is present in the accessibility tree before the first row is picked — a live
+ * region that appears at the same moment as its own first message is not
+ * reliably announced.
+ *
+ * "Delete" is styled as the destructive one and sits last, away from the button
+ * a hand is already on. There is no confirmation dialog because there is a real
+ * undo: the toast names the subtree count and holds for 15 seconds, which is
+ * this app's established trade everywhere else.
+ */
+function SelectionBar({
+  count,
+  onComplete,
+  onDelete,
+  onClear,
+}: {
+  count: number;
+  onComplete: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      className={`overflow-hidden transition-[max-height,opacity] duration-150 ${
+        count > 0 ? 'max-h-[48px] opacity-100 mb-[6px]' : 'max-h-0 opacity-0'
+      }`}
+    >
+      <div className="flex items-center gap-[8px] px-[8px] py-[6px] rounded-field border border-line-2 bg-field">
+        {/* Named, because dnd-kit mounts its own unnamed `role="status"` live
+            region for drag announcements — two anonymous status regions on one
+            page are indistinguishable to anything reading them. */}
+        <span
+          role="status"
+          aria-live="polite"
+          aria-label="Selection"
+          className="text-ui text-ink-soft flex-1 min-w-0"
+        >
+          {count > 0 && `${count} step${count === 1 ? '' : 's'} selected`}
+        </span>
+        {/* Conditionally rendered, not just untabbable. `max-h-0 opacity-0`
+            clips the bar visually and hides it from nobody: a screen reader in
+            browse mode still finds "Complete", "Delete" and "Clear" sitting
+            there permanently, and `tabIndex={-1}` only keeps them out of the
+            TAB order. The live region above stays mounted either way, which is
+            the part that has to exist before its first message. */}
+        {count > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={onComplete}
+              className="text-compact font-semibold text-accent-deep px-[8px] py-[4px] min-h-[24px] inline-flex items-center rounded-field hover:bg-accent-tint"
+            >
+              Complete
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="text-compact font-semibold text-warn px-[8px] py-[4px] min-h-[24px] inline-flex items-center rounded-field hover:bg-warn-tint"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-compact font-medium text-muted px-[8px] py-[4px] min-h-[24px] inline-flex items-center rounded-field hover:bg-hover hover:text-ink"
+            >
+              Clear
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── GoalTree (public export, owns DndContext) ─────────────────────────────────
 
 export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: number }) {
-  const { expanded, actions } = useAppStore();
+  const { expanded, actions, newNodeId } = useAppStore();
   const reducedMotion = usePrefersReducedMotion();
+
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Where a shift-range measures from. Held separately from the set because the
+  // set has no order and a range needs a fixed end to grow away from.
+  const anchor = useRef<string | null>(null);
+
+  /*
+   * A selection outlives the data it points at — a delete removes rows and an
+   * undo brings them back, and switching projects re-renders this tree with a
+   * completely different set of ids. `pruneSelection` returns the SAME Set when
+   * nothing was lost, so this settles immediately instead of looping.
+   */
+  useEffect(() => {
+    setSelected((current) => pruneSelection(nodes, current));
+  }, [nodes]);
+
+  const visible = visibleRowIds(nodes, expanded);
+
+  function clearSelection(): void {
+    anchor.current = null;
+    setSelected(new Set());
+  }
+
+  function onSelect(id: string, mode: SelectMode): void {
+    if (mode === 'clear') {
+      clearSelection();
+      return;
+    }
+    if (mode === 'toggle') {
+      anchor.current = id;
+      setSelected((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      return;
+    }
+    // range: with no anchor yet, a shift-click behaves as a plain first pick.
+    const from = anchor.current ?? id;
+    const run = rangeBetween(visible, from, id);
+    // `pruneSelection` prunes the SET; nothing prunes this ref. Once the anchor
+    // left the visible list — collapsed, deleted, or a different project loaded
+    // into the still-mounted tree — `rangeBetween` returned `[]` and re-writing
+    // the same dead anchor made every later Shift-click select exactly one row,
+    // permanently. Re-anchor on the row that was actually clicked instead.
+    anchor.current = run.length > 0 ? from : id;
+    setSelected(new Set(run.length > 0 ? run : [id]));
+  }
+
+  function onBulk(action: 'complete' | 'delete'): void {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    const wrote = action === 'complete' ? actions.completeNodes(ids) : actions.removeNodes(ids);
+    // Only clear if something actually happened. Both actions refuse silently —
+    // a frozen (completed) project, or a selection whose leaves are all done
+    // already — and dropping the bar and the highlights anyway read as "done"
+    // when nothing had been.
+    if (wrote) clearSelection();
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -153,14 +314,32 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <GoalSiblingList
-        nodes={nodes}
-        depth={depth}
-        parentId={null}
-        expanded={expanded}
-        actions={actions}
-        reducedMotion={reducedMotion}
+      {/* The rows are `role="treeitem"`, which is only meaningful inside a
+          `tree`. Nested levels are wrapped in `role="group"` by GoalTreeNode. */}
+      <SelectionBar
+        count={selected.size}
+        onComplete={() => onBulk('complete')}
+        onDelete={() => onBulk('delete')}
+        onClear={clearSelection}
       />
+      {/* `aria-multiselectable` is a capability, so it is static — flipping it
+          on only once a selection exists would describe the tree as
+          single-select right up until the moment it wasn't. It is also what
+          makes the per-row `aria-selected` mean "one of several" rather than
+          "the cursor is here". */}
+      <div role="tree" aria-label="Steps" aria-multiselectable="true">
+        <GoalSiblingList
+          nodes={nodes}
+          depth={depth}
+          expanded={expanded}
+          actions={actions}
+          reducedMotion={reducedMotion}
+          newNodeId={newNodeId}
+          selected={selected}
+          onSelect={onSelect}
+          onBulk={onBulk}
+        />
+      </div>
     </DndContext>
   );
 }
@@ -182,12 +361,27 @@ function GoalSiblingList({ nodes, ...shared }: { nodes: GoalNode[] } & SharedPro
 function GoalTreeNode({
   n,
   depth,
-  parentId,
   expanded,
   actions,
   reducedMotion,
+  newNodeId,
+  selected,
+  onSelect,
+  onBulk,
 }: { n: GoalNode } & SharedProps) {
-  const [editing, setEditing] = useState(false);
+  // A row created by Enter mounts straight into its editor, so the sequence is
+  // "Enter, type, Enter" rather than "Enter, hunt for the row, double-click,
+  // type". The initialiser runs once per mount and the flag is cleared below,
+  // so collapsing and re-expanding never reopens an old editor.
+  // Stable id so the row can `aria-owns` its children group, which the DOM
+  // renders as a sibling rather than a descendant.
+  const groupId = useId();
+  const isNew = n.id === newNodeId;
+  const [editing, setEditing] = useState(isNew);
+  useEffect(() => {
+    if (isNew) actions.clearNewNode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot, on mount
+  }, []);
   const hasKids = Boolean(n.children && n.children.length > 0);
   const isOpen = hasKids && expanded.has(n.id);
   const ind = depth * 22;
@@ -221,8 +415,37 @@ function GoalTreeNode({
   // twirl, drag handle, + sub, delete) stopPropagation so they never reach here.
   // Double-click on the title enters rename; its two underlying single clicks
   // toggle then untoggle (net zero) before the editor opens (Approach A).
-  function handleRowClick() {
+  /**
+   * Modifier clicks are caught on the way DOWN, before any child sees them.
+   *
+   * Bubbling does not work here. Nearly every pixel of a row is covered by a
+   * child that deliberately stops propagation — the title span (so a rename
+   * double-click cannot rewrite `doneAt`), the drag handle, the checkbox, and
+   * the three hover controls. A real browser click therefore lands on one of
+   * them and never reaches the row, so Cmd-click and Shift-click selected
+   * nothing anywhere on the row. (Tests that dispatch straight at the row
+   * element cannot see this: `e.target` is then the row itself.)
+   *
+   * Capture also gives the right semantics for the controls: Cmd-clicking the
+   * ✕ adds the row to the selection instead of deleting it.
+   */
+  function handleRowClickCapture(e: React.MouseEvent) {
     if (editing) return;
+    if (!(e.metaKey || e.ctrlKey || e.shiftKey)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect(n.id, e.metaKey || e.ctrlKey ? 'toggle' : 'range');
+  }
+
+  function handleRowClick(e: React.MouseEvent) {
+    if (editing) return;
+    // Modifiers are handled in the capture phase above and never arrive here.
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    // A plain click while a selection is up dismisses it and stops there. It
+    // must NOT also toggle done: the click that ends a selection is the click
+    // people use to "get out", and having it silently tick a box off is exactly
+    // the accidental destructive action a selection UI has to avoid.
+    if (selected.size > 0) { onSelect(n.id, 'clear'); return; }
     if (hasKids) actions.toggleExpand(n.id);
     else actions.toggleLeaf(n.id);
   }
@@ -230,48 +453,125 @@ function GoalTreeNode({
   // Move focus to the next/previous VISIBLE row in DOM order. Because children
   // are unmounted when collapsed ({isOpen && ...}), only visible rows appear in
   // querySelectorAll('[data-row]').
-  function focusNeighbor(dir: 'up' | 'down') {
+  function focusNeighbor(dir: 'up' | 'down'): string | null {
     const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-row]'));
     const idx = rows.findIndex((r) => r.dataset.nodeId === n.id);
-    if (idx === -1) return;
+    if (idx === -1) return null;
     const neighbor = dir === 'down' ? rows[idx + 1] : rows[idx - 1];
-    neighbor?.focus();
+    if (!neighbor) return null;
+    neighbor.focus();
+    return neighbor.dataset.nodeId ?? null;
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    // Tab / Shift+Tab → indent / outdent (Notion-style)
-    if (e.key === 'Tab') {
+    // Only keys aimed at the ROW itself. `keydown` bubbles, so without this
+    // every key pressed inside the rename input reached the handlers below:
+    // Tab re-parented the node mid-rename, and ArrowDown threw focus to the
+    // next row and abandoned the edit.
+    if (e.target !== e.currentTarget) return;
+
+    /*
+     * Indent / outdent live on Cmd/Ctrl+] and Cmd/Ctrl+[ — NOT on Tab.
+     *
+     * Tab used to restructure the project, which made this a keyboard trap in
+     * the WCAG 2.1.2 sense: every row is `tabIndex={0}`, so once focus entered
+     * the tree neither Tab nor Shift+Tab could move it out, and the drawer's
+     * Notes, Milestones and "+ add step" were unreachable without a mouse. It
+     * was destructive with it: the second Tab a user pressed re-parented a
+     * step, `indentNode` strips the new parent's `done` and planned slot, and
+     * none of it is undoable. On the first sibling it silently did nothing, so
+     * people pressed it again on the second row and watched the tree reshape.
+     *
+     * Notion's real rule is Tab-while-editing-text; its documented alternative
+     * is exactly this chord, and a chord cannot be hit by someone trying to
+     * leave the tree.
+     */
+    if ((e.metaKey || e.ctrlKey) && (e.key === ']' || e.key === '[')) {
       e.preventDefault();
       e.stopPropagation();
-      if (e.shiftKey) actions.outdentNode(n.id);
-      else actions.indentNode(n.id);
+      if (e.key === ']') actions.indentNode(n.id);
+      else actions.outdentNode(n.id);
       return;
     }
-    // Arrow keys → roving focus
-    if (e.key === 'ArrowDown') {
+    // Every branch below is a BARE key. `appKeyboard.ts` screens modifiers for
+    // exactly this reason: without it ⌘→ collapsed a container and swallowed
+    // the platform shortcut, and ⌥⌫ deleted the focused row.
+    const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+    // Right/Left → expand/collapse, per the ARIA treeview pattern.
+    if (plain && e.key === 'ArrowRight' && hasKids && !isOpen) {
       e.preventDefault();
-      focusNeighbor('down');
+      actions.toggleExpand(n.id);
       return;
     }
-    if (e.key === 'ArrowUp') {
+    if (plain && e.key === 'ArrowLeft' && hasKids && isOpen) {
       e.preventDefault();
-      focusNeighbor('up');
+      actions.toggleExpand(n.id);
       return;
     }
-    // Space → toggle leaf checkbox (prevent page scroll)
-    if (e.key === ' ' && !hasKids && !editing) {
+    // Arrow keys → roving focus, or Shift+Arrow to grow the selection with it.
+    if (plain && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
-      actions.toggleLeaf(n.id);
+      // The row must be IN the selection before the range extends, or the first
+      // Shift+Arrow selects only the row you arrive at and leaves the one you
+      // started from behind.
+      if (e.shiftKey && selected.size === 0) onSelect(n.id, 'toggle');
+      const landed = focusNeighbor(e.key === 'ArrowDown' ? 'down' : 'up');
+      if (e.shiftKey && landed) onSelect(landed, 'range');
       return;
     }
-    // Enter → add sibling below (requires knowing parent container id).
-    // At root level (parentId === null) GoalTree has no goalId to call
-    // addRootNode, so Enter is a no-op there. Within any container, it adds
-    // a new child to the same parent, which appears below the current row.
-    if (e.key === 'Enter' && !editing) {
+    // Select every row on screen. Scoped to the tree because focus is in it —
+    // the browser's own Select All is not useful over a list of steps.
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      if (parentId) actions.addChild(parentId);
-      // root level: no-op (user can Tab to the add-input below the tree)
+      e.stopPropagation();
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-row]'));
+      const first = rows[0]?.dataset.nodeId;
+      const last = rows[rows.length - 1]?.dataset.nodeId;
+      // `toggle` plants the anchor, `range` grows to the far end. Both run in
+      // one tick; the range's `setSelected` replaces the toggle's, which is
+      // exactly the intended end state.
+      if (first && last) { onSelect(first, 'toggle'); onSelect(last, 'range'); }
+      return;
+    }
+    // Escape clears the selection and goes NO further: App's global handler
+    // reads Escape as "close the drawer", and losing the whole drawer because
+    // you wanted to drop a selection is a poor trade.
+    if (plain && e.key === 'Escape' && selected.size > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect(n.id, 'clear');
+      return;
+    }
+    // Delete — the selection if there is one, otherwise the focused row. There
+    // was no delete key at all before; both routes are undoable.
+    if (plain && (e.key === 'Backspace' || e.key === 'Delete')) {
+      e.preventDefault();
+      if (selected.size > 0) onBulk('delete');
+      else actions.removeNode(n.id);
+      return;
+    }
+    // Space runs the row's primary action, the same one a click runs: the
+    // selection if there is one, else complete a leaf or expand a container.
+    // Always prevented — on a container it previously fell through and scrolled
+    // the page, which is a key that both does nothing and does something wrong.
+    if (plain && e.key === ' ' && !editing) {
+      e.preventDefault();
+      if (selected.size > 0) onBulk('complete');
+      else if (hasKids) actions.toggleExpand(n.id);
+      else actions.toggleLeaf(n.id);
+      return;
+    }
+    // Enter → a new step directly below this one, opened ready to type.
+    //
+    // This used to be `addChild(parentId)`, which pushes onto the END of the
+    // parent's list — so on the first of ten psets the new row appeared tenth,
+    // unfocused, titled "New item". And `parentId` is null for every root-level
+    // step, so on a freshly created project Enter did nothing at all.
+    // `insertSiblingAfter` works off the row's own sibling list, so it needs no
+    // parent id and behaves the same at every depth.
+    if (plain && e.key === 'Enter' && !editing) {
+      e.preventDefault();
+      actions.insertSiblingAfter(n.id);
     }
   }
 
@@ -282,13 +582,27 @@ function GoalTreeNode({
   return (
     <div ref={setNodeRef} style={sortableStyle}>
       {/* ── row ── */}
+      {/* Nesting IS the model here, so the row has to say how deep it is and
+          whether it is open. Without these a screen reader heard a flat run of
+          titles — the `aria-expanded` that existed lived on the twirl button,
+          which is `tabIndex={-1}` and never announced with the row. */}
       <div
-        className={ROW_CLS}
+        // The hover tint has to lose to the selection tint, not sit on top of
+        // it: `hover:bg-hover` is a later utility than `bg-accent-tint`, so a
+        // selected row under the cursor went neutral grey and read as
+        // deselected exactly while you were pointing at it.
+        className={`${ROW_CLS} ${selected.has(n.id) ? 'bg-accent-tint hover:bg-accent-tint' : ''}`}
         style={{ marginLeft: ind }}
         data-row=""
         data-node-id={n.id}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-expanded={hasKids ? isOpen : undefined}
+        aria-owns={hasKids && isOpen ? groupId : undefined}
+        aria-selected={selected.has(n.id)}
         tabIndex={0}
         onKeyDown={handleKeyDown}
+        onClickCapture={handleRowClickCapture}
         onClick={handleRowClick}
       >
         {/* Drag handle — {listeners} here, NOT on the whole row, to avoid
@@ -301,7 +615,7 @@ function GoalTreeNode({
           tabIndex={-1}
           aria-label="Drag to reorder"
           onClick={(e) => e.stopPropagation()}
-          className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-tiny text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 cursor-grab active:cursor-grabbing select-none transition-opacity"
+          className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-tiny text-faint cursor-grab active:cursor-grabbing select-none"
         >
           ⠿
         </button>
@@ -346,6 +660,22 @@ function GoalTreeNode({
             onCancel={() => setEditing(false)}
           />
         ) : (
+          /*
+           * The title swallows its own clicks.
+           *
+           * Double-click here opens the rename editor, and the two single
+           * clicks underneath it used to reach the row's toggle first. The
+           * in-code claim that this is "net zero" holds for `done` and NOT for
+           * `doneAt`: on an already-finished step, click one deletes the
+           * completion date and click two re-sets it to today. Renaming a pset
+           * you finished last Tuesday silently rewrote when you finished it —
+           * and `doneAt` is what the week recap reads.
+           *
+           * Stopping propagation also fixes the milder complaint that the whole
+           * row is a completion target, so a stray click on the text checks
+           * work off. The checkbox is the deliberate 24px target, and the row
+           * outside the title still toggles.
+           */
           <span
             className={`flex-1 text-lead select-none ${
               hasKids
@@ -354,6 +684,7 @@ function GoalTreeNode({
                   ? 'line-through text-faint'
                   : 'text-ink-soft'
             }`}
+            onClick={hasKids ? undefined : (e) => e.stopPropagation()}
             onDoubleClick={() => setEditing(true)}
           >
             {n.title}
@@ -367,13 +698,31 @@ function GoalTreeNode({
           </span>
         )}
 
+        {/* Rename. Double-clicking the title still works, but it was the ONLY
+            route — an invisible affordance on the single most common edit, and
+            the one place a hover control was missing while drag, + sub and
+            delete all had one. The Habits rail already uses this pencil. */}
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={`Rename "${n.title}"`}
+          title="Rename"
+          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditing(true);
+          }}
+        >
+          ✎
+        </button>
+
         {/* + sub — consistent on every row (leaf: converts to container; container: adds child) */}
         <button
           type="button"
           tabIndex={-1}
           aria-label={`Add sub-item to "${n.title}"`}
           title="+ sub"
-          className="text-faint text-compact opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0 min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:text-accent hover:bg-hover"
+          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
           onClick={(e) => {
             e.stopPropagation();
             actions.addChild(n.id);
@@ -387,7 +736,7 @@ function GoalTreeNode({
           type="button"
           tabIndex={-1}
           aria-label={`Delete ${n.title}`}
-          className="text-faint text-ui opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-[#b4453a] transition-opacity flex-shrink-0 min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover"
+          className="quiet-control text-faint text-ui flex-shrink-0 rounded-[4px] hover:text-warn hover:bg-hover"
           onClick={(e) => {
             e.stopPropagation();
             actions.removeNode(n.id);
@@ -400,19 +749,40 @@ function GoalTreeNode({
       {/* ── children (fade in on expand; unmount on collapse for clean DOM) ── */}
       {hasKids && isOpen && (
         <FadeIn reducedMotion={reducedMotion}>
-          <GoalSiblingList
-            nodes={n.children!}
-            depth={depth + 1}
-            parentId={n.id}
-            expanded={expanded}
-            actions={actions}
-            reducedMotion={reducedMotion}
-          />
-          <AddChildInput
-            indent={(depth + 1) * 22}
-            placeholder="+ add item…"
-            onAdd={(title) => actions.addChild(n.id, title)}
-          />
+          {/*
+            `group`, not a second `tree`: a nested level of an ARIA treeview is
+            a group inside the one tree.
+
+            It is `aria-owns`ed by the row above rather than nested inside it,
+            because the DOM cannot express that here — the row and this group
+            are siblings under the sortable wrapper. Left as a plain sibling,
+            the row's `aria-expanded="true"` announced an expansion whose
+            children assistive tech had no way to locate. `aria-owns` is the
+            documented mechanism for exactly this shape.
+
+            `AddChildInput` sits INSIDE the group for the same reason: a `tree`
+            may only own `treeitem`s and `group`s, and a bare `<input>` as a
+            direct descendant of the tree satisfies neither. A `group` has no
+            required children, so it is at home here.
+          */}
+          <div role="group" id={groupId}>
+            <GoalSiblingList
+              nodes={n.children!}
+              depth={depth + 1}
+              expanded={expanded}
+              actions={actions}
+              reducedMotion={reducedMotion}
+              newNodeId={newNodeId}
+              selected={selected}
+              onSelect={onSelect}
+              onBulk={onBulk}
+            />
+            <AddChildInput
+              indent={(depth + 1) * 22}
+              placeholder="+ add item…"
+              onAdd={(title) => actions.addChild(n.id, title)}
+            />
+          </div>
         </FadeIn>
       )}
     </div>

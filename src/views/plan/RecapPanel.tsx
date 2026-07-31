@@ -1,5 +1,4 @@
 import { useAppStore } from '../../state/store';
-import { todayStr } from '../../lib/dates';
 import { weekRecap, loggedTimeForWeek, formatLoggedMinutes } from '../../lib/plan';
 
 /**
@@ -11,7 +10,6 @@ import { weekRecap, loggedTimeForWeek, formatLoggedMinutes } from '../../lib/pla
  */
 export function RecapPanel() {
   const { goals, sessions, planReview, actions } = useAppStore();
-  const today = todayStr();
   if (!planReview || planReview.reviewed || planReview.entries.length === 0) return null;
 
   const r = weekRecap(planReview, goals);
@@ -58,7 +56,7 @@ export function RecapPanel() {
                 <span className="text-meta text-muted truncate">{e.goalTitle}</span>
                 <button
                   type="button"
-                  onClick={() => actions.scheduleNode(e.goalId, e.nodeId, today, 0)}
+                  onClick={() => actions.replanNode(e.goalId, e.nodeId)}
                   className="text-meta font-semibold text-accent hover:text-accent-deep px-[4px]"
                 >
                   Replan
@@ -86,9 +84,9 @@ export function RecapPanel() {
 
         {r.removed.length > 0 && (
           <section>
-            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-faint font-semibold mb-[4px]">Removed</h3>
+            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Removed</h3>
             {r.removed.map((e) => (
-              <div key={e.nodeId} className="py-[3px] text-body text-faint line-through">
+              <div key={e.nodeId} className="py-[3px] text-body text-muted line-through">
                 {e.leafTitle} <span className="no-underline text-meta">· {e.goalTitle}</span>
               </div>
             ))}

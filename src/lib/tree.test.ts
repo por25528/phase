@@ -8,6 +8,8 @@ import {
   findNodePath,
   cloneGoals,
   firstOpenLeaf,
+  insertSiblingAfter,
+  findInAll,
 } from './tree';
 import { goalPct } from './pct';
 import type { Goal, GoalNode } from '../db/types';
@@ -437,5 +439,64 @@ describe('firstOpenLeaf', () => {
   });
   it('returns null for an empty tree', () => {
     expect(firstOpenLeaf([])).toBeNull();
+  });
+});
+
+/**
+ * Enter in the step tree used to call `addChild(parentId)`, which pushes onto
+ * the end — so on the first of ten psets the new row appeared TENTH — and at
+ * root level `parentId` is null, so it did nothing at all. A fresh project's
+ * steps are all root-level, which made "nothing at all" the common case.
+ */
+describe('insertSiblingAfter', () => {
+  const tree = (): Goal[] => [{
+    id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'a', title: 'Pset 1', done: false },
+      { id: 'grp', title: 'Exam prep', children: [
+        { id: 'c1', title: 'Review', done: false },
+        { id: 'c2', title: 'Practice', done: false },
+      ] },
+      { id: 'b', title: 'Pset 2', done: false },
+    ],
+  }];
+
+  it('lands directly below the row, not at the end of the list', () => {
+    const out = insertSiblingAfter(tree(), 'a', 'New step')!;
+    expect(out.goals[0].nodes.map((n) => n.title)).toEqual(['Pset 1', 'New step', 'Exam prep', 'Pset 2']);
+  });
+
+  it('works at root level, where Enter used to be a no-op', () => {
+    const out = insertSiblingAfter(tree(), 'b', 'Pset 3')!;
+    expect(out.goals[0].nodes.map((n) => n.id)).toEqual(['a', 'grp', 'b', out.newId]);
+  });
+
+  it('stays inside the nested list when the row is a child', () => {
+    const out = insertSiblingAfter(tree(), 'c1', 'Redo problem 4')!;
+    expect(out.goals[0].nodes[1].children!.map((n) => n.title))
+      .toEqual(['Review', 'Redo problem 4', 'Practice']);
+    expect(out.goals[0].nodes).toHaveLength(3); // nothing leaked to the root
+  });
+
+  it('returns the new id so the caller can open it for typing', () => {
+    const out = insertSiblingAfter(tree(), 'a', 'New step')!;
+    expect(findInAll(out.goals, out.newId)?.title).toBe('New step');
+  });
+
+  it('creates a leaf, never a container', () => {
+    const out = insertSiblingAfter(tree(), 'grp', 'Sibling of the group')!;
+    const made = findInAll(out.goals, out.newId)!;
+    expect(made.children).toBeUndefined();
+    expect(made.done).toBe(false);
+  });
+
+  it('does not touch the array it was given', () => {
+    const original = tree();
+    const snapshot = structuredClone(original);
+    insertSiblingAfter(original, 'a', 'New step');
+    expect(original).toEqual(snapshot);
+  });
+
+  it('returns null for an id that is not in the tree', () => {
+    expect(insertSiblingAfter(tree(), 'nope', 'x')).toBeNull();
   });
 });

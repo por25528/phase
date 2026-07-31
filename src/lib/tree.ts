@@ -95,6 +95,33 @@ export function findParentList(
 }
 
 /**
+ * Insert a new leaf directly BELOW `nodeId`, among its own siblings.
+ *
+ * The tree's Enter key used to call `addChild(parentId)`, which does
+ * `children.push(...)` — so pressing Enter on the first of ten psets appended
+ * the new row TENTH, and at root level `parentId` is null so Enter did nothing
+ * at all. A fresh project's steps are all root-level, which made that the
+ * common case: the whole "type out a list" loop, broken in both directions.
+ *
+ * Returns the new node's id so the caller can put it straight into edit mode.
+ * Null when `nodeId` isn't in the tree.
+ */
+export function insertSiblingAfter(
+  goals: Goal[],
+  nodeId: string,
+  title: string,
+): { goals: Goal[]; newId: string } | null {
+  const next = cloneGoals(goals);
+  // `findParentList` hands back the live array inside `next`, so splicing it
+  // edits the clone and never the caller's data.
+  const found = findParentList(next, nodeId);
+  if (!found) return null;
+  const newId = uid();
+  found.list.splice(found.index + 1, 0, { id: newId, title, done: false });
+  return { goals: next, newId };
+}
+
+/**
  * Returns the sequence of node IDs from goal.nodes root down to the target node
  * (e.g. ['parentId', 'childId']). Returns null if not found.
  */

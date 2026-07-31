@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { BacklogItem } from '../../../lib/backlog';
-import { backlogGroups, capBacklog } from '../../../lib/backlog';
+import { backlogGroups, capBacklog, dueChip } from '../../../lib/backlog';
+import { revealDomId, groupKeyContaining, type RevealTarget } from '../../../lib/reveal';
+import { countOpenCarryOver } from '../../../lib/deferWork';
+import { weekOf } from '../../../lib/plan';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateField } from '../EstimateField';
+import { containerDragAttributes } from '../../../lib/dragAttributes';
 
 /**
  * One draggable row.
@@ -34,12 +38,16 @@ import { EstimateField } from '../EstimateField';
  * blur, Enter or Escape swap it back.
  */
 function BacklogRow({
-  item, onFocusItem,
+  item, onFocusItem, revealed, today,
 }: {
   item: BacklogItem;
   onFocusItem: (item: BacklogItem | null) => void;
+  /** The palette sent the user to this row — mark it so the search has a visible answer. */
+  revealed: boolean;
+  today: string;
 }) {
   const [editingEstimate, setEditingEstimate] = useState(false);
+  const due = dueChip(item.due, today);
   const data: PlanDragData = {
     kind: item.kind, id: item.id, goalId: item.goalId, title: item.title,
   };
@@ -51,8 +59,11 @@ function BacklogRow({
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
+      id={revealDomId(item.kind, item.id)}
+      data-backlog-row=""
+      {...containerDragAttributes(attributes, { keyboardDraggable: true })}
       {...listeners}
+      aria-label={`${item.title} — drag onto a day, or press 1–7`}
       onFocus={() => onFocusItem(item)}
       onBlur={() => onFocusItem(null)}
       // Plain `:focus`, NOT `:focus-visible`. dnd-kit's `attributes` put
@@ -65,9 +76,21 @@ function BacklogRow({
       // visible for as long as it is active.
       className={`group flex items-center gap-[6px] text-ui text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
         isDragging ? 'opacity-40' : 'hover:bg-hover'
-      }`}
+      } ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
     >
       <span className="flex-1 min-w-0 truncate">{item.title}</span>
+      {/* Only inside the next week, and always for anything overdue. Printing a
+          date on every row would make the urgent ones harder to find, not
+          easier — the sort already put them on top; this says why. */}
+      {due && (
+        <span
+          className={`flex-none font-mono text-eyebrow tabular-nums ${
+            due.overdue ? 'text-warn font-semibold' : 'text-muted'
+          }`}
+        >
+          {due.text}
+        </span>
+      )}
       {editingEstimate ? (
         // onBlur bubbles (React maps it to focusout), so this catches the
         // field's own blur — whether it came from Enter, Escape or a click
@@ -97,7 +120,7 @@ function BacklogRow({
           // rail's rule for everything that is purely an affordance.
           className={`flex-none font-mono text-eyebrow text-muted hover:text-ink-soft tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover ${
             item.estimateMin === undefined
-              ? 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity'
+              ? 'quiet-control'
               : ''
           }`}
         >
@@ -113,7 +136,7 @@ function BacklogRow({
           else actions.toggleLeaf(item.id);
         }}
         aria-label={`Complete "${item.title}"`}
-        className="flex-none text-meta text-muted hover:text-ink min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+        className="quiet-control flex-none text-meta text-muted hover:text-ink rounded-[4px] hover:bg-hover"
       >
         ✓
       </button>
@@ -131,7 +154,7 @@ function BacklogRow({
             actions.removeTask(item.id);
           }}
           aria-label={`Delete "${item.title}"`}
-          className="flex-none text-meta text-muted hover:text-warn min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          className="quiet-control flex-none text-meta text-muted hover:text-warn rounded-[4px] hover:bg-hover"
         >
           ✕
         </button>
@@ -152,17 +175,47 @@ function BacklogRow({
  * remembers you expanded everything last week is just the long list again.
  */
 export function Backlog({
-  weekStart, today, onFocusItem,
+  weekStart, today, onFocusItem, reveal,
 }: {
   weekStart: string;
   today: string;
   onFocusItem: (item: BacklogItem | null) => void;
+  /** Task the palette is pointing at, if any. */
+  reveal?: RevealTarget | null;
 }) {
   const { goals, tasks } = useAppStore();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
-  const groups = backlogGroups(goals, tasks, weekStart, today);
-  const capped = capBacklog(groups, expanded);
+  /*
+   * Both of these walk every goal's leaf tree several times over —
+   * `backlogGroups` runs `attentionRank`, which is ~7 passes per project, then
+   * walks each tree again to build its items; `countOpenCarryOver` adds
+   * `buildDailyWork`'s passes on top. This component subscribes to the whole
+   * store and re-renders on Plan's 60-second now-line tick, so leaving them
+   * bare meant several thousand node visits a minute to move one CSS `top` —
+   * in the one file Plan.tsx's memo block was written to protect.
+   */
+  const groups = useMemo(
+    () => backlogGroups(goals, tasks, weekStart, today),
+    [goals, tasks, weekStart, today],
+  );
+  const isCurrentWeek = weekStart === weekOf(today);
+  const carryOver = useMemo(
+    () => (isCurrentWeek ? countOpenCarryOver(goals, tasks, today) : 0),
+    [isCurrentWeek, goals, tasks, today],
+  );
+
+  // A revealed row that the cap is hiding must be uncollapsed, or the palette
+  // scrolls to an element that isn't in the DOM. Derived rather than pushed
+  // into `expanded` by an effect, for two reasons: the row is then present in
+  // the very commit Plan's rAF measures (an effect would need a second paint),
+  // and the expansion retires with the highlight instead of silently becoming
+  // a preference the user never asked for.
+  const revealKey = reveal ? groupKeyContaining(groups, reveal) : null;
+  const effectiveExpanded = revealKey === null || expanded.has(revealKey)
+    ? expanded
+    : new Set([...expanded, revealKey]);
+  const capped = capBacklog(groups, effectiveExpanded);
   // Counted from `items`, never `shown`: the cap hides rows, but this number
   // is what tells you how much is unplanned, and it must stay honest.
   const total = groups.reduce((sum, g) => sum + g.items.length, 0);
@@ -180,11 +233,35 @@ export function Backlog({
     <div>
       <h3 className="flex items-baseline gap-[6px] font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold py-[6px] px-[6px]">
         <span className="flex-1">To plan</span>
-        <span className="text-faint tabular-nums">{total}</span>
+        <span className="text-muted tabular-nums">{total}</span>
       </h3>
 
+      {/*
+        The exam-week escape valve. `deferOpenToNextWeek` has existed, undoable
+        and tested, since the carry-over work landed — with no caller anywhere,
+        so the only way to clear a pile of slipped work was one row at a time.
+
+        The label names the count so it can be checked against what moves, and
+        the set it moves is `buildDailyWork`'s carry-overs: overdue tasks and
+        steps whose planned week has passed. Never a step merely due soon — a
+        real commitment is not swept along.
+
+        Shown only on the current week: "next week" is measured from today, so
+        offering it while looking at March would move work the user is not
+        looking at.
+      */}
+      {isCurrentWeek && carryOver > 0 && (
+        <button
+          type="button"
+          onClick={() => actions.deferOpenToNextWeek()}
+          className="w-full text-left px-[6px] py-[4px] mb-[2px] min-h-[24px] inline-flex items-center text-meta text-muted hover:text-ink rounded-[6px] hover:bg-hover"
+        >
+          Push {carryOver} overdue item{carryOver === 1 ? '' : 's'} to next week
+        </button>
+      )}
+
       {capped.length === 0 ? (
-        <div className="text-faint text-body italic px-[6px]">
+        <div className="text-muted text-body italic px-[6px]">
           Nothing left to plan.
         </div>
       ) : (
@@ -195,19 +272,25 @@ export function Backlog({
                 {group.goalTitle}
               </span>
               {group.goalId && (
-                <span className="flex-none font-mono text-eyebrow text-faint tabular-nums">
+                <span className="flex-none font-mono text-eyebrow text-muted tabular-nums">
                   {group.pct}%
                 </span>
               )}
             </div>
             {group.shown.map((item) => (
-              <BacklogRow key={`${item.kind}:${item.id}`} item={item} onFocusItem={onFocusItem} />
+              <BacklogRow
+                key={`${item.kind}:${item.id}`}
+                item={item}
+                onFocusItem={onFocusItem}
+                revealed={reveal?.kind === item.kind && reveal.id === item.id}
+                today={today}
+              />
             ))}
             {group.expandable && (
               <button
                 type="button"
                 onClick={() => toggle(group.key)}
-                className="px-[6px] py-[3px] text-meta text-muted hover:text-ink"
+                className="px-[6px] py-[3px] min-h-[24px] inline-flex items-center text-meta text-muted hover:text-ink rounded-[6px] hover:bg-hover"
               >
                 {group.hidden > 0 ? `+${group.hidden} more` : 'Show less'}
               </button>

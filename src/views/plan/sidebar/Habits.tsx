@@ -15,6 +15,7 @@ import { GripIcon } from './GripIcon';
 import { HabitDots } from './HabitDots';
 import { useReducedMotion } from '../../../components/useReducedMotion';
 import { todayStr, addDays, weekDates, streak } from '../../../lib/dates';
+import { revealDomId, type RevealTarget } from '../../../lib/reveal';
 import type { Cadence, Habit } from '../../../db/types';
 
 function PencilIcon() {
@@ -127,6 +128,7 @@ function SortableHabitRow({
   onRemove,
   onRename,
   reducedMotion,
+  revealed,
 }: {
   hb: Habit;
   today: string;
@@ -136,6 +138,8 @@ function SortableHabitRow({
   onRemove: () => void;
   onRename: (title: string) => void;
   reducedMotion: boolean;
+  /** The palette sent the user to this habit — mark it so the search has an answer. */
+  revealed: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: hb.id });
   const [editing, setEditing] = useState(false);
@@ -233,8 +237,11 @@ function SortableHabitRow({
   return (
     <div
       ref={setNodeRef}
+      id={revealDomId('habit', hb.id)}
       style={style}
-      className="group flex items-center gap-[12px] py-[6px] px-[8px] -mx-[8px] rounded-field cursor-grab active:cursor-grabbing touch-none hover:bg-hover"
+      className={`group flex flex-wrap items-center gap-x-[12px] gap-y-[4px] py-[6px] px-[8px] -mx-[8px] rounded-field cursor-grab active:cursor-grabbing touch-none hover:bg-hover ${
+        revealed ? 'ring-2 ring-accent bg-accent-tint' : ''
+      }`}
       onPointerDownCapture={(e) => { downPos.current = { x: e.clientX, y: e.clientY }; }}
       onClick={handleRowClick}
       {...attributes}
@@ -259,11 +266,26 @@ function SortableHabitRow({
         </span>
       )}
       {goal && <Tag label={goal.title} />}
-      <HabitDots hb={hb} today={today} onToggleDay={onToggleDay} />
-      <span className="font-mono text-meta text-muted w-[76px] text-right flex-none tabular-nums">{stat}</span>
+      {/*
+        The 15-day trail and its stat, as ONE wrappable group.
+
+        They are ~216px of fixed width in a rail that is 254px wide at every
+        viewport from 768px up (`272px` grid column less the `18px` gutter), so
+        they have never fitted beside a title. The old rule hid them below a
+        1000px VIEWPORT, which is the wrong box: above 1000px the row simply
+        overflowed into the sidebar's scroller and pushed the rename and delete
+        controls out of reach. `@container` measures the rail itself, and the
+        answer is to give the trail its own line rather than delete the only
+        route to backfilling a missed day.
+      */}
+      <span className="hb-trail flex items-center gap-[12px] ml-auto flex-none">
+        <HabitDots hb={hb} today={today} onToggleDay={onToggleDay} />
+        <span className="hb-stat font-mono text-meta text-muted w-[76px] text-right flex-none tabular-nums">{stat}</span>
+      </span>
+
       <button
         type="button"
-        className="text-faint hover:text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-none"
+        className="quiet-control text-faint hover:text-ink flex-none"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); startEdit(); }}
         aria-label={`Rename habit "${hb.title}"`}
@@ -272,7 +294,7 @@ function SortableHabitRow({
       </button>
       <button
         type="button"
-        className="text-faint text-ui hover:text-[#B4453A] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-none"
+        className="quiet-control text-faint text-ui hover:text-warn flex-none"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         aria-label={`Remove habit "${hb.title}"`}
@@ -292,7 +314,7 @@ function SortableHabitRow({
  * that the resting state is text and controls appear on hover. The panel body
  * is now flat, exactly like the sibling `Stats` panel.
  */
-export function Habits() {
+export function Habits({ reveal }: { reveal?: RevealTarget | null }) {
   const { habits, goals, actions } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
@@ -313,9 +335,9 @@ export function Habits() {
   }
 
   return (
-    <div>
+    <div className="hb-rail">
       {habits.length === 0 && !adding && (
-        <div className="text-faint text-body italic py-[6px]">No habits yet. Add one to start a streak.</div>
+        <div className="text-muted text-body italic py-[6px]">No habits yet. Add one to start a streak.</div>
       )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={habits.map((h) => h.id)} strategy={verticalListSortingStrategy}>
@@ -330,6 +352,7 @@ export function Habits() {
               onRemove={() => actions.removeHabit(hb.id)}
               onRename={(title) => actions.renameHabit(hb.id, title)}
               reducedMotion={reducedMotion}
+              revealed={reveal?.kind === 'habit' && reveal.id === hb.id}
             />
           ))}
         </SortableContext>

@@ -19,7 +19,7 @@ const DOW_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sat
  * wipe every other day's settings as a side effect.
  */
 export function AvailabilitySettings() {
-  const { availability, allDayBlocks, actions } = useAppStore();
+  const { availability, actions } = useAppStore();
   const byDow = new Map(availability.map((w) => [w.dow, w]));
 
   function replaceDay(dow: number, next: AvailabilityWindow | null) {
@@ -50,7 +50,20 @@ export function AvailabilitySettings() {
         {DOW_LABELS.map((label, dow) => {
           const window = byDow.get(dow) ?? null;
           return (
-            <div key={dow} className="flex items-center gap-[8px] text-ui">
+            /*
+              The rail is 249px wide at every viewport from 768px up, and a row
+              of checkbox + 70px label + two 80px time inputs + the dash is
+              ~290px. It overflowed by 41px, measured in Chromium — the end time
+              was clipped mid-digit ("18:0") on a default desktop window, and
+              the sidebar's `overflow-y-auto` turns that into a horizontal
+              scrollbar rather than a visible failure.
+
+              `flex-wrap` plus a shrinkable label is the whole fix: the times
+              drop to a second line when they cannot fit, and stay inline when
+              they can. `min-w-0` on the label is what lets it give way first —
+              a flex item will not shrink below its content without it.
+            */
+            <div key={dow} className="flex flex-wrap items-center gap-x-[8px] gap-y-[2px] text-ui">
               <input
                 type="checkbox"
                 checked={!!window}
@@ -58,7 +71,7 @@ export function AvailabilitySettings() {
                 onChange={(e) => toggleDay(dow, e.target.checked)}
                 className="flex-none accent-accent w-[16px] h-[16px] m-[4px]"
               />
-              <span className="w-[70px] flex-none text-ink-soft">{label}</span>
+              <span className="w-[70px] min-w-0 flex-1 truncate text-ink-soft">{label}</span>
               {window ? (
                 <>
                   <input
@@ -66,34 +79,41 @@ export function AvailabilitySettings() {
                     value={minutesToTimeValue(window.startMin)}
                     aria-label={`${label} start time`}
                     onChange={(e) => updateStart(dow, window, e.target.value)}
-                    className="rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-compact text-ink tabular-nums outline-none focus-visible:border-accent"
+                    className="min-w-0 rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-compact text-ink tabular-nums outline-none focus-visible:border-accent"
                   />
-                  <span className="text-faint">–</span>
+                  <span className="text-muted">–</span>
                   <input
                     type="time"
                     value={minutesToTimeValue(window.endMin)}
                     aria-label={`${label} end time`}
                     onChange={(e) => updateEnd(dow, window, e.target.value)}
-                    className="rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-compact text-ink tabular-nums outline-none focus-visible:border-accent"
+                    className="min-w-0 rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-compact text-ink tabular-nums outline-none focus-visible:border-accent"
                   />
                 </>
               ) : (
-                <span className="text-meta text-faint italic">off</span>
+                <span className="text-meta text-muted italic">off</span>
               )}
             </div>
           );
         })}
       </div>
 
-      <label className="flex items-center gap-[6px] pt-[6px] mt-[2px] border-t border-line-soft text-ui text-ink-soft select-none cursor-pointer">
-        <input
-          type="checkbox"
-          checked={allDayBlocks}
-          onChange={(e) => actions.setAllDayBlocks(e.target.checked)}
-          className="flex-none accent-accent w-[16px] h-[16px] m-[4px]"
-        />
-        All-day events consume the whole day
-      </label>
+      {/*
+        The "All-day events consume the whole day" checkbox lived here and has
+        been removed until there is a calendar to consume events from.
+
+        `allDayBlocks` only ever reaches `freeMinutes`/`freeIntervals`/`blockedBy`
+        alongside a `blocks` array that every call site hardcodes to `[]` — there
+        is no producer of `BusyBlock` anywhere in `src/`. So toggling it could
+        not change a single minute or pixel: a live control for a feature that
+        cannot fire, which is worse than no control, because it reads as an
+        explanation for whatever the grid is doing.
+
+        The preference itself is untouched — still stored, still loaded, still
+        exported, still threaded through the capacity math — so restoring the
+        control when the calendar feed lands is putting this label back, nothing
+        more.
+      */}
     </div>
   );
 }

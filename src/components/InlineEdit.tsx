@@ -31,8 +31,11 @@ export function InlineEdit({
       ref={ref}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
-      className={`${className} bg-transparent outline-none p-0 w-full min-w-0`}
-      style={{ border: 'none', borderBottom: '1px solid #C8512F' }}
+      // The editing underline is the accent TOKEN, per theme. It was an inline
+      // `1px solid #C8512F` — a near-accent matching neither the light
+      // (#C04E2D) nor the dark (#E1613B) value, so the one affordance that says
+      // "you are editing this" was subtly the wrong colour in both themes.
+      className={`${className} bg-transparent outline-none p-0 w-full min-w-0 border-0 border-b border-accent`}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault();

@@ -60,6 +60,7 @@ export function CommandPalette({
   habits,
   onOpenGoal,
   onSetView,
+  onReveal,
 }: {
   open: boolean;
   onClose: () => void;
@@ -68,6 +69,8 @@ export function CommandPalette({
   habits: Habit[];
   onOpenGoal: (goalId: string, nodeId?: string) => void;
   onSetView: (view: ViewName) => void;
+  /** Take the user to a task/habit on the Plan view and highlight it. */
+  onReveal: (kind: 'task' | 'habit', id: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -140,8 +143,13 @@ export function CommandPalette({
       onOpenGoal(entry.goalId!, entry.nodeId);
     } else {
       // Tasks and habits have no drawer of their own; the calendar is where
-      // they are scheduled and completed.
-      onSetView('plan');
+      // they are scheduled and completed. Switching view is not enough on its
+      // own — a task scheduled three weeks out, or one sitting behind the
+      // backlog's "+N more" cap, is nowhere on the week that happens to be
+      // showing, so landing on Plan looked exactly like Enter doing nothing.
+      // `onReveal` moves the week, opens whatever is hiding the row, and marks
+      // it.
+      onReveal(entry.kind === 'habit' ? 'habit' : 'task', entry.id);
     }
     onClose();
   }
@@ -167,7 +175,18 @@ export function CommandPalette({
       e.preventDefault();
       const row = rows[active];
       if (row) run(row);
+      return;
     }
+    /*
+     * The palette is a single-input dialog: every result row is `tabIndex={-1}`
+     * and driven by `aria-activedescendant`, so there is nothing else inside to
+     * Tab to. Without this, one Tab left the dialog entirely and landed on the
+     * header buttons behind the scrim — and from there Escape was resolved by
+     * App's global handler as 'close-drawer', closing the project drawer while
+     * the palette stayed open. Swallowing Tab is the whole trap this needs;
+     * `Modal` and `GoalDrawer` both cycle because they hold several controls.
+     */
+    if (e.key === 'Tab') e.preventDefault();
   }
 
   return (
@@ -192,6 +211,13 @@ export function CommandPalette({
             onKeyDown={onKeyDown}
             placeholder="Search projects, steps, tasks and habits…"
             aria-label="Search projects, steps, tasks and habits"
+            // `combobox` is what makes the rest of this mean anything: without
+            // it the listbox below is never announced, and `aria-activedescendant`
+            // has no widget to move a virtual cursor within.
+            role="combobox"
+            aria-expanded
+            aria-haspopup="listbox"
+            aria-autocomplete="list"
             aria-controls={`${modalId}-results`}
             aria-activedescendant={rows[active] ? `${modalId}-row-${active}` : undefined}
             className="flex-1 min-w-0 bg-transparent text-title text-ink placeholder:text-faint outline-none"

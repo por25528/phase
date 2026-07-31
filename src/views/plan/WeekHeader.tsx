@@ -36,7 +36,7 @@ export function WeekHeader({
         {capacityParts(capacity).join(' · ')}
       </span>
       {note && (
-        <span className="text-eyebrow text-faint truncate max-w-[240px]" title={note}>{note}</span>
+        <span className="text-eyebrow text-muted truncate max-w-[240px]" title={note}>{note}</span>
       )}
       {isPast && (
         <span className="text-meta text-muted italic">past week — read only</span>

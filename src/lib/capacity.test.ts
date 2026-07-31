@@ -233,18 +233,50 @@ describe('weekCapacity', () => {
     expect(weekCapacity(base).freeMin).toBe(540 * 5);
   });
 
-  it('charges a day-pinned leaf to its day and to the week', () => {
-    const leaves = [leaf({ plannedDay: TUE, estimateMin: 60 })];
+  /**
+   * "Planned" means ON THE CALENDAR — a day AND a start minute, the same
+   * predicate `scheduledOn` and `backlogGroups` partition on. Anything merely
+   * committed is reported as `backlogMin`.
+   *
+   * Folding the two together made the capacity readout contradict the rail
+   * beside it: `⌘N` always sets a date and never a start minute, so every
+   * captured task was billed to a day as "planned" while that day sat visibly
+   * empty and the same item was listed under "To plan".
+   */
+  it('charges a PLACED leaf to its day and to the week', () => {
+    const leaves = [leaf({ plannedDay: TUE, plannedStartMin: 600, estimateMin: 60 })];
     const out = weekCapacity({ ...base, leaves });
     expect(out.days.find((d) => d.date === TUE)?.plannedMin).toBe(60);
+    expect(out.days.find((d) => d.date === TUE)?.backlogMin).toBe(0);
     expect(out.plannedMin).toBe(60);
+    expect(out.backlogMin).toBe(0);
   });
 
-  it('charges an anyday leaf to the week but to no day', () => {
+  it('charges a day-pinned but UNPLACED leaf to backlog, not to planned', () => {
+    const leaves = [leaf({ plannedDay: TUE, estimateMin: 60 })]; // no start minute
+    const out = weekCapacity({ ...base, leaves });
+    const tue = out.days.find((d) => d.date === TUE)!;
+    expect(tue.plannedMin).toBe(0);
+    expect(tue.backlogMin).toBe(60);
+    expect(out.plannedMin).toBe(0);
+    expect(out.backlogMin).toBe(60);
+  });
+
+  it('charges an anyday leaf to the week backlog and to no day', () => {
     const leaves = [leaf({ estimateMin: 60 })]; // no plannedDay
     const out = weekCapacity({ ...base, leaves });
-    expect(out.plannedMin).toBe(60);
-    expect(out.days.every((d) => d.plannedMin === 0)).toBe(true);
+    expect(out.backlogMin).toBe(60);
+    expect(out.plannedMin).toBe(0);
+    expect(out.days.every((d) => d.plannedMin === 0 && d.backlogMin === 0)).toBe(true);
+  });
+
+  it('still calls the week over-committed when the excess is unplaced', () => {
+    // The whole week is 45h; commit 50h of unplaced work to it.
+    const leaves = Array.from({ length: 50 }, (_, i) =>
+      leaf({ nodeId: `n${i}`, estimateMin: 60 }));
+    const out = weekCapacity({ ...base, leaves });
+    expect(out.plannedMin).toBe(0);
+    expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(true);
   });
 
   it('charges an unestimated anyday leaf to the week count only', () => {
@@ -253,10 +285,20 @@ describe('weekCapacity', () => {
     expect(out.days.every((d) => d.unestimated === 0)).toBe(true);
   });
 
-  it('charges a task to its date', () => {
-    const out = weekCapacity({ ...base, tasks: [task({ date: TUE, estimateMin: 25 })] });
+  it('charges a PLACED task to its date', () => {
+    const out = weekCapacity({ ...base, tasks: [task({ date: TUE, startMin: 600, estimateMin: 25 })] });
     expect(out.days.find((d) => d.date === TUE)?.plannedMin).toBe(25);
     expect(out.plannedMin).toBe(25);
+  });
+
+  // Exactly what `⌘N` produces: a date, never a start minute.
+  it('charges a captured task to backlog, not to the day it is dated to', () => {
+    const out = weekCapacity({ ...base, tasks: [task({ date: TUE, estimateMin: 25 })] });
+    const tue = out.days.find((d) => d.date === TUE)!;
+    expect(tue.plannedMin).toBe(0);
+    expect(tue.backlogMin).toBe(25);
+    expect(out.plannedMin).toBe(0);
+    expect(out.backlogMin).toBe(25);
   });
 
   it('lists what is blocking a day, deduplicated', () => {
@@ -276,7 +318,7 @@ describe('weekCapacity', () => {
   });
 
   it('excludes a leaf pinned outside the week from day totals', () => {
-    const leaves = [leaf({ plannedDay: '2026-08-10', estimateMin: 60 })];
+    const leaves = [leaf({ plannedDay: '2026-08-10', plannedStartMin: 600, estimateMin: 60 })];
     const out = weekCapacity({ ...base, leaves });
     expect(out.days.every((d) => d.plannedMin === 0)).toBe(true);
     expect(out.plannedMin).toBe(60); // still a commitment for this week
@@ -327,5 +369,76 @@ describe('weekCapacity', () => {
     // Explicit field-level check: the regression above would widen this
     // block's endMin in place (600-660 merged with 630-720 → endMin 720).
     expect(blocks[1].endMin).toBe(660);
+  });
+});
+
+/**
+ * "Free" is two different questions depending on tense, and answering the
+ * forward-looking one about a day that has been and gone produces a falsehood.
+ *
+ * `remainingWindow` returns null for any date before `now.date`, so every past
+ * day reported 0 free — and with anything planned on it that is
+ * `isOverCommitted`, so a whole past week rendered in warning red ("0m free ·
+ * 6h planned") and, on a Thursday, so did Monday–Wednesday of the current week.
+ */
+describe('weekCapacity in the past tense', () => {
+  const THU = '2026-07-30';
+  const base = {
+    week: MON,
+    windows: WINDOWS,
+    blocks: [] as BusyBlock[],
+    leaves: [] as PlannedLeaf[],
+    tasks: [] as Task[],
+    now: { date: THU, minute: 12 * 60 } as Now,
+    allDayBlocks: true,
+    hasData: true,
+  };
+
+  it('reports what an elapsed day HELD, not what is left of it', () => {
+    const out = weekCapacity(base);
+    expect(out.days.find((d) => d.date === MON)?.freeMin).toBe(540);
+    expect(out.days.find((d) => d.date === TUE)?.freeMin).toBe(540);
+  });
+
+  it('still clamps today to the hours actually remaining', () => {
+    const out = weekCapacity(base);
+    // Window 09:00–18:00, now is 12:00 → six hours left.
+    expect(out.days.find((d) => d.date === THU)?.freeMin).toBe(360);
+  });
+
+  /**
+   * The week total is the sum of the day figures, so the header and the day
+   * headings beneath it describe the same span.
+   *
+   * Clamping the week to "what is still left" instead sounds more actionable,
+   * but `plannedMin` counts the WHOLE week's commitments including the elapsed
+   * days — and `isOverCommitted` compares the two. An ordinary Thursday with
+   * Monday's work still on the board therefore read as over-committed, turning
+   * the header red above a grid of perfectly healthy day chips.
+   */
+  it('sums the day figures, so it cannot contradict the grid beneath it', () => {
+    const out = weekCapacity(base);
+    expect(out.freeMin).toBe(out.days.reduce((sum, d) => sum + d.freeMin, 0));
+    // Mon–Wed full (540 × 3) + Thu's remaining 360 + Fri full 540; weekend off.
+    expect(out.freeMin).toBe(540 * 3 + 360 + 540);
+  });
+
+  it('does not call an ordinary mid-week Thursday over-committed', () => {
+    const out = weekCapacity({
+      ...base,
+      leaves: [leaf({ plannedDay: MON, plannedStartMin: 600, estimateMin: 120 })], // Monday's, already spent
+    });
+    expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(false);
+  });
+
+  it('reports a finished week as the capacity it had, so it cannot read as over-committed', () => {
+    const out = weekCapacity({
+      ...base,
+      now: { date: '2026-08-10', minute: 0 },
+      leaves: [leaf({ plannedDay: TUE, plannedStartMin: 600, estimateMin: 120 })],
+    });
+    expect(out.freeMin).toBe(540 * 5);
+    expect(out.plannedMin).toBe(120);
+    expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(false);
   });
 });

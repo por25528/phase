@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Goal, Task } from '../db/types';
-import { scheduledOn, spansOn } from './scheduled';
+import { scheduledOn, scheduledByDate, spansOn } from './scheduled';
 import { DEFAULT_SLOT_MIN } from './slot';
 
 const DAY = '2026-07-15';
@@ -92,5 +92,61 @@ describe('spansOn', () => {
   it('omits the excluded id so a block can move within its own gap', () => {
     const t = task({ date: DAY, startMin: 540, estimateMin: 60 });
     expect(spansOn([], [t], DAY, 't1')).toEqual([]);
+  });
+});
+
+/**
+ * The bucketing pass has to be indistinguishable from calling `scheduledOn`
+ * once per day — it exists purely to stop the Plan view scanning the whole
+ * dataset fourteen times per render, not to change any answer.
+ */
+describe('scheduledByDate', () => {
+  const WEEK = ['2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16'];
+
+  const goals: Goal[] = [
+    {
+      id: 'g1', title: '6.1200', nodes: [
+        { id: 'a', title: 'Pset', plannedWeek: '2026-07-13', plannedDay: '2026-07-14', plannedStartMin: 600, estimateMin: 60 },
+        { id: 'grp', title: 'Exam prep', children: [
+          { id: 'b', title: 'Review', plannedWeek: '2026-07-13', plannedDay: '2026-07-14', plannedStartMin: 540 },
+        ] },
+        { id: 'unplaced', title: 'Later' },
+      ],
+    },
+    {
+      id: 'g2', title: 'Archived', completedAt: '2026-07-01', nodes: [
+        { id: 'z', title: 'Old', plannedWeek: '2026-07-13', plannedDay: '2026-07-14', plannedStartMin: 700 },
+      ],
+    },
+  ];
+  const tasks: Task[] = [
+    { id: 't1', title: 'Deck', date: '2026-07-14', startMin: 800, done: false, goalId: null },
+    { id: 't2', title: 'Offsite', date: '2026-07-20', startMin: 540, done: false, goalId: null }, // outside the range
+    { id: 't3', title: 'No time', date: '2026-07-15', done: false, goalId: null },
+  ];
+
+  it('agrees with scheduledOn for every day in the range', () => {
+    const byDate = scheduledByDate(goals, tasks, WEEK);
+    for (const date of WEEK) {
+      expect(byDate.get(date)).toEqual(scheduledOn(goals, tasks, date));
+    }
+  });
+
+  it('gives every requested date an entry, so callers need no null check', () => {
+    const byDate = scheduledByDate(goals, tasks, WEEK);
+    expect([...byDate.keys()]).toEqual(WEEK);
+    expect(byDate.get('2026-07-16')).toEqual([]);
+  });
+
+  it('ignores work outside the requested range', () => {
+    const byDate = scheduledByDate(goals, tasks, WEEK);
+    expect([...byDate.values()].flat().map((i) => i.id)).not.toContain('t2');
+  });
+
+  it('drops archived projects and half-placed work, like scheduledOn', () => {
+    const ids = [...scheduledByDate(goals, tasks, WEEK).values()].flat().map((i) => i.id);
+    expect(ids).not.toContain('z');        // archived project
+    expect(ids).not.toContain('unplaced'); // no day
+    expect(ids).not.toContain('t3');       // day but no start minute
   });
 });

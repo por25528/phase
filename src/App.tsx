@@ -57,7 +57,7 @@ function MoonIcon() {
 }
 
 export function App() {
-  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, theme, actions } = useAppStore();
+  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -150,8 +150,19 @@ export function App() {
   return (
     <>
       {/* Top bar. Every flex child is min-w-0 so nothing can force the document
-          wider than the viewport — that overflow is what broke mobile. */}
-      <header className="sticky top-0 z-30 bg-bg border-b border-line flex items-center gap-[12px] lg:gap-[30px] px-[16px] sm:px-[36px] py-[13px] overflow-hidden">
+          wider than the viewport — that overflow is what broke mobile.
+
+          `overflow-x-clip`, NOT `overflow-hidden`. The guard only ever needed
+          the horizontal axis, but `overflow: hidden` cannot apply to one axis
+          alone: per CSS, a non-`visible` value on one axis computes the other
+          from `visible` to `auto`, making the header a scroll container
+          vertically too. That clipped the ⋯ menu — which is absolutely
+          positioned below the bar — to a ~7px sliver, and since the inline
+          utility cluster is `hidden lg:flex` and neither has a shortcut, Export
+          and Import backup had NO reachable entry point at all under 1024px.
+          `clip` is the one overflow value that does not infect the other axis,
+          so the horizontal protection stays and the menu escapes. */}
+      <header className="sticky top-0 z-30 bg-bg border-b border-line flex items-center gap-[12px] lg:gap-[30px] px-[16px] sm:px-[36px] py-[13px] overflow-x-clip">
         <div className="flex items-baseline gap-[10px] flex-none">
           <span className="font-disp text-wordmark font-[650] tracking-[-0.01em]">
             Phase<span className="text-accent">.</span>
@@ -261,9 +272,37 @@ export function App() {
         />
       </header>
 
+      {/* The banner has to state the consequence, not just the situation.
+          Writes from this tab are now blocked (see setAndPersist) rather than
+          allowed to rewrite the whole database from a stale snapshot, so what
+          the user needs to know is that anything typed here is not being kept. */}
       {secondTab && (
-        <div className="bg-warn-tint text-warn text-ui px-[16px] sm:px-[36px] py-[7px] border-b border-line">
-          Phase is already open in another tab. Edits from two tabs overwrite each other — keep just one open.
+        <div role="alert" className="bg-warn-tint text-warn text-ui px-[16px] sm:px-[36px] py-[7px] border-b border-line">
+          Phase is open in another tab, which owns your data. <strong className="font-semibold">Changes made
+          here are not saved</strong> — switch to the other tab, or close it and reload this one.
+        </div>
+      )}
+
+      {/* A failed write is the one condition that can silently cost a whole
+          session, so it latches here rather than passing through as a toast.
+          Export is offered inline because that is the only recovery, and the
+          toast that used to say so was gone in 1.9 seconds. */}
+      {persistFailed && (
+        <div
+          role="alert"
+          className="bg-warn-tint text-warn text-ui px-[16px] sm:px-[36px] py-[7px] border-b border-line flex flex-wrap items-center gap-x-[8px] gap-y-[2px]"
+        >
+          <span>
+            Phase couldn’t save to this device. Your work is here but only in this tab — closing it loses
+            everything since the last successful save.
+          </span>
+          <button
+            type="button"
+            onClick={() => actions.exportBackup()}
+            className="font-semibold underline hover:no-underline min-h-[24px] inline-flex items-center"
+          >
+            Export a backup
+          </button>
         </div>
       )}
 
@@ -350,6 +389,7 @@ export function App() {
         habits={habits}
         onOpenGoal={actions.openDrawer}
         onSetView={actions.setView}
+        onReveal={actions.revealInPlan}
       />
 
       {/* Undo toast */}
@@ -372,11 +412,19 @@ export function App() {
         </button>
       </div>
 
-      {/* Toast */}
+      {/* Toast.
+          Sits above the undo toast whenever one is armed, instead of on top of
+          it. Both are bottom-centred at the same z-index, so a refusal raised
+          inside the 5s undo window (delete a task, then try to schedule
+          something that doesn't fit) rendered the two messages superimposed and
+          neither was legible. `bottom` is part of the existing `transition-all`,
+          so it slides rather than jumps when the undo toast retires. */}
       <div
         role="status"
         aria-live="polite"
-        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[220ms] ${
+        className={`fixed left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[220ms] ${
+          pendingUndo ? 'bottom-[68px]' : 'bottom-[20px]'
+        } ${
           toast
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-[20px] pointer-events-none'

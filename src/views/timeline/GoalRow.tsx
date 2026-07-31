@@ -85,25 +85,25 @@ export const GoalRow = memo(function GoalRow({
             </svg>
           </button>
           <div className="flex flex-col justify-center gap-[2px] min-w-0">
-            <span className="text-chip text-muted font-semibold tracking-[.06em]">#{i + 1}</span>
+            <span className="text-badge text-muted font-semibold tracking-[.06em]">#{i + 1}</span>
             <span className="text-body font-medium text-ink leading-[1.25]">{g.title}</span>
             {/* Wraps rather than truncates: sharing one line with a flex-none
                 chip inside the 200px label column clipped the metric itself to
                 "67% · …", making the ellipsis the content. */}
             <span className="flex flex-wrap items-center gap-x-[5px] gap-y-[3px] min-w-0">
-              <span className="text-chip text-muted tabular-nums">
+              <span className="text-badge text-muted tabular-nums">
                 {p}%{trustedSchedule ? ` · ${daysLeftLabel(g.deadline)}` : ' · dates unconfirmed'}
               </span>
               {pace === 'behind' && <BehindChip pts={behind} donePct={p} className="flex-none" />}
               {pace === 'needs-breakdown' && (
-                <span className="text-chip text-muted italic flex-none">define next step</span>
+                <span className="text-badge text-muted italic flex-none">define next step</span>
               )}
             </span>
             {warnings.length > 0 && (
               <button
                 type="button"
                 onClick={() => actions.openDrawer(g.id, warnings[0].nodeIds?.[0])}
-                className="text-chip text-warn text-left leading-[1.3] truncate hover:underline min-h-[24px] inline-flex items-center rounded-[4px]"
+                className="text-badge text-warn text-left leading-[1.3] truncate hover:underline min-h-[24px] inline-flex items-center rounded-[4px]"
                 title={warnings.map((w) => w.message).join(' · ')}
               >
                 ⚠ {warnings[0].message}{warnings.length > 1 ? ` · +${warnings.length - 1}` : ''}

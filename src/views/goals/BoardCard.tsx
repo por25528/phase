@@ -17,6 +17,7 @@ import {
 } from '../../lib/plan';
 import { isValidLocalDate, needsDateConfirmation, projectDateError } from '../../lib/schedule';
 import { HORIZON_LABELS } from './styles';
+import { containerDragAttributes } from '../../lib/dragAttributes';
 
 const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
   warn: 'text-warn bg-warn-tint',
@@ -117,11 +118,11 @@ function CardFace({
       </p>
 
       {isNow && (
-        <p
-          className={`font-mono text-chip tabular-nums tracking-[.01em] ${
-            wk.length > 0 ? 'text-muted' : 'text-faint'
-          }`}
-        >
+        // `muted` in both states. The empty case used to drop to `faint`, which
+        // index.css reserves for decorative marks and placeholders — but
+        // "Nothing planned this week" is the single most actionable sentence on
+        // the card, and 3.17:1 is not a contrast to say it at.
+        <p className="font-mono text-badge tabular-nums tracking-[.01em] text-muted">
           {wk.length > 0
             ? `${wkDone} of ${wk.length} planned steps done`
             : hasLeaves
@@ -141,7 +142,7 @@ function CardFace({
         <div className="flex flex-wrap gap-[5px]">
           <span
             title={badge.hint}
-            className={`text-chip font-semibold px-[7px] py-[2px] rounded-full ${BADGE_TONE[badge.tone]}`}
+            className={`text-badge font-semibold px-[7px] py-[2px] rounded-full ${BADGE_TONE[badge.tone]}`}
           >
             {badge.label}
           </span>
@@ -174,12 +175,14 @@ export function BoardCard({
   onDefine,
   onComplete,
   onMove,
+  onRank,
   onDelete,
   onConfirmDates,
   onEditDates,
   reducedMotion,
   dimmed,
   matched,
+  highlighted = false,
 }: {
   goal: Goal;
   today: string;
@@ -188,12 +191,20 @@ export function BoardCard({
   onDefine: (id: string) => void;
   onComplete: (id: string) => void;
   onMove: (id: string, column: number) => void;
+  /** Re-rank within the current horizon: -1 up, +1 down. */
+  onRank: (id: string, delta: number) => void;
   onDelete: (id: string) => void;
   onConfirmDates: (id: string) => void;
   onEditDates: (id: string) => void;
   reducedMotion: boolean;
   dimmed: boolean;
   matched: boolean;
+  /**
+   * The date-review banner is pointing at this card. A ring, not a focus style:
+   * the banner focuses the card programmatically after a mouse click, which
+   * `:focus-visible` deliberately does not match.
+   */
+  highlighted?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: goal.id });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -244,26 +255,50 @@ export function BoardCard({
       id={`goal-card-${goal.id}`}
       ref={setNodeRef}
       style={style}
-      {...attributes}
+      {...containerDragAttributes(attributes)}
       {...listeners}
-      aria-label={`${goal.title} — open, or drag to re-rank`}
+      aria-label={`${goal.title} — Enter to open, Alt with arrow keys to move`}
       onClick={() => onOpen(goal.id)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onOpen(goal.id);
+          return;
+        }
+        /*
+         * Alt+Arrow moves the card: left/right across horizons, up/down within
+         * one. Both were pointer-only — the ⋯ menu offers horizons but no
+         * ordering, and dnd-kit's keyboard activator never fires here because
+         * this explicit `onKeyDown` is spread after `{...listeners}` and wins.
+         *
+         * Alt rather than Cmd because ⌘← is Back in a browser, and this card
+         * sits in a normal document. Alt+Arrow carries no default on a
+         * non-text element, matches the direction it performs, and cannot be
+         * reached by someone simply navigating.
+         */
+        if (!e.altKey) return;
+        const horizon = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+        if (horizon !== undefined) {
+          e.preventDefault();
+          onMove(goal.id, currentCol + horizon);
+          return;
+        }
+        const rank = { ArrowUp: -1, ArrowDown: 1 }[e.key];
+        if (rank !== undefined) {
+          e.preventDefault();
+          onRank(goal.id, rank);
         }
       }}
       className={`group relative select-none cursor-grab active:cursor-grabbing flex flex-col gap-[8px] p-[13px] rounded-card bg-panel border border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-shadow ${
         matched ? 'shadow-today' : 'shadow-card hover:shadow-today'
-      }`}
+      } ${highlighted ? 'ring-2 ring-accent' : ''}`}
     >
       <CardFace goal={goal} today={today} suppressDateBadge />
 
       {datesUnconfirmed && (
         <div className="flex flex-col gap-[5px] rounded-field bg-warn-tint px-[8px] py-[6px]">
-          <span className="text-chip text-warn">
+          <span className="text-badge text-warn">
             Dates unconfirmed · <span className="tabular-nums">{storedRange}</span>
           </span>
           <div className="flex items-center gap-[4px] -mx-[6px]">
@@ -371,7 +406,7 @@ export function BoardCard({
                   onDelete(goal.id);
                   setMenuOpen(false);
                 })}
-                className="w-full text-left text-ui px-[11px] py-[5px] text-[#b4453a] hover:bg-hover"
+                className="w-full text-left text-ui px-[11px] py-[5px] text-warn hover:bg-hover"
               >
                 Delete project
               </button>

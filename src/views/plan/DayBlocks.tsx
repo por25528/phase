@@ -1,9 +1,10 @@
-import type { BusyBlock, Goal, Task } from '../../db/types';
+import type { BusyBlock } from '../../db/types';
 import type { Interval } from '../../lib/capacity';
 import { assignLanes, type LaneSpan } from '../../lib/grid';
-import { scheduledOn } from '../../lib/scheduled';
+import type { ScheduledItem } from '../../lib/scheduled';
 import { EventBlock, type GridBlock } from './EventBlock';
 import type { PlanDragData } from './dropTarget';
+import { revealDomId, type RevealTarget } from '../../lib/reveal';
 
 /**
  * One layout-ready entry: geometry (`startMin`/`endMin`, for `assignLanes`)
@@ -34,12 +35,12 @@ interface DayItem extends LaneSpan {
  * currently unexercised. It still has to be correct when it lights up.
  */
 export function DayBlocks({
-  date, goals, tasks, blocks, range, allDayBlocks, readOnly, onRemove, onComplete, onResize,
-  gridHeightPx,
+  date, items, blocks, range, allDayBlocks, readOnly, onRemove, onComplete, onResize,
+  gridHeightPx, reveal,
 }: {
   date: string;
-  goals: Goal[];
-  tasks: Task[];
+  /** This day's slice of `scheduledByDate` — already filtered and sorted. */
+  items: ScheduledItem[];
   blocks: BusyBlock[];
   range: Interval;
   allDayBlocks: boolean;
@@ -62,8 +63,14 @@ export function DayBlocks({
   onComplete: (kind: 'step' | 'task', id: string) => void;
   onResize: (kind: 'step' | 'task', id: string, minutes: number) => void;
   gridHeightPx: number;
+  /** Task the command palette is pointing at — marked wherever it turns up. */
+  reveal?: RevealTarget | null;
 }) {
-  const work: DayItem[] = scheduledOn(goals, tasks, date).map((item) => ({
+  // Handed in, not re-derived. This used to call `scheduledOn(goals, tasks,
+  // date)` itself — a full walk of every goal's leaf tree plus every task, once
+  // per day column, on top of the identical seven passes Plan had already done
+  // to compute the visible range.
+  const work: DayItem[] = items.map((item) => ({
     key: `${item.kind}:${item.id}`,
     kind: item.kind,
     title: item.title,
@@ -143,6 +150,10 @@ export function DayBlocks({
             onResize={
               isWork && !readOnly ? (minutes) => onResize(item.kind as 'step' | 'task', item.id!, minutes) : undefined
             }
+            // A revealed task can be in the rail OR already on the grid; only
+            // one of the two renders it, so both carry the same id and mark.
+            domId={isWork ? revealDomId(item.kind as 'step' | 'task', item.id!) : undefined}
+            revealed={reveal != null && reveal.kind === item.kind && reveal.id === item.id}
           />
         );
       })}

@@ -4,6 +4,7 @@ import {
   columnToPriority,
   buildNode,
   buildManualGoal,
+  sanitizeBackupHabit,
   parseGoalImport,
   buildAiPrompt,
   buildSubtaskPrompt,
@@ -386,5 +387,199 @@ describe('parseSubtasks tolerance', () => {
 
   it('does not treat a JSON object as a list of lines', () => {
     expect(parseSubtasks('{"nope": 1}')).toHaveProperty('error');
+  });
+});
+
+/**
+ * The parser rejected a goal missing its own title and silently swallowed every
+ * problem one level down. For someone pasting LLM output — the format's whole
+ * reason to exist — that meant "Imported 1 project" could be true while half
+ * the psets were missing, with nothing on screen to notice it by.
+ */
+describe('parseGoalImport rejects what it used to swallow', () => {
+  const TODAY = '2026-07-15';
+
+  it('refuses a group that lost its title, instead of dropping its subtree', () => {
+    const raw = JSON.stringify({
+      title: '6.1200',
+      subgoals: [{ subgoals: ['Pset 1', 'Pset 2', 'Pset 3'] }],
+    });
+    const out = parseGoalImport(raw, TODAY);
+    expect('error' in out).toBe(true);
+    expect('error' in out && out.error).toContain('group of 3 steps');
+  });
+
+  it('refuses a `subgoals` that is a string — the classic LLM slip', () => {
+    const raw = JSON.stringify({ title: '6.031', subgoals: 'Pset 1, Pset 2' });
+    const out = parseGoalImport(raw, TODAY);
+    expect('error' in out).toBe(true);
+    expect('error' in out && out.error).toContain('not a list');
+  });
+
+  it('refuses an unknown horizon rather than quietly filing it under Now', () => {
+    const raw = JSON.stringify({ title: 'Startup', priority: 'urgent' });
+    const out = parseGoalImport(raw, TODAY);
+    expect('error' in out).toBe(true);
+    expect('error' in out && out.error).toContain('urgent');
+  });
+
+  it('still accepts an absent priority, and the legacy words', () => {
+    expect('goals' in parseGoalImport(JSON.stringify({ title: 'A' }), TODAY)).toBe(true);
+    const legacy = parseGoalImport(JSON.stringify({ title: 'A', priority: 'highest' }), TODAY);
+    expect('goals' in legacy && legacy.goals[0].column).toBe(0);
+  });
+
+  it('counts every problem so the message can say there are more', () => {
+    const raw = JSON.stringify({ title: 'A', subgoals: [{ subgoals: ['x'] }, { subgoals: ['y'] }] });
+    const out = parseGoalImport(raw, TODAY);
+    expect('error' in out && out.error).toContain('+1 more');
+  });
+
+  /**
+   * The strictness is about data LOSS — a titleless group takes its whole
+   * subtree with it. A blank string in a list is a trailing-comma artifact, and
+   * failing the entire paste over one would be a worse bug than the silent
+   * dropping it replaced.
+   */
+  it('skips a blank string in a list without failing the paste', () => {
+    const out = parseGoalImport(JSON.stringify({ title: 'A', subgoals: ['Pset 1', '', 'Pset 2'] }), TODAY);
+    expect('goals' in out).toBe(true);
+    expect('goals' in out && out.goals[0].nodes.map((n) => n.title)).toEqual(['Pset 1', 'Pset 2']);
+  });
+
+  /**
+   * The strictness above must reject data LOSS, not JSON idiom. `null` is the
+   * ordinary way to write "none", and a blank `priority` is a field the model
+   * left unset — turning either into a failed paste would be a worse bug than
+   * the silent dropping it replaced.
+   */
+  it('treats null subgoals as "no steps", not as malformed', () => {
+    const flat = parseGoalImport(JSON.stringify({ title: 'P', subgoals: null }), TODAY);
+    expect('goals' in flat && flat.goals[0].nodes).toEqual([]);
+
+    const nested = parseGoalImport(
+      JSON.stringify({ title: 'P', subgoals: [{ title: 'Step', subgoals: null }] }),
+      TODAY,
+    );
+    expect('goals' in nested && nested.goals[0].nodes.map((n) => n.title)).toEqual(['Step']);
+  });
+
+  it('treats a blank priority as unset, which means Now', () => {
+    const out = parseGoalImport(JSON.stringify({ title: 'P', priority: '   ' }), TODAY);
+    expect('goals' in out && out.goals[0].column).toBe(0);
+  });
+
+  it('is case-insensitive about a horizon word', () => {
+    const out = parseGoalImport(JSON.stringify({ title: 'P', priority: 'Someday' }), TODAY);
+    expect('goals' in out && out.goals[0].column).toBe(3);
+  });
+
+  it('leaves a well-formed nested paste completely alone', () => {
+    const raw = JSON.stringify({
+      title: '6.1200',
+      priority: 'now',
+      subgoals: ['Pset 1', { title: 'Exam prep', subgoals: ['Review notes', 'Practice set'] }],
+    });
+    const out = parseGoalImport(raw, TODAY);
+    expect('goals' in out).toBe(true);
+    if (!('goals' in out)) return;
+    expect(out.goals[0].nodes).toHaveLength(2);
+    expect(out.goals[0].nodes[1].children).toHaveLength(2);
+  });
+});
+
+/**
+ * Goals go through `sanitizeBackupGoal` on import; habits were passed straight
+ * through untouched. `toggleHabitOn` removes ONE matching index, so a duplicated
+ * date made clearing that day take two clicks — dot still filled, streak still
+ * counting it, no reason visible.
+ */
+describe('sanitizeBackupHabit', () => {
+  const base = { id: 'h', title: 'Gym', cadence: 'daily' as const, weeklyTarget: 7, goalId: null };
+
+  it('de-duplicates repeated check-ins', () => {
+    const out = sanitizeBackupHabit({ ...base, checkins: ['2026-07-29', '2026-07-29', '2026-07-30'] });
+    expect(out.checkins).toEqual(['2026-07-29', '2026-07-30']);
+  });
+
+  it('drops values that are not local dates at all', () => {
+    const out = sanitizeBackupHabit({ ...base, checkins: ['2026-07-29', 'yesterday', '', '2026-13-45'] });
+    expect(out.checkins).toEqual(['2026-07-29']);
+  });
+
+  it('sorts, since streak and the weekly count both read this list', () => {
+    const out = sanitizeBackupHabit({ ...base, checkins: ['2026-07-30', '2026-07-28', '2026-07-29'] });
+    expect(out.checkins).toEqual(['2026-07-28', '2026-07-29', '2026-07-30']);
+  });
+
+  it('returns the original object untouched when it is already clean', () => {
+    const habit = { ...base, checkins: ['2026-07-28', '2026-07-29'] };
+    expect(sanitizeBackupHabit(habit)).toBe(habit);
+  });
+
+  it('survives a checkins field that is not an array', () => {
+    const out = sanitizeBackupHabit({ ...base, checkins: undefined as unknown as string[] });
+    expect(out.checkins).toEqual([]);
+  });
+});
+
+/**
+ * What a chat reply actually looks like.
+ *
+ * Both import surfaces are fed by pasting one, and a reply is almost never a
+ * bare JSON literal — it arrives fenced, wrapped in "Sure! Here is your
+ * project:", smart-quoted by a rich-text field, or with a trailing comma. The
+ * subtask importer tolerated all of it from the start; the PROJECT importer,
+ * which exists to be pasted into and even ships a copy-the-prompt button,
+ * called `JSON.parse` on the raw paste and answered every one of these with
+ * "check for a missing comma, quote, or bracket" — a refusal and a wrong
+ * diagnosis at once.
+ */
+describe('parseGoalImport accepts a real AI reply', () => {
+  const TODAY = '2026-07-15';
+  const titleOf = (raw: string): string | undefined => {
+    const out = parseGoalImport(raw, TODAY);
+    return 'goals' in out ? out.goals[0]?.title : undefined;
+  };
+
+  it('unwraps a ```json fence', () => {
+    expect(titleOf('```json\n{"title":"6.1200","subgoals":["Pset 1"]}\n```')).toBe('6.1200');
+  });
+
+  it('unwraps a bare fence', () => {
+    expect(titleOf('```\n{"title":"6.1200"}\n```')).toBe('6.1200');
+  });
+
+  it('ignores prose on either side', () => {
+    expect(titleOf('Sure! Here it is:\n\n{"title":"6.1200"}\n\nLet me know!')).toBe('6.1200');
+  });
+
+  it('repairs smart quotes from a rich-text paste', () => {
+    expect(titleOf('{“title”:“6.1200”}')).toBe('6.1200');
+  });
+
+  it('tolerates a trailing comma', () => {
+    const out = parseGoalImport('{"title":"6.1200","subgoals":["a","b",]}', TODAY);
+    expect('goals' in out && out.goals[0].nodes.map((n) => n.title)).toEqual(['a', 'b']);
+  });
+
+  it('handles all of it at once, for an array of projects', () => {
+    const raw = 'Here you go:\n```json\n[{“title”:"6.1200"},{"title":"18.06",}]\n```\nGood luck!';
+    const out = parseGoalImport(raw, TODAY);
+    expect('goals' in out && out.goals.map((g) => g.title)).toEqual(['6.1200', '18.06']);
+  });
+
+  /**
+   * Forgiving about WRAPPING, never about the JSON itself — a genuinely broken
+   * paste must still fail, and now the syntax message is accurate when it does.
+   */
+  it('still rejects JSON that is actually malformed', () => {
+    const out = parseGoalImport('```json\n{"title": "6.1200", "subgoals": [\n```', TODAY);
+    expect('error' in out && out.error).toContain('not valid JSON');
+  });
+
+  it('still rejects a reply with no JSON in it at all', () => {
+    const out = parseGoalImport('I can help you plan that! What is the deadline?', TODAY);
+    expect('error' in out).toBe(true);
   });
 });

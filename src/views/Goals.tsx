@@ -38,6 +38,15 @@ export function Goals() {
   const { goals, dateReviewDismissed, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
   const [filter, setFilter] = useState<FocusFilter | null>(null);
+  // The card the date-review banner (or a horizon move) is pointing at, plus a
+  // nonce so pointing at the SAME card twice is still two distinct events.
+  // Clears itself after a moment.
+  const [highlight, setHighlight] = useState<{ id: string; nonce: number } | null>(null);
+  const highlightNonce = useRef(0);
+  // Which unconfirmed project the banner walks to next. Kept separately from
+  // the highlight, which expires; see reviewUnconfirmedDates.
+  const [reviewCursor, setReviewCursor] = useState(0);
+  const highlightId = highlight?.id ?? null;
   const currentDate = useLocalDate();
 
   // Below ~920px the four columns fold into a horizon switcher — one horizon at a
@@ -159,22 +168,118 @@ export function Goals() {
   }, [filter, summary]);
   const filtering = matchIds != null && matchIds.size > 0;
 
-  // Board "Plan next step" switches to the calendar. The old modal planner also
-  // scrolled to this project's rail group and pulsed it; that deep-link died with
-  // the modal, so this is plain navigation and the project is found by hand in
-  // the Plan sidebar's backlog.
-  function onPlan() {
-    actions.setView('plan');
+  /**
+   * Move a project to another horizon and keep it in sight.
+   *
+   * Below 920px the board shows one horizon at a time, and the ⋯ menu is the
+   * only route between horizons there (drag is unavailable). Moving a card
+   * therefore sent it to a column that wasn't rendered, and it simply left the
+   * screen — from a menu, so with no drag to explain where it went. Following
+   * it across and reusing the date-review banner's highlight makes the
+   * destination the answer instead of a guess. The store supplies the toast and
+   * the undo.
+   */
+  function moveToHorizon(goalId: string, column: number) {
+    // Clamped and no-opped HERE as well as in the store, because Alt+Arrow can
+    // ask for one past either end: `setActiveHorizon(-1)` would blank the
+    // narrow board, and highlighting a card that never moved announces a move
+    // that did not happen.
+    const target = Math.min(Math.max(column, 0), COL_COUNT - 1);
+    const goal = goalById.get(goalId);
+    // Both sides clamped, exactly as `moveGoalToColumn` compares them. Testing
+    // the RAW column against a clamped target let an out-of-range `column: 7`
+    // (a hand-edited import, or a future horizon count) pass here and then be
+    // refused by the store — switching horizon and ringing a card for a write
+    // that never happened.
+    if (!goal) return;
+    if (Math.min(Math.max(goal.column ?? 0, 0), COL_COUNT - 1) === target) return;
+    actions.moveGoalToColumn(goalId, target);
+    if (!wide) setActiveHorizon(target);
+    setHighlight({ id: goalId, nonce: highlightNonce.current += 1 });
   }
 
-  function reviewUnconfirmedDates() {
-    const goal = unconfirmed[0];
-    if (!goal) return;
-    if (!wide) setActiveHorizon(goal.column ?? 0);
-    requestAnimationFrame(() => {
-      document.getElementById(`goal-card-${goal.id}`)?.focus();
-    });
+  /**
+   * Re-rank within the horizon, keeping focus on the card.
+   *
+   * A rank move reorders siblings rather than remounting, so focus usually
+   * survives — but `insertBefore` on an attached node is remove-then-insert at
+   * spec level, so it is not guaranteed. Routing through the same highlight
+   * path as a horizon move makes it deterministic, and announces the move the
+   * same way.
+   */
+  function moveRank(goalId: string, delta: number) {
+    actions.moveGoalRank(goalId, delta);
+    setHighlight({ id: goalId, nonce: highlightNonce.current += 1 });
   }
+
+  // Board "Plan next step" — the deep-link the modal planner used to have,
+  // rebuilt on the command palette's reveal path. The card computes exactly
+  // which step it means and this used to drop the id on the floor and just
+  // switch view, leaving the project to be found by hand in a rail holding a
+  // dozen others. `cardPrimaryAction` returns 'plan' for nearly every healthy
+  // project, so that was the default action on most cards.
+  const onPlan = actions.planNextStepFor;
+
+  /**
+   * Walk the unconfirmed projects, one per click.
+   *
+   * This used to call `.focus()` on the card and nothing else, which read as a
+   * dead button for two reasons. The card is a div focused programmatically
+   * after a *mouse* click, and Chromium does not match `:focus-visible` in that
+   * case — so the card's only highlight never rendered. And it always targeted
+   * `unconfirmed[0]`, so a second click on a three-project banner was a no-op
+   * even when it did land.
+   *
+   * So: an explicit highlight that does not depend on focus styling, an
+   * explicit centred scroll, and a cursor that advances so the banner walks the
+   * whole list. Focus still moves — that is what makes the card's Confirm/Edit
+   * buttons a Tab away — but it is no longer the only feedback.
+   *
+   * The cursor is its own state, and the highlight carries a nonce, because
+   * deriving the cursor from the highlight failed in two ways. With exactly one
+   * unconfirmed project `(at + 1) % 1 === at`, so `setHighlightId` was handed
+   * the value it already held, React bailed out of the render, the effect never
+   * re-ran, and the second click did nothing whatsoever — the exact dead button
+   * this was meant to fix. And once the highlight expired after 2.6 seconds
+   * `at` fell back to -1, so the next click restarted at the first project;
+   * "walks the whole list" only held if you clicked again within the window,
+   * which is faster than reading the card you were just sent to.
+   */
+  function reviewUnconfirmedDates() {
+    if (unconfirmed.length === 0) return;
+    const at = reviewCursor % unconfirmed.length;
+    const goal = unconfirmed[at];
+    setReviewCursor(at + 1);
+    if (!wide) setActiveHorizon(goal.column ?? 0);
+    setHighlight({ id: goal.id, nonce: highlightNonce.current += 1 });
+  }
+
+  // Scroll/focus in an effect, not in the click handler: in narrow mode the
+  // click also switches horizon, and the target card does not exist in the DOM
+  // until React has committed that switch. Keyed on the whole `highlight`
+  // object so re-selecting the SAME card is still a new event.
+  useEffect(() => {
+    if (!highlight) return;
+    /*
+     * One frame later, deliberately.
+     *
+     * The board renders from local `columns` state, re-synced from the store by
+     * the effect declared above this one. Effects run in declaration order, so
+     * on the commit where `highlight` lands that effect has only just QUEUED
+     * the re-sync — the card is still in its old column, and the next render
+     * unmounts it and mounts a fresh node in the new one. Focusing here focused
+     * the doomed node, so every Alt+←/→ dropped focus to `<body>` and the
+     * second press did nothing. `scrollIntoView` aimed at the stale position
+     * for the same reason.
+     */
+    const raf = requestAnimationFrame(() => {
+      const el = document.getElementById(`goal-card-${highlight.id}`);
+      el?.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
+      el?.focus({ preventScroll: true });
+    });
+    const t = setTimeout(() => setHighlight(null), 2600);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+  }, [highlight, reducedMotion]);
 
   function confirmDatesFromCard(goalId: string) {
     actions.confirmGoalDates(goalId);
@@ -340,13 +445,15 @@ export function Goals() {
                       onPlan={onPlan}
                       onDefine={actions.openDrawer}
                       onComplete={actions.completeGoal}
-                      onMove={actions.moveGoalToColumn}
+                      onMove={moveToHorizon}
+                      onRank={moveRank}
                       onDelete={actions.removeGoal}
                       onConfirmDates={confirmDatesFromCard}
                       onEditDates={actions.openDrawer}
                       reducedMotion={reducedMotion}
-                      dimmed={filtering && !matchIds!.has(id)}
+                      dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}
+                      highlighted={id === highlightId}
                     />
                   );
                 })}
@@ -412,7 +519,7 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
           ▶
         </span>
         <span className="font-mono text-kbd tracking-[.11em] uppercase text-muted font-semibold">Completed</span>
-        <span className="font-mono text-chip text-muted tabular-nums">{goals.length}</span>
+        <span className="font-mono text-badge text-muted tabular-nums">{goals.length}</span>
       </button>
       {open && (
         <div className="mt-[13px] grid gap-[11px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>

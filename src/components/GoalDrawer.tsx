@@ -79,12 +79,16 @@ function MilestonesSection({
                 onCancel={() => setEditingId(null)}
               />
             ) : (
-              <span
-                className="cursor-default"
+              // A real button, not a click-handling span: renaming a
+              // milestone was mouse-only, with no keyboard route at all.
+              <button
+                type="button"
+                className="text-left rounded-[4px]"
                 onClick={() => setEditingId(m.id)}
+                aria-label={`Rename milestone "${m.title}"`}
               >
                 {m.title}
-              </span>
+              </button>
             )}
           </div>
           <DateField
@@ -94,7 +98,7 @@ function MilestonesSection({
           />
           <button
             onClick={() => actions.removeMilestone(g.id, m.id)}
-            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-ui text-muted hover:text-ink min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover transition-opacity duration-[120ms]"
+            className="quiet-control text-ui text-muted hover:text-ink rounded-[4px] hover:bg-hover"
             tabIndex={0}
             aria-label="Delete milestone"
           >
@@ -121,7 +125,7 @@ function MilestonesSection({
         />
         <button
           onClick={submitNew}
-          className="text-ui text-ink-soft px-[7px] py-[3px] rounded-[6px] border border-line-2 hover:bg-hover disabled:opacity-40"
+          className="text-ui text-ink-soft px-[7px] py-[3px] min-h-[24px] inline-flex items-center rounded-[6px] border border-line-2 hover:bg-hover disabled:opacity-40"
           disabled={!newTitle.trim()}
         >
           Add
@@ -208,13 +212,18 @@ function DrawerHeader({
             onCancel={() => setEditingTitle(false)}
           />
         ) : (
-          <div
-            className="font-disp text-h1 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit"
+          // Renaming the project was mouse-only — a div with an onClick, no
+          // role, no tabIndex, no key handler — and there is no other route to
+          // it anywhere in the app.
+          <button
+            type="button"
+            className="font-disp text-h1 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px]"
             onClick={() => setEditingTitle(true)}
+            aria-label={`Rename project "${g.title}"`}
             title="Click to rename"
           >
             {g.title}
-          </div>
+          </button>
         )}
         <div className="mt-[9px]">
           <div className="flex flex-wrap items-center gap-[6px]">
@@ -331,7 +340,7 @@ function StepsSection({
       <div className="flex items-baseline justify-between mb-[9px]">
         <div className="text-meta font-[550] uppercase tracking-[0.08em] text-muted">Steps</div>
         {total > 0 && (
-          <span className="font-mono text-chip text-muted tabular-nums">{done}/{total} done</span>
+          <span className="font-mono text-badge text-muted tabular-nums">{done}/{total} done</span>
         )}
       </div>
 
@@ -402,7 +411,7 @@ function NotesSection({
         defaultValue={g.notes ?? ''}
         key={g.id}
         placeholder="Working notes — strategy, links, blockers…"
-        aria-label="Goal notes"
+        aria-label="Project notes"
         rows={6}
         onBlur={(e) => { if (e.target.value !== (g.notes ?? '')) actions.setGoalNotes(g.id, e.target.value); }}
         className="w-full border border-line-2 rounded-[6px] bg-transparent px-[9px] py-[7px] text-body leading-[1.5] text-ink placeholder:text-faint outline-none focus-visible:border-accent resize-y"
@@ -529,7 +538,7 @@ export function GoalDrawer({ goal, actions, focusNodeId }: GoalDrawerProps) {
       >
         <button
           ref={closeBtnRef}
-          aria-label="Close goal drawer"
+          aria-label="Close project"
           className="absolute top-[16px] right-[18px] z-10 text-muted text-h3 px-[8px] py-[4px] rounded-[6px] hover:bg-hover"
           onClick={() => actions.closeDrawer()}
         >

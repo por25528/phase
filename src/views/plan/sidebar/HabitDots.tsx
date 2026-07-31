@@ -25,10 +25,17 @@ export function HabitDots({
       {lastNDays(today, 15).map((d) => {
         const hit = hb.checkins.includes(d);
         const isToday = d === today;
+        // Today-not-yet-done must read as EMPTY, so it takes the same fill as
+        // every other missed day and distinguishes itself with a ring. It used
+        // to hardcode a light-theme swatch (#F5F4F0 on #C9C5BD); in dark mode
+        // that near-white fill was brighter than `--c-dot` — the colour that
+        // means *done* — so the one cell standing for "not done yet" was the
+        // most completed-looking cell in the trail. Both values are theme
+        // tokens now, and neither may go back to a literal.
         const cls = isToday
           ? hit
             ? 'bg-accent'
-            : 'bg-[#F5F4F0] shadow-[inset_0_0_0_1.5px_#C9C5BD]'
+            : 'bg-dot-off shadow-[inset_0_0_0_1.5px_rgb(var(--c-check))]'
           : hit
             ? 'bg-dot'
             : 'bg-dot-off';

@@ -72,9 +72,12 @@ export interface Habit {
 export interface Task {
   id: string;
   title: string;
-  // 'YYYY-MM-DD'. Optional in the type, but nothing in the app clears it, and
-  // nothing should: no surface lists a dateless task, so dropping a date makes
-  // it unreachable. Unpinning keeps `date` and clears `startMin` alone.
+  // 'YYYY-MM-DD'. Genuinely optional: a dateless task is unplanned work, and
+  // the Plan view's backlog rail lists it under its project, so it is fully
+  // reachable. (This note used to say the opposite — that nothing may clear
+  // `date` because no surface shows a dateless task. That was true of the old
+  // planner and stopped being true when the rail shipped; `unscheduleTask` now
+  // clears both fields, matching `unscheduleNode`.)
   date?: string;
   // Minutes from local midnight. Never present without `date`. A task WITH a
   // date and NO startMin is committed to that day but not placed on the grid:

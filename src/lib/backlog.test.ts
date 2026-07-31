@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { Goal, Task } from '../db/types';
-import { backlogGroups, BACKLOG_CAP, capBacklog, LOOSE_GROUP_KEY } from './backlog';
+import type { Goal, GoalNode, Task } from '../db/types';
+import { backlogGroups, BACKLOG_CAP, capBacklog, dueChip, LOOSE_GROUP_KEY } from './backlog';
 import type { BacklogGroup } from './backlog';
 
 const WEEK = '2026-07-13';
@@ -119,7 +119,9 @@ describe('capBacklog', () => {
 
   it('keeps the first items in order — the rail is the top of the project', () => {
     const [g] = capBacklog([group('g1', 24)], new Set());
-    expect(g.shown.map((i) => i.id)).toEqual(['g1-0', 'g1-1', 'g1-2', 'g1-3', 'g1-4']);
+    expect(g.shown.map((i) => i.id)).toEqual(
+      Array.from({ length: BACKLOG_CAP }, (_, i) => `g1-${i}`),
+    );
   });
 
   it('shows everything for an expanded group, and it stays expandable', () => {
@@ -154,5 +156,124 @@ describe('capBacklog', () => {
     // subset — that number is the honest signal of over-commitment.
     const capped = capBacklog([group('g1', 24), group('g2', 7)], new Set());
     expect(capped.reduce((sum, g) => sum + g.items.length, 0)).toBe(31);
+  });
+});
+
+/**
+ * The rail carried no dates and each group was in raw tree order. With the
+ * per-project cap at three, a pset due tomorrow sitting eighth in its project
+ * was simply not on screen — and nothing on the three rows that WERE on screen
+ * said which of them mattered. For someone holding five deadlines at once that
+ * is the whole job of the rail, undone.
+ */
+describe('urgency in the rail', () => {
+  it('puts the nearest deadline at the top of its project', () => {
+    const g = goal({
+      nodes: [
+        { id: 'n1', title: 'Pset 1', deadline: '2026-08-30' },
+        { id: 'n2', title: 'Pset 2' },
+        { id: 'n3', title: 'Pset 3', deadline: '2026-07-16' },
+      ],
+    });
+    expect(backlogGroups([g], [], WEEK, TODAY)[0].items.map((i) => i.id))
+      .toEqual(['n3', 'n1', 'n2']);
+  });
+
+  it('survives the cap — the urgent item is one of the three shown', () => {
+    const nodes: GoalNode[] = Array.from({ length: 8 }, (_, i) => ({ id: `n${i}`, title: `Step ${i}` }));
+    nodes[7].deadline = '2026-07-16'; // last in tree order, first in urgency
+    const [group] = capBacklog(backlogGroups([goal({ nodes })], [], WEEK, TODAY), new Set());
+    expect(group.shown.map((i) => i.id)).toContain('n7');
+  });
+
+  it('leaves an undated project in tree order — the rail is still its top', () => {
+    const nodes = Array.from({ length: 4 }, (_, i) => ({ id: `n${i}`, title: `Step ${i}` }));
+    expect(backlogGroups([goal({ nodes })], [], WEEK, TODAY)[0].items.map((i) => i.id))
+      .toEqual(['n0', 'n1', 'n2', 'n3']);
+  });
+
+  it('carries a task’s committed day as its due date', () => {
+    const t = task({ id: 't1', date: '2026-07-16' });
+    expect(backlogGroups([], [t], WEEK, TODAY)[0].items[0].due).toBe('2026-07-16');
+  });
+
+  it('sorts loose tasks by date too, undated last', () => {
+    const tasks = [
+      task({ id: 'late', date: '2026-08-01' }),
+      task({ id: 'none' }),
+      task({ id: 'soon', date: '2026-07-14' }),
+    ];
+    expect(backlogGroups([], tasks, WEEK, TODAY)[0].items.map((i) => i.id))
+      .toEqual(['soon', 'late', 'none']);
+  });
+});
+
+describe('dueChip', () => {
+  it('calls out anything already past', () => {
+    expect(dueChip('2026-07-14', TODAY)).toEqual({ text: 'overdue', overdue: true });
+  });
+
+  it('names today as today rather than a date', () => {
+    expect(dueChip(TODAY, TODAY)).toEqual({ text: 'today', overdue: false });
+  });
+
+  it('shows a date inside the next week', () => {
+    expect(dueChip('2026-07-20', TODAY)?.overdue).toBe(false);
+    expect(dueChip('2026-07-20', TODAY)?.text).toBeTruthy();
+  });
+
+  it('stays quiet further out — a date on every row hides the urgent ones', () => {
+    expect(dueChip('2026-07-23', TODAY)).toBeNull();
+    expect(dueChip(undefined, TODAY)).toBeNull();
+  });
+});
+
+/**
+ * A date only reorders the rail if `dueChip` will also SHOW it.
+ *
+ * Sorting on every date regardless meant a final submission due next January
+ * jumped over the four steps you actually do first, displaying no date at all —
+ * the project order scrambled with nothing on screen to explain it. And
+ * `planNextStepFor` reads `items[0]`, so the board card's "Plan next step" then
+ * pointed at a deadline five months out.
+ */
+describe('urgency reordering matches what the row can show', () => {
+  it('leaves a far-future deadline in tree order', () => {
+    const g = goal({
+      nodes: [
+        { id: 'n1', title: 'Step 1' },
+        { id: 'n2', title: 'Step 2' },
+        { id: 'far', title: 'Final submission', deadline: '2027-01-01' },
+      ],
+    });
+    expect(backlogGroups([g], [], WEEK, TODAY)[0].items.map((i) => i.id))
+      .toEqual(['n1', 'n2', 'far']);
+  });
+
+  it('still promotes anything inside the chip horizon', () => {
+    const g = goal({
+      nodes: [
+        { id: 'n1', title: 'Step 1' },
+        { id: 'soon', title: 'Pset', deadline: '2026-07-18' }, // 3 days out
+        { id: 'far', title: 'Final', deadline: '2027-01-01' },
+      ],
+    });
+    expect(backlogGroups([g], [], WEEK, TODAY)[0].items.map((i) => i.id))
+      .toEqual(['soon', 'n1', 'far']);
+  });
+
+  it('every row it promotes carries a chip explaining why', () => {
+    const g = goal({
+      nodes: [
+        { id: 'n1', title: 'Step 1' },
+        { id: 'overdue', title: 'Late pset', deadline: '2026-07-10' },
+        { id: 'soon', title: 'Next pset', deadline: '2026-07-18' },
+      ],
+    });
+    const items = backlogGroups([g], [], WEEK, TODAY)[0].items;
+    // Anything ahead of the undated tree-order block must have a visible chip.
+    const firstUndated = items.findIndex((i) => dueChip(i.due, TODAY) === null);
+    expect(firstUndated).toBe(2);
+    expect(items.slice(0, firstUndated).every((i) => dueChip(i.due, TODAY) !== null)).toBe(true);
   });
 });
