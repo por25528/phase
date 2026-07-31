@@ -1,6 +1,7 @@
 import type { Goal, Task } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { addDays, fmtD } from './dates';
+import { isPlanningHorizon } from './horizons';
 import { goalPct } from './pct';
 import { attentionRank, walkLeaves } from './plan';
 
@@ -96,6 +97,21 @@ export const LOOSE_GROUP_TITLE = 'Loose tasks';
  * time. All three are invisible on the grid, so all three must be reachable
  * here or the work is lost.
  *
+ * Scoped to the PLANNING horizons: Now and Next. A parked project (Later,
+ * Someday) contributes only work already carrying a commitment — a step with a
+ * `plannedWeek`, or a task with a `date`. That exception is not a courtesy, it
+ * is what keeps the rail and the numbers beside it consistent:
+ *
+ *   - `weekCapacity` charges every week-committed item to "Xh to place". Work
+ *     the header bills you for and the rail cannot show is the exact
+ *     contradiction the planned/backlog split was introduced to remove.
+ *   - `countOpenCarryOver` counts overdue tasks and steps whose planned week
+ *     has passed, and offers to push them. A button that moves N items must
+ *     not be counting items that are not on screen.
+ *
+ * Both sets are commitments, so both stay. What drops out is the untouched
+ * remainder of a deferred project — which is precisely what deferring it meant.
+ *
  * Loose tasks sort last: they are the least structured thing on screen and
  * should not push projects down.
  */
@@ -116,6 +132,10 @@ export function backlogGroups(
   // so an unfinished task still pointing at such a project misses the lookup
   // below and lands in the Loose tasks bucket, losing its project heading.
   const ranked = attentionRank(goals, today);
+  // Projects the user has deferred. They still get a `byGoal` bucket, because
+  // their committed work belongs under its own project heading like anything
+  // else — only their untouched remainder is left out.
+  const parked = new Set(ranked.filter((g) => !isPlanningHorizon(g.column)).map((g) => g.id));
 
   for (const g of ranked) {
     const items: BacklogItem[] = [];
@@ -124,6 +144,7 @@ export function backlogGroups(
       const placed =
         n.plannedWeek === week && n.plannedDay !== undefined && n.plannedStartMin !== undefined;
       if (placed) return;
+      if (parked.has(g.id) && n.plannedWeek === undefined) return;
       items.push({
         kind: 'step', id: n.id, goalId: g.id, title: n.title,
         ...withEstimate(n.estimateMin),
@@ -144,9 +165,16 @@ export function backlogGroups(
       // which is the only urgency signal it carries.
       ...(t.date ? { due: t.date } : {}),
     };
-    const bucket = t.goalId ? byGoal.get(t.goalId) : undefined;
-    if (bucket) bucket.push(item);
-    else loose.push(item);
+    const goalId = t.goalId ?? null;
+    const bucket = goalId ? byGoal.get(goalId) : undefined;
+    // A parked project's uncommitted task is DROPPED, not demoted to Loose.
+    // Falling through to `loose` is the behaviour for a task whose project has
+    // no bucket at all (archived, or already complete) — reusing it here would
+    // strip the project heading off deferred work and re-file it at the bottom
+    // of the rail under "Loose tasks", which is more prominent than where it
+    // started, not less.
+    if (!bucket) loose.push(item);
+    else if (goalId === null || !parked.has(goalId) || t.date !== undefined) bucket.push(item);
   }
 
   // Sorted per group, not globally: the rail's structure is by project, and
@@ -163,6 +191,29 @@ export function backlogGroups(
     out.push({ goalId: null, goalTitle: LOOSE_GROUP_TITLE, pct: 0, items: sortByDue(loose, today) });
   }
   return out;
+}
+
+/**
+ * Projects the rail is deliberately not showing: parked in Later or Someday,
+ * still holding open work that carries no commitment.
+ *
+ * Only the empty state needs this, and it needs it badly. "Nothing left to
+ * plan" is the right sentence when the week really is placed and the wrong one
+ * when four projects of work are simply deferred — it reads as finished rather
+ * than as filtered, and the user cannot see the rail is applying a rule at all.
+ * The count turns an apparent dead end into an instruction: promote one.
+ */
+export function deferredProjectCount(goals: Goal[], today: string): number {
+  let count = 0;
+  for (const g of attentionRank(goals, today)) {
+    if (isPlanningHorizon(g.column)) continue;
+    let hidden = false;
+    walkLeaves(g, (n) => {
+      if (!n.done && n.plannedWeek === undefined) hidden = true;
+    });
+    if (hidden) count++;
+  }
+  return count;
 }
 
 /**

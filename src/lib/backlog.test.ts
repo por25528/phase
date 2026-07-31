@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Goal, GoalNode, Task } from '../db/types';
-import { backlogGroups, BACKLOG_CAP, capBacklog, dueChip, LOOSE_GROUP_KEY } from './backlog';
+import {
+  backlogGroups, BACKLOG_CAP, capBacklog, deferredProjectCount, dueChip, LOOSE_GROUP_KEY,
+} from './backlog';
 import type { BacklogGroup } from './backlog';
 
 const WEEK = '2026-07-13';
@@ -56,6 +58,110 @@ describe('backlogGroups', () => {
     const placed = task({ id: 't1', date: TODAY, startMin: 600 });
     const finished = task({ id: 't2', done: true });
     expect(backlogGroups([], [placed, finished], WEEK, TODAY)).toEqual([]);
+  });
+
+  /**
+   * The rail is what you plan a week from, so it draws from the horizons that
+   * mean "I am doing this": Now and Next. Four parked reading lists put 63 rows
+   * in a 249px column, and since each project shows only its first three, the
+   * shortlist for the work in progress sat below four shortlists for work the
+   * user had explicitly deferred.
+   */
+  describe('planning horizons', () => {
+    const step = (over: Partial<GoalNode> = {}): GoalNode => ({ id: 'n1', title: 'Draft', ...over });
+
+    it('lists Now and Next', () => {
+      const now = goal({ id: 'g1', title: 'Now', column: 0, nodes: [step()] });
+      const next = goal({ id: 'g2', title: 'Next', column: 1, nodes: [step({ id: 'n2' })] });
+      expect(backlogGroups([now, next], [], WEEK, TODAY).map((g) => g.goalId)).toEqual(['g1', 'g2']);
+    });
+
+    it('leaves out a Later or Someday project entirely', () => {
+      const later = goal({ id: 'g3', title: 'Later', column: 2, nodes: [step()] });
+      const someday = goal({ id: 'g4', title: 'Someday', column: 3, nodes: [step({ id: 'n2' })] });
+      expect(backlogGroups([later, someday], [], WEEK, TODAY)).toEqual([]);
+    });
+
+    it('treats a missing column as Now — no project is hidden by omission', () => {
+      expect(backlogGroups([goal({ nodes: [step()] })], [], WEEK, TODAY)).toHaveLength(1);
+    });
+
+    /**
+     * `weekCapacity` bills every week-committed item to "Xh to place". Hiding
+     * one because its project was later deferred would leave a figure in the
+     * header with no row beside it to act on — the exact contradiction the
+     * planned/backlog split was introduced to remove.
+     */
+    it('keeps a deferred project’s step once it is committed to a week', () => {
+      const later = goal({
+        id: 'g3', title: 'Later', column: 2,
+        nodes: [step({ plannedWeek: WEEK }), step({ id: 'n2', title: 'Untouched' })],
+      });
+      const groups = backlogGroups([later], [], WEEK, TODAY);
+      expect(groups).toHaveLength(1);
+      expect(groups[0].items.map((i) => i.id)).toEqual(['n1']);
+    });
+
+    /**
+     * `countOpenCarryOver` counts steps whose planned week has passed and
+     * offers to push them to next week. That button names a count, so every
+     * item it moves has to be one the rail can show.
+     */
+    it('keeps a deferred project’s carry-over from a past week', () => {
+      const later = goal({
+        id: 'g3', title: 'Later', column: 2, nodes: [step({ plannedWeek: '2026-07-06' })],
+      });
+      expect(backlogGroups([later], [], WEEK, TODAY)[0].items.map((i) => i.id)).toEqual(['n1']);
+    });
+
+    it('keeps a deferred project’s dated task, and drops its undated one', () => {
+      const later = goal({ id: 'g3', title: 'Later', column: 2, nodes: [] });
+      const dated = task({ id: 't1', goalId: 'g3', date: TODAY });
+      const undated = task({ id: 't2', goalId: 'g3' });
+      const groups = backlogGroups([later], [dated, undated], WEEK, TODAY);
+      expect(groups.map((g) => g.goalId)).toEqual(['g3']);
+      expect(groups[0].items.map((i) => i.id)).toEqual(['t1']);
+    });
+
+    /**
+     * Falling through to the Loose bucket is what happens to a task whose
+     * project has no bucket at all (archived, or already complete). Reusing it
+     * for deferred work would strip the project heading off and re-file the row
+     * at the BOTTOM of the rail — more prominent than where it started, under a
+     * heading saying it belongs to nothing.
+     */
+    it('drops a deferred project’s undated task rather than demoting it to Loose', () => {
+      const later = goal({ id: 'g3', title: 'Later', column: 2, nodes: [] });
+      expect(backlogGroups([later], [task({ id: 't2', goalId: 'g3' })], WEEK, TODAY)).toEqual([]);
+    });
+
+    /**
+     * What the empty rail says. "Nothing left to plan" is true of a placed week
+     * and false of a deferred board, and the two look identical from the rail —
+     * so the empty state has to be able to tell them apart.
+     */
+    describe('deferredProjectCount', () => {
+      it('counts parked projects holding uncommitted open work', () => {
+        const later = goal({ id: 'g3', column: 2, nodes: [step()] });
+        const someday = goal({ id: 'g4', column: 3, nodes: [step({ id: 'n2' })] });
+        expect(deferredProjectCount([later, someday], TODAY)).toBe(2);
+      });
+
+      it('ignores Now and Next — those are already in the rail', () => {
+        expect(deferredProjectCount([goal({ column: 1, nodes: [step()] })], TODAY)).toBe(0);
+      });
+
+      it('ignores a parked project whose work is done, or already committed', () => {
+        const finished = goal({ id: 'g3', column: 2, nodes: [step({ done: true })] });
+        const committed = goal({ id: 'g4', column: 3, nodes: [step({ id: 'n2', plannedWeek: WEEK })] });
+        expect(deferredProjectCount([finished, committed], TODAY)).toBe(0);
+      });
+
+      it('ignores archived projects, matching what the rail drops', () => {
+        const archived = goal({ id: 'g3', column: 2, completedAt: '2026-07-01', nodes: [step()] });
+        expect(deferredProjectCount([archived], TODAY)).toBe(0);
+      });
+    });
   });
 
   it('files a task under its project when it has one', () => {
