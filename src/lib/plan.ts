@@ -4,6 +4,7 @@ import { behindPaceHint, behindPaceLabel } from './pace';
 import { goalPct } from './pct';
 import { expectedPct, behindPaceBy, daysBetween } from './timeline';
 import { leafCount } from './board';
+import { isPlanningHorizon } from './horizons';
 import { findInAll } from './tree';
 import { hasTrustedSchedule, needsDateConfirmation, isValidLocalDate } from './schedule';
 
@@ -249,9 +250,11 @@ export function projectAttention(g: Goal, today: string): ProjectAttention {
   if (pace === 'complete') return 'ready-to-complete';
   if ((g.datesConfirmed === true && g.deadline && deadlineBefore(g.deadline, today)) || hasOverdueLeaf(g, today)) return 'overdue';
   // Horizon gating: active-work signals surface only on Now (0) and Next (1);
-  // Later/Someday stay quiet.
+  // Later/Someday stay quiet. Same boundary the calendar rail draws from —
+  // `PLANNING_HORIZONS` is the one definition, so a project cannot be quiet
+  // here and loud there.
   const col = g.column ?? 0;
-  if (col > 1) return 'on-track';
+  if (!isPlanningHorizon(col)) return 'on-track';
   return activeWorkState(g, today, pace, col);
 }
 
@@ -414,13 +417,21 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
 export type CardActionKind = 'plan' | 'define' | 'complete' | 'none';
 
 // The card's primary verb follows the verdict: break it down, complete it, or
-// plan the next step. Someday projects get no plan nag (matches horizon gating).
+// plan the next step.
+//
+// "Plan next step" is offered only where the calendar can actually receive the
+// work — the Now and Next horizons the rail draws from. This read `>= 3`
+// (Someday alone) back when the rail listed every horizon; both moved to 2
+// together. A deferred project's untouched steps are not in the rail, so
+// `planNextStepFor` finds no target, falls through to its "nothing left to
+// plan" branch and lands you on a calendar with nothing highlighted — a button
+// whose only effect is a view change, which reads as "already planned".
 export function cardPrimaryAction(g: Goal, today: string): CardActionKind {
   switch (projectAttention(g, today)) {
     case 'needs-breakdown': return 'define';
     case 'ready-to-complete': return 'complete';
     case 'completed': return 'none';
-    default: return (g.column ?? 0) >= 3 ? 'none' : 'plan';
+    default: return isPlanningHorizon(g.column) ? 'plan' : 'none';
   }
 }
 

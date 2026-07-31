@@ -750,6 +750,36 @@ describe('cardPrimaryAction', () => {
     expect(cardPrimaryAction(goal({ column: 3, nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY)).toBe('none');
     expect(cardPrimaryAction(goal({ column: 0, completedAt: '2026-07-01', nodes: [] }), TODAY)).toBe('none');
   });
+
+  /**
+   * The rail draws from Now and Next only, and this is the button that expects
+   * to find a row there. Offering it on a Later card gave `planNextStepFor`
+   * nothing to reveal, so it navigated to the calendar and stopped.
+   */
+  it('offers Next but not Later — it must not point at a rail row that is absent', () => {
+    const open = [{ id: 'a', title: 'A', done: false }];
+    expect(cardPrimaryAction(goal({ column: 1, nodes: open }), TODAY)).toBe('plan');
+    expect(cardPrimaryAction(goal({ column: 2, nodes: open }), TODAY)).toBe('none');
+  });
+
+  /**
+   * A deferred project is silent, not half-silent. `projectAttention` already
+   * collapses every active-work verdict to 'on-track' above the planning
+   * horizons, so 'define' never reached a Later card either — the only verb it
+   * could produce was 'plan', which is the one now withdrawn. What remains is
+   * Open project, which is the honest next move: promote it, then plan it.
+   */
+  it('gives a deferred project no verb at all', () => {
+    expect(cardPrimaryAction(goal({ column: 2, nodes: [] }), TODAY)).toBe('none');
+    expect(cardPrimaryAction(goal({ column: 3, nodes: [] }), TODAY)).toBe('none');
+  });
+
+  // Still reachable above the horizons: a project that is genuinely finished
+  // can be closed from its card wherever it was parked.
+  it('still offers Complete on a deferred project that is done', () => {
+    const done = [{ id: 'a', title: 'A', done: true }];
+    expect(cardPrimaryAction(goal({ column: 2, nodes: done }), TODAY)).toBe('complete');
+  });
 });
 
 describe('loggedTimeForWeek', () => {

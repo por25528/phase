@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { BacklogItem } from '../../../lib/backlog';
-import { backlogGroups, capBacklog, dueChip } from '../../../lib/backlog';
+import { backlogGroups, capBacklog, deferredProjectCount, dueChip } from '../../../lib/backlog';
 import { revealDomId, groupKeyContaining, type RevealTarget } from '../../../lib/reveal';
 import { countOpenCarryOver } from '../../../lib/deferWork';
 import { weekOf } from '../../../lib/plan';
@@ -199,6 +199,13 @@ export function Backlog({
     () => backlogGroups(goals, tasks, weekStart, today),
     [goals, tasks, weekStart, today],
   );
+  // Only when there is nothing to show: an empty rail must not read as "you
+  // are finished" while deferred projects hold the work. Guarded on
+  // `groups.length` so the extra tree walk never runs in the normal case.
+  const deferred = useMemo(
+    () => (groups.length === 0 ? deferredProjectCount(goals, today) : 0),
+    [groups, goals, today],
+  );
   const isCurrentWeek = weekStart === weekOf(today);
   const carryOver = useMemo(
     () => (isCurrentWeek ? countOpenCarryOver(goals, tasks, today) : 0),
@@ -262,7 +269,18 @@ export function Backlog({
 
       {capped.length === 0 ? (
         <div className="text-muted text-body italic px-[6px]">
-          Nothing left to plan.
+          {deferred === 0 ? (
+            'Nothing left to plan.'
+          ) : (
+            <>
+              Nothing to plan in Now or Next.
+              {' '}
+              <span className="not-italic">
+                {deferred} deferred project{deferred === 1 ? ' is' : 's are'} not shown — move one
+                to Now to plan it.
+              </span>
+            </>
+          )}
         </div>
       ) : (
         capped.map((group, i) => (
