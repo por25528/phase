@@ -56,6 +56,61 @@ export function scheduledOn(goals: Goal[], tasks: Task[], date: string): Schedul
 }
 
 /**
+ * Everything drawn across `dates`, bucketed by day, in ONE pass.
+ *
+ * `scheduledOn` walks every goal's full leaf tree and every task to answer for
+ * a single day, so a week cost seven passes — and the Plan view paid twice,
+ * once to compute the visible range and again inside each `DayBlocks`, for
+ * fourteen full scans of the dataset on every render. With a couple of hundred
+ * tasks and a 60-second now-line tick re-rendering the subtree, that is felt.
+ *
+ * Every requested date gets an entry, empty or not, so callers can index
+ * without a null check. Ordering matches `scheduledOn` exactly, so the two stay
+ * interchangeable.
+ */
+export function scheduledByDate(
+  goals: Goal[],
+  tasks: Task[],
+  dates: string[],
+): Map<string, ScheduledItem[]> {
+  const out = new Map<string, ScheduledItem[]>();
+  for (const date of dates) out.set(date, []);
+
+  for (const g of goals) {
+    if (g.completedAt) continue; // archived projects never surface commitments
+    walkLeaves(g, (n) => {
+      if (n.plannedDay === undefined || n.plannedStartMin === undefined) return;
+      const bucket = out.get(n.plannedDay);
+      if (!bucket) return;
+      const duration = durationOf(n.estimateMin);
+      bucket.push({
+        kind: 'step', id: n.id, goalId: g.id, goalTitle: g.title, title: n.title,
+        done: !!n.done, date: n.plannedDay, startMin: n.plannedStartMin,
+        endMin: n.plannedStartMin + duration,
+        estimated: normalizeEstimate(n.estimateMin) !== undefined,
+      });
+    });
+  }
+
+  for (const t of tasks) {
+    if (t.date === undefined || t.startMin === undefined) continue;
+    const bucket = out.get(t.date);
+    if (!bucket) continue;
+    const duration = durationOf(t.estimateMin);
+    bucket.push({
+      kind: 'task', id: t.id, goalId: t.goalId, goalTitle: '', title: t.title,
+      done: t.done, date: t.date, startMin: t.startMin, endMin: t.startMin + duration,
+      estimated: normalizeEstimate(t.estimateMin) !== undefined,
+    });
+  }
+
+  for (const bucket of out.values()) {
+    bucket.sort((a, b) => a.startMin - b.startMin || a.title.localeCompare(b.title));
+  }
+  return out;
+}
+
+/**
  * The occupied spans on `date`, for `resolveSlot`'s `placed` argument.
  *
  * `excludeId` drops one item. Moving an already-placed block MUST exclude

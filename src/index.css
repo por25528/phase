@@ -140,9 +140,6 @@
     @apply text-faint;
   }
 
-  /* Today dashboard responsive grid */
-  .today-main { grid-template-columns: minmax(0, 1fr) 300px; }
-
   /* Timeline sticky label column — single width source so all lanes align.
      JS plot geometry mirrors these px in lib/timeline.ts (LABEL_W / LABEL_W_NARROW). */
   .tl-label-w { @apply w-[148px] sm:w-[200px]; }
@@ -174,13 +171,52 @@
   * { transition: none !important; }
 }
 
-@media (max-width: 1160px) {
-  .today-main { grid-template-columns: 1fr; }
+/* The habit row measures its RAIL, not the viewport.
+   ---------------------------------------------------------------------------
+   The Plan sidebar is a fixed 272px grid column less an 18px gutter — 254px at
+   every viewport from 768px upward. The trail (15 × 7px dots plus their gaps =
+   140px) and its stat (76px) are ~216px of that before the title, checkbox and
+   hover controls get a say, so they have never fitted on one line in the rail.
+
+   The rule this replaces hid them below a 1000px VIEWPORT, which describes a
+   box the row does not live in: above 1000px the rail was still 254px, the row
+   overflowed into the sidebar's scroller, and the rename and delete controls
+   were pushed out of reach entirely. Widening the window made it worse, not
+   better.
+
+   `@container` asks the rail. And the answer is to give the trail its own line
+   rather than delete it — it is the only way to backfill a missed day, so
+   hiding it removes a feature instead of laying it out. */
+.hb-rail { container-type: inline-size; }
+
+@container (max-width: 430px) {
+  /* Its own line, indented past the grip and checkbox so it reads as belonging
+     to the row above.
+
+     `padding-left`, NOT `margin-left`: a margin sits OUTSIDE `width: 100%` even
+     under `border-box`, and `flex-none` forbids shrinking, so the item's outer
+     size became `100% + 24px` on a 100% line — measured at exactly 24px of
+     horizontal overflow in Chromium, inside a scroller whose `overflow-y: auto`
+     computes `overflow-x` to `auto`. That is the very overflow this rule was
+     written to remove.
+
+     `order` matters as much as `width`. Flex wrapping follows LAYOUT order, so
+     without it the two hover controls — which come after the trail in source,
+     the order a wide rail wants — would be pushed onto a third line below it.
+     Ordering the trail last puts the controls back on line one and the trail
+     alone on line two. */
+  .hb-trail { order: 1; width: 100%; margin-left: 0; padding-left: 24px; }
 }
-/* Below this the habit row cannot hold its history without starving the title,
-   so the whole history affordance goes together — the trail, its stat, and the
-   control that puts the trail into edit mode. Keep these in one rule: a second
-   breakpoint elsewhere would leave the toggle editing an invisible strip. */
-@media (max-width: 1000px) {
-  .hb-dots, .hb-stat, .hb-history-toggle { display: none; }
+
+/* Narrower than the trail plus its stat can sit even on a line of its own:
+   drop the numeric stat, keep the trail, which is the interactive half.
+
+   140px of dots + 12px gap + 76px of stat + 24px indent = 252px, so the
+   threshold has to sit BELOW the real rail. That rail is 249px — a 272px grid
+   column less an 18px gutter, a 1px border and the section's 4px of padding —
+   so a 250px cutoff hid the stat on every desktop viewport, which is the same
+   wrong-breakpoint bug in the other direction. 200px keeps it visible in the
+   real rail and still drops it on a genuinely cramped one. */
+@container (max-width: 200px) {
+  .hb-stat { display: none; }
 }

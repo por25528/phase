@@ -13,6 +13,8 @@ export function formatMinutes(min: number): string {
 export interface CapacityFigures {
   freeMin: number;
   plannedMin: number;
+  /** Committed but not on the calendar. See `DayCapacity.backlogMin`. */
+  backlogMin: number;
   unestimated: number;
   hasData: boolean;
 }
@@ -30,6 +32,10 @@ export interface CapacityFigures {
 export function capacityParts(c: CapacityFigures): string[] {
   const parts = [`${formatMinutes(c.freeMin)} free`];
   if (c.plannedMin > 0) parts.push(`${formatMinutes(c.plannedMin)} planned`);
+  // Separate from "planned", because it is exactly the work the rail beside
+  // this is listing under "To plan". Folding the two together made the header
+  // claim hours were scheduled onto days that were visibly empty.
+  if (c.backlogMin > 0) parts.push(`${formatMinutes(c.backlogMin)} to place`);
   if (c.unestimated > 0) parts.push(`${c.unestimated} unestimated`);
   return parts;
 }
@@ -66,12 +72,44 @@ export function capacityNote(c: Pick<CapacityFigures, 'hasData'>): string | null
 }
 
 /**
+ * The compact per-day load for the grid's day headings: "1h 30m / 6h", read as
+ * planned over free.
+ *
+ * `weekCapacity` has always computed a full `DayCapacity` for all seven days —
+ * free, planned, unestimated, blockedBy — and nothing ever read it. The only
+ * figure on screen was the week aggregate, so dropping four things onto Tuesday
+ * told you nothing about Tuesday; you had to add the blocks up by eye. Every
+ * calendar this is measured against surfaces per-day load.
+ *
+ * Null on a day with nothing planned that is not over-committed: seven columns
+ * of "0m / 6h" is noise, and an empty day already looks empty. An off day with
+ * work somehow on it still reports, because `0m free` is exactly the case worth
+ * seeing.
+ */
+export function dayLoadLabel(c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'>): string | null {
+  if (c.plannedMin === 0 && c.backlogMin === 0 && !isOverCommitted(c)) return null;
+  // The chip reports what is ON the day. Anything merely dated to it lives in
+  // the rail and is named in the tooltip instead — a column heading claiming
+  // hours over an empty column is the contradiction this split exists to end.
+  return `${formatMinutes(c.plannedMin)} / ${formatMinutes(c.freeMin)}`;
+}
+
+/** The same figures spelled out, for the heading's `title` tooltip. */
+export function dayLoadHint(c: CapacityFigures): string {
+  const parts = capacityParts(c).join(' · ');
+  return isOverCommitted(c) ? `${parts} — over-committed` : parts;
+}
+
+/**
  * Planned exceeding free is over-commitment regardless of calendar data:
  * without it, `freeMin` is an upper bound on availability, so this can only
  * under-report over-commitment, never false-alarm.
  */
 export function isOverCommitted(
-  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin'>,
+  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'>,
 ): boolean {
-  return c.plannedMin > c.freeMin;
+  // Everything committed, placed or not — work you have taken on but not yet
+  // put on a day still has to fit in the week, and reporting only the placed
+  // half would call an impossible week healthy right up until you scheduled it.
+  return c.plannedMin + c.backlogMin > c.freeMin;
 }

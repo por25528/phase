@@ -134,7 +134,7 @@ export function SubtaskAiModal({
                 placeholder={'["First subtask", "Second subtask"]\n\n…or just one subtask per line.'}
                 className={`${field} w-full resize-y font-mono text-compact leading-[1.5]`}
               />
-              {error && <p className="text-ui text-[#b4453a]">{error}</p>}
+              {error && <p role="alert" className="text-ui text-warn">{error}</p>}
             </div>
 
             {/* Show the parse before committing it, so a bad read is visible

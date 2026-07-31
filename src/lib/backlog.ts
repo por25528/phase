@@ -1,5 +1,6 @@
 import type { Goal, Task } from '../db/types';
 import { normalizeEstimate } from './capacity';
+import { addDays, fmtD } from './dates';
 import { goalPct } from './pct';
 import { attentionRank, walkLeaves } from './plan';
 
@@ -10,6 +11,69 @@ export interface BacklogItem {
   goalId: string | null;
   title: string;
   estimateMin?: number;
+  /**
+   * When this needs doing: a step's own `deadline`, or the day a task is
+   * committed to. Absent means undated, which sorts last.
+   *
+   * The rail carried no date at all, and each group was in raw tree order — so
+   * with the per-project cap at three, a pset due tomorrow sitting eighth in
+   * its project simply was not on screen, and nothing on the visible rows said
+   * which of them was urgent. That is precisely the failure mode for someone
+   * holding several deadlines at once.
+   */
+  due?: string;
+}
+
+/**
+ * How far ahead a due date is worth acting on: the window in which it both
+ * prints a chip and reorders the rail. The two must agree.
+ */
+export const DUE_CHIP_DAYS = 7;
+
+/**
+ * Nearest deadline first, everything else in tree order.
+ *
+ * "Everything else" means undated work AND work due beyond the urgency horizon,
+ * and the second half matters: a date only reorders the rail if `dueChip` will
+ * also SHOW it. Sorting on every date regardless meant a final submission due
+ * next January jumped over the four steps you actually do first, displaying no
+ * date at all — the project order scrambled with nothing on screen to explain
+ * it — and `planNextStepFor` reads `items[0]`, so the board card's "Plan next
+ * step" pointed at a deadline five months out. Whatever jumps the queue has to
+ * say why.
+ *
+ * `Array.prototype.sort` is stable, so everything below the horizon keeps its
+ * tree order and a project carrying no near dates is completely untouched.
+ */
+export function sortByDue(items: BacklogItem[], today: string): BacklogItem[] {
+  const horizon = addDays(today, DUE_CHIP_DAYS);
+  const rank = (item: BacklogItem): string | undefined =>
+    item.due !== undefined && item.due <= horizon ? item.due : undefined;
+  return [...items].sort((a, b) => {
+    const x = rank(a);
+    const y = rank(b);
+    if (x === y) return 0;
+    if (x === undefined) return 1;
+    if (y === undefined) return -1;
+    return x < y ? -1 : 1;
+  });
+}
+
+/**
+ * The urgency chip for a row, or null when the date is far enough out that
+ * printing it on every row would be noise rather than signal. `sortByDue` uses
+ * the same horizon deliberately — the two must agree, or a row jumps the queue
+ * with nothing on it to say why.
+ */
+export function dueChip(
+  due: string | undefined,
+  today: string,
+): { text: string; overdue: boolean } | null {
+  if (!due) return null;
+  if (due < today) return { text: 'overdue', overdue: true };
+  if (due === today) return { text: 'today', overdue: false };
+  if (due > addDays(today, DUE_CHIP_DAYS)) return null;
+  return { text: fmtD(due), overdue: false };
 }
 
 /** A project heading plus its unplaced work. `goalId: null` is the loose bucket. */
@@ -60,7 +124,11 @@ export function backlogGroups(
       const placed =
         n.plannedWeek === week && n.plannedDay !== undefined && n.plannedStartMin !== undefined;
       if (placed) return;
-      items.push({ kind: 'step', id: n.id, goalId: g.id, title: n.title, ...withEstimate(n.estimateMin) });
+      items.push({
+        kind: 'step', id: n.id, goalId: g.id, title: n.title,
+        ...withEstimate(n.estimateMin),
+        ...(n.deadline ? { due: n.deadline } : {}),
+      });
     });
     byGoal.set(g.id, items);
   }
@@ -70,27 +138,43 @@ export function backlogGroups(
     if (t.done) continue;
     if (t.date !== undefined && t.startMin !== undefined) continue; // on the grid
     const item: BacklogItem = {
-      kind: 'task', id: t.id, goalId: t.goalId, title: t.title, ...withEstimate(t.estimateMin),
+      kind: 'task', id: t.id, goalId: t.goalId, title: t.title,
+      ...withEstimate(t.estimateMin),
+      // A task has no deadline field; `date` is the day it is committed to,
+      // which is the only urgency signal it carries.
+      ...(t.date ? { due: t.date } : {}),
     };
     const bucket = t.goalId ? byGoal.get(t.goalId) : undefined;
     if (bucket) bucket.push(item);
     else loose.push(item);
   }
 
+  // Sorted per group, not globally: the rail's structure is by project, and
+  // the cap that follows takes the FIRST few of each — so this is what decides
+  // whether the three rows a project shows are its most urgent three or just
+  // its topmost three.
   const out: BacklogGroup[] = [];
   for (const g of ranked) {
     const items = byGoal.get(g.id) ?? [];
     if (items.length === 0) continue;
-    out.push({ goalId: g.id, goalTitle: g.title, pct: Math.round(goalPct(g)), items });
+    out.push({ goalId: g.id, goalTitle: g.title, pct: Math.round(goalPct(g)), items: sortByDue(items, today) });
   }
   if (loose.length > 0) {
-    out.push({ goalId: null, goalTitle: LOOSE_GROUP_TITLE, pct: 0, items: loose });
+    out.push({ goalId: null, goalTitle: LOOSE_GROUP_TITLE, pct: 0, items: sortByDue(loose, today) });
   }
   return out;
 }
 
-/** How many items a project shows before it collapses behind "+N more". */
-export const BACKLOG_CAP = 5;
+/**
+ * How many items a project shows before it collapses behind "+N more".
+ *
+ * Three, not five. The rail's job is "what could I pull in next", and at five
+ * a handful of projects filled the whole viewport — you scrolled past one
+ * project's tail to reach the next project's head, which is the long list the
+ * cap exists to prevent. Three fits several projects on screen at once, so the
+ * rail reads as a shortlist per project rather than a queue.
+ */
+export const BACKLOG_CAP = 3;
 
 /** The `expanded` key for the group with no project. */
 export const LOOSE_GROUP_KEY = 'loose';

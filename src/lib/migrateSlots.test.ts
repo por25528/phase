@@ -26,24 +26,43 @@ describe('migrateSlots', () => {
     expect(goals[0].nodes.map((n) => n.plannedStartMin)).toEqual([540, 630]);
   });
 
-  it('returns an old Any-day step (week but no day) to the sidebar', () => {
+  /**
+   * A week with no day is not the retired "Any day" bucket — it is current,
+   * legal backlog, and `deferOpenWork` ("Push to next week") mints it on
+   * purpose. Clearing it only looked harmless while the migration truly ran
+   * once: `importStateFromFile` calls `resetSlotMigration()`, so every backup
+   * restore replays it over present-day data. Defer a dozen carried-over steps,
+   * export, import, relaunch — all twelve commitments were erased, and the
+   * toast reported it as routine housekeeping.
+   */
+  it('keeps a week commitment that has no day yet — that is legal backlog', () => {
     const g = goal([{ id: 'n1', title: 'Draft', plannedWeek: WEEK }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
-    expect(goals[0].nodes[0].plannedWeek).toBeUndefined();
+    expect(goals[0].nodes[0].plannedWeek).toBe(WEEK);
     expect(goals[0].nodes[0].plannedDay).toBeUndefined();
-    expect(report.sidebarSteps).toBe(1);
+    expect(report.sidebarSteps).toBe(0);
+  });
+
+  it('is idempotent over its own output — a re-run must not erode commitments', () => {
+    const g = goal([
+      { id: 'n1', title: 'Deferred', plannedWeek: WEEK },
+      { id: 'n2', title: 'Placed', plannedWeek: WEEK, plannedDay: WED, estimateMin: 60 },
+    ]);
+    const once = migrateSlots([g], [], WINDOWS, true);
+    const twice = migrateSlots(once.goals, once.tasks, WINDOWS, true);
+    expect(twice.goals).toEqual(once.goals);
+    expect(twice.report.sidebarSteps).toBe(0);
   });
 
   // Malformed legacy shape (violates the db/types.ts invariant that
   // plannedStartMin never survives without plannedDay, but nothing at runtime
-  // enforces that on data written before this migration existed). clearNodePlan
-  // must drop plannedStartMin too, not just plannedWeek/plannedDay, or this
-  // branch would leave the exact half-state the invariant forbids.
-  it('drops a stray plannedStartMin along with week/day on the Any-day path', () => {
+  // enforces that on data written before this migration existed). The stray
+  // minute is dropped — but the week commitment beside it is legal and stays.
+  it('drops a stray plannedStartMin but keeps the week it was committed to', () => {
     const g = goal([{ id: 'n1', title: 'Draft', plannedWeek: WEEK, plannedStartMin: 600, estimateMin: 30 }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
-    expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Draft', estimateMin: 30 });
-    expect(report.sidebarSteps).toBe(1);
+    expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Draft', plannedWeek: WEEK, estimateMin: 30 });
+    expect(report.sidebarSteps).toBe(0);
   });
 
   it('returns a step that will not fit its day to the sidebar', () => {

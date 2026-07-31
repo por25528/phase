@@ -29,6 +29,8 @@ export interface PlannedLeaf {
   done: boolean;
   plannedWeek: string;
   plannedDay?: string;
+  /** Present only when the leaf is genuinely ON the grid, per db/types.ts. */
+  plannedStartMin?: number;
   estimateMin?: number;
 }
 
@@ -42,9 +44,20 @@ export function walkLeaves(g: Goal, visit: (n: GoalNode) => void): void {
   walk(g.nodes);
 }
 
+/**
+ * `children: []` counts as a LEAF — matching `walkLeaves` directly above, and
+ * `leafCount`, `nodePct` and `firstOpenLeaf` elsewhere.
+ *
+ * The bare `!n.children` test made this the lone dissenter: an empty array is
+ * truthy, so a node whose last child had been deleted (`removeNode` splices and
+ * leaves `[]` behind) recursed into nothing and reported the project as having
+ * no leaves at all. The card then rendered "Next · Pset 1" and a "Needs a first
+ * step" badge simultaneously, over a step plainly listed below it, and the
+ * Focus summary counted the project under "needs a first step".
+ */
 function hasLeaf(nodes: GoalNode[]): boolean {
   for (const n of nodes) {
-    if (!n.children) return true;
+    if (!n.children || n.children.length === 0) return true;
     if (hasLeaf(n.children)) return true;
   }
   return false;
@@ -54,6 +67,7 @@ function asPlanned(g: Goal, n: GoalNode): PlannedLeaf {
   return {
     goalId: g.id, goalTitle: g.title, nodeId: n.id, title: n.title,
     done: !!n.done, plannedWeek: n.plannedWeek!, plannedDay: n.plannedDay,
+    plannedStartMin: n.plannedStartMin,
     estimateMin: n.estimateMin,
   };
 }

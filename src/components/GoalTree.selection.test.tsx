@@ -1,0 +1,398 @@
+// @vitest-environment jsdom
+import { createElement } from 'react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Goal } from '../db/types';
+
+/**
+ * The multi-select interaction, driven through the real DOM.
+ *
+ * Everything underneath is already covered without a DOM — `lib/selection.ts`
+ * for the set arithmetic and `store.test.ts` for the batch writes — but neither
+ * can see the part that actually breaks: whether a modifier click reaches the
+ * right handler, whether Shift+Arrow moves focus AND grows the range, whether
+ * Escape is swallowed before the drawer sees it, and whether the row exposes
+ * the ARIA a screen reader needs. Those are wiring, and wiring is what this
+ * file tests.
+ */
+
+const dbMocks = vi.hoisted(() => ({
+  loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: never[] }> => ({ goals: [], habits: [], tasks: [], sessions: [] })),
+  loadScale: vi.fn(async () => 13),
+  loadPlanReview: vi.fn(async () => null),
+  loadAvailability: vi.fn(async () => []),
+  loadAllDayBlocks: vi.fn(async () => true),
+  loadSidebarPanels: vi.fn(async () => []),
+  saveScale: vi.fn(async () => {}),
+  savePlanReview: vi.fn(async () => {}),
+  saveAvailability: vi.fn(async () => {}),
+  saveAllDayBlocks: vi.fn(async () => {}),
+  saveSidebarPanels: vi.fn(async () => {}),
+  persist: vi.fn(async () => {}),
+  exportState: vi.fn(),
+  importStateFromFile: vi.fn(),
+  isSlotMigrationDone: vi.fn(async () => true),
+  saveSlotMigrationSnapshot: vi.fn(async () => {}),
+  loadSlotMigrationSnapshot: vi.fn(async () => null),
+  markSlotMigrationDone: vi.fn(async () => {}),
+}));
+vi.mock('../db/db', () => dbMocks);
+vi.mock('../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));
+
+// jsdom implements no media queries; `usePrefersReducedMotion` reads one from a
+// useState initialiser, so it runs before any effect could guard it.
+beforeAll(() => {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+});
+
+const PROJECT: Goal = {
+  id: 'g',
+  title: '6.1200',
+  column: 0,
+  nodes: [
+    { id: 'a', title: 'Pset 6', done: false },
+    { id: 'b', title: 'Pset 7', done: false },
+    {
+      id: 'grp',
+      title: 'Pset 8',
+      children: [
+        { id: 'c1', title: 'Problems 1-3', done: false },
+        { id: 'c2', title: 'Problems 4-6', done: false },
+      ],
+    },
+    { id: 'd', title: 'Pset 9', done: false },
+  ],
+};
+
+type Store = typeof import('../state/store');
+
+async function mountTree(): Promise<{ store: Store; user: ReturnType<typeof userEvent.setup> }> {
+  vi.resetModules();
+  dbMocks.loadState.mockResolvedValueOnce({
+    goals: [structuredClone(PROJECT)], habits: [], tasks: [], sessions: [],
+  });
+  const store = await import('../state/store');
+  await store.initStore();
+  const { GoalTree } = await import('./GoalTree');
+  // Subscribed, exactly as `GoalDrawer` does — it reads `goal.nodes` from the
+  // store on every render. Passing a captured snapshot instead would freeze the
+  // tree, and the selection's pruning is precisely the behaviour that depends
+  // on `nodes` changing identity when the data does.
+  const TreeHost = () => {
+    const { goals } = store.useAppStore();
+    return createElement(GoalTree, { nodes: goals[0].nodes });
+  };
+  // `expanded` is seeded by initStore's container auto-expand, so `grp` is open
+  // and all six rows are on screen.
+  render(createElement(TreeHost));
+  return { store, user: userEvent.setup() };
+}
+
+const row = (title: string): HTMLElement => screen.getByText(title).closest('[data-row]') as HTMLElement;
+/** Selected rows by node id, in render order — a row's text also carries the
+ *  drag glyph, the twirl, the percentage and every hover control. */
+const selectedIds = (): string[] =>
+  Array.from(document.querySelectorAll<HTMLElement>('[data-row][aria-selected="true"]'))
+    .map((el) => el.dataset.nodeId ?? '');
+
+beforeEach(() => vi.clearAllMocks());
+// RTL's automatic cleanup only registers under `globals: true`; without this,
+// every render stays in the document and `getByRole` sees the previous tests'.
+afterEach(() => cleanup());
+
+describe('building a selection', () => {
+  it('exposes the tree as multi-selectable before anything is picked', async () => {
+    await mountTree();
+    const tree = screen.getByRole('tree');
+    expect(tree.getAttribute('aria-multiselectable')).toBe('true');
+    // Every row carries aria-selected from the start; a multiselectable
+    // container whose children only expose it once chosen reads as a cursor.
+    expect(row('Pset 6').getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('adds and removes one row on Cmd-click, without running the row action', async () => {
+    const { store, user } = await mountTree();
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+
+    expect(selectedIds()).toEqual(['b']);
+    // The click selected — it did NOT tick the box.
+    const { findInAll } = await import('../lib/tree');
+    expect(findInAll(store.getState().goals, 'b')?.done).toBe(false);
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+    expect(selectedIds()).toEqual([]);
+  });
+
+  /**
+   * Clicks land on CHILDREN, not on the row.
+   *
+   * Nearly every pixel of a row is covered by an element that deliberately
+   * stops propagation — the title span, the drag handle, the checkbox, the
+   * three hover controls. A browser click therefore never reaches the row's
+   * own bubble handler, so Cmd-click selected nothing anywhere on the row.
+   * Every other test in this file dispatches straight at the row element,
+   * where `e.target` IS the row, and is structurally blind to it. This one
+   * clicks the title, which is what a person hits.
+   */
+  it('selects when the click lands on the title, not the row', async () => {
+    const { user } = await mountTree();
+
+    await user.keyboard('{Meta>}');
+    await user.click(screen.getByText('Pset 7'));
+    await user.keyboard('{/Meta}');
+
+    expect(selectedIds()).toEqual(['b']);
+  });
+
+  it('selects when the click lands on a hover control, rather than firing it', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.keyboard('{Meta>}');
+    await user.click(within(row('Pset 7')).getByRole('button', { name: /^Delete/ }));
+    await user.keyboard('{/Meta}');
+
+    expect(selectedIds()).toEqual(['b']);
+    expect(findInAll(store.getState().goals, 'b')).not.toBeNull(); // not deleted
+  });
+
+  it('selects an on-screen run on Shift-click, including nested rows', async () => {
+    const { user } = await mountTree();
+
+    await user.click(row('Pset 7')); // plain click: no selection yet, toggles done
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+
+    await user.keyboard('{Shift>}');
+    await user.click(row('Problems 4-6'));
+    await user.keyboard('{/Shift}');
+
+    expect(selectedIds()).toEqual(['b', 'grp', 'c1', 'c2']);
+  });
+
+  it('grows the range with Shift+Arrow and keeps focus moving', async () => {
+    const { user } = await mountTree();
+    row('Pset 6').focus();
+
+    await user.keyboard('{Shift>}{ArrowDown}{ArrowDown}{/Shift}');
+
+    expect(selectedIds()).toEqual(['a', 'b', 'grp']);
+    expect(document.activeElement).toBe(row('Pset 8'));
+  });
+
+  it('takes every visible row on Cmd+A', async () => {
+    const { user } = await mountTree();
+    row('Pset 6').focus();
+
+    await user.keyboard('{Meta>}a{/Meta}');
+
+    expect(selectedIds()).toEqual(['a', 'b', 'grp', 'c1', 'c2', 'd']);
+  });
+
+  it('announces the count in a live region', async () => {
+    const { user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    const status = screen.getByRole('status', { name: 'Selection' });
+    expect(status.textContent).toBe('2 steps selected');
+  });
+});
+
+describe('acting on a selection', () => {
+  it('completes every open leaf under it, in one undo', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+    row('Pset 8').focus(); // the container
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}'); // Pset 8 + Problems 1-3
+
+    await user.click(screen.getByRole('button', { name: 'Complete' }));
+
+    expect(findInAll(store.getState().goals, 'c1')?.done).toBe(true);
+    expect(findInAll(store.getState().goals, 'c2')?.done).toBe(true);
+    expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
+    expect(selectedIds()).toEqual([]); // the bar retires with the selection
+  });
+
+  it('deletes the selection under one undo, naming the subtree count', async () => {
+    const { store, user } = await mountTree();
+    row('Pset 8').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'd']);
+    // Pset 8 + its two children + Problems 1-3 is covered by the container.
+    expect(store.getState().pendingUndo?.label).toBe('Deleted 3 steps');
+
+    store.actions.undoLastDelete();
+    expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'grp', 'd']);
+  });
+
+  it('deletes from the keyboard too', async () => {
+    const { store, user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    await user.keyboard('{Backspace}');
+
+    expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['grp', 'd']);
+    expect(store.getState().pendingUndo?.label).toBe('Deleted 2 steps');
+  });
+
+  it('expands a container with Space, matching what a click does', async () => {
+    const { store, user } = await mountTree();
+    const rowEl = row('Pset 8');
+    expect(store.getState().expanded.has('grp')).toBe(true);
+    rowEl.focus();
+
+    await user.keyboard(' ');
+
+    expect(store.getState().expanded.has('grp')).toBe(false);
+  });
+
+  it('completes from the keyboard with Space', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    await user.keyboard(' ');
+
+    expect(findInAll(store.getState().goals, 'a')?.done).toBe(true);
+    expect(findInAll(store.getState().goals, 'b')?.done).toBe(true);
+  });
+});
+
+describe('getting out of a selection', () => {
+  it('clears on Escape and stops it reaching the drawer', async () => {
+    const { user } = await mountTree();
+    const onEscape = vi.fn();
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') onEscape(); });
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    await user.keyboard('{Escape}');
+
+    expect(selectedIds()).toEqual([]);
+    // `stopPropagation` keeps App's global handler — which reads Escape as
+    // "close the drawer" — from ever seeing it.
+    expect(onEscape).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The click that ends a selection is the click people use to get out. Having
+   * it also tick a box off is precisely the accidental destructive action a
+   * selection UI exists to avoid.
+   */
+  it('clears on a plain click WITHOUT also completing that row', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    await user.click(row('Pset 9'));
+
+    expect(selectedIds()).toEqual([]);
+    expect(findInAll(store.getState().goals, 'd')?.done).toBe(false);
+  });
+
+  it('leaves ordinary clicking alone when nothing is selected', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.click(row('Pset 9'));
+
+    expect(findInAll(store.getState().goals, 'd')?.done).toBe(true);
+  });
+
+  it('drops ids that stop existing, so the bar cannot count ghosts', async () => {
+    const { store, user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('2 steps selected');
+
+    // Something else removes one of them out from under the selection.
+    store.actions.removeNode('b');
+
+    expect(await screen.findByText('1 step selected')).toBeTruthy();
+  });
+});
+
+describe('a refused bulk action', () => {
+  /**
+   * Both actions refuse silently — a frozen (completed) project, or a selection
+   * whose leaves are all done already. Dropping the bar and the highlights
+   * anyway reads as "done" when nothing happened.
+   */
+  it('keeps the selection when the project is frozen', async () => {
+    const { store, user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    expect(selectedIds()).toEqual(['a', 'b']);
+
+    store.actions.completeGoal('g'); // freezes every structural edit
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'grp', 'd']);
+    expect(selectedIds()).toEqual(['a', 'b']);
+  });
+
+  it('keeps the selection when every selected leaf is already done', async () => {
+    const { store, user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    await user.click(screen.getByRole('button', { name: 'Complete' }));
+    expect(selectedIds()).toEqual([]);
+
+    // Select the same two again — now both are done, so there is nothing to do.
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    await user.click(screen.getByRole('button', { name: 'Complete' }));
+
+    expect(selectedIds()).toEqual(['a', 'b']);
+    expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
+  });
+});
+
+describe('the selection bar itself', () => {
+  /**
+   * `max-h-0 opacity-0` clips the bar visually and hides it from nobody — a
+   * screen reader in browse mode would find three permanent buttons, and
+   * `tabIndex={-1}` only keeps them out of the TAB order.
+   */
+  it('offers no buttons at all while nothing is selected', async () => {
+    await mountTree();
+    const bar = screen.getByRole('status', { name: 'Selection' }).parentElement as HTMLElement;
+    expect(within(bar).queryAllByRole('button')).toEqual([]);
+  });
+
+  it('offers them once rows are selected, and takes them away again', async () => {
+    const { user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+
+    const bar = () => screen.getByRole('status', { name: 'Selection' }).parentElement as HTMLElement;
+    expect(within(bar()).getAllByRole('button').map((b) => b.textContent))
+      .toEqual(['Complete', 'Delete', 'Clear']);
+
+    await user.click(within(bar()).getByRole('button', { name: 'Clear' }));
+    expect(within(bar()).queryAllByRole('button')).toEqual([]);
+  });
+});

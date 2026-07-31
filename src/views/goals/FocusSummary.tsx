@@ -100,7 +100,7 @@ export function FocusSummary({
               </span>
               <span className="text-ui text-ink-soft">{s.txt}</span>
             </span>
-            {s.sub && <span className="text-chip text-warn">{s.sub}</span>}
+            {s.sub && <span className="text-badge text-warn">{s.sub}</span>}
           </button>
         );
       })}

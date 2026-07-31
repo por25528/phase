@@ -91,7 +91,7 @@ export function Modal({
           <button
             ref={closeBtnRef}
             aria-label="Close"
-            className="flex-none text-muted text-h3 px-[7px] py-[3px] rounded-[6px] hover:bg-hover"
+            className="flex-none text-muted text-h3 px-[7px] py-[3px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
             onClick={onClose}
           >
             ✕

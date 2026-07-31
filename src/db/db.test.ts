@@ -391,3 +391,33 @@ describe('sidebar panels', () => {
     expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
   });
 });
+
+/**
+ * `sidebarPanels` is persisted like availability and allDayBlocks, and was the
+ * one device preference the backup left out — so "the backup contains
+ * everything persisted" was not true, and the next preference added would have
+ * copied the omission.
+ */
+describe('sidebarPanels round-trips through a backup', () => {
+  it('restores the panels a backup carries', async () => {
+    await saveSidebarPanels(['habits', 'stats']);
+    const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [], sidebarPanels: ['availability'] }));
+    const out = await importStateFromFile(file);
+    expect(out.sidebarPanels).toEqual(['availability']);
+    expect(await loadSidebarPanels()).toEqual(['availability']);
+  });
+
+  it('leaves this device alone when the backup is silent — absent is not "default"', async () => {
+    await saveSidebarPanels(['habits', 'stats']);
+    const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [] }));
+    const out = await importStateFromFile(file);
+    expect(out.sidebarPanels).toEqual(['habits', 'stats']);
+  });
+
+  it('collapses a malformed value rather than half-trusting it', async () => {
+    await saveSidebarPanels(['habits']);
+    const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [], sidebarPanels: 'habits,stats' }));
+    const out = await importStateFromFile(file);
+    expect(out.sidebarPanels).toEqual([]);
+  });
+});

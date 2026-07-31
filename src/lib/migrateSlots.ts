@@ -95,9 +95,27 @@ export function migrateSlots(
         return;
       }
 
-      if (!n.plannedDay) { // the old "Any day" bucket has no equivalent now
-        clearNodePlan(n);
-        if (!archived) report.sidebarSteps++;
+      // `plannedWeek` with no `plannedDay` is LEGAL, current-model state: a step
+      // committed to a week but not yet given a day. `backlogGroups` shows it in
+      // that week's rail, and `deferOpenWork` produces exactly this shape on
+      // purpose ("Push to next week"), as its own comment says.
+      //
+      // This used to read it as the retired "Any day" bucket and clear the week
+      // commitment. That was survivable while the migration truly ran once on
+      // legacy data — but `importStateFromFile` calls `resetSlotMigration()`, so
+      // it re-runs over CURRENT data after every backup restore. Defer twelve
+      // carried-over steps, export, import, relaunch, and all twelve week
+      // commitments were erased while the toast reported "12 returned to the
+      // sidebar". Leaving the shape alone is also what makes the migration
+      // idempotent, which the swallowed `markSlotMigrationDone` failure path
+      // already assumes.
+      //
+      // A start minute with no day IS still illegal (db/types.ts), so that one
+      // field is repaired — but only that one, and only on this branch: the
+      // `!n.plannedWeek` guard above returns first, so a stray `plannedStartMin`
+      // with no week at all is left alone (as it always was).
+      if (!n.plannedDay) {
+        delete n.plannedStartMin;
         return;
       }
 

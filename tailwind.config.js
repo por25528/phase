@@ -47,7 +47,13 @@ export default {
         eyebrow: '.56rem', // uppercase mono section labels
         tiny: '.6rem',
         kbd: '.62rem',
-        chip: '.68rem',
+        // NB: `badge`, not `chip`. `chip` is also a COLOR key, and Tailwind
+        // emits both `.text-chip{font-size}` and `.text-chip{color}` — the
+        // colour rule wins on order, so every `text-chip` element silently
+        // inherited the near-white chip surface colour. That is what made the
+        // "Not planned this week" pill invisible on a white card. No fontSize
+        // key may share a name with a colour key.
+        badge: '.68rem',
         meta: '.72rem',    // counters, dates, secondary metadata
         compact: '.76rem',
         ui: '.8rem',       // default control text

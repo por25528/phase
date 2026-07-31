@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode, Task } from '../db/types';
-import { deferOpenWork } from './deferWork';
+import { deferOpenWork, countOpenCarryOver } from './deferWork';
 
 // today is Thu 2026-07-23; this week's Monday is 2026-07-20, so next week is
 // 2026-07-27.
@@ -129,5 +129,58 @@ describe('deferOpenWork', () => {
     expect(node.plannedWeek).toBe(NEXT_WEEK);
     expect('plannedDay' in node).toBe(false);
     expect('plannedStartMin' in node).toBe(false);
+  });
+
+  /**
+   * The same rule for tasks, which used to carry `startMin` across the move.
+   * Two overdue tasks both pinned at 10:00 therefore landed stacked on top of
+   * each other on the target Monday, and one pinned at 19:00 landed at 19:00 on
+   * a day whose window closes at 18:00 — this bulk path never consults
+   * availability, so it was minting exactly the overlaps `resolveSlot`
+   * gatekeeps on every other route onto the grid.
+   */
+  it('drops a start minute when deferring placed tasks to another week', () => {
+    const tasks = [
+      task('a', '2026-07-21', { startMin: 600 }),
+      task('b', '2026-07-21', { startMin: 600 }),
+    ];
+
+    const { tasks: next } = deferOpenWork([], tasks, TODAY, NEXT_WEEK);
+
+    expect(next.map((t) => t.date)).toEqual([NEXT_WEEK, NEXT_WEEK]);
+    expect(next.every((t) => !('startMin' in t))).toBe(true);
+  });
+});
+
+/**
+ * The count a bulk control renders must be the count the action moves, and it
+ * must be cheap enough to compute on every render — `deferOpenWork` clones every
+ * goal tree just to reach `.count`.
+ */
+describe('countOpenCarryOver', () => {
+  it('agrees exactly with what deferOpenWork moves', () => {
+    const goals: Goal[] = [
+      goal('g', [
+        { id: 'slipped', title: 'Slipped', plannedWeek: '2026-07-13' },
+        { id: 'thisweek', title: 'On track', plannedWeek: THIS_WEEK },
+        { id: 'unplanned', title: 'Never planned' },
+      ]),
+    ];
+    const tasks = [task('overdue', '2026-07-21'), task('today', TODAY), task('later', '2026-07-30')];
+
+    expect(countOpenCarryOver(goals, tasks, TODAY))
+      .toBe(deferOpenWork(goals, tasks, TODAY, NEXT_WEEK).count);
+  });
+
+  it('is zero when nothing has slipped', () => {
+    const tasks = [task('today', TODAY), task('future', '2026-07-30')];
+    expect(countOpenCarryOver([], tasks, TODAY)).toBe(0);
+  });
+
+  it('does not touch the arrays it is handed', () => {
+    const goals: Goal[] = [goal('g', [{ id: 'slipped', title: 'S', plannedWeek: '2026-07-13' }])];
+    const snapshot = structuredClone(goals);
+    countOpenCarryOver(goals, [task('overdue', '2026-07-21')], TODAY);
+    expect(goals).toEqual(snapshot);
   });
 });

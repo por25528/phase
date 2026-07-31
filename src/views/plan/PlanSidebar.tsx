@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import type { SidebarPanel } from '../../db/db';
 import { useAppStore } from '../../state/store';
 
@@ -43,7 +43,7 @@ export function SidebarSection({
         <span className="font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold flex-1">
           {title}
         </span>
-        {count && <span className="font-mono text-eyebrow text-faint tabular-nums flex-none">{count}</span>}
+        {count && <span className="font-mono text-eyebrow text-muted tabular-nums flex-none">{count}</span>}
       </button>
       {open && <div className="pb-[10px] px-[2px]">{children}</div>}
     </div>
@@ -65,11 +65,11 @@ export function SidebarSection({
  * The inset carries the gutter instead, which also keeps the scrollbar clear
  * of the rule.
  */
-export function PlanSidebar({ children }: { children: ReactNode }) {
+export function PlanSidebar({ children, railRef }: { children: ReactNode; railRef?: Ref<HTMLDivElement> }) {
   return (
     <div className="min-w-0 md:relative md:border-r md:border-line">
       <aside className="flex flex-col min-h-0 md:absolute md:inset-y-0 md:left-0 md:right-[18px]">
-        <div className="flex-1 min-h-0 overflow-y-auto">{children}</div>
+        <div ref={railRef} className="flex-1 min-h-0 overflow-y-auto">{children}</div>
       </aside>
     </div>
   );

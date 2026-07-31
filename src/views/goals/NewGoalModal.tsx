@@ -116,7 +116,7 @@ export function NewGoalModal({
                   <span className="flex-1 truncate">{s}</span>
                   <button
                     aria-label={`Remove ${s}`}
-                    className="text-faint text-ui hover:text-[#b4453a]"
+                    className="text-muted text-ui hover:text-warn"
                     onClick={() => setSubgoals((arr) => arr.filter((_, j) => j !== i))}
                   >
                     ✕

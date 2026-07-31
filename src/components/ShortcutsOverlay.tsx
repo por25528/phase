@@ -1,11 +1,15 @@
+import { useEffect, useRef } from 'react';
+
 // The `?` cheat sheet. A lightweight dialog (not a modalRegistry Modal) so it
 // never interferes with the ⌘N capture-suppression logic; Escape and a backdrop
 // click both dismiss it, wired from App's global key handler and onClose here.
 
 // Listed in nav order, which is also the order the number keys select.
+// "Projects", not "Goals" — that is what the nav, the board and the command
+// palette all call it; this list was the last survivor of the old name.
 const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['1'], label: 'Plan' },
-  { keys: ['2'], label: 'Goals' },
+  { keys: ['2'], label: 'Projects' },
   { keys: ['3'], label: 'Timeline' },
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
@@ -31,6 +35,30 @@ const PLANNER_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['t'], label: 'Back to this week' },
 ];
 
+// Board keys — on a focused project card. Alt rather than Cmd because ⌘← is
+// Back in a browser and the board is a normal document.
+const BOARD_KEYS: { keys: string[]; label: string }[] = [
+  { keys: ['↵'], label: 'Open the project' },
+  { keys: ['⌥', '←/→'], label: 'Move to the previous / next horizon' },
+  { keys: ['⌥', '↑/↓'], label: 'Move up / down within the horizon' },
+];
+
+// Step-tree keys, inside a project's drawer. Indent/outdent are chords rather
+// than Tab: on Tab they made the tree a keyboard trap, and re-parented a step
+// on the way. A chord also has to be documented somewhere to exist at all,
+// which is what this block is for.
+const TREE_KEYS: { keys: string[]; label: string }[] = [
+  { keys: ['↑', '↓'], label: 'Move between steps' },
+  { keys: ['⌘', 'click'], label: 'Add a step to the selection' },
+  { keys: ['⇧', '↑/↓'], label: 'Extend the selection' },
+  { keys: ['⌘', 'A'], label: 'Select every step' },
+  { keys: ['⌫'], label: 'Delete the selection' },
+  { keys: ['→', '←'], label: 'Expand or collapse a step' },
+  { keys: ['Space'], label: 'Check the focused step off' },
+  { keys: ['⌘', ']'], label: 'Indent — make it a sub-step' },
+  { keys: ['⌘', '['], label: 'Outdent' },
+];
+
 function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {
   return (
     <div className="flex items-center justify-between gap-[16px]">
@@ -50,6 +78,48 @@ function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {
 }
 
 export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  /*
+   * `aria-modal="true"` asserts that everything outside this dialog is inert.
+   * Nothing here honoured that: focus was never moved in, never trapped, and
+   * never restored, so a screen-reader user was told the rest of the page was
+   * unavailable while their focus was still sitting in it — nothing reachable
+   * at all. Its two sibling dialogs (Modal, GoalDrawer) both do this; the cheat
+   * sheet was the one that only made the claim.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeRef.current?.focus();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return;
+      const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = prevOverflow;
+      opener?.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div
@@ -58,6 +128,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Keyboard shortcuts"
@@ -67,10 +138,11 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
         <div className="flex items-center justify-between mb-[14px]">
           <h2 className="font-disp text-h3 font-semibold tracking-[-0.01em]">Keyboard shortcuts</h2>
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="Close shortcuts"
-            className="text-muted hover:text-ink text-lead px-[6px] py-[2px] rounded-[6px] hover:bg-hover"
+            className="text-muted hover:text-ink text-lead px-[6px] py-[2px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
           >
             ✕
           </button>
@@ -86,6 +158,26 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           </h3>
           <dl className="flex flex-col gap-[9px]">
             {PLANNER_KEYS.map((shortcut) => (
+              <ShortcutRow key={shortcut.label} keys={shortcut.keys} label={shortcut.label} />
+            ))}
+          </dl>
+        </div>
+        <div className="mt-[14px] pt-[12px] border-t border-line-soft">
+          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
+            On a project card
+          </h3>
+          <dl className="flex flex-col gap-[9px]">
+            {BOARD_KEYS.map((shortcut) => (
+              <ShortcutRow key={shortcut.label} keys={shortcut.keys} label={shortcut.label} />
+            ))}
+          </dl>
+        </div>
+        <div className="mt-[14px] pt-[12px] border-t border-line-soft">
+          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
+            In a project's steps
+          </h3>
+          <dl className="flex flex-col gap-[9px]">
+            {TREE_KEYS.map((shortcut) => (
               <ShortcutRow key={shortcut.label} keys={shortcut.keys} label={shortcut.label} />
             ))}
           </dl>

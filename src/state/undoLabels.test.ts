@@ -7,10 +7,16 @@ import { describe, expect, it } from 'vitest';
 describe('undo toast labels', () => {
   const source = readFileSync(new URL('./store.ts', import.meta.url), 'utf8');
 
+  // Comment lines are skipped. The rule is about the label a user reads, and
+  // prose discussing the mechanism legitimately writes `pendingUndo` — which
+  // ends in "Undo`" and tripped the check for a defect that wasn't there.
+  const isComment = (line: string) => /^\s*(\/\/|\/?\*)/.test(line);
+
   it('never bakes the word Undo into a label', () => {
     const offenders = source
       .split('\n')
       .map((line, i) => [i + 1, line] as const)
+      .filter(([, line]) => !isComment(line))
       .filter(([, line]) => /Undo`/.test(line) || /· Undo/.test(line));
 
     expect(offenders).toEqual([]);

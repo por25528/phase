@@ -50,7 +50,15 @@ export function expectedPct(
   todayStr: string,
 ): number {
   const total = daysBetween(start, deadline);
-  if (total <= 0) return 100;
+  // A zero-length span (start === deadline — `projectDateError` allows it) has
+  // no elapsed fraction to compute. A flat 100 was a divide-by-zero guard that
+  // answered the wrong question: a one-day project scheduled for next March
+  // read "100% expected by today" the moment it was created, so every surface
+  // that shows pace — board card, drawer, Timeline — called it 100 points
+  // behind before any work could possibly exist. Expectation on a single-day
+  // span is all-or-nothing: everything is due once the day arrives, nothing
+  // before it.
+  if (total <= 0) return todayStr >= deadline ? 100 : 0;
   const elapsed = daysBetween(start, todayStr);
   return Math.min(100, Math.max(0, (elapsed / total) * 100));
 }

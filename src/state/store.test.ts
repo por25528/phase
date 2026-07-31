@@ -346,6 +346,48 @@ describe('store actions', () => {
       expect(node.plannedWeek).toBeUndefined();
       expect(node.plannedDay).toBeUndefined();
     });
+
+    /**
+     * "+ sub" is a hover affordance sitting two pixels from ✕, and on a step
+     * that was finished and scheduled it silently un-completed it and pulled it
+     * off the calendar. The field-clearing is right — a container cannot carry
+     * a slot — but it went through bare `setAndPersist`, so there was no
+     * confirmation, no toast and no way back.
+     */
+    it('arms an undo when the converted leaf was carrying a plan', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'Pset 4');
+      const nid = getState().goals[0].nodes[0].id;
+      getState().goals[0].nodes[0].plannedWeek = '2026-07-13';
+      getState().goals[0].nodes[0].estimateMin = 90;
+
+      actions.addChild(nid, 'child');
+      expect(getState().pendingUndo?.label).toBe('"Pset 4" became a group — its plan was cleared');
+
+      actions.undoLastDelete();
+      const restored = getState().goals[0].nodes[0];
+      expect(restored.children).toBeUndefined();
+      expect(restored.plannedWeek).toBe('2026-07-13');
+      expect(restored.estimateMin).toBe(90);
+    });
+
+    // Typing out a list must not raise a toast per row — nothing is lost when
+    // the leaf was bare, or when the target is already a container.
+    it('stays quiet when the conversion discards nothing', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'Psets');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.addChild(nid, 'Pset 1');
+      expect(getState().pendingUndo).toBeNull();
+      actions.addChild(nid, 'Pset 2');
+      expect(getState().pendingUndo).toBeNull();
+      expect(getState().goals[0].nodes[0].children).toHaveLength(2);
+    });
   });
 
   it('removeNode schedules undo; undoLastDelete restores', async () => {
@@ -739,6 +781,53 @@ describe('store actions', () => {
       expect(n.plannedDay).toBe('2026-07-15');
       expect(n.plannedStartMin).toBe(630);
     });
+
+    /**
+     * Rearranging the day you are standing in.
+     *
+     * Placement resolved against the real wall clock, and `remainingWindow`
+     * treats everything before "now" as gone — so at 2pm the only gap Wednesday
+     * had left was 14:00–18:00. Dragging the 09:00 block up to 11:00 therefore
+     * found no gap at the aim, slid to the first one that fit, and dropped the
+     * block at 14:00: a move the user never asked for, with no toast and no
+     * undo. `NO_PAST_LIMIT` exists for precisely this — its own note says
+     * "adjusting a commitment the user already made" — and `clampResize` was
+     * already using it for the sibling case of resizing a 09:00 block at 2pm.
+     */
+    it('moves a block earlier in a day already underway, instead of sliding it to now', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, '6.1200 pset');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.scheduleNode(gid, nid, '2026-07-15', 540); // 09:00
+      expect(getState().goals[0].nodes[0].plannedStartMin).toBe(540);
+
+      vi.setSystemTime(new Date(2026, 6, 15, 14)); // it is now 2pm
+      expect(actions.scheduleNode(gid, nid, '2026-07-15', 660)).toBe(true); // aim 11:00
+
+      expect(getState().goals[0].nodes[0].plannedStartMin).toBe(660);
+    });
+
+    it('moves a block back onto an earlier weekday of the same week', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'Investor deck');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.scheduleNode(gid, nid, '2026-07-15', 600); // Wed
+
+      vi.setSystemTime(new Date(2026, 6, 15, 14));
+      // Monday of the same week is nine hours empty; it used to refuse this
+      // with "no free time left that day".
+      expect(actions.scheduleNode(gid, nid, '2026-07-13', 600)).toBe(true);
+
+      const n = getState().goals[0].nodes[0];
+      expect(n.plannedDay).toBe('2026-07-13');
+      expect(n.plannedStartMin).toBe(600);
+    });
   });
 
   describe('scheduleTask', () => {
@@ -761,11 +850,17 @@ describe('store actions', () => {
   });
 
   describe('unscheduleTask', () => {
-    // The `×` on a task block unpins its TIME only. Clearing `date` too would
-    // make the task unreachable everywhere: there is no task sidebar for a
-    // dateless task to land in (unlike unscheduleNode, whose leaf still shows
-    // up in the Plan backlog rail once its plan is cleared).
-    it('clears startMin but keeps date, with an undo window', async () => {
+    /**
+     * The `×` takes the task off the plan entirely, matching `unscheduleNode`.
+     *
+     * It used to unpin the time and keep `date`, because at the time no surface
+     * listed a dateless task. The backlog rail changed that — it lists any task
+     * missing either field — but the behaviour didn't follow, and `tasksForWeek`
+     * (which feeds the week header's capacity) filters on `date` alone. So one
+     * unscheduled task was billed to "planned" in the header while sitting under
+     * "To plan" in the rail beside it.
+     */
+    it('takes the task off the plan entirely, with an undo window', async () => {
       vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
       actions.addTask('leaf', '2026-07-15');
@@ -775,7 +870,7 @@ describe('store actions', () => {
       actions.unscheduleTask(tid);
 
       const cleared = getState().tasks[0];
-      expect(cleared.date).toBe('2026-07-15');
+      expect(cleared.date).toBeUndefined();
       expect(cleared.startMin).toBeUndefined();
       expect(getState().pendingUndo).not.toBeNull();
 
@@ -783,6 +878,25 @@ describe('store actions', () => {
       const restored = getState().tasks[0];
       expect(restored.date).toBe('2026-07-15');
       expect(restored.startMin).toBe(600);
+    });
+
+    // The whole point of clearing the date: the task must stop being counted as
+    // planned, and must still be reachable. Both, or neither is safe.
+    it('leaves the task in the backlog rail and out of the week capacity', async () => {
+      const { backlogGroups } = await import('../lib/backlog');
+      const { tasksForWeek } = await import('../lib/dailyWork');
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Investor deck', '2026-07-15');
+      const tid = getState().tasks[0].id;
+      actions.scheduleTask(tid, '2026-07-15', 600);
+
+      actions.unscheduleTask(tid);
+
+      const { tasks } = getState();
+      expect(tasksForWeek(tasks, '2026-07-13')).toEqual([]);
+      const rail = backlogGroups(getState().goals, tasks, '2026-07-13', '2026-07-15');
+      expect(rail.flatMap((g) => g.items).map((i) => i.title)).toContain('Investor deck');
     });
 
     it('is a no-op on a task that is not pinned to a time', async () => {
@@ -1060,7 +1174,7 @@ describe('store actions', () => {
           nodes: [{ id: 'new-node', title: 'New commitment', done: false, plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [], pxPerDay: 40,
-        availability: DEFAULT_AVAILABILITY, allDayBlocks: true,
+        availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
       });
 
       const store = await freshStore();
@@ -1408,7 +1522,8 @@ describe('store actions', () => {
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith({
         goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
-      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks, null);
+      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks,
+      store.getState().sidebarPanels, null);
     });
 
     it('loads the pre-migration snapshot and carries it into the export', async () => {
@@ -1422,7 +1537,7 @@ describe('store actions', () => {
 
       expect(exportState).toHaveBeenCalledWith(
         expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
-        snapshot,
+        expect.anything(), snapshot,
       );
     });
   });
@@ -1854,9 +1969,58 @@ describe('availability and all-day preference (device settings)', () => {
 });
 
 describe('estimates', () => {
+  // Two of these pin the clock so scheduling resolves against a known day; the
+  // fake-timer lifecycle keeps that from leaking into the suites after it.
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
   const goalWithLeaf: Goal = {
     id: 'g1', title: 'G', nodes: [{ id: 'n1', title: 'N', done: false }],
   };
+
+  /**
+   * Block height is `durationOf(estimateMin)`, so raising the estimate of an
+   * already-placed item stretched it over its neighbours and past the end of
+   * the day — the exact collision `resolveSlot` gatekeeps every drop against,
+   * reachable from a field that said nothing at all. The estimate itself is not
+   * clamped (it is a fact about the work, and `resizeNode` is the gesture that
+   * means "make the block this long"), but the consequence is now stated.
+   */
+  it('warns when a bigger estimate outgrows the slot the item sits in', async () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 8));
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g9', title: '6.1200', nodes: [
+        { id: 'a', title: 'Pset', done: false, estimateMin: 30 },
+        { id: 'b', title: 'Recitation', done: false, estimateMin: 30 },
+      ],
+    }]);
+    store.actions.scheduleNode('g9', 'a', '2026-07-15', 540); // 09:00–09:30
+    store.actions.scheduleNode('g9', 'b', '2026-07-15', 600); // 10:00–10:30
+
+    store.actions.setNodeEstimate('a', 600); // ten hours, straight through b
+
+    const { findInAll } = await import('../lib/tree');
+    expect(findInAll(store.getState().goals, 'a')?.estimateMin).toBe(600);
+    expect(store.getState().toast).toBe('"Pset" no longer fits its slot — move it or shorten the day');
+  });
+
+  it('says nothing when the estimate still fits, or the item is not on the grid', async () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 8));
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g9', title: '6.1200', nodes: [{ id: 'a', title: 'Pset', done: false, estimateMin: 30 }],
+    }]);
+
+    store.actions.setNodeEstimate('a', 120); // unplaced — nothing to overflow
+    expect(store.getState().toast).toBeNull();
+
+    store.actions.scheduleNode('g9', 'a', '2026-07-15', 540);
+    store.actions.setNodeEstimate('a', 60); // an empty day has room
+    expect(store.getState().toast).toBeNull();
+  });
 
   it('sets and clears a node estimate', async () => {
     const { findInAll } = await import('../lib/tree');
@@ -1924,6 +2088,541 @@ describe('estimates', () => {
 // C-7: the undo was a single slot behind a 5s toast. Deleting a project and
 // then ticking any checkbox inside that window destroyed the project with no
 // warning that the undo had just been consumed.
+/**
+ * A failed write was a 1.9-second toast and nothing else, while in-memory state
+ * advanced as if it had succeeded. Quota exceeded mid-session, user looks away
+ * for three seconds, then works for an hour against state that lives only in
+ * RAM and closes the tab. The condition has to outlive the moment.
+ */
+/**
+ * Every `persist` is a full clear + bulkPut of all four tables from THIS tab's
+ * in-memory snapshot, so one write from a stale second tab rewrites the entire
+ * database from its stale view. The banner was shown and the clobbering
+ * happened anyway.
+ */
+describe('a tab that does not own the lock', () => {
+  it('renders and reads, but never writes', async () => {
+    const { acquireTabLock } = await import('../lib/tabLock');
+    const { persist } = await import('../db/db');
+    vi.mocked(acquireTabLock).mockResolvedValueOnce(false);
+
+    const store = await freshStore();
+    const { actions, getState } = store;
+    await store.initStore();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getState().secondTab).toBe(true);
+
+    vi.mocked(persist).mockClear();
+    actions.addGoal('Typed in the wrong tab');
+
+    // Visible locally — Export is the escape hatch — but nothing reaches disk.
+    expect(getState().goals.map((g) => g.title)).toContain('Typed in the wrong tab');
+    expect(vi.mocked(persist)).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `setAndPersist`'s guard covers the four main tables. Every OTHER write went
+   * straight through — so a non-owning tab still overwrote the owner's
+   * settings, and `ensureWeekRollover` (unconditional at the end of
+   * `initStore`) stamped its own `planReview` over the owner's on every launch.
+   */
+  it('writes no settings either — not just no tables', async () => {
+    const { acquireTabLock } = await import('../lib/tabLock');
+    const db = await import('../db/db');
+    vi.mocked(acquireTabLock).mockResolvedValueOnce(false);
+
+    const store = await freshStore();
+    await store.initStore();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(store.getState().secondTab).toBe(true);
+
+    vi.mocked(db.saveAvailability).mockClear();
+    vi.mocked(db.saveAllDayBlocks).mockClear();
+    vi.mocked(db.saveSidebarPanels).mockClear();
+    vi.mocked(db.savePlanReview).mockClear();
+
+    store.actions.setAvailability([{ dow: 0, startMin: 540, endMin: 600 }]);
+    store.actions.setAllDayBlocks(false);
+    store.actions.setSidebarPanels(['habits']);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(vi.mocked(db.saveAvailability)).not.toHaveBeenCalled();
+    expect(vi.mocked(db.saveAllDayBlocks)).not.toHaveBeenCalled();
+    expect(vi.mocked(db.saveSidebarPanels)).not.toHaveBeenCalled();
+    expect(vi.mocked(db.savePlanReview)).not.toHaveBeenCalled();
+  });
+
+  it('refuses an import rather than letting it write all four tables', async () => {
+    const { acquireTabLock } = await import('../lib/tabLock');
+    const { importStateFromFile } = await import('../db/db');
+    vi.mocked(acquireTabLock).mockResolvedValueOnce(false);
+
+    const store = await freshStore();
+    await store.initStore();
+    await new Promise((r) => setTimeout(r, 0));
+
+    vi.mocked(importStateFromFile).mockClear();
+    await store.actions.importBackup(new File([''], 'backup.json'));
+
+    expect(vi.mocked(importStateFromFile)).not.toHaveBeenCalled();
+    expect(store.getState().toast).toContain('another tab');
+  });
+
+  it('writes normally when it does own the lock', async () => {
+    const { persist } = await import('../db/db');
+    const { actions, getState } = await freshStore();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getState().secondTab).toBe(false);
+
+    vi.mocked(persist).mockClear();
+    actions.addGoal('Typed in the right tab');
+    expect(vi.mocked(persist)).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The board card computed exactly which step "Plan next step" meant, passed the
+ * goalId to `onPlan`, and `onPlan` ignored it and called `setView('plan')`.
+ * Since `cardPrimaryAction` returns 'plan' for nearly every healthy project,
+ * that was the default action on most cards — and it dropped you into a rail
+ * holding a dozen projects with nothing selected.
+ */
+/**
+ * Every neighbouring board action speaks — add, import and complete all raise a
+ * toast — and the horizon move, reached from a ⋯ menu so entirely blind, raised
+ * nothing and had no undo. Below 920px only one horizon renders and the menu is
+ * the only cross-horizon route there, so the card just left the screen.
+ */
+/**
+ * "Replan" was `scheduleNode(goalId, nodeId, today, 0)`. Under the default
+ * Mon–Fri availability that fails outright on a weekend — exactly when a weekly
+ * review happens — and on a weekday that succeeded, nothing on screen changed:
+ * `weekRecap` buckets on `node.done`, and the return value was discarded, so
+ * only the failure path ever spoke.
+ */
+describe('replanNode', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function storeWithCarryOver() {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g', title: '6.5840', column: 0,
+      nodes: [{ id: 'n', title: 'Part 2B', done: false, estimateMin: 60 }],
+    }]);
+    return store;
+  }
+
+  it('finds the next weekday when today is a weekend, instead of failing', async () => {
+    // 2026-07-18 is a Saturday; the default window is Mon–Fri.
+    vi.setSystemTime(new Date(2026, 6, 18, 9));
+    const { actions, getState } = await storeWithCarryOver();
+
+    actions.replanNode('g', 'n');
+
+    const { findInAll } = await import('../lib/tree');
+    expect(findInAll(getState().goals, 'n')?.plannedDay).toBe('2026-07-20'); // Monday
+    expect(getState().toast).toContain('Replanned "Part 2B"');
+  });
+
+  it('says so on success — the old silence was indistinguishable from a dead button', async () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 8)); // a Wednesday
+    const { actions, getState } = await storeWithCarryOver();
+
+    actions.replanNode('g', 'n');
+
+    const { findInAll } = await import('../lib/tree');
+    expect(findInAll(getState().goals, 'n')?.plannedDay).toBe('2026-07-15');
+    expect(getState().toast).toContain('Replanned');
+  });
+
+  it('explains itself when nothing in the horizon can take it', async () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 8));
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.setAvailability([]); // no working hours at all
+    store.actions.addGoals([{
+      id: 'g', title: '6.5840', column: 0,
+      nodes: [{ id: 'n', title: 'Part 2B', done: false, estimateMin: 60 }],
+    }]);
+
+    store.actions.replanNode('g', 'n');
+
+    const { findInAll } = await import('../lib/tree');
+    expect(findInAll(store.getState().goals, 'n')?.plannedDay).toBeUndefined();
+    expect(store.getState().toast).toContain('No free slot');
+  });
+});
+
+describe('moveGoalToColumn', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('names the destination and offers the move back', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('6.1200 Psets');
+    const id = getState().goals[0].id;
+
+    actions.moveGoalToColumn(id, 2);
+
+    expect(getState().goals[0].column).toBe(2);
+    expect(getState().pendingUndo?.label).toBe('Moved "6.1200 Psets" to Later');
+
+    actions.undoLastDelete();
+    expect(getState().goals[0].column).toBe(0);
+  });
+
+  /**
+   * Choosing the horizon a project is already in is not a move. It used to
+   * toast "Moved X to Now" and arm a whole-goals-slice undo for a write that
+   * changed nothing — and that undo displaced whatever real one was armed
+   * before it.
+   */
+  it('says nothing when the project is already in that horizon', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('Already here');
+    const id = getState().goals[0].id;
+    actions.removeTask('nope'); // no-op; just to leave pendingUndo null
+
+    actions.moveGoalToColumn(id, 0);
+
+    expect(getState().pendingUndo).toBeNull();
+    expect(getState().goals[0].column).toBe(0);
+  });
+
+  it('clamps an out-of-range column instead of inventing a horizon', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('Startup');
+    const id = getState().goals[0].id;
+
+    actions.moveGoalToColumn(id, 99);
+
+    expect(getState().goals[0].column).toBe(3);
+    expect(getState().pendingUndo?.label).toBe('Moved "Startup" to Someday');
+  });
+});
+
+describe('planNextStepFor', () => {
+  it('selects the project’s most urgent unplanned step, on the calendar', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([{
+      id: 'g1', title: '6.1200', column: 0, nodes: [
+        { id: 'later', title: 'Pset 9', deadline: '2026-12-01' },
+        { id: 'soon', title: 'Pset 1', deadline: '2026-01-05' },
+      ],
+    }]);
+
+    actions.planNextStepFor('g1');
+
+    expect(getState().view).toBe('plan');
+    // The rail's own ordering, not a second "first open leaf" walk that could
+    // disagree with it.
+    expect(getState().revealItem).toMatchObject({ kind: 'step', id: 'soon' });
+  });
+
+  it('still goes to the calendar when the project has nothing left to plan', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([{
+      id: 'g1', title: 'Done project', column: 0,
+      nodes: [{ id: 'n1', title: 'Finished', done: true }],
+    }]);
+
+    actions.planNextStepFor('g1');
+
+    expect(getState().view).toBe('plan');
+    expect(getState().revealItem).toBeNull();
+  });
+});
+
+describe('persist failure', () => {
+  it('latches a banner flag until a later write succeeds', async () => {
+    const { persist } = await import('../db/db');
+    const { actions, getState } = await freshStore();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getState().persistFailed).toBe(false);
+
+    vi.mocked(persist).mockRejectedValueOnce(new Error('QuotaExceededError'));
+    actions.addGoal('6.1200');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getState().persistFailed).toBe(true);
+
+    // Still latched across an edit that never touches the database.
+    actions.setView('goals');
+    expect(getState().persistFailed).toBe(true);
+
+    actions.addGoal('18.06'); // this one lands
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getState().persistFailed).toBe(false);
+  });
+
+  it('keeps the in-memory edit so nothing is lost before the export', async () => {
+    const { persist } = await import('../db/db');
+    const { actions, getState } = await freshStore();
+    await new Promise((r) => setTimeout(r, 0));
+
+    vi.mocked(persist).mockRejectedValueOnce(new Error('disk full'));
+    actions.addGoal('Startup: investor deck');
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(getState().goals.map((g) => g.title)).toContain('Startup: investor deck');
+  });
+});
+
+/**
+ * Enter used to call `addChild(parentId)`, which pushes onto the END of the
+ * parent's list — so on the first of ten psets the new row landed tenth,
+ * unfocused, titled "New item". And `parentId` is null for every root-level
+ * step, which is all of them on a freshly created project, so Enter did nothing
+ * whatsoever there.
+ */
+describe('insertSiblingAfter', () => {
+  async function storeWithSteps() {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g', title: '6.1200', column: 0, nodes: [
+        { id: 'a', title: 'Pset 1', done: false },
+        { id: 'b', title: 'Pset 2', done: false },
+      ],
+    }]);
+    return store;
+  }
+
+  it('inserts below the row rather than at the end of the list', async () => {
+    const { actions, getState } = await storeWithSteps();
+
+    actions.insertSiblingAfter('a', 'Pset 1.5');
+
+    expect(getState().goals[0].nodes.map((n) => n.title)).toEqual(['Pset 1', 'Pset 1.5', 'Pset 2']);
+  });
+
+  it('works at root level, where Enter used to do nothing', async () => {
+    const { actions, getState } = await storeWithSteps();
+    actions.insertSiblingAfter('b', 'Pset 3');
+    expect(getState().goals[0].nodes.map((n) => n.title)).toEqual(['Pset 1', 'Pset 2', 'Pset 3']);
+  });
+
+  it('flags the new step so its row opens ready to type, exactly once', async () => {
+    const { actions, getState } = await storeWithSteps();
+
+    actions.insertSiblingAfter('a');
+    const newId = getState().newNodeId;
+    expect(newId).toBeTruthy();
+    expect(getState().goals[0].nodes[1].id).toBe(newId);
+
+    actions.clearNewNode();
+    expect(getState().newNodeId).toBeNull();
+  });
+
+  it('is frozen on a completed project, like every other structural edit', async () => {
+    const { actions, getState } = await storeWithSteps();
+    actions.completeGoal('g');
+
+    actions.insertSiblingAfter('a', 'Should not appear');
+
+    expect(getState().goals[0].nodes.map((n) => n.title)).toEqual(['Pset 1', 'Pset 2']);
+  });
+});
+
+describe('bulk step operations', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function storeWithPsets() {
+    const store = await freshStore();
+    await store.initStore();
+    store.actions.addGoals([{
+      id: 'g', title: '6.1200', column: 0, nodes: [
+        { id: 'a', title: 'Pset 6', done: true, doneAt: '2026-07-01' },
+        { id: 'b', title: 'Pset 7', done: false },
+        { id: 'grp', title: 'Pset 8', children: [
+          { id: 'c1', title: 'Problems 1-3', done: false },
+          { id: 'c2', title: 'Problems 4-6', done: false },
+        ] },
+        { id: 'd', title: 'Pset 9', done: false },
+      ],
+    }]);
+    return store;
+  }
+
+  /**
+   * Looping the single-node actions would arm one undo entry per row — so the
+   * toast would name only the last, and each write's stale-restore sweep would
+   * discard the entries armed before it. A batch the user performed once has to
+   * be one action.
+   */
+  it('deletes a whole selection under a single undo', async () => {
+    const { actions, getState } = await storeWithPsets();
+
+    actions.removeNodes(['b', 'd']);
+
+    expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'grp']);
+    expect(getState().pendingUndo?.label).toBe('Deleted 2 steps');
+
+    actions.undoLastDelete();
+    expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'grp', 'd']);
+  });
+
+  it('counts the subtree, not the selected rows, in the toast', async () => {
+    const { actions, getState } = await storeWithPsets();
+    actions.removeNodes(['grp']);
+    // grp + its two children.
+    expect(getState().pendingUndo?.label).toBe('Deleted 3 steps');
+  });
+
+  it('does not double-remove when a group and its child are both selected', async () => {
+    const { actions, getState } = await storeWithPsets();
+
+    actions.removeNodes(['grp', 'c1']);
+
+    expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'd']);
+    expect(getState().pendingUndo?.label).toBe('Deleted 3 steps');
+  });
+
+  it('completes the open LEAVES under a selection, never the container', async () => {
+    const { actions, getState } = await storeWithPsets();
+    const { findInAll } = await import('../lib/tree');
+
+    actions.completeNodes(['grp', 'b']);
+
+    expect(findInAll(getState().goals, 'c1')?.done).toBe(true);
+    expect(findInAll(getState().goals, 'c2')?.done).toBe(true);
+    expect(findInAll(getState().goals, 'b')?.done).toBe(true);
+    // The container itself stays a container — its done-ness is derived.
+    expect(findInAll(getState().goals, 'grp')?.done).toBeUndefined();
+    expect(getState().pendingUndo?.label).toBe('Completed 3 steps');
+  });
+
+  it('leaves an already-finished step untouched instead of re-stamping doneAt', async () => {
+    const { actions, getState } = await storeWithPsets();
+    const { findInAll } = await import('../lib/tree');
+
+    actions.completeNodes(['a', 'b']);
+
+    expect(findInAll(getState().goals, 'a')?.doneAt).toBe('2026-07-01');
+    expect(getState().pendingUndo?.label).toBe('Completed 1 step');
+  });
+
+  it('undoes a batch completion in one step', async () => {
+    const { actions, getState } = await storeWithPsets();
+    const { findInAll } = await import('../lib/tree');
+
+    actions.completeNodes(['grp']);
+    actions.undoLastDelete();
+
+    expect(findInAll(getState().goals, 'c1')?.done).toBe(false);
+    expect(findInAll(getState().goals, 'c2')?.done).toBe(false);
+  });
+
+  it('is a no-op on an empty or already-satisfied selection', async () => {
+    const { actions, getState } = await storeWithPsets();
+
+    actions.removeNodes([]);
+    actions.completeNodes([]);
+    actions.completeNodes(['a']); // already done
+    expect(getState().pendingUndo).toBeNull();
+    expect(getState().goals[0].nodes).toHaveLength(4);
+  });
+
+  it('is frozen on a completed project, like every other structural edit', async () => {
+    const { actions, getState } = await storeWithPsets();
+    const { findInAll } = await import('../lib/tree');
+    actions.completeGoal('g');
+    const armed = getState().pendingUndo; // completeGoal's own offer
+
+    actions.removeNodes(['b', 'd']);
+    actions.completeNodes(['b']);
+
+    expect(getState().goals[0].nodes).toHaveLength(4);
+    expect(findInAll(getState().goals, 'b')?.done).toBe(false);
+    // Neither batch wrote, so neither displaced the offer already on screen.
+    expect(getState().pendingUndo).toEqual(armed);
+  });
+
+  it('does not mutate the live state array', async () => {
+    const { actions, getState } = await storeWithPsets();
+    const before = structuredClone(getState().goals);
+    const liveRef = getState().goals;
+
+    actions.removeNodes(['grp']);
+
+    expect(liveRef).toEqual(before); // the old array is untouched
+    expect(getState().goals).not.toBe(liveRef);
+  });
+});
+
+describe('restructuring a step tree', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function storeWithTwoSteps() {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [{
+        id: 'g', title: '6.1200', column: 0, nodes: [
+          { id: 'a', title: 'Pset 3', done: true, doneAt: '2026-07-14', estimateMin: 90 },
+          { id: 'b', title: 'Pset 4', done: false },
+        ],
+      }],
+      habits: [], tasks: [], sessions: [],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    return store;
+  }
+
+  /**
+   * Indenting "Pset 4" under "Pset 3" converts Pset 3 into a container, and the
+   * leaf-XOR-container invariant means its completion, its done-date and its
+   * estimate are discarded. That is correct — but it went through bare
+   * `setAndPersist`, so a single keystroke silently un-completed a finished
+   * step with no way back. (It was bound to Tab at the time, so it was also
+   * reachable by anyone trying to leave the tree.)
+   */
+  it('lets you undo an indent that discarded the new parent’s completion', async () => {
+    const { actions, getState } = await storeWithTwoSteps();
+
+    actions.indentNode('b');
+
+    const parent = getState().goals[0].nodes[0];
+    expect(parent.children?.map((c) => c.id)).toEqual(['b']);
+    expect(parent.done).toBeUndefined();
+    expect(parent.estimateMin).toBeUndefined();
+    expect(getState().pendingUndo?.label).toBe('Indented "Pset 4"');
+
+    actions.undoLastDelete();
+
+    const [a, b] = getState().goals[0].nodes;
+    expect(a).toMatchObject({ id: 'a', done: true, doneAt: '2026-07-14', estimateMin: 90 });
+    expect(b.id).toBe('b');
+  });
+
+  it('offers no undo for a move the tree refused', async () => {
+    const { actions, getState } = await storeWithTwoSteps();
+
+    actions.indentNode('a');  // first sibling — nothing to indent under
+    expect(getState().pendingUndo).toBeNull();
+
+    actions.outdentNode('a'); // already at root
+    expect(getState().pendingUndo).toBeNull();
+
+    expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b']);
+  });
+
+  it('undoes an outdent', async () => {
+    const { actions, getState } = await storeWithTwoSteps();
+    actions.indentNode('b');
+
+    actions.outdentNode('b');
+    expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b']);
+    expect(getState().pendingUndo?.label).toBe('Outdented "Pset 4"');
+
+    actions.undoLastDelete();
+    expect(getState().goals[0].nodes[0].children?.map((c) => c.id)).toEqual(['b']);
+  });
+});
+
 describe('undo durability', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -1986,12 +2685,12 @@ describe('undo durability', () => {
     const secondId = getState().goals.find((g) => g.title === 'Second')!.id;
 
     actions.removeGoal('g');
-    actions.moveGoalToColumn(secondId, 3); // not undoable
+    actions.renameGoal(secondId, 'Renamed'); // not undoable
 
     actions.undoLastDelete();
 
-    // The move survives — undo must never silently reverse it...
-    expect(getState().goals.find((x) => x.id === secondId)?.column).toBe(3);
+    // The rename survives — undo must never silently reverse it...
+    expect(getState().goals.find((x) => x.id === secondId)?.title).toBe('Renamed');
     // ...and having dropped the stale restore, the delete stays applied.
     expect(getState().goals.some((x) => x.id === 'g')).toBe(false);
   });
@@ -2028,5 +2727,71 @@ describe('undo durability', () => {
 
     vi.advanceTimersByTime(10000);
     expect(getState().pendingUndo).toBeNull();
+  });
+
+  /**
+   * The offer and the restore must retire together.
+   *
+   * The stale-restore sweep above is correct, but it left `pendingUndo` alone —
+   * so the toast kept saying 'Deleted "6.5840" and its 2 steps — Undo' for the
+   * rest of its 15 seconds after the restore behind it had been discarded, and
+   * clicking Undo popped an empty stack and dismissed the toast. That is
+   * pixel-identical to a successful undo, so the project looked recoverable,
+   * then looked recovered, and was neither.
+   */
+  it('retires the Undo toast when the edit that voids its restore lands', async () => {
+    const { actions, getState } = await storeWithProject();
+    actions.addGoal('Second');
+    const secondId = getState().goals.find((g) => g.title === 'Second')!.id;
+
+    actions.removeGoal('g');
+    expect(getState().pendingUndo?.label).toBe('Deleted "6.5840" and its 2 steps');
+
+    actions.renameGoal(secondId, 'Renamed'); // not undoable — voids the restore
+
+    expect(getState().pendingUndo).toBeNull();
+  });
+
+  it('keeps offering Undo when the intervening edit leaves the restore usable', async () => {
+    const { actions, getState } = await storeWithProject();
+    actions.addTask('Doomed');
+    const taskId = getState().tasks[0].id;
+
+    actions.removeTask(taskId); // surgical — survives unrelated writes
+    actions.addGoal('Unrelated');
+
+    expect(getState().pendingUndo?.label).toBe('Deleted "Doomed"');
+    actions.undoLastDelete();
+    expect(getState().tasks.map((t) => t.title)).toEqual(['Doomed']);
+  });
+
+  /**
+   * An import is a generation boundary. A whole-slice restore armed against the
+   * PREVIOUS dataset, replayed after one, overwrites the imported data and
+   * persists it — so ⌘Z, the most natural reflex right after restoring a
+   * backup, destroyed the backup it had just restored.
+   */
+  it('disarms undo across a backup import', async () => {
+    const { importStateFromFile, persist } = await import('../db/db');
+    const { actions, getState } = await storeWithProject();
+
+    actions.removeGoal('g'); // arms a 15s whole-slice restore of the OLD goals
+    expect(getState().pendingUndo).not.toBeNull();
+
+    vi.mocked(importStateFromFile).mockResolvedValueOnce({
+      goals: [{ id: 'imported', title: 'Restored project', column: 0, nodes: [] }],
+      habits: [], tasks: [], sessions: [],
+      pxPerDay: 13, availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
+    });
+    await actions.importBackup(new File([''], 'backup.json'));
+    expect(getState().goals.map((g) => g.id)).toEqual(['imported']);
+    expect(getState().pendingUndo).toBeNull();
+
+    vi.mocked(persist).mockClear();
+    actions.undoLastDelete();
+
+    // The import survives, in memory and on disk.
+    expect(getState().goals.map((g) => g.id)).toEqual(['imported']);
+    expect(vi.mocked(persist)).not.toHaveBeenCalled();
   });
 });

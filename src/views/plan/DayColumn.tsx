@@ -3,6 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import type { AvailabilityWindow } from '../../db/types';
 import type { Interval } from '../../lib/capacity';
 import { minuteToPct } from '../../lib/grid';
+import { fmtD } from '../../lib/dates';
 
 /**
  * One day. Draws the availability shading, the now-line, and nothing else —
@@ -32,9 +33,14 @@ export function DayColumn({
   const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !availabilityWindow || !!readOnly });
 
   return (
+    // `group` + a label, because the blocks inside carry no day of their own.
+    // Seven of these render in DOM order, so tabbing the grid was twenty-eight
+    // blocks in a row with nothing saying which day any of them was on.
     <div
       ref={setNodeRef}
       data-date={date}
+      role="group"
+      aria-label={`${fmtD(date)}${isToday ? ' — today' : ''}${availabilityWindow ? '' : ' — no working hours'}`}
       className={`relative min-w-0 overflow-hidden border-l border-line-soft ${
         availabilityWindow ? '' : 'bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgb(var(--c-hover))_4px,rgb(var(--c-hover))_8px)]'
       } ${isToday ? 'bg-hover/40' : ''} ${isOver && availabilityWindow ? 'bg-accent/5' : ''}`}
