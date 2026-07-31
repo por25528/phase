@@ -43,11 +43,11 @@ export function HabitDots({
               title={`${hit ? 'Clear' : 'Mark'} ${when}`}
               aria-label={`${hit ? 'Clear' : 'Mark'} "${hb.title}" ${isToday ? 'today' : `on ${when}`}`}
               onClick={(e) => { e.stopPropagation(); onToggleDay(d); }}
-              className={`w-[7px] h-[7px] rounded-[2px] ${cls} hover:ring-2 hover:ring-accent/40`}
+              className={`w-[7px] h-[7px] rounded-[4px] ${cls} hover:ring-2 hover:ring-accent/40`}
             />
           );
         }
-        return <span key={d} className={`w-[7px] h-[7px] rounded-[2px] ${cls}`} />;
+        return <span key={d} className={`w-[7px] h-[7px] rounded-[4px] ${cls}`} />;
       })}
     </div>
   );

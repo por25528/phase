@@ -18,7 +18,7 @@ export function TodayCheckbox({
       aria-label={ariaLabel}
       disabled={disabled}
       onClick={disabled ? undefined : onToggle}
-      className={`w-[22px] h-[22px] border-[1.5px] rounded-[7px] flex-shrink-0 grid place-items-center transition-colors duration-100 ${
+      className={`w-[22px] h-[22px] border-[1.5px] rounded-[6px] flex-shrink-0 grid place-items-center transition-colors duration-100 ${
         checked ? 'bg-accent border-accent' : 'bg-field border-line-2 hover:border-muted'
       } ${disabled ? 'cursor-default opacity-70' : ''}`}
     >

@@ -15,11 +15,18 @@
     --c-ink: 33 30 25;              /* #211E19 */
     --c-ink-hover: 58 53 44;        /* #3A352C */
     --c-ink-soft: 74 70 60;         /* #4A463C */
-    --c-muted: 133 129 122;         /* #85817A */
-    --c-faint: 176 172 164;         /* #B0ACA4 */
+    /* Secondary copy carries most of the app's information, so `muted` clears
+       AA (4.5:1) against both the panel and the page. `faint` is for genuinely
+       decorative marks, placeholders and disabled states and holds the 3:1
+       non-text floor — anything a user must READ belongs in `muted`. */
+    --c-muted: 117 114 107;         /* #75726B — 4.80:1 panel, 4.56:1 bg */
+    --c-faint: 148 144 138;         /* #94908A — 3.17:1 panel, 3.02:1 bg */
     --c-faint-2: 201 197 189;       /* #C9C5BD */
     --c-line: 234 232 227;          /* #EAE8E3 */
     --c-line-2: 222 219 211;        /* #DEDBD3 */
+    /* Unchecked checkbox border. Deliberately stronger than --c-line-2, which
+       at 1.38:1 failed WCAG 1.4.11 and made the app's primary action invisible. */
+    --c-check: 142 138 130;         /* #8E8A82 */
     --c-line-soft: 240 238 233;     /* #F0EEE9 */
     --c-hover: 244 243 239;         /* #F4F3EF */
     --c-hover-deep: 235 233 227;    /* #EBE9E3 */
@@ -27,7 +34,7 @@
     --c-dot: 59 54 43;              /* #3B362B */
     --c-dot-off: 232 230 223;       /* #E8E6DF */
     --c-track: 239 237 231;         /* #EFEDE7 */
-    --c-accent: 200 81 47;          /* #C8512F */
+    --c-accent: 192 78 45;          /* #C04E2D — 4.81:1 panel, 4.57:1 bg */
     --c-accent-deep: 179 69 38;     /* #B34526 */
     --c-accent-soft: 216 154 126;   /* #D89A7E */
     --c-accent-contrast: 255 246 238; /* #FFF6EE */
@@ -35,7 +42,7 @@
     --c-paper: 250 249 247;         /* #FAF9F7 */
     --c-chip: 241 239 234;          /* #F1EFEA */
     --c-chip-ink: 110 106 97;       /* #6E6A61 */
-    --c-warn: 160 90 44;            /* #A05A2C */
+    --c-warn: 158 89 44;            /* #9E592C — 4.53:1 on warn-tint */
     --c-warn-tint: 246 234 223;     /* #F6EADF */
 
     --shadow-card: 0 1px 2px rgba(30, 28, 22, 0.05);
@@ -52,11 +59,12 @@
     --c-ink: 236 235 232;           /* #ECEBE8 */
     --c-ink-hover: 218 216 211;     /* #DAD8D3 */
     --c-ink-soft: 183 180 173;      /* #B7B4AD */
-    --c-muted: 139 136 127;         /* #8B887F */
-    --c-faint: 92 90 84;            /* #5C5A54 */
+    --c-muted: 139 136 127;         /* #8B887F — 5.48:1 panel (already AA) */
+    --c-faint: 102 100 94;          /* #66645E — 3.28:1 panel */
     --c-faint-2: 71 69 63;          /* #47453F */
     --c-line: 34 34 36;             /* #222224 */
     --c-line-2: 46 46 49;           /* #2E2E31 */
+    --c-check: 104 104 110;         /* #68686E */
     --c-line-soft: 26 26 28;        /* #1A1A1C */
     --c-hover: 22 22 24;            /* #161618 */
     --c-hover-deep: 32 32 35;       /* #202023 */
@@ -65,7 +73,7 @@
     --c-dot-off: 42 42 45;          /* #2A2A2D */
     --c-track: 28 28 30;            /* #1C1C1E */
     --c-accent: 225 97 59;          /* #E1613B */
-    --c-accent-deep: 200 81 47;     /* #C8512F */
+    --c-accent-deep: 240 130 96;    /* #F08260 — deeper = LIGHTER on a dark surface */
     --c-accent-soft: 122 65 48;     /* #7A4130 */
     --c-accent-contrast: 251 237 228; /* #FBEDE4 */
     --c-accent-tint: 42 24 16;      /* #2A1810 */
@@ -84,7 +92,7 @@
     height: 100%;
   }
   body {
-    @apply bg-bg text-ink font-ui text-[14px] leading-[1.5] antialiased;
+    @apply bg-bg text-ink font-ui text-root leading-[1.5] antialiased;
   }
   #root {
     display: flex;
@@ -113,7 +121,7 @@
   :focus-visible {
     outline: 2px solid rgb(var(--c-accent));
     outline-offset: 1px;
-    border-radius: 3px;
+    border-radius: inherit;
   }
 }
 
@@ -126,19 +134,40 @@
 
   /* Ghost input style */
   .ghost-in {
-    @apply flex-1 border-none bg-transparent p-[5px_2px] outline-none text-ink text-[.9rem];
+    @apply flex-1 border-none bg-transparent p-[5px_2px] outline-none text-ink text-lead;
   }
   .ghost-in::placeholder {
     @apply text-faint;
   }
 
-  /* Today dashboard responsive grids */
-  .today-hero { grid-template-columns: minmax(0, 1fr) 396px; }
-  .today-main { grid-template-columns: minmax(0, 1fr) 372px; }
+  /* Today dashboard responsive grid */
+  .today-main { grid-template-columns: minmax(0, 1fr) 300px; }
 
   /* Timeline sticky label column — single width source so all lanes align.
      JS plot geometry mirrors these px in lib/timeline.ts (LABEL_W / LABEL_W_NARROW). */
   .tl-label-w { @apply w-[148px] sm:w-[200px]; }
+
+  /* Quiet controls: always present and reachable, visible on hover or focus.
+     Gated on `@media (hover: hover)` because a coarse pointer has no hover
+     state — on touch these must stay visible or they become unreachable.
+     Uses opacity, never `display:none`, so the control keeps its place in
+     the tab order. */
+  /* Hover-revealed row controls. They carry the 24x24 minimum target
+     (WCAG 2.2 AA 2.5.8) here rather than at each call site — they were
+     rendering as small as 10x19. */
+  .quiet-control {
+    opacity: 1;
+    transition: opacity .12s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: 6px;
+  }
+  @media (hover: hover) {
+    .group:not(:hover) .quiet-control:not(:focus-visible) { opacity: 0; }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -146,8 +175,12 @@
 }
 
 @media (max-width: 1160px) {
-  .today-hero, .today-main { grid-template-columns: 1fr; }
+  .today-main { grid-template-columns: 1fr; }
 }
+/* Below this the habit row cannot hold its history without starving the title,
+   so the whole history affordance goes together — the trail, its stat, and the
+   control that puts the trail into edit mode. Keep these in one rule: a second
+   breakpoint elsewhere would leave the toggle editing an invisible strip. */
 @media (max-width: 1000px) {
-  .hb-dots { display: none; }
+  .hb-dots, .hb-stat, .hb-history-toggle { display: none; }
 }

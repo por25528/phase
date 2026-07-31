@@ -69,7 +69,7 @@ export function FocusSummary({
   ];
 
   return (
-    <div className="mt-[16px] flex flex-wrap items-stretch gap-[10px]">
+    <div className="mt-[16px] grid grid-cols-2 lg:grid-cols-4 items-stretch gap-[10px]">
       {signals.map((s) => {
         const isActive = active === s.key;
         const enabled = s.matchCount > 0;
@@ -82,7 +82,7 @@ export function FocusSummary({
             aria-label={`${s.label}: ${s.num} ${s.txt}${enabled ? `, ${isActive ? 'showing' : 'show'} these projects` : ''}`}
             onClick={() => enabled && onToggle(s.key)}
             className={[
-              'flex flex-col gap-[3px] text-left px-[14px] py-[9px] rounded-[12px] border shadow-card min-w-[150px] transition-colors',
+              'flex flex-col gap-[3px] text-left px-[14px] py-[9px] rounded-[11px] border shadow-card min-w-0 transition-colors',
               s.warn
                 ? isActive
                   ? 'bg-warn-tint border-warn'
@@ -93,14 +93,14 @@ export function FocusSummary({
               enabled ? 'cursor-pointer' : 'opacity-55 cursor-default',
             ].join(' ')}
           >
-            <span className="font-mono text-[.56rem] tracking-[.11em] uppercase text-muted">{s.label}</span>
+            <span className="font-mono text-eyebrow tracking-[.11em] uppercase text-muted">{s.label}</span>
             <span className="flex items-baseline gap-[6px]">
-              <span className={`font-disp text-[1.15rem] font-semibold tabular-nums leading-none ${s.warn ? 'text-warn' : ''}`}>
+              <span className={`font-disp text-h2 font-semibold tabular-nums leading-none ${s.warn ? 'text-warn' : ''}`}>
                 {s.num}
               </span>
-              <span className="text-[.8rem] text-ink-soft">{s.txt}</span>
+              <span className="text-ui text-ink-soft">{s.txt}</span>
             </span>
-            {s.sub && <span className="text-[.68rem] text-warn">{s.sub}</span>}
+            {s.sub && <span className="text-chip text-warn">{s.sub}</span>}
           </button>
         );
       })}
@@ -108,7 +108,7 @@ export function FocusSummary({
         <button
           type="button"
           onClick={onClear}
-          className="self-center text-[.76rem] text-muted px-[12px] py-[7px] rounded-[9px] border border-dashed border-line-2 hover:bg-hover hover:text-ink"
+          className="self-center text-compact text-muted px-[12px] py-[7px] rounded-field border border-dashed border-line-2 hover:bg-hover hover:text-ink"
         >
           Clear
         </button>

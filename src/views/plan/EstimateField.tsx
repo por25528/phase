@@ -46,6 +46,8 @@ export function EstimateField({
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? formatEstimateValue(minutes);
+  // A set estimate is data; the empty `est` prompt is the only decoration here.
+  const tone = minutes == null && draft == null ? 'text-faint' : 'text-ink-soft';
 
   function commit() {
     if (draft === null) return;
@@ -87,7 +89,7 @@ export function EstimateField({
       onKeyDown={onKeyDown}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="w-[34px] shrink-0 rounded-[5px] border border-transparent bg-transparent px-[3px] py-[1px] text-[.62rem] tabular-nums text-faint hover:border-line-2 focus:border-line-2 focus:text-ink-soft focus:outline-none"
+      className={`w-[34px] min-h-[24px] shrink-0 rounded-[6px] border border-transparent bg-transparent px-[3px] py-[1px] text-kbd tabular-nums hover:border-line-2 focus:border-line-2 focus:text-ink-soft focus:outline-none ${tone}`}
     />
   );
 }

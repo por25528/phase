@@ -63,7 +63,7 @@ function BacklogRow({
       // in an invisible mode where `2` schedules onto Tuesday instead of
       // switching to Goals, and `scheduleNode` has no undo. The mode has to be
       // visible for as long as it is active.
-      className={`group flex items-center gap-[6px] text-[.78rem] text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
+      className={`group flex items-center gap-[6px] text-ui text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       }`}
     >
@@ -95,7 +95,7 @@ function BacklogRow({
           // An existing estimate stays legible at rest — it is information, not
           // a control. A missing one only advertises itself on hover/focus, the
           // rail's rule for everything that is purely an affordance.
-          className={`flex-none font-mono text-[.56rem] text-faint hover:text-ink-soft tabular-nums ${
+          className={`flex-none font-mono text-eyebrow text-muted hover:text-ink-soft tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover ${
             item.estimateMin === undefined
               ? 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity'
               : ''
@@ -113,7 +113,7 @@ function BacklogRow({
           else actions.toggleLeaf(item.id);
         }}
         aria-label={`Complete "${item.title}"`}
-        className="flex-none text-[.72rem] text-muted hover:text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+        className="flex-none text-meta text-muted hover:text-ink min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
       >
         ✓
       </button>
@@ -131,7 +131,7 @@ function BacklogRow({
             actions.removeTask(item.id);
           }}
           aria-label={`Delete "${item.title}"`}
-          className="flex-none text-[.72rem] text-muted hover:text-warn opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          className="flex-none text-meta text-muted hover:text-warn min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
         >
           ✕
         </button>
@@ -178,24 +178,24 @@ export function Backlog({
 
   return (
     <div>
-      <h3 className="flex items-baseline gap-[6px] font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold py-[6px] px-[6px]">
+      <h3 className="flex items-baseline gap-[6px] font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold py-[6px] px-[6px]">
         <span className="flex-1">To plan</span>
         <span className="text-faint tabular-nums">{total}</span>
       </h3>
 
       {capped.length === 0 ? (
-        <div className="text-faint text-[.82rem] italic px-[6px]">
+        <div className="text-faint text-body italic px-[6px]">
           Nothing left to plan.
         </div>
       ) : (
         capped.map((group, i) => (
           <div key={group.key} className={i === 0 ? '' : 'mt-[14px]'}>
             <div className="flex items-baseline gap-[6px] px-[6px]">
-              <span className="font-disp text-[.82rem] font-semibold text-ink flex-1 min-w-0 truncate">
+              <span className="font-disp text-body font-semibold text-ink flex-1 min-w-0 truncate">
                 {group.goalTitle}
               </span>
               {group.goalId && (
-                <span className="flex-none font-mono text-[.56rem] text-faint tabular-nums">
+                <span className="flex-none font-mono text-eyebrow text-faint tabular-nums">
                   {group.pct}%
                 </span>
               )}
@@ -207,7 +207,7 @@ export function Backlog({
               <button
                 type="button"
                 onClick={() => toggle(group.key)}
-                className="px-[6px] py-[3px] text-[.72rem] text-muted hover:text-ink"
+                className="px-[6px] py-[3px] text-meta text-muted hover:text-ink"
               >
                 {group.hidden > 0 ? `+${group.hidden} more` : 'Show less'}
               </button>

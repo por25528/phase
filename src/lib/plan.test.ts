@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Goal, PlanReview, Session } from '../db/types';
 import {
   weekOf, plannedLeaves, paceStatus, attentionRank,
-  weekRecap, pinnedDayCounts, planOpeningStep, PACE_THRESHOLD_PTS,
+  weekRecap, planOpeningStep, PACE_THRESHOLD_PTS,
   projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
   DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
   nearestMeaningfulDate, nextOpenAction, attentionBadge, cardPrimaryAction,
@@ -387,17 +387,6 @@ describe('weekRecap', () => {
   });
 });
 
-describe('pinnedDayCounts', () => {
-  it('counts unchecked day-pinned leaves per day', () => {
-    const g = goal({ nodes: [
-      { id: 'a', title: 'A', done: false, plannedWeek: WEEK, plannedDay: TODAY },
-      { id: 'b', title: 'B', done: false, plannedWeek: WEEK, plannedDay: TODAY },
-      { id: 'c', title: 'C', done: true, plannedWeek: WEEK, plannedDay: TODAY },
-    ]});
-    expect(pinnedDayCounts([g]).get(TODAY)).toBe(2);
-  });
-});
-
 // ── Card derivations ──────────────────────────────────────────────────────────
 
 describe('nearestMeaningfulDate', () => {
@@ -493,10 +482,15 @@ describe('attentionBadge', () => {
     { id: 'b', title: 'B', done: false, ...(planned ? { plannedWeek: WEEK } : {}) },
   ];
 
-  it('renders a warn "Behind N%" badge', () => {
+  // C-12: the board built its own "Behind 44%" while Today and the Timeline
+  // said "44 pts behind" for the same project. One wording now, in points,
+  // with the arithmetic in the tooltip.
+  it('renders the behind-pace badge in points, never as a percentage', () => {
     const b = attentionBadge(goal({ column: 0, nodes: [{ id: 'a', title: 'A', done: false }] }), TODAY);
     expect(b?.tone).toBe('warn');
-    expect(b?.label).toMatch(/^Behind \d+%$/);
+    expect(b?.label).toMatch(/^\d+ pts behind pace$/);
+    expect(b?.label).not.toContain('%');
+    expect(b?.hint).toMatch(/^\d+% done, \d+% expected by today$/);
   });
 
   it('renders the not-planned badge for an unplanned Now project on pace', () => {

@@ -32,18 +32,18 @@ export function SidebarSection({
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="flex items-center gap-[8px] w-full text-left px-[4px] py-[8px] rounded-[8px] hover:bg-hover transition-colors"
+        className="flex items-center gap-[8px] w-full text-left px-[4px] py-[8px] rounded-field hover:bg-hover transition-colors"
       >
         <span
           aria-hidden="true"
-          className={`text-faint text-[.6rem] flex-none transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+          className={`text-faint text-tiny flex-none transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
         >
           ▶
         </span>
-        <span className="font-mono text-[.58rem] tracking-[.13em] uppercase text-muted font-semibold flex-1">
+        <span className="font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold flex-1">
           {title}
         </span>
-        {count && <span className="font-mono text-[.56rem] text-faint tabular-nums flex-none">{count}</span>}
+        {count && <span className="font-mono text-eyebrow text-faint tabular-nums flex-none">{count}</span>}
       </button>
       {open && <div className="pb-[10px] px-[2px]">{children}</div>}
     </div>

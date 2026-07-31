@@ -366,6 +366,7 @@ export function Timeline() {
     const plotW = el.clientWidth - labelWRef.current;
     const fit = fitRoadmapRange(visibleGoals, plotW);
     if (!fit) return;
+    fitScale.current = fit.scale;
     if (Math.abs(fit.scale - pxRef.current) < 0.5) {
       el.scrollLeft = scrollLeftForCenter(fit.scrollToCenterDate, plotW, rangeRef.current.start, pxRef.current);
       setHeaderCenter(fit.scrollToCenterDate);
@@ -375,6 +376,60 @@ export function Timeline() {
       actions.setScale(fit.scale);
     }
   }
+
+  // Fit on the first paint that has data. The persisted scale is typically a
+  // ~5-month span while every project lives in a ~3-week band, so the default
+  // view drew each project as a 1–2px sliver over ~85% empty plot — a readable
+  // chart was one click away and never taken.
+  // Fit produces a continuous scale that matches no preset. Without recording
+  // it, the Week/Month/Quarter control renders with NOTHING selected on load —
+  // which reads as broken — because auto-fit runs on the first paint with data.
+  const fitScale = useRef<number | null>(null);
+  const didAutoFit = useRef(false);
+  // Re-fit when the plot width changes materially (window resize, sidebar
+  // toggle). Without this, resizing 1440 -> 375 kept the wide scale and the old
+  // scrollLeft, leaving an empty grid with every bar off-screen.
+  const lastFitWidth = useRef(0);
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (!didAutoFit.current || visibleGoals.length === 0) return;
+      const width = el.clientWidth;
+      // Only on a real change, so a 1px scrollbar flicker cannot fight the user.
+      if (Math.abs(width - lastFitWidth.current) < 80) return;
+      lastFitWidth.current = width;
+      fitProjects();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleGoals.length]);
+  useEffect(() => {
+    if (didAutoFit.current || visibleGoals.length === 0 || !scrollerRef.current) return;
+    // Defer a frame: fitProjects divides by `clientWidth - labelWRef.current`,
+    // and on the first paint with data the label column has not been measured
+    // yet — fitting against that lands the viewport months away from the work.
+    const raf = requestAnimationFrame(() => {
+      // Claim the one-shot INSIDE the frame, not before it. StrictMode mounts,
+      // cleans up, and remounts; setting the flag up front let the first pass
+      // claim it and the cleanup cancel the only frame that would have fitted,
+      // so auto-fit silently never ran in development.
+      didAutoFit.current = true;
+      lastFitWidth.current = scrollerRef.current?.clientWidth ?? 0;
+      fitProjects();
+    });
+    return () => cancelAnimationFrame(raf);
+    // Keyed on "data arrived" alone — re-running would fight the user's zoom.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleGoals.length]);
+
+  // Exactly one of Fit / Week / Month / Quarter is lit at any time.
+  const atPreset = (['week', 'month', 'quarter'] as ZoomLevel[])
+    .some((z) => Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5);
+  const atFitScale = fitScale.current != null
+    && !atPreset
+    && Math.abs(pxPerDay - fitScale.current) < 0.5;
 
   const dayDetail = pxPerDay >= DAY_DETAIL_MIN;
   // All decorations generate over the culled `view`, not the whole range —
@@ -400,39 +455,34 @@ export function Timeline() {
 
   return (
     <div>
-      <h1 className="font-disp text-[1.4rem] font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
+      <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
 
       <div className="flex flex-wrap items-center justify-between gap-[8px] mb-[10px]">
-        <div className="flex items-center gap-[6px]">
+        <div className="flex flex-wrap items-center gap-[6px] min-w-0">
           <button
             type="button"
             onClick={scrollToToday}
             title="Scroll to today"
             aria-label="Scroll to today"
-            className="px-[10px] h-[26px] rounded-[6px] border border-line-2 text-[.78rem] text-ink-soft hover:bg-hover"
+            className="px-[10px] h-[26px] rounded-[6px] border border-line-2 text-ui text-ink-soft hover:bg-hover"
           >
             Today
           </button>
-          <button
-            type="button"
-            onClick={fitProjects}
-            disabled={visibleGoals.length === 0}
-            title="Frame the selected projects"
-            className="px-[10px] h-[26px] rounded-[6px] border border-line-2 text-[.78rem] text-ink-soft hover:bg-hover disabled:opacity-40"
-          >
-            Fit
-          </button>
-          <span className="font-mono text-[.78rem] tracking-[.05em] text-ink-soft tabular-nums ml-[6px]">
+          <span className="font-mono text-ui tracking-[.05em] text-ink-soft tabular-nums ml-[6px]">
             {headerLabel(pxPerDay, headerCenter)}
           </span>
         </div>
 
-        <div className="flex items-center gap-[8px]">
+        <div className="flex flex-wrap items-center gap-[8px] min-w-0">
+          {/* Native <select> for its keyboard and mobile behaviour, but
+              appearance-none so it stops rendering OS chrome next to the custom
+              segmented control beside it. The chevron is ours. */}
+          <div className="relative min-w-0">
           <select
             value={singleValid ? scope : scope === 'all' ? 'all' : 'focus'}
             onChange={(e) => setScope(e.target.value)}
             aria-label="Timeline scope"
-            className="h-[26px] rounded-[6px] border border-line-2 bg-transparent text-[.78rem] text-ink-soft px-[6px] outline-none focus-visible:border-accent max-w-[180px]"
+            className="appearance-none h-[26px] rounded-[6px] border border-line-2 bg-transparent text-ui text-ink-soft pl-[8px] pr-[24px] outline-none hover:bg-hover focus-visible:border-accent max-w-[180px] truncate"
           >
             <option value="focus">Focus · Now + Next</option>
             <option value="all">All active</option>
@@ -442,20 +492,42 @@ export function Timeline() {
               ))}
             </optgroup>
           </select>
-          <label className="flex items-center gap-[5px] text-[.74rem] text-muted select-none cursor-pointer">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute right-[8px] top-1/2 -translate-y-1/2 text-micro text-muted"
+          >
+            ▾
+          </span>
+          </div>
+          <label className="flex items-center gap-[5px] min-h-[24px] px-[4px] rounded-[6px] text-compact text-muted select-none cursor-pointer hover:bg-hover">
             <input
               type="checkbox"
               checked={includeCompleted}
               onChange={(e) => setIncludeCompleted(e.target.checked)}
-              className="accent-accent"
+              className="accent-accent w-[16px] h-[16px] m-[4px]" 
             />
             Completed
           </label>
 
+          {/* Fit and the three presets are the same mutually-exclusive zoom
+              state, so they are one segmented control. Fit used to sit ~1200px
+              away in the left group, as a differently-shaped chip. */}
           <div
-            className="flex border border-line-2 rounded-[6px] overflow-hidden text-[.78rem] font-medium"
+            className="flex border border-line-2 rounded-[6px] overflow-hidden text-ui font-medium"
             title="Pinch or ⌃/⌘-scroll the timeline to zoom freely"
           >
+            <button
+              type="button"
+              onClick={fitProjects}
+              disabled={visibleGoals.length === 0}
+              title="Frame the selected projects"
+              aria-pressed={atFitScale}
+              className={`px-[12px] py-[4px] border-r border-line-2 transition-colors duration-100 disabled:opacity-40 ${
+                atFitScale ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'
+              }`}
+            >
+              Fit
+            </button>
             {(['week', 'month', 'quarter'] as ZoomLevel[]).map(z => (
               <button key={z} type="button" onClick={() => actions.setScale(PX_PER_DAY[z])}
                 aria-pressed={Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5}
@@ -470,18 +542,18 @@ export function Timeline() {
 
       {/* Portfolio focus-overlap banner (§3.4) — text + colour, with a move action */}
       {overlap && overlapGoals.length > 0 && (
-        <div className="mb-[10px] rounded-[10px] border border-warn/40 bg-warn-tint px-[13px] py-[9px]">
-          <div className="text-[.82rem] text-warn font-medium">
+        <div className="mb-[10px] rounded-[11px] border border-warn/40 bg-warn-tint px-[13px] py-[9px]">
+          <div className="text-body text-warn font-medium">
             {overlap.goalIds.length} Now projects overlap {fmtD(overlap.window.start)}–{fmtD(overlap.window.end)} — Now is crowded.
           </div>
           <div className="mt-[6px] flex flex-wrap items-center gap-[6px]">
-            <span className="text-[.72rem] text-muted">Move one out of Now:</span>
+            <span className="text-meta text-muted">Move one out of Now:</span>
             {overlapGoals.map((g) => (
               <button
                 key={g.id}
                 type="button"
                 onClick={() => actions.moveGoalToColumn(g.id, 1)}
-                className="text-[.72rem] text-accent-deep border border-accent-soft rounded-full px-[9px] py-[2px] hover:bg-accent-tint"
+                className="text-meta text-accent-deep border border-accent-soft rounded-full px-[9px] py-[2px] hover:bg-accent-tint"
               >
                 {g.title} → Next
               </button>
@@ -492,19 +564,19 @@ export function Timeline() {
 
       {/* Empty state — no canvas needed */}
       {!hasCanvas ? (
-        <div className="mt-[6px] border border-line rounded-[10px] bg-panel px-[12px] py-[32px] text-center text-faint text-[.85rem] italic">
+        <div className="mt-[6px] border border-line rounded-[11px] bg-panel px-[12px] py-[32px] text-center text-muted text-body italic">
           Add both a start and deadline to show a project on the Timeline.
         </div>
       ) : (
         <div
           ref={scrollerRef}
           onScroll={onScroll}
-          className="mt-[6px] border border-line rounded-[10px] bg-panel overflow-auto max-h-[calc(100vh-190px)]"
+          className="mt-[6px] border border-line rounded-[11px] bg-panel overflow-auto max-h-[calc(100vh-190px)]"
         >
           <div style={{ width: `${labelW + canvasW}px` }}>
             {/* Time header — sticky against vertical scroll; its label cell also against horizontal */}
             <div className="sticky top-0 z-[15] flex border-b border-line bg-bg">
-              <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-[.7rem] tracking-[.1em] uppercase text-muted font-semibold bg-bg">
+              <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-meta tracking-[.1em] uppercase text-muted font-semibold bg-bg">
                 Project
               </div>
               <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
@@ -518,7 +590,7 @@ export function Timeline() {
                       className="absolute inset-y-0 flex flex-col justify-start items-center pointer-events-none z-[5]"
                       style={{ left: `${todayX}px`, transform: 'translateX(-50%)' }}
                     >
-                      <span className="text-accent text-[.62rem] tabular-nums font-medium leading-none pt-[3px] select-none">
+                      <span className="text-accent text-kbd tabular-nums font-medium leading-none pt-[3px] select-none">
                         Today
                       </span>
                     </div>
@@ -530,14 +602,14 @@ export function Timeline() {
 
             {/* Goal rows, grouped by horizon (Now → Someday), empty groups omitted */}
             {horizonGroups.length === 0 ? (
-              <div className="sticky left-0 w-fit px-[12px] py-[14px] text-[.8rem] text-faint italic">
+              <div className="sticky left-0 w-fit px-[12px] py-[14px] text-ui text-muted italic">
                 No projects in this scope.
               </div>
             ) : (
               horizonGroups.map((grp) => (
                 <Fragment key={grp.col}>
                   <div className="flex items-stretch border-b border-line bg-bg">
-                    <div className="sticky left-0 z-[12] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[5px] bg-bg font-mono text-[.6rem] tracking-[.11em] uppercase text-muted font-semibold">
+                    <div className="sticky left-0 z-[12] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[5px] bg-bg font-mono text-tiny tracking-[.11em] uppercase text-muted font-semibold">
                       {grp.label} · {grp.goals.length}
                     </div>
                     <div className="flex-none" style={{ width: `${canvasW}px` }} />

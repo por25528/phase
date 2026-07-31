@@ -10,9 +10,9 @@ interface Props {
 
 export function CardSection({ label, meta, right, children, className }: Props) {
   return (
-    <section className={`bg-panel border border-line rounded-card shadow-card px-[16px] py-[12px] ${className ?? ''}`}>
-      <div className="flex items-center gap-[12px] mb-[6px]">
-        <span className="font-mono text-[.72rem] tracking-[.12em] uppercase text-muted font-semibold">{label}</span>
+    <section className={`group ${className ?? ''}`}>
+      <div className="flex items-center gap-[12px] pb-[7px] mb-[4px] border-b border-line">
+        <span className="font-mono text-chip tracking-[.13em] uppercase text-muted">{label}</span>
         {meta}
         <div className="flex-1" />
         {right}

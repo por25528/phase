@@ -24,30 +24,29 @@ export function Column({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const isNow = index === 0;
-  const isQuiet = index >= 2;
   const over = isNow && ids.length > NOW_WIP_LIMIT;
   const hint = HINTS[index];
 
   return (
-    <section className={solo ? 'w-full' : `flex-1 min-w-[236px] ${index > 0 ? 'border-l border-line pl-[18px]' : ''}`}>
+    <section className={solo ? 'w-full' : `min-w-0 ${index > 0 ? 'border-l border-line pl-[14px] xl:pl-[18px]' : ''}`}>
       <header className="flex items-baseline gap-[8px] mb-[12px] px-[2px]">
         <span
-          className={`text-[.8rem] font-medium tracking-[.01em] ${
-            isNow ? 'text-ink' : isQuiet ? 'text-faint-2' : 'text-muted'
+          className={`text-ui font-medium tracking-[.01em] ${
+            isNow ? 'text-ink' : 'text-muted'
           }`}
         >
           {col.label}
         </span>
         <span
-          className={`font-mono text-[.68rem] tabular-nums ml-auto ${
-            over ? 'text-warn font-semibold' : 'text-faint'
+          className={`font-mono text-chip tabular-nums ml-auto ${
+            over ? 'text-warn font-semibold' : 'text-muted'
           }`}
         >
           {isNow ? `${ids.length} / ${NOW_WIP_LIMIT}` : ids.length}
         </span>
       </header>
       {hint && (
-        <p className="text-[.62rem] text-muted italic px-[2px] -mt-[6px] mb-[12px] leading-[1.4]">{hint}</p>
+        <p className="text-kbd text-muted italic px-[2px] -mt-[6px] mb-[12px] leading-[1.4]">{hint}</p>
       )}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <div
@@ -58,7 +57,7 @@ export function Column({
         >
           {children}
           {ids.length === 0 && (
-            <div className="grid place-items-center min-h-[110px] rounded-card border border-dashed border-line-2 text-faint text-[.74rem] px-[10px] text-center">
+            <div className="grid place-items-center min-h-[110px] rounded-card border border-dashed border-line-2 text-muted text-compact px-[10px] text-center">
               Drop a project here
             </div>
           )}

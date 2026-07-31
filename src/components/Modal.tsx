@@ -87,11 +87,11 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-[12px] mb-[16px]">
-          <h2 className="font-disp text-[1.15rem] font-semibold tracking-[-0.01em]">{title}</h2>
+          <h2 className="font-disp text-h2 font-semibold tracking-[-0.01em]">{title}</h2>
           <button
             ref={closeBtnRef}
             aria-label="Close"
-            className="flex-none text-muted text-[17px] px-[7px] py-[3px] rounded-[6px] hover:bg-hover"
+            className="flex-none text-muted text-h3 px-[7px] py-[3px] rounded-[6px] hover:bg-hover"
             onClick={onClose}
           >
             ✕

@@ -7,7 +7,6 @@ export type DailyWorkSource =
   | 'task-today'
   | 'pinned-today'
   | 'this-week'
-  | 'suggested'
   | 'carry-over'
   | 'completed-today';
 
@@ -22,15 +21,19 @@ export interface DailyWorkItem {
   done: boolean;
   editable: boolean;
   source: DailyWorkSource;
-  reason?: string; // why a 'suggested' item surfaced — shown in "Worth considering"
   plannedWeek?: string;
   plannedDay?: string;
   scheduledDate?: string;
+  /**
+   * Minutes from local midnight, mirrored from `Task.startMin` /
+   * `GoalNode.plannedStartMin`. Absent means the item is committed to the day
+   * but not placed on the Plan grid — it sorts below everything timed.
+   */
+  startMin?: number;
 }
 
 export interface DailyWorkSections {
   commitments: DailyWorkItem[];
-  suggestions: DailyWorkItem[];
   carryOvers: DailyWorkItem[];
   completedToday: DailyWorkItem[];
 }
@@ -38,13 +41,6 @@ export interface DailyWorkSections {
 interface GoalLeaf {
   goal: Goal;
   node: GoalNode;
-  order: number;
-}
-
-interface SuggestionQueue {
-  goal: Goal;
-  milestoneSoon: boolean;
-  items: GoalLeaf[];
 }
 
 type GoalNodeWithValidPlan = GoalNode & { plannedWeek: string };
@@ -79,6 +75,7 @@ function taskItem(
     editable: true,
     source,
     ...(isValidLocalDate(task.date) ? { scheduledDate: task.date } : {}),
+    ...(isPlacedMinute(task.startMin) ? { startMin: task.startMin } : {}),
   };
 }
 
@@ -98,38 +95,14 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
     ...(isValidLocalDate(node.plannedWeek) ? { plannedWeek: node.plannedWeek } : {}),
     ...(isValidLocalDate(node.plannedDay) ? { plannedDay: node.plannedDay } : {}),
     ...(isValidLocalDate(node.deadline) ? { scheduledDate: node.deadline } : {}),
+    ...(isPlacedMinute(node.plannedStartMin) ? { startMin: node.plannedStartMin } : {}),
   };
 }
 
-function suggestionTier(node: GoalNode, today: string): number {
-  if (
-    isValidLocalDate(node.start)
-    && isValidLocalDate(node.deadline)
-    && node.start <= today
-    && node.deadline >= today
-  ) {
-    return 0;
-  }
-  if (isValidLocalDate(node.start) && node.start > today) return 2;
-  return 1;
-}
-
-// The short "why this surfaced" line for a suggestion, so the list is steerable
-// instead of opaque. Mirrors the same signals that ordered the queue: a soon
-// milestone floats the whole project, an in-window step beats an undated one.
-function suggestionReason(queue: SuggestionQueue, node: GoalNode, today: string): string {
-  if (queue.milestoneSoon) return 'Milestone soon';
-  if (suggestionTier(node, today) === 0) return 'In its window';
-  return 'Next open step';
-}
-
-function milestoneWithin14Days(goal: Goal, today: string): boolean {
-  const end = addDays(today, 14);
-  return Boolean(goal.milestones?.some((milestone) => (
-    isValidLocalDate(milestone.date)
-    && milestone.date >= today
-    && milestone.date <= end
-  )));
+// A minute-of-day is only meaningful in 0..1440; anything else is corrupt data
+// and is treated as "not placed on the grid" rather than sorted to midnight.
+function isPlacedMinute(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1440;
 }
 
 function hasValidPlannedWeek(node: GoalNode): node is GoalNodeWithValidPlan {
@@ -144,7 +117,6 @@ export function buildDailyWork(
   if (!isValidLocalDate(today)) {
     return {
       commitments: [],
-      suggestions: [],
       carryOvers: [],
       completedToday: [],
     };
@@ -155,10 +127,8 @@ export function buildDailyWork(
   const allLeaves: GoalLeaf[] = [];
 
   for (const goal of goals) {
-    let order = 0;
     walkLeaves(goal.nodes, (node) => {
-      allLeaves.push({ goal, node, order });
-      order += 1;
+      allLeaves.push({ goal, node });
     });
   }
   const activeLeaves = allLeaves.filter(({ goal }) => !goal.completedAt);
@@ -248,55 +218,44 @@ export function buildDailyWork(
     }
   }
 
-  const latestSuggestionStart = addDays(today, 30);
-  const suggestionQueues: SuggestionQueue[] = goals
-    .filter((goal) => (
-      !goal.completedAt
-      && (goal.column ?? 0) === 0
-      && (!isValidLocalDate(goal.start) || goal.start <= today)
-    ))
-    .map((goal) => {
-      const candidates = activeLeaves
-        .filter(({ goal: owner, node }) => (
-          owner.id === goal.id
-          && !node.done
-          && !hasValidPlannedWeek(node)
-          && (!isValidLocalDate(node.deadline) || node.deadline > today)
-          && (!isValidLocalDate(node.start) || node.start <= latestSuggestionStart)
-        ))
-        .sort((a, b) => (
-          suggestionTier(a.node, today) - suggestionTier(b.node, today)
-          || a.order - b.order
-        ));
-      return {
-        goal,
-        milestoneSoon: milestoneWithin14Days(goal, today),
-        items: candidates,
-      };
-    })
-    .filter((queue) => queue.items.length > 0)
-    .sort((a, b) => Number(b.milestoneSoon) - Number(a.milestoneSoon));
-
-  const suggestions: DailyWorkItem[] = [];
-  for (let round = 0; round < 2 && suggestions.length < 4; round += 1) {
-    for (const queue of suggestionQueues) {
-      const leaf = queue.items[round];
-      if (leaf) {
-        suggestions.push({
-          ...stepItem(leaf, 'suggested'),
-          reason: suggestionReason(queue, leaf.node, today),
-        });
-      }
-      if (suggestions.length === 4) break;
-    }
-  }
-
   return {
-    commitments,
-    suggestions,
+    commitments: sortByClock(commitments),
     carryOvers,
     completedToday,
   };
+}
+
+/**
+ * Where to draw the "now" line: the index of the first item that has not
+ * started yet, so "what's next" is a glance rather than a scan.
+ *
+ * Null means don't draw one — either nothing is timed, or the whole day is
+ * behind you and a rule under the last row would just be noise.
+ */
+export function nowDividerIndex(items: DailyWorkItem[], nowMinute: number): number | null {
+  for (let i = 0; i < items.length; i += 1) {
+    const start = items[i].startMin;
+    if (start != null && start >= nowMinute) return i;
+  }
+  return null;
+}
+
+/**
+ * Chronological, with untimed work sinking below everything timed.
+ *
+ * Items arrive in bucket precedence (due → task-today → pinned-today →
+ * this-week), which stays as the tiebreak for equal times — hence the stable
+ * index sort rather than sorting `commitments` in place.
+ */
+function sortByClock(items: DailyWorkItem[]): DailyWorkItem[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const at = a.item.startMin ?? Infinity;
+      const bt = b.item.startMin ?? Infinity;
+      return at - bt || a.index - b.index;
+    })
+    .map(({ item }) => item);
 }
 
 export function tasksForWeek(tasks: Task[], week: string): Task[] {

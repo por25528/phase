@@ -50,13 +50,13 @@ export function AvailabilitySettings() {
         {DOW_LABELS.map((label, dow) => {
           const window = byDow.get(dow) ?? null;
           return (
-            <div key={dow} className="flex items-center gap-[8px] text-[.78rem]">
+            <div key={dow} className="flex items-center gap-[8px] text-ui">
               <input
                 type="checkbox"
                 checked={!!window}
                 aria-label={`${label} available`}
                 onChange={(e) => toggleDay(dow, e.target.checked)}
-                className="flex-none accent-accent"
+                className="flex-none accent-accent w-[16px] h-[16px] m-[4px]"
               />
               <span className="w-[70px] flex-none text-ink-soft">{label}</span>
               {window ? (
@@ -66,7 +66,7 @@ export function AvailabilitySettings() {
                     value={minutesToTimeValue(window.startMin)}
                     aria-label={`${label} start time`}
                     onChange={(e) => updateStart(dow, window, e.target.value)}
-                    className="rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-[.76rem] text-ink tabular-nums outline-none focus-visible:border-accent"
+                    className="rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-compact text-ink tabular-nums outline-none focus-visible:border-accent"
                   />
                   <span className="text-faint">–</span>
                   <input
@@ -74,23 +74,23 @@ export function AvailabilitySettings() {
                     value={minutesToTimeValue(window.endMin)}
                     aria-label={`${label} end time`}
                     onChange={(e) => updateEnd(dow, window, e.target.value)}
-                    className="rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-[.76rem] text-ink tabular-nums outline-none focus-visible:border-accent"
+                    className="rounded-[6px] border border-line-2 bg-transparent px-[6px] py-[2px] text-compact text-ink tabular-nums outline-none focus-visible:border-accent"
                   />
                 </>
               ) : (
-                <span className="text-[.72rem] text-faint italic">off</span>
+                <span className="text-meta text-faint italic">off</span>
               )}
             </div>
           );
         })}
       </div>
 
-      <label className="flex items-center gap-[6px] pt-[6px] mt-[2px] border-t border-line-soft text-[.78rem] text-ink-soft select-none cursor-pointer">
+      <label className="flex items-center gap-[6px] pt-[6px] mt-[2px] border-t border-line-soft text-ui text-ink-soft select-none cursor-pointer">
         <input
           type="checkbox"
           checked={allDayBlocks}
           onChange={(e) => actions.setAllDayBlocks(e.target.checked)}
-          className="flex-none accent-accent"
+          className="flex-none accent-accent w-[16px] h-[16px] m-[4px]"
         />
         All-day events consume the whole day
       </label>

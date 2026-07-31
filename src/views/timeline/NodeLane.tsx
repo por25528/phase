@@ -83,7 +83,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
 
   if (goal.nodes.length === 0) {
     return (
-      <div className="sticky left-0 w-fit pl-[28px] pr-[12px] py-[9px] text-[.78rem] text-faint italic">
+      <div className="sticky left-0 w-fit pl-[28px] pr-[12px] py-[9px] text-ui text-muted italic">
         No sub-goals yet — add them in the drawer.
       </div>
     );
@@ -103,12 +103,12 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
           <div key={node.id} className="group flex items-stretch h-[34px] border-t border-line">
             {/* Lane label — sticky so it stays put while the canvas scrolls under it */}
             <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center justify-between gap-[4px] bg-panel group-hover:bg-hover">
-              <span className="text-[.78rem] text-ink-soft truncate">{node.title}</span>
+              <span className="text-ui text-ink-soft truncate">{node.title}</span>
               <button
                 type="button"
                 aria-label={`Unschedule ${node.title}`}
                 onClick={() => actions.clearNodeDates(goal.id, node.id)}
-                className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-faint hover:text-warn text-[.8rem] leading-none px-[2px]"
+                className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-faint hover:text-warn text-ui leading-none px-[2px]"
               >
                 ✕
               </button>
@@ -142,7 +142,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
       {unscheduled.length > 0 && (
         <div className="flex items-stretch min-h-[30px] border-t border-line">
           <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center bg-panel">
-            <span className="font-mono text-[.6rem] tracking-[.1em] uppercase text-faint">
+            <span className="font-mono text-tiny tracking-[.1em] uppercase text-muted">
               Unscheduled phases ({unscheduled.length})
             </span>
           </div>
@@ -152,7 +152,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
               style={{ left: `${labelW + 8}px` }}
             >
               {unscheduled.map((node) => (
-                <span key={node.id} className="inline-flex items-center gap-[5px] text-[.72rem]">
+                <span key={node.id} className="inline-flex items-center gap-[5px] text-meta">
                   <span className="text-ink-soft truncate max-w-[160px]">{node.title}</span>
                   <button
                     type="button"
@@ -182,7 +182,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
           className="fixed z-[50] pointer-events-none bg-panel border border-line-2 rounded-[6px] px-[8px] py-[5px] select-none"
           style={{ left: tip.x + 10, top: tip.y - 38 }}
         >
-          <span className="text-[.72rem] text-muted tabular-nums whitespace-nowrap">{tip.text}</span>
+          <span className="text-meta text-muted tabular-nums whitespace-nowrap">{tip.text}</span>
         </div>
       )}
     </div>

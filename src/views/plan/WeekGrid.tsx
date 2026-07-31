@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { AvailabilityWindow } from '../../db/types';
 import type { Interval } from '../../lib/capacity';
 import { windowForDate } from '../../lib/availability';
@@ -15,14 +15,9 @@ const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
  */
 export const GRID_HEIGHT_PX = 720;
 
-const AXIS_WIDTH_PX = 46;
+import { clockLabel } from '../../lib/clock';
 
-function hourLabel(minute: number): string {
-  const h = Math.floor(minute / 60) % 24;
-  const suffix = h < 12 ? 'am' : 'pm';
-  const display = h % 12 === 0 ? 12 : h % 12;
-  return `${display}${suffix}`;
-}
+const AXIS_WIDTH_PX = 46;
 
 /**
  * `WeekGrid` draws the chrome of the week calendar — hour axis, day columns,
@@ -47,10 +42,25 @@ export function WeekGrid({
   children: (date: string) => ReactNode;
 }) {
   const marks = hourMarks(range);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  // Bring today's column into view on mount (and when the week changes).
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    const index = days.indexOf(today);
+    if (index < 0) return;
+    const colWidth = (el.scrollWidth - AXIS_WIDTH_PX) / days.length;
+    const target = AXIS_WIDTH_PX + index * colWidth - (el.clientWidth - AXIS_WIDTH_PX - colWidth) / 2;
+    el.scrollLeft = Math.max(0, target);
+  }, [days, today]);
 
   return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[640px]">
+    <div ref={scrollerRef} className="overflow-x-auto">
+      {/* 7 columns cannot be legible on a phone, so the grid scrolls rather
+          than squeezing — and it starts on today, which was otherwise cut in
+          half at the right edge. 780px keeps a day column ~105px. */}
+      <div className="min-w-[780px]">
         {/* day headings */}
         <div
           className="grid gap-0 mb-[4px]"
@@ -59,10 +69,10 @@ export function WeekGrid({
           <span />
           {days.map((iso, i) => (
             <div key={iso} className="text-center">
-              <div className={`font-mono text-[.58rem] tracking-[.12em] uppercase ${iso === today ? 'text-accent' : 'text-muted'}`}>
+              <div className={`font-mono text-tiny tracking-[.12em] uppercase ${iso === today ? 'text-accent' : 'text-muted'}`}>
                 {DOW[i]}
               </div>
-              <div className={`text-[.82rem] tabular-nums ${iso === today ? 'text-ink font-semibold' : 'text-ink-soft'}`}>
+              <div className={`text-body tabular-nums ${iso === today ? 'text-ink font-semibold' : 'text-ink-soft'}`}>
                 {parseD(iso).getDate()}
               </div>
             </div>
@@ -87,15 +97,15 @@ export function WeekGrid({
             />
           ))}
 
-          {/* time axis */}
-          <div className="relative">
+          {/* time axis — sticky so it survives horizontal scrolling */}
+          <div className="relative sticky left-0 z-[3] bg-bg">
             {marks.map((m) => (
               <span
                 key={m}
-                className="absolute right-[6px] -translate-y-1/2 font-mono text-[.58rem] text-faint tabular-nums"
+                className="absolute right-[6px] -translate-y-1/2 font-mono text-tiny text-muted tabular-nums"
                 style={{ top: `${minuteToPct(m, range)}%` }}
               >
-                {hourLabel(m)}
+                {clockLabel(m)}
               </span>
             ))}
           </div>

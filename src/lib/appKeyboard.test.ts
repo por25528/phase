@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   resolveAppKeyCommand,
+  shouldConsumePaletteShortcut,
   shouldConsumeTaskCaptureShortcut,
 } from './appKeyboard';
 
@@ -85,5 +86,41 @@ describe('resolveAppKeyCommand', () => {
   it('toggles the shortcut cheat sheet on ? (Shift+/), but not while typing', () => {
     expect(resolveAppKeyCommand({ key: '?', shiftKey: true })).toBe('toggle-shortcuts');
     expect(resolveAppKeyCommand({ key: '?', shiftKey: true, target: inputTarget })).toBeNull();
+  });
+
+  describe('⌘K palette', () => {
+    it('opens from anywhere, including while a field is focused', () => {
+      expect(resolveAppKeyCommand({ key: 'k', metaKey: true })).toBe('open-palette');
+      expect(resolveAppKeyCommand({ key: 'K', ctrlKey: true, target: inputTarget }))
+        .toBe('open-palette');
+    });
+
+    it('reports the chord so the caller can preventDefault Ctrl+K', () => {
+      expect(shouldConsumePaletteShortcut({ key: 'k', metaKey: true })).toBe(true);
+      expect(shouldConsumePaletteShortcut({ key: 'k' })).toBe(false);
+    });
+
+    it('ignores Alt and Shift variants, and bare k', () => {
+      expect(resolveAppKeyCommand({ key: 'k', metaKey: true, altKey: true })).toBeNull();
+      expect(resolveAppKeyCommand({ key: 'k', metaKey: true, shiftKey: true })).toBeNull();
+      expect(resolveAppKeyCommand({ key: 'k' })).toBeNull();
+    });
+  });
+
+  describe('⌘Z undo', () => {
+    it('undoes the last action', () => {
+      expect(resolveAppKeyCommand({ key: 'z', metaKey: true })).toBe('undo');
+      expect(resolveAppKeyCommand({ key: 'Z', ctrlKey: true })).toBe('undo');
+    });
+
+    // A half-typed rename needs character-level undo far more than it needs the
+    // store's undo, so the field keeps the chord.
+    it('leaves text undo alone inside a field', () => {
+      expect(resolveAppKeyCommand({ key: 'z', metaKey: true, target: inputTarget })).toBeNull();
+    });
+
+    it('does not bind redo', () => {
+      expect(resolveAppKeyCommand({ key: 'z', metaKey: true, shiftKey: true })).toBeNull();
+    });
   });
 });

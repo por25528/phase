@@ -214,7 +214,7 @@ describe('store actions', () => {
 
       actions.removeTask(taskId);
       expect(getState().tasks).toEqual([]);
-      expect(getState().pendingUndo?.label).toBe('Deleted "File notes" · Undo');
+      expect(getState().pendingUndo?.label).toBe('Deleted "File notes"');
 
       actions.undoLastDelete();
       expect(getState().tasks).toHaveLength(1);
@@ -373,14 +373,21 @@ describe('store actions', () => {
     expect(getState().pendingUndo).toBeNull();
   });
 
-  it('undo window expires after 5s', async () => {
+  // The timer now hides the toast rather than throwing the restore away. Five
+  // seconds is below the time it takes to notice a misclick, so the undo
+  // outlives its own toast and ⌘Z can still reach it.
+  it('hides a cheap edit toast after 5s but keeps the change reversible', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('G');
-    actions.removeGoal(getState().goals[0].id);
+    const id = getState().goals[0].id;
+    actions.setGoalDates(id, '2026-08-01', '2026-08-10');
+    expect(getState().goals[0].start).toBe('2026-08-01');
+
     vi.advanceTimersByTime(5000);
     expect(getState().pendingUndo).toBeNull();
+
     actions.undoLastDelete();
-    expect(getState().goals).toHaveLength(0); // nothing restored
+    expect(getState().goals[0].start).toBeUndefined();
   });
 
   it('addGoal creates a confirmed project without fake dates', async () => {
@@ -489,7 +496,7 @@ describe('store actions', () => {
     expect(actions.setGoalDates(gid, '2026-08-01', undefined)).toBe(true);
     expect(getState().goals[0].start).toBe('2026-08-01');
     expect(getState().goals[0].deadline).toBeUndefined();
-    expect(getState().pendingUndo?.label).toBe('Updated dates for "G" · Undo');
+    expect(getState().pendingUndo?.label).toBe('Updated dates for "G"');
     expect(dbMocks.persist).toHaveBeenCalledTimes(2);
 
     actions.undoLastDelete();
@@ -922,7 +929,7 @@ describe('store actions', () => {
 
       actions.toggleLeaf(nid);
       expect(getState().goals[0].nodes[0].done).toBe(true);
-      expect(getState().pendingUndo?.label).toBe('Completed "Draft introduction" · Undo');
+      expect(getState().pendingUndo?.label).toBe('Completed "Draft introduction"');
       actions.undoLastDelete();
       expect(getState().goals[0].nodes[0].done).toBe(false);
     });
@@ -1717,6 +1724,31 @@ describe('toggleHabitOn (backfill)', () => {
     actions.toggleHabit('h');
     expect(getState().habits[0].checkins).toEqual(['2026-07-23']);
   });
+
+  // Backfill rewrites the record streaks are computed from, and nothing on
+  // screen shows it happened — so it has to be recoverable.
+  it('makes a past-day edit undoable and names the day', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12));
+    const { actions, getState } = await storeWithHabit();
+
+    actions.toggleHabitOn('h', '2026-07-20');
+    expect(getState().pendingUndo?.label).toBe('Marked "Read" on Jul 20');
+
+    actions.undoLastDelete();
+    expect(getState().habits[0].checkins).toEqual([]);
+
+    actions.toggleHabitOn('h', '2026-07-20');
+    actions.toggleHabitOn('h', '2026-07-20');
+    expect(getState().pendingUndo?.label).toBe('Cleared "Read" on Jul 20');
+  });
+
+  it('leaves today silent — the row itself already shows the change', async () => {
+    vi.setSystemTime(new Date(2026, 6, 23, 12));
+    const { actions, getState } = await storeWithHabit();
+
+    actions.toggleHabit('h');
+    expect(getState().pendingUndo).toBeNull();
+  });
 });
 
 describe('view', () => {
@@ -1886,5 +1918,115 @@ describe('estimates', () => {
     store.actions.setTaskEstimate(id, null);
     // Key ABSENCE, not just an undefined value — see the node-clearing test above.
     expect('estimateMin' in store.getState().tasks[0]).toBe(false);
+  });
+});
+
+// C-7: the undo was a single slot behind a 5s toast. Deleting a project and
+// then ticking any checkbox inside that window destroyed the project with no
+// warning that the undo had just been consumed.
+describe('undo durability', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  async function storeWithProject() {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [{
+        id: 'g', title: '6.5840', column: 0, nodes: [
+          { id: 'c', title: 'Part 2B', children: [
+            { id: 'a', title: 'A', done: false },
+            { id: 'b', title: 'B', done: false },
+          ] },
+        ],
+      }],
+      habits: [], tasks: [], sessions: [],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    return store;
+  }
+
+  it('names how many steps went with the project', async () => {
+    const { actions, getState } = await storeWithProject();
+    actions.removeGoal('g');
+    expect(getState().pendingUndo?.label).toBe('Deleted "6.5840" and its 2 steps');
+  });
+
+  it('does not let another undoable edit silently discard a pending delete', async () => {
+    const { actions, getState } = await storeWithProject();
+    actions.addGoal('Second');
+    const other = getState().goals.find((x) => x.title === 'Second')!.id;
+    actions.addRootNode(other, 'A step');
+    const step = getState().goals.find((x) => x.id === other)!.nodes[0].id;
+
+    actions.removeGoal('g');
+    expect(getState().goals.some((x) => x.id === 'g')).toBe(false);
+
+    // The sequence that used to lose the project: a second undoable edit lands
+    // inside the toast window and overwrote the single restore slot.
+    actions.toggleLeaf(step);
+    expect(getState().pendingUndo?.label).toBe('Completed "A step"');
+
+    actions.undoLastDelete(); // walks back the completion
+    expect(getState().goals.find((x) => x.id === other)!.nodes[0].done).toBeFalsy();
+
+    actions.undoLastDelete(); // and then still reaches the project
+    expect(getState().goals.some((x) => x.id === 'g')).toBe(true);
+  });
+
+  /**
+   * A withUndo restore replays a whole slice, so it also reverts anything
+   * written to that slice afterwards. Most mutations (rename, move horizon,
+   * reorder, schedule) are NOT undoable, so a stale restore must be dropped
+   * rather than allowed to quietly revert them.
+   */
+  it('drops a slice restore once an unrelated, non-undoable edit lands', async () => {
+    const { actions, getState } = await storeWithProject();
+    actions.addGoal('Second');
+    const secondId = getState().goals.find((g) => g.title === 'Second')!.id;
+
+    actions.removeGoal('g');
+    actions.moveGoalToColumn(secondId, 3); // not undoable
+
+    actions.undoLastDelete();
+
+    // The move survives — undo must never silently reverse it...
+    expect(getState().goals.find((x) => x.id === secondId)?.column).toBe(3);
+    // ...and having dropped the stale restore, the delete stays applied.
+    expect(getState().goals.some((x) => x.id === 'g')).toBe(false);
+  });
+
+  it('keeps a surgical task restore usable after other edits', async () => {
+    const { actions, getState } = await storeWithProject();
+    actions.addTask('Doomed');
+    const taskId = getState().tasks[0].id;
+
+    actions.removeTask(taskId);
+    actions.addTask('Later arrival'); // not undoable, but harmless here
+
+    actions.undoLastDelete();
+    expect(getState().tasks.map((t) => t.title).sort()).toEqual(['Doomed', 'Later arrival']);
+  });
+
+  it('keeps the delete recoverable after its toast has faded', async () => {
+    const { actions, getState } = await storeWithProject();
+    actions.removeGoal('g');
+
+    vi.advanceTimersByTime(20000);
+    expect(getState().pendingUndo).toBeNull(); // toast gone
+
+    actions.undoLastDelete();
+    expect(getState().goals.map((g) => g.id)).toEqual(['g']);
+  });
+
+  it('holds a structural delete toast open longer than a cheap toggle', async () => {
+    const { actions, getState } = await storeWithProject();
+
+    actions.removeGoal('g');
+    vi.advanceTimersByTime(6000);
+    expect(getState().pendingUndo).not.toBeNull(); // still offering Undo at 6s
+
+    vi.advanceTimersByTime(10000);
+    expect(getState().pendingUndo).toBeNull();
   });
 });

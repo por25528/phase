@@ -44,7 +44,7 @@ export function DaysLane({
           >
             <span className="flex items-baseline gap-[5px]">
               <span
-                className={`text-[.74rem] tabular-nums font-medium ${
+                className={`text-compact tabular-nums font-medium ${
                   isToday
                     ? 'inline-grid place-items-center w-[20px] h-[20px] rounded-full bg-accent text-white'
                     : weekend
@@ -54,7 +54,7 @@ export function DaysLane({
               >
                 {!isToday && dt.getDate() === 1 ? fmtD(s.start) : s.label}
               </span>
-              <span className="text-[.6rem] uppercase tracking-[.08em] text-faint">{DOW[dt.getDay()]}</span>
+              <span className="text-tiny uppercase tracking-[.08em] text-faint">{DOW[dt.getDay()]}</span>
             </span>
           </button>
         );

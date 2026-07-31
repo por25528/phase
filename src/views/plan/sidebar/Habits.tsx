@@ -56,11 +56,11 @@ function AddHabitForm({
         onChange={(e) => setName(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Habit name"
-        className="ghost-in text-[.9rem]"
+        className="ghost-in text-lead"
         aria-label="New habit name"
       />
       <div className="flex items-center gap-[8px] flex-wrap">
-        <div className="flex border border-line-2 rounded-field overflow-hidden text-[.78rem] font-medium">
+        <div className="flex border border-line-2 rounded-field overflow-hidden text-ui font-medium">
           {(['daily', 'weekly'] as Cadence[]).map((c) => (
             <button
               key={c}
@@ -81,20 +81,20 @@ function AddHabitForm({
               type="button"
               onClick={() => setTarget((t) => Math.max(1, t - 1))}
               aria-label="Decrease weekly target"
-              className="w-[22px] h-[22px] rounded-[4px] border border-line-2 text-[.9rem] text-ink-soft hover:bg-hover grid place-items-center"
+              className="w-[22px] h-[22px] rounded-[4px] border border-line-2 text-lead text-ink-soft hover:bg-hover grid place-items-center"
             >
               −
             </button>
-            <span className="text-[.82rem] tabular-nums w-[14px] text-center font-medium text-ink">{target}</span>
+            <span className="text-body tabular-nums w-[14px] text-center font-medium text-ink">{target}</span>
             <button
               type="button"
               onClick={() => setTarget((t) => Math.min(7, t + 1))}
               aria-label="Increase weekly target"
-              className="w-[22px] h-[22px] rounded-[4px] border border-line-2 text-[.9rem] text-ink-soft hover:bg-hover grid place-items-center"
+              className="w-[22px] h-[22px] rounded-[4px] border border-line-2 text-lead text-ink-soft hover:bg-hover grid place-items-center"
             >
               +
             </button>
-            <span className="text-[.76rem] text-muted">× per week</span>
+            <span className="text-compact text-muted">× per week</span>
           </div>
         )}
       </div>
@@ -102,14 +102,14 @@ function AddHabitForm({
         <button
           type="button"
           onClick={submit}
-          className="px-[13px] py-[5px] rounded-field bg-ink text-paper text-[.8rem] font-semibold hover:bg-ink-hover"
+          className="px-[13px] py-[5px] rounded-field bg-ink text-paper text-ui font-semibold hover:bg-ink-hover"
         >
           Add
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-[12px] py-[5px] rounded-field border border-line-2 text-[.8rem] text-ink-soft hover:bg-hover"
+          className="px-[12px] py-[5px] rounded-field border border-line-2 text-ui text-ink-soft hover:bg-hover"
         >
           Cancel
         </button>
@@ -200,20 +200,20 @@ function SortableHabitRow({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleRenameKey}
-          className="ghost-in flex-1 min-w-0 text-[.9rem] font-medium"
+          className="ghost-in flex-1 min-w-0 text-lead font-medium"
           aria-label={`Rename habit "${hb.title}"`}
         />
         <button
           type="button"
           onClick={commitRename}
-          className="px-[12px] py-[4px] rounded-field bg-ink text-paper text-[.78rem] font-semibold hover:bg-ink-hover flex-none"
+          className="px-[12px] py-[4px] rounded-field bg-ink text-paper text-ui font-semibold hover:bg-ink-hover flex-none"
         >
           Save
         </button>
         <button
           type="button"
           onClick={cancelRename}
-          className="px-[11px] py-[4px] rounded-field border border-line-2 text-[.78rem] text-ink-soft hover:bg-hover flex-none"
+          className="px-[11px] py-[4px] rounded-field border border-line-2 text-ui text-ink-soft hover:bg-hover flex-none"
         >
           Cancel
         </button>
@@ -250,17 +250,17 @@ function SortableHabitRow({
       >
         <TodayCheckbox checked={done} onToggle={onToggle} ariaLabel={`Mark "${hb.title}" done today`} />
       </span>
-      <span className={`flex-1 min-w-[90px] truncate text-[.9rem] font-medium ${done ? 'text-muted' : 'text-ink'}`}>
+      <span className={`flex-1 min-w-[90px] truncate text-lead font-medium ${done ? 'text-muted' : 'text-ink'}`}>
         {hb.title}
       </span>
       {missed && (
-        <span className="text-[.7rem] font-semibold px-[8px] py-[2px] rounded-full bg-warn-tint text-warn whitespace-nowrap">
+        <span className="text-meta font-semibold px-[8px] py-[2px] rounded-full bg-warn-tint text-warn whitespace-nowrap">
           2 missed
         </span>
       )}
       {goal && <Tag label={goal.title} />}
       <HabitDots hb={hb} today={today} onToggleDay={onToggleDay} />
-      <span className="font-mono text-[.7rem] text-muted w-[76px] text-right flex-none tabular-nums">{stat}</span>
+      <span className="font-mono text-meta text-muted w-[76px] text-right flex-none tabular-nums">{stat}</span>
       <button
         type="button"
         className="text-faint hover:text-ink opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-none"
@@ -272,7 +272,7 @@ function SortableHabitRow({
       </button>
       <button
         type="button"
-        className="text-faint text-[.8rem] hover:text-[#B4453A] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-none"
+        className="text-faint text-ui hover:text-[#B4453A] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-none"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         aria-label={`Remove habit "${hb.title}"`}
@@ -315,7 +315,7 @@ export function Habits() {
   return (
     <div>
       {habits.length === 0 && !adding && (
-        <div className="text-faint text-[.85rem] italic py-[6px]">No habits yet. Add one to start a streak.</div>
+        <div className="text-faint text-body italic py-[6px]">No habits yet. Add one to start a streak.</div>
       )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={habits.map((h) => h.id)} strategy={verticalListSortingStrategy}>
@@ -344,7 +344,7 @@ export function Habits() {
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="mt-[8px] px-[13px] py-[6px] rounded-field bg-ink text-paper text-[.8rem] font-semibold hover:bg-ink-hover"
+          className="mt-[8px] px-[13px] py-[6px] rounded-field bg-ink text-paper text-ui font-semibold hover:bg-ink-hover"
         >
           + Habit
         </button>

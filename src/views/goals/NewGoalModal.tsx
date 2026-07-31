@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Goal } from '../../db/types';
 import { Modal } from '../../components/Modal';
+import { DateField } from '../../components/DateField';
 import { buildManualGoal, priorityToColumn, PRIORITY_WORDS } from '../../lib/goalImport';
 import { projectDateError } from '../../lib/schedule';
 import { fieldCls, labelCls, primaryBtn, ghostBtn } from './styles';
@@ -96,26 +97,26 @@ export function NewGoalModal({
           </div>
           <div className="flex flex-col gap-[5px]">
             <label className={labelCls}>Start</label>
-            <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={fieldCls} />
+            <DateField value={start} onCommit={setStart} ariaLabel="Start" placeholder="Start" className={fieldCls} />
           </div>
           <div className="flex flex-col gap-[5px]">
             <label className={labelCls}>Deadline</label>
-            <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className={fieldCls} />
+            <DateField value={deadline} onCommit={setDeadline} ariaLabel="Deadline" placeholder="Deadline" className={fieldCls} />
           </div>
         </div>
-        {dateError && <div className="text-[.76rem] text-warn">{dateError}</div>}
+        {dateError && <div className="text-compact text-warn">{dateError}</div>}
 
         <div className="flex flex-col gap-[6px]">
           <label className={labelCls}>First steps <span className="text-faint font-normal">(optional)</span></label>
           {subgoals.length > 0 && (
             <div className="flex flex-col gap-[4px]">
               {subgoals.map((s, i) => (
-                <div key={i} className="flex items-center gap-[8px] text-[.84rem] text-ink-soft">
+                <div key={i} className="flex items-center gap-[8px] text-body text-ink-soft">
                   <span className="text-faint">•</span>
                   <span className="flex-1 truncate">{s}</span>
                   <button
                     aria-label={`Remove ${s}`}
-                    className="text-faint text-[.78rem] hover:text-[#b4453a]"
+                    className="text-faint text-ui hover:text-[#b4453a]"
                     onClick={() => setSubgoals((arr) => arr.filter((_, j) => j !== i))}
                   >
                     ✕

@@ -34,6 +34,9 @@ export interface SpanBarProps {
  * Owns its own drag state; the parent only supplies the committed span and
  * receives `onCommit`/`onOpen`/`onHover` callbacks.
  */
+/** 8px of left padding plus ~"100%" at .7rem — below this the label is clipped. */
+const LABEL_MIN_PX = 42;
+
 export function SpanBar({
   span, rangeStart, pxPerDay, pct, label, ariaLabel, height, warn, onCommit, onOpen, onHover, onPreview,
 }: SpanBarProps) {
@@ -104,9 +107,15 @@ export function SpanBar({
       <span className="absolute inset-y-0 left-0 w-[8px] cursor-ew-resize" aria-hidden="true" />
       <span className="absolute inset-y-0 right-0 w-[8px] cursor-ew-resize" aria-hidden="true" />
       <i className="tl-bar-fill" style={{ width: `${pct}%` }} />
-      <b className="relative text-[.7rem] font-semibold text-white pl-[8px] [mix-blend-mode:difference] tabular-nums z-[2]">
-        {label}
-      </b>
+      {/* The bar clips its overflow, so a label wider than the bar loses its
+          tail — "20%" rendered as "20", a wrong number rather than a cramped
+          one. Below the threshold the value lives in the tooltip and the
+          aria-label instead. */}
+      {w >= LABEL_MIN_PX && (
+        <b className="relative text-meta font-semibold text-white pl-[8px] [mix-blend-mode:difference] tabular-nums z-[2] whitespace-nowrap">
+          {label}
+        </b>
+      )}
     </button>
   );
 }

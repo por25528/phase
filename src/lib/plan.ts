@@ -1,5 +1,6 @@
 import type { Goal, GoalNode, PlanReview, PlanReviewEntry, Session } from '../db/types';
 import { weekDates, addDays } from './dates';
+import { behindPaceHint, behindPaceLabel } from './pace';
 import { goalPct } from './pct';
 import { expectedPct, behindPaceBy, daysBetween } from './timeline';
 import { leafCount } from './board';
@@ -349,6 +350,8 @@ export function nextOpenAction(g: Goal, today: string): NextAction {
 export interface AttentionBadge {
   label: string;
   tone: 'warn' | 'warn-strong' | 'accent' | 'plan' | 'step';
+  /** Tooltip spelling out the arithmetic, where the label has any. */
+  hint?: string;
 }
 
 // The single badge a card shows, straight off projectAttention. `on-track`
@@ -365,8 +368,16 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
       return { label: 'Needs a first step', tone: 'step' };
     case 'behind': {
       if (!hasTrustedSchedule(g)) return null;
-      const pts = Math.round(behindPaceBy(Math.round(goalPct(g)), g.start, g.deadline, today));
-      return { label: `Behind ${pts}%`, tone: 'warn' };
+      const done = Math.round(goalPct(g));
+      const pts = Math.round(behindPaceBy(done, g.start, g.deadline, today));
+      // "Behind 44%" read as "44% behind schedule"; the number is percentage
+      // POINTS below the linear-pace expectation. Same wording as BehindChip,
+      // which the Timeline already uses.
+      return {
+        label: behindPaceLabel(pts),
+        tone: 'warn',
+        hint: behindPaceHint(done, done + pts),
+      };
     }
     case 'due-soon':
       if (!g.deadline) return null;

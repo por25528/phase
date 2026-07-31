@@ -321,11 +321,70 @@ describe('parseSubtasks', () => {
     expect(parseSubtasks('[{"title":"A"},{"title":"B"}]')).toEqual({ titles: ['A', 'B'] });
   });
 
-  it('rejects empty input, non-arrays, invalid JSON, and empty results', () => {
+  it('rejects empty input, JSON objects, and empty results', () => {
     expect(parseSubtasks('   ')).toEqual({ error: expect.stringContaining('Paste') });
-    expect(parseSubtasks('{"title":"A"}')).toEqual({ error: expect.stringContaining('array') });
-    expect(parseSubtasks('not json')).toEqual({ error: expect.stringContaining('valid JSON') });
+    expect(parseSubtasks('{"title":"A"}')).toEqual({ error: expect.stringContaining('list') });
     expect(parseSubtasks('[]')).toEqual({ error: expect.stringContaining('No subtasks') });
     expect(parseSubtasks('[1, 2, {}]')).toEqual({ error: expect.stringContaining('No subtasks') });
+  });
+
+  // Bare prose now reads as a one-line list rather than being rejected — the
+  // modal previews the parse before committing, so a wrong read is visible
+  // rather than fatal.
+  it('reads a single bare line as a one-item list', () => {
+    expect(parseSubtasks('not json')).toEqual({ titles: ['not json'] });
+  });
+});
+
+// C-17: the parser accepted strict JSON only, so it failed on the single most
+// common LLM output shape — a fenced code block — and told the user their AI
+// was wrong rather than that the parser was strict.
+describe('parseSubtasks tolerance', () => {
+  function titles(raw: string): string[] {
+    const out = parseSubtasks(raw);
+    if ('error' in out) throw new Error(`expected titles, got: ${out.error}`);
+    return out.titles;
+  }
+
+  it('accepts a fenced JSON array', () => {
+    expect(titles('```json\n["Read the paper", "Write notes"]\n```'))
+      .toEqual(['Read the paper', 'Write notes']);
+  });
+
+  it('accepts a bare fence with no language', () => {
+    expect(titles('```\n["A", "B"]\n```')).toEqual(['A', 'B']);
+  });
+
+  it('accepts prose wrapped around the array', () => {
+    expect(titles('Sure! Here you go:\n\n```json\n["A"]\n```\n\nHope that helps.'))
+      .toEqual(['A']);
+  });
+
+  it('accepts a plain newline-separated list', () => {
+    expect(titles('Read the paper\nWrite notes\nSubmit')).toEqual([
+      'Read the paper', 'Write notes', 'Submit',
+    ]);
+  });
+
+  it('strips bullets and numbering from a list', () => {
+    expect(titles('- Read the paper\n* Write notes\n1. Submit\n2) Celebrate')).toEqual([
+      'Read the paper', 'Write notes', 'Submit', 'Celebrate',
+    ]);
+  });
+
+  it('normalises curly quotes so a smart-quoted array still parses', () => {
+    expect(titles('[“Read”, “Write”]')).toEqual(['Read', 'Write']);
+  });
+
+  it('tolerates a trailing comma', () => {
+    expect(titles('["A", "B",]')).toEqual(['A', 'B']);
+  });
+
+  it('still rejects empty input', () => {
+    expect(parseSubtasks('   ')).toHaveProperty('error');
+  });
+
+  it('does not treat a JSON object as a list of lines', () => {
+    expect(parseSubtasks('{"nope": 1}')).toHaveProperty('error');
   });
 });

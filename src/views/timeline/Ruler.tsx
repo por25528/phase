@@ -27,10 +27,10 @@ export function Ruler({
               <span
                 className={`absolute left-[5px] whitespace-nowrap select-none ${
                   t.unit === 'week'
-                    ? 'bottom-[2px] text-[.6rem] text-faint tabular-nums'
+                    ? 'bottom-[2px] text-tiny text-muted tabular-nums'
                     : t.unit === 'year'
-                    ? 'top-[3px] text-[.72rem] text-ink-soft font-semibold tabular-nums'
-                    : 'top-[3px] text-[.72rem] text-muted font-medium'
+                    ? 'top-[3px] text-meta text-ink-soft font-semibold tabular-nums'
+                    : 'top-[3px] text-meta text-muted font-medium'
                 }`}
               >
                 {t.label}

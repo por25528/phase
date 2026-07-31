@@ -2,13 +2,16 @@
 // never interferes with the ⌘N capture-suppression logic; Escape and a backdrop
 // click both dismiss it, wired from App's global key handler and onClose here.
 
+// Listed in nav order, which is also the order the number keys select.
 const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['1'], label: 'Plan' },
   { keys: ['2'], label: 'Goals' },
   { keys: ['3'], label: 'Timeline' },
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
+  { keys: ['⌘', 'K'], label: 'Search everything' },
   { keys: ['⌘', 'N'], label: 'Add a task' },
+  { keys: ['⌘', 'Z'], label: 'Undo the last change' },
   { keys: ['?'], label: 'This cheat sheet' },
   { keys: ['Esc'], label: 'Close drawer or dialog' },
 ];
@@ -31,12 +34,12 @@ const PLANNER_KEYS: { keys: string[]; label: string }[] = [
 function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {
   return (
     <div className="flex items-center justify-between gap-[16px]">
-      <dt className="text-[.86rem] text-ink-soft">{label}</dt>
+      <dt className="text-body text-ink-soft">{label}</dt>
       <dd className="flex items-center gap-[4px]">
         {keys.map((key) => (
           <kbd
             key={key}
-            className="font-mono text-[.72rem] min-w-[22px] text-center px-[6px] py-[2px] rounded-[6px] border border-line-2 bg-field text-ink-soft"
+            className="font-mono text-meta min-w-[22px] text-center px-[6px] py-[2px] rounded-[6px] border border-line-2 bg-field text-ink-soft"
           >
             {key}
           </kbd>
@@ -62,12 +65,12 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
         className="w-full max-w-[360px] bg-panel border border-line rounded-card shadow-card p-[20px]"
       >
         <div className="flex items-center justify-between mb-[14px]">
-          <h2 className="font-disp text-[1.05rem] font-semibold tracking-[-0.01em]">Keyboard shortcuts</h2>
+          <h2 className="font-disp text-h3 font-semibold tracking-[-0.01em]">Keyboard shortcuts</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close shortcuts"
-            className="text-muted hover:text-ink text-[.9rem] px-[6px] py-[2px] rounded-[6px] hover:bg-hover"
+            className="text-muted hover:text-ink text-lead px-[6px] py-[2px] rounded-[6px] hover:bg-hover"
           >
             ✕
           </button>
@@ -78,7 +81,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           ))}
         </dl>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="font-mono text-[.6rem] tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
+          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
             While planning a step
           </h3>
           <dl className="flex flex-col gap-[9px]">
@@ -87,7 +90,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
             ))}
           </dl>
         </div>
-        <p className="mt-[14px] text-[.72rem] text-faint leading-[1.5]">
+        <p className="mt-[14px] text-meta text-muted leading-[1.5]">
           ⌘ is Ctrl on Windows and Linux. Shortcuts pause while you're typing in a field.
         </p>
       </div>
