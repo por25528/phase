@@ -160,6 +160,30 @@ describe('Project page', () => {
     expect(screen.getByText('Define the topics')).toBeTruthy();
   });
 
+  it('seeds project notes and routes edits through the store', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = await mountPage();
+      fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
+      const editor = screen.getByLabelText('Project notes');
+
+      expect(editor.textContent).toContain('Existing note text');
+
+      const setGoalNotes = vi.spyOn(store.actions, 'setGoalNotes');
+      editor.innerHTML = '<p>Updated project note</p>';
+      fireEvent.input(editor);
+      await act(async () => {
+        await Promise.resolve();
+        vi.advanceTimersByTime(801);
+      });
+
+      expect(setGoalNotes).toHaveBeenCalledWith('g1', 'Updated project note');
+      expect(store.getState().goals[0].notes).toBe('Updated project note');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('associates the active tab with the project panel', async () => {
     const store = await mountPage();
     const steps = screen.getByRole('tab', { name: 'Steps' });

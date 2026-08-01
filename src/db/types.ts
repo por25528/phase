@@ -31,6 +31,7 @@ export interface GoalNode {
    * refuses containers and `addChild` drops the flag when it converts a leaf.
    */
   checkpoint?: boolean;
+  notes?: string; // free-form step notes — never affects the pct roll-up
 }
 
 // One immutable snapshot of the PREVIOUS week's commitments, taken at week

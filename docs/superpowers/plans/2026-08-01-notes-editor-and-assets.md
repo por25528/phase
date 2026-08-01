@@ -79,8 +79,10 @@ export function NoteEditor({ docKey, value, onChange, placeholder, ariaLabel, cl
 
 **Feature set, deliberately small** (spec §3.1): headings 1–3, bold, italic, strike, inline code, bullet and ordered lists, code block, blockquote, horizontal rule, links, and markdown input rules so typing `## ` or `- ` or `**x**` works.
 
+**Included specifically to preserve existing note content:**
+- **Task lists.** Existing notes may contain markdown checklists from the former free-text field, so the editor must preserve both the checkbox syntax and its checked state. A checkbox in prose is text; unlike a `Milestone`, it does not represent project progress or affect the percentage.
+
 **Excluded on purpose, and this is a decision not an omission:**
-- **Task lists.** In Phase a checkbox is the only thing that moves a percentage. A checkbox in a note that moves nothing recreates the milestone problem this codebase just spent a whole plan deleting.
 - Tables, wikilinks, backlinks, mentions, and a `/` slash menu.
 
 - [ ] **Step 1: Install**
@@ -91,7 +93,7 @@ npm install @tiptap/react @tiptap/pm @tiptap/starter-kit @tiptap/markdown
 
 **Use the first-party `@tiptap/markdown`, not the third-party `tiptap-markdown`.** Checked at planning time: Tiptap is on 3.29.2, and `@tiptap/markdown` is published at the same version with `peerDependencies` pinned to the exact `3.29.2` for both `@tiptap/core` and `@tiptap/pm`. The third-party package works too — its peer range is `^3.0.1` — but a floating range across a major that just shipped is a needless risk when a version-locked first-party option exists.
 
-`@tiptap/markdown` also avoids pulling in `markdown-it-task-lists`, and task lists are deliberately out of scope here.
+`@tiptap/extension-list@3.29.2` provides the task-list extensions used here; no separate task-list packages are needed.
 
 Do NOT hand-write versions into `package.json`. **Check what `StarterKit` v3 already bundles before adding extension packages** — in v3 several extensions that used to be separate are included, and installing a duplicate registers the node twice. Add only what is genuinely missing, and say in your report which extensions came from StarterKit and which you added.
 
@@ -573,7 +575,7 @@ git add CLAUDE.md && git commit -m "docs: record the asset and autosave invarian
 | Spec requirement | Task |
 |---|---|
 | §3.1 markdown stored, rich editing | 1 |
-| §3.1 task lists excluded, with reasoning | 1 |
+| §3.1 task lists included to preserve existing note content, with reasoning | 1 |
 | §3.2 `assets` table outside `AppState` | 4 |
 | §3.2 `![](asset:id)`, downscale to WebP | 5 |
 | §3.2 object URLs revoked | 6 |

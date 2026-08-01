@@ -699,6 +699,44 @@ describe('store actions', () => {
     expect(node.deadline).toBeUndefined();
   });
 
+  it('setNodeNotes writes only to the selected node', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
+    const goalId = getState().goals[0].id;
+    actions.addRootNode(goalId, 'Step 1');
+    actions.addRootNode(goalId, 'Step 2');
+    const [first, second] = getState().goals[0].nodes;
+
+    actions.setNodeNotes(first.id, 'A note');
+
+    expect(getState().goals[0].nodes[0].notes).toBe('A note');
+    expect(getState().goals[0].nodes[1].notes).toBeUndefined();
+    expect(second.notes).toBeUndefined();
+  });
+
+  it('setNodeNotes removes empty markdown and preserves progress and metadata', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
+    const goalId = getState().goals[0].id;
+    actions.addRootNode(goalId, 'Step 1');
+    actions.addRootNode(goalId, 'Step 2');
+    const nodeId = getState().goals[0].nodes[0].id;
+    actions.toggleLeaf(nodeId);
+    actions.setNodeDates(goalId, nodeId, '2026-02-01', '2026-02-10');
+    actions.setNodeNotes(nodeId, 'A note');
+    const before = getState().goals[0].nodes[0];
+    const pctBefore = goalPct(getState().goals[0]);
+
+    actions.setNodeNotes(nodeId, '');
+
+    const node = getState().goals[0].nodes[0];
+    expect('notes' in node).toBe(false);
+    expect(node.done).toBe(before.done);
+    expect(node.start).toBe(before.start);
+    expect(node.deadline).toBe(before.deadline);
+    expect(goalPct(getState().goals[0])).toBe(pctBefore);
+  });
+
   it('scheduling a node never affects pct roll-up', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoal('G');

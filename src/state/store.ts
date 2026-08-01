@@ -1014,7 +1014,17 @@ export const actions = {
   },
 
   setGoalNotes(goalId: string, notes: string) {
+    if (!state.goals.some((g) => g.id === goalId)) return;
     const goals = state.goals.map((g) => (g.id === goalId ? { ...g, notes } : g));
+    setAndPersist({ goals });
+  },
+
+  setNodeNotes(nodeId: string, markdown: string): void {
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
+    if (!node) return;
+    if (markdown === '') delete node.notes;
+    else node.notes = markdown;
     setAndPersist({ goals });
   },
 

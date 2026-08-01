@@ -165,6 +165,84 @@
   @media (hover: hover) {
     .group:not(:hover) .quiet-control:not(:focus-visible) { opacity: 0; }
   }
+
+  /* Markdown notes use the app's type and colour tokens rather than Tiptap's
+     stylesheet. The editor content is the direct child of this wrapper. */
+  .note-prose {
+    @apply w-full border border-line rounded-[6px] bg-transparent px-[9px] py-[7px] text-body leading-[1.6] text-ink;
+  }
+  .note-prose > div {
+    @apply min-h-[120px] outline-none;
+  }
+  .note-prose > div > h1 {
+    @apply mb-2 mt-4 font-disp text-h1 leading-tight text-ink;
+  }
+  .note-prose > div > h2 {
+    @apply mb-2 mt-4 font-disp text-h2 leading-tight text-ink;
+  }
+  .note-prose > div > h3 {
+    @apply mb-2 mt-4 font-disp text-h3 leading-tight text-ink;
+  }
+  .note-prose > div > p {
+    @apply my-2;
+  }
+  .note-prose > div > ul,
+  .note-prose > div > ol {
+    @apply my-2 pl-6;
+  }
+  .note-prose > div > ul {
+    @apply list-disc;
+  }
+  .note-prose > div > ol {
+    @apply list-decimal;
+  }
+  .note-prose > div li {
+    @apply pl-1;
+  }
+  .note-prose > div > ul[data-type="taskList"] {
+    @apply list-none pl-0;
+  }
+  .note-prose > div > ul[data-type="taskList"] > li[data-type="taskItem"] {
+    @apply flex items-start gap-2 pl-0;
+  }
+  .note-prose > div > ul[data-type="taskList"] > li[data-type="taskItem"] > label {
+    @apply relative mt-[3px] h-[14px] w-[14px] flex-none;
+  }
+  .note-prose > div > ul[data-type="taskList"] input[type="checkbox"] {
+    @apply absolute inset-0 m-0 h-full w-full appearance-none rounded-[4px] border border-check bg-transparent;
+  }
+  .note-prose > div > ul[data-type="taskList"] input[type="checkbox"]:checked {
+    @apply border-accent bg-accent;
+  }
+  .note-prose > div > ul[data-type="taskList"] input[type="checkbox"]:checked + span::after {
+    content: '';
+    @apply absolute left-[4px] top-[2px] h-[7px] w-[4px] rotate-45 border-b-2 border-r-2 border-accent-contrast;
+  }
+  .note-prose > div > ul[data-type="taskList"] > li[data-type="taskItem"][data-checked="true"] > div {
+    @apply line-through text-faint;
+  }
+  .note-prose > div > blockquote {
+    @apply my-3 border-l-2 border-line pl-4 text-ink-soft;
+  }
+  .note-prose > div > hr {
+    @apply my-5 border-0 border-t border-line;
+  }
+  .note-prose a {
+    @apply text-ink-soft underline underline-offset-2;
+  }
+  .note-prose code {
+    @apply rounded-[4px] bg-hover px-1 py-0.5 font-mono text-compact text-ink;
+  }
+  .note-prose > div > pre {
+    @apply my-3 overflow-x-auto rounded-[6px] bg-hover p-3;
+  }
+  .note-prose > div > pre code {
+    @apply block rounded-none bg-transparent p-0 text-ink;
+  }
+  .note-prose[data-empty="true"]::before {
+    content: attr(data-placeholder);
+    @apply pointer-events-none float-left h-0 text-muted;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

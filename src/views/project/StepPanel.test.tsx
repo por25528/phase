@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalNode, Session } from '../../db/types';
 
@@ -94,6 +94,14 @@ const twoStepGoal: Goal = {
   ],
 };
 
+const twoStepGoalWithNotes: Goal = {
+  ...twoStepGoal,
+  nodes: [
+    { id: 'n1', title: 'Step A', done: false, notes: 'Note A' },
+    { id: 'n2', title: 'Step B', done: false, notes: 'Note B' },
+  ],
+};
+
 type Store = typeof import('../../state/store');
 
 async function preparePanel(goal: Goal, sessions: Session[] = []): Promise<Store> {
@@ -148,6 +156,60 @@ describe('StepPanel', () => {
 
     expect(screen.getByRole('button', { name: 'Rename step "Step B"' }).textContent).toBe('Step B');
     expect(renameNode).not.toHaveBeenCalled();
+  });
+
+  it('seeds notes and reseeds them when the mounted panel switches nodes', async () => {
+    const store = await preparePanel(twoStepGoalWithNotes);
+    const { StepPanel } = await import('./StepPanel');
+    const setNodeNotes = vi.spyOn(store.actions, 'setNodeNotes');
+    const goal = store.getState().goals[0];
+    const view = render(createElement(StepPanel, {
+      goal,
+      node: goal.nodes[0],
+      actions: store.actions,
+    }));
+
+    expect(screen.getByLabelText('Step notes').textContent).toContain('Note A');
+
+    view.rerender(createElement(StepPanel, {
+      goal,
+      node: goal.nodes[1],
+      actions: store.actions,
+    }));
+
+    expect(screen.getByLabelText('Step notes').textContent).toContain('Note B');
+    expect(setNodeNotes).not.toHaveBeenCalled();
+  });
+
+  it('defers a debounced note save while an undo is pending, then flushes on blur', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = await preparePanel(twoStepGoal);
+      const { StepPanel } = await import('./StepPanel');
+      const goal = store.getState().goals[0];
+      render(createElement(StepPanel, {
+        goal,
+        node: goal.nodes[0],
+        actions: store.actions,
+      }));
+
+      store.actions.removeNode('n2');
+      expect(store.getState().pendingUndo).not.toBeNull();
+
+      const editor = screen.getByLabelText('Step notes');
+      editor.innerHTML = '<p>Typed while undo is available</p>';
+      fireEvent.input(editor);
+      act(() => { vi.advanceTimersByTime(801); });
+
+      expect(store.getState().pendingUndo).not.toBeNull();
+      expect(store.getState().goals[0].nodes[0].notes).toBeUndefined();
+
+      fireEvent.blur(editor);
+
+      expect(store.getState().goals[0].nodes[0].notes).toBe('Typed while undo is available');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renames the selected step from the title editor', async () => {
