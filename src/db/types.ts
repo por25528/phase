@@ -16,13 +16,21 @@ export interface GoalNode {
                             // affects the pct roll-up.
   estimateMin?: number;  // LEAVES only — expected effort in minutes.
                          // Scheduling metadata: never affects pct roll-up.
-}
-
-// Markers only — milestones are never used in pct roll-up.
-export interface Milestone {
-  id: string;
-  title: string;
-  date: string; // 'YYYY-MM-DD'
+  /**
+   * A dated marker the user is working TOWARD — an exam, a submission, a demo.
+   *
+   * Unlike the `Milestone` this replaces, a checkpoint is a real node, so it
+   * counts in the pct roll-up and can be ticked. That is deliberate: a marker
+   * that never moved a number was the complaint that retired `Milestone`.
+   *
+   * Its date is its `deadline`; the migration writes `start === deadline`, so
+   * a checkpoint is a zero-length span, which is what a marker is.
+   *
+   * LEAVES ONLY. A container has no `done`, so a container checkpoint could
+   * never be reached — the same dead-marker problem. `toggleCheckpoint`
+   * refuses containers and `addChild` drops the flag when it converts a leaf.
+   */
+  checkpoint?: boolean;
 }
 
 // One immutable snapshot of the PREVIOUS week's commitments, taken at week
@@ -49,7 +57,6 @@ export interface Goal {
   deadline?: string; // 'YYYY-MM-DD'
   datesConfirmed?: boolean;
   nodes: GoalNode[];
-  milestones?: Milestone[]; // markers only — never used in pct roll-up
   notes?: string;           // free-form working notes — rides along in the goal object
   column?: number;          // commitment-horizon column, 0 = Now … 3 = Someday. Absent ⇒ 0.
   completedAt?: string;     // 'YYYY-MM-DD' — set when the project is explicitly archived. Absent ⇒ active.

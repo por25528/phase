@@ -152,6 +152,8 @@ export async function saveSidebarPanels(panels: SidebarPanel[]): Promise<void> {
 // which changes no store and no index.
 const SLOT_MIGRATION_KEY = 'slotMigrationDone';
 const SLOT_SNAPSHOT_KEY = 'preSlotMigrationSnapshot';
+const CHECKPOINT_MIGRATION_KEY = 'checkpointMigrationDone';
+const CHECKPOINT_SNAPSHOT_KEY = 'preCheckpointMigrationSnapshot';
 
 export async function isSlotMigrationDone(): Promise<boolean> {
   const row = await db.settings.get(SLOT_MIGRATION_KEY);
@@ -238,6 +240,53 @@ export async function resetSlotMigration(): Promise<void> {
   });
 }
 
+// One-shot flag for the milestone-to-checkpoint migration (see
+// lib/migrateCheckpoints.ts). Like the slot migration, this changes object
+// fields only and therefore does not need a Dexie schema version.
+export async function isCheckpointMigrationDone(): Promise<boolean> {
+  const row = await db.settings.get(CHECKPOINT_MIGRATION_KEY);
+  return row?.value === 'true';
+}
+
+/**
+ * Write-once copy of goals before milestone conversion. This is the sole
+ * recovery record for the pre-checkpoint generation. The existing-row check
+ * is inside the same transaction as the write so a retry after a crash cannot
+ * replace the original goals with already-converted ones.
+ */
+export async function saveCheckpointMigrationSnapshot(goals: Goal[]): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    const existing = await db.settings.get(CHECKPOINT_SNAPSHOT_KEY);
+    if (existing) return;
+    await db.settings.put({ key: CHECKPOINT_SNAPSHOT_KEY, value: JSON.stringify({ goals }) });
+  });
+}
+
+/** The pre-checkpoint copy, or null when absent or unreadable. */
+export async function loadCheckpointMigrationSnapshot(): Promise<{ goals: Goal[] } | null> {
+  const row = await db.settings.get(CHECKPOINT_SNAPSHOT_KEY);
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value) as { goals?: Goal[] };
+    if (!Array.isArray(parsed.goals)) return null;
+    return { goals: parsed.goals };
+  } catch {
+    return null;
+  }
+}
+
+export async function markCheckpointMigrationDone(): Promise<void> {
+  await db.settings.put({ key: CHECKPOINT_MIGRATION_KEY, value: 'true' });
+}
+
+/** Clear both rows so an imported backup is a new migration generation. */
+export async function resetCheckpointMigration(): Promise<void> {
+  await db.transaction('rw', db.settings, async () => {
+    await db.settings.delete(CHECKPOINT_MIGRATION_KEY);
+    await db.settings.delete(CHECKPOINT_SNAPSHOT_KEY);
+  });
+}
+
 // Single-row table: the one previous-week snapshot. clear+put inside a
 // transaction so a crash can't leave two rows.
 export async function loadPlanReview(): Promise<PlanReview | null> {
@@ -264,6 +313,7 @@ export function exportState(
   // the omission.
   sidebarPanels: SidebarPanel[],
   preSlotMigrationSnapshot?: { goals: Goal[]; tasks: Task[] } | null,
+  preCheckpointMigrationSnapshot?: { goals: Goal[] } | null,
 ): void {
   const backup = {
     ...state,
@@ -273,6 +323,7 @@ export function exportState(
     sidebarPanels,
     ...(planReview ? { planReview } : {}),
     ...(preSlotMigrationSnapshot ? { preSlotMigrationSnapshot } : {}),
+    ...(preCheckpointMigrationSnapshot ? { preCheckpointMigrationSnapshot } : {}),
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -317,6 +368,9 @@ export async function importStateFromFile(
       // device's data, and resetSlotMigration (below) clears it deliberately
       // so a fresh one can be taken for the just-imported data on next launch.
       preSlotMigrationSnapshot?: unknown;
+      // Same rule for the checkpoint migration: this belongs to the exporting
+      // device's generation and must never become this device's recovery copy.
+      preCheckpointMigrationSnapshot?: unknown;
     }
   >;
   try {
@@ -379,6 +433,10 @@ export async function importStateFromFile(
   // keeps running on the un-migrated shapes it just loaded; this only
   // guarantees the migration is not skipped forever.
   await resetSlotMigration();
+  // The imported data is a new generation for checkpoint migration too. Do not
+  // adopt a snapshot from the exporting device; take this device's own copy on
+  // the next hydration instead.
+  await resetCheckpointMigration();
   // Optional: restore the week-review snapshot if the backup carries a sane one.
   const pr = (raw as { planReview?: PlanReview }).planReview;
   if (pr && typeof pr.week === 'string' && Array.isArray(pr.entries) && typeof pr.reviewed === 'boolean') {

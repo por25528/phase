@@ -16,7 +16,7 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 
 ## Layers
 
-- `src/db/types.ts` — all domain types: `Goal`, `GoalNode`, `Habit`, `Task`, `Session`, `Milestone`.
+- `src/db/types.ts` — all domain types: `Goal`, `GoalNode`, `Habit`, `Task`, and `Session`.
 - `src/db/db.ts` — Dexie persistence. The only module that touches IndexedDB.
 - `src/lib/*` — pure, side-effect-free helpers; new logic here ships with a sibling `*.test.ts`.
 - `src/state/store.ts` — the single global store (`useSyncExternalStore`). All mutations go through `actions`, which call `setAndPersist`. Views never call `db` directly.
@@ -27,7 +27,7 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 ## Invariants
 
 - The `goals` array is kept column-major (all column-0 goals in order, then column-1, …). `normalizeByColumn` (called from `addGoals`) and the column-ordered rebuild in `setGoalBoard` — both in `store.ts` — are what maintain it; other mutations preserve existing order.
-- `Milestone`s and node `start`/`deadline` are display/scheduling metadata only — they never affect the pct roll-up in `src/lib/pct.ts`.
+- Node `start`/`deadline`/`plannedWeek`/`plannedDay`/`plannedStartMin`/`estimateMin` are scheduling metadata and never affect the pct roll-up in `src/lib/pct.ts`. A checkpoint is deliberately not metadata: it is a real node and counts in the roll-up, unlike the `Milestone` it replaced.
 - Deletes (and other destructive edits) are undo-aware: the action snapshots the affected slice and calls `scheduleUndo`, giving a 5-second undo window (`store.ts`). Any edit that discards user data to hold an invariant — `indentNode` clearing the new parent's completion and slot, `addChild` converting a scheduled leaf into a container — must be undoable too.
 - **The Undo toast never outlives its restore.** `setAndPersist`'s sweep drops every non-surgical entry when an ordinary edit lands, and clears `pendingUndo` in the same write (`armedSurgical`). A visible Undo button that does nothing is worse than no button.
 - **An import is a generation boundary.** `importBackup` clears `undoStack`/`pendingUndo`: a whole-slice restore armed against the previous dataset would otherwise overwrite the imported one and persist it.

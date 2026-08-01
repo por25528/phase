@@ -96,7 +96,7 @@ function CardFace({
               dateInfo.past ? 'text-warn bg-warn-tint' : 'text-chip-ink bg-chip'
             }`}
           >
-            {dateInfo.kind === 'milestone' ? 'Milestone' : 'Due'} · {fmtD(dateInfo.date)}
+            {dateInfo.kind === 'checkpoint' ? 'Checkpoint' : 'Due'} · {fmtD(dateInfo.date)}
           </span>
         )}
       </div>

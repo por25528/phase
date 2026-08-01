@@ -64,16 +64,25 @@ describe('roadmapWarnings', () => {
     expect(kinds(goal({ column: 1, nodes }))).not.toContain('unscheduled-phases');
   });
 
-  it('milestone-unplanned reuses the milestone window + unplanned-this-week predicate', () => {
-    const base = { column: 1 as const, milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] };
-    const unplanned = goal({ ...base, nodes: [{ id: 'a', title: 'A', done: false }] });
-    expect(kinds(unplanned)).toContain('milestone-unplanned');
+  it('checkpoint-unplanned reuses the checkpoint window + unplanned-this-week predicate', () => {
+    const base = { column: 1 as const };
+    const checkpoint = { id: 'm', title: 'M', checkpoint: true, done: false, start: '2026-07-20', deadline: '2026-07-20' };
+    const unplanned = goal({ ...base, nodes: [checkpoint, { id: 'a', title: 'A', done: false }] });
+    expect(kinds(unplanned)).toContain('checkpoint-unplanned');
     // planned this week → silent
-    const planned = goal({ ...base, nodes: [{ id: 'a', title: 'A', done: false, plannedWeek: WEEK }] });
-    expect(kinds(planned)).not.toContain('milestone-unplanned');
-    // milestone too far out → silent
-    const far = goal({ column: 1, milestones: [{ id: 'm', title: 'M', date: '2026-09-01' }], nodes: [{ id: 'a', title: 'A', done: false }] });
-    expect(kinds(far)).not.toContain('milestone-unplanned');
+    const planned = goal({ ...base, nodes: [checkpoint, { id: 'a', title: 'A', done: false, plannedWeek: WEEK }] });
+    expect(kinds(planned)).not.toContain('checkpoint-unplanned');
+    // checkpoint too far out → silent
+    const farCheckpoint = { ...checkpoint, start: '2026-09-01', deadline: '2026-09-01' };
+    const far = goal({ column: 1, nodes: [farCheckpoint, { id: 'a', title: 'A', done: false }] });
+    expect(kinds(far)).not.toContain('checkpoint-unplanned');
+  });
+
+  it('does not warn for a done near checkpoint', () => {
+    const done = goal({ column: 1, nodes: [
+      { id: 'm', title: 'M', checkpoint: true, done: true, start: '2026-07-20', deadline: '2026-07-20' },
+    ] });
+    expect(kinds(done)).not.toContain('checkpoint-unplanned');
   });
 
   it('stacks independent warnings (Now project both overdue and unscheduled)', () => {
@@ -155,8 +164,10 @@ describe('fitRoadmapRange', () => {
     expect(r.scale).toBe(3);
   });
 
-  it('considers milestone dates when framing', () => {
-    const r = fitRoadmapRange([goal({ start: '2026-07-01', deadline: '2026-07-10', milestones: [{ id: 'm', title: 'M', date: '2026-09-01' }] })], 4000)!;
+  it('considers checkpoint dates when framing', () => {
+    const r = fitRoadmapRange([goal({ start: '2026-07-01', deadline: '2026-07-10', nodes: [
+      { id: 'm', title: 'M', checkpoint: true, done: false, start: '2026-09-01', deadline: '2026-09-01' },
+    ] })], 4000)!;
     expect(r.scrollToCenterDate).toBe('2026-08-01'); // midpoint of 07-01…09-01
   });
 

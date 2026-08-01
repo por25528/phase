@@ -73,6 +73,23 @@ export function StepPanel({ goal, node, actions }: {
             </button>
           )}
         </h2>
+        {!isContainer && (
+          <button
+            type="button"
+            aria-label={
+              node.checkpoint
+                ? `Remove checkpoint from "${node.title}"`
+                : `Mark "${node.title}" as a checkpoint`
+            }
+            title="Checkpoint"
+            onClick={() => actions.toggleCheckpoint(node.id)}
+            className={`text-meta px-[6px] py-[4px] min-h-[24px] rounded-field hover:bg-hover ${
+              node.checkpoint ? 'text-accent' : 'text-muted hover:text-accent'
+            }`}
+          >
+            {node.checkpoint ? '◆' : '◇'}
+          </button>
+        )}
         <button
           type="button"
           aria-label="Close step details"

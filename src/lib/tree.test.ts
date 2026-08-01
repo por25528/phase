@@ -151,6 +151,36 @@ describe('indentNode', () => {
   });
 
   describe('indentNode clears planning fields on the new container', () => {
+    it('drops checkpoint when a checkpoint leaf becomes a container', () => {
+      const goals: Goal[] = [{
+        id: 'g1', title: 'G', nodes: [
+          { id: 'a', title: 'A', done: false, checkpoint: true },
+          { id: 'b', title: 'B', done: false },
+        ],
+      }];
+
+      const next = indentNode(goals, 'b');
+      const a = next[0].nodes[0];
+
+      expect(a.children?.map((c) => c.id)).toEqual(['b']);
+      expect(a.checkpoint).toBeUndefined();
+    });
+
+    it('leaves checkpoint absent when a non-checkpoint leaf becomes a container', () => {
+      const goals: Goal[] = [{
+        id: 'g1', title: 'G', nodes: [
+          { id: 'a', title: 'A', done: false },
+          { id: 'b', title: 'B', done: false },
+        ],
+      }];
+
+      const next = indentNode(goals, 'b');
+
+      expect(next[0].nodes[0]).toEqual({
+        id: 'a', title: 'A', children: [{ id: 'b', title: 'B', done: false }],
+      });
+    });
+
     it('drops done, plannedWeek and plannedDay when the preceding leaf becomes a container', () => {
       const goals: Goal[] = [{
         id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31',

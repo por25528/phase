@@ -37,6 +37,10 @@ const dbMocks = vi.hoisted(() => ({
   saveSlotMigrationSnapshot: vi.fn(async () => {}),
   loadSlotMigrationSnapshot: vi.fn(async () => null),
   markSlotMigrationDone: vi.fn(async () => {}),
+  isCheckpointMigrationDone: vi.fn(async () => true),
+  saveCheckpointMigrationSnapshot: vi.fn(async () => {}),
+  loadCheckpointMigrationSnapshot: vi.fn(async () => null),
+  markCheckpointMigrationDone: vi.fn(async () => {}),
 }));
 vi.mock('../db/db', () => dbMocks);
 vi.mock('../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));
@@ -88,8 +92,8 @@ const GOALS: Goal[] = [
         ],
       },
       { id: 'n-exam', title: '18.06 exam prep', done: false, deadline: iso(9) },
+      { id: 'm1', title: 'Midterm', checkpoint: true, done: false, start: iso(9), deadline: iso(9) },
     ],
-    milestones: [{ id: 'm1', title: 'Midterm', date: iso(9) }],
     notes: 'Office hours Tue/Thu.',
   },
   {

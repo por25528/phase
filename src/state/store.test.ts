@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
-import type { Goal, PlanReview, Session, Task } from '../db/types';
+import { leafCount } from '../lib/board';
+import type { Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
 
 const dbMocks = vi.hoisted(() => ({
@@ -28,6 +29,10 @@ const dbMocks = vi.hoisted(() => ({
   saveSlotMigrationSnapshot: vi.fn(async () => {}),
   loadSlotMigrationSnapshot: vi.fn(async () => null),
   markSlotMigrationDone: vi.fn(async () => {}),
+  isCheckpointMigrationDone: vi.fn(async () => true),
+  saveCheckpointMigrationSnapshot: vi.fn(async () => {}),
+  loadCheckpointMigrationSnapshot: vi.fn(async () => null),
+  markCheckpointMigrationDone: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -41,6 +46,18 @@ vi.mock('../lib/tabLock', () => tabLockMocks);
 async function freshStore() {
   vi.resetModules();
   return await import('./store');
+}
+
+function expectNoContainerCheckpoints(goals: Goal[]): void {
+  function visit(nodes: GoalNode[]): void {
+    for (const node of nodes) {
+      if (!node.children?.length) continue;
+      expect(node.checkpoint).not.toBe(true);
+      visit(node.children);
+    }
+  }
+
+  goals.forEach((goal) => visit(goal.nodes));
 }
 
 const legacyTask: Task = {
@@ -310,6 +327,76 @@ describe('store actions', () => {
     expect(node.done).toBeUndefined();
     expect(node.children).toHaveLength(1);
     expect(getState().expanded.has(nid)).toBe(true);
+  });
+
+  describe('checkpoints', () => {
+    it('toggles a leaf checkpoint on and removes the field when toggled off', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.toggleCheckpoint(nid);
+      expect(getState().goals[0].nodes[0].checkpoint).toBe(true);
+
+      actions.toggleCheckpoint(nid);
+      expect('checkpoint' in getState().goals[0].nodes[0]).toBe(false);
+    });
+
+    it('refuses to toggle a container and does not write', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'container');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.addChild(nid, 'child');
+      dbMocks.persist.mockClear();
+
+      actions.toggleCheckpoint(nid);
+
+      expect(getState().goals[0].nodes[0].checkpoint).toBeUndefined();
+      expect(dbMocks.persist).not.toHaveBeenCalled();
+    });
+
+    it('keeps checkpoint leaves in leafCount and goalPct, and ticking one moves the percentage', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'checkpoint');
+      actions.addRootNode(gid, 'ordinary');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.toggleCheckpoint(nid);
+      expect(leafCount(getState().goals[0].nodes)).toEqual({ total: 2, done: 0 });
+      expect(goalPct(getState().goals[0])).toBe(0);
+
+      actions.toggleLeaf(nid);
+      expect(leafCount(getState().goals[0].nodes)).toEqual({ total: 2, done: 1 });
+      expect(goalPct(getState().goals[0])).toBe(50);
+    });
+
+    it('clears a checkpoint when addChild converts a leaf and undo restores both', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'checkpoint');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.toggleCheckpoint(nid);
+
+      actions.addChild(nid, 'child');
+
+      const converted = getState().goals[0].nodes[0];
+      expect(converted.checkpoint).toBeUndefined();
+      expect(converted.children).toHaveLength(1);
+      expect(getState().pendingUndo).not.toBeNull();
+
+      actions.undoLastDelete();
+
+      const restored = getState().goals[0].nodes[0];
+      expect(restored.children).toBeUndefined();
+      expect(restored.checkpoint).toBe(true);
+    });
   });
 
   it('addChild clears a completed leaf completion timestamp', async () => {
@@ -648,20 +735,6 @@ describe('store actions', () => {
     actions.undoLastDelete();
     expect(getState().habits).toHaveLength(1);
     expect(getState().habits[0].id).toBe(hid);
-  });
-
-  it('removeMilestone schedules undo; undoLastDelete restores', async () => {
-    const { actions, getState } = await freshStore();
-    actions.addGoal('G');
-    const gid = getState().goals[0].id;
-    actions.addMilestone(gid, 'Launch', '2026-08-01');
-    const mid = getState().goals[0].milestones![0].id;
-    actions.removeMilestone(gid, mid);
-    expect(getState().goals[0].milestones).toHaveLength(0);
-    expect(getState().pendingUndo).not.toBeNull();
-    actions.undoLastDelete();
-    expect(getState().goals[0].milestones).toHaveLength(1);
-    expect(getState().goals[0].milestones![0].id).toBe(mid);
   });
 
   describe('addGoals (import path)', () => {
@@ -1281,6 +1354,9 @@ describe('store actions', () => {
         vi.mocked(dbMod.markSlotMigrationDone).mockClear();
         vi.mocked(dbMod.persist).mockClear();
         vi.mocked(dbMod.isSlotMigrationDone).mockClear();
+        vi.mocked(dbMod.saveCheckpointMigrationSnapshot).mockClear();
+        vi.mocked(dbMod.markCheckpointMigrationDone).mockClear();
+        vi.mocked(dbMod.isCheckpointMigrationDone).mockClear();
         vi.mocked(dbMod.loadState).mockClear();
       });
 
@@ -1460,6 +1536,67 @@ describe('store actions', () => {
       });
     });
 
+    describe('one-shot checkpoint migration', () => {
+      beforeEach(async () => {
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.saveCheckpointMigrationSnapshot).mockClear();
+        vi.mocked(dbMod.markCheckpointMigrationDone).mockClear();
+        vi.mocked(dbMod.persist).mockClear();
+        vi.mocked(dbMod.isCheckpointMigrationDone).mockClear();
+        vi.mocked(dbMod.loadState).mockClear();
+        vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValue(true);
+      });
+
+      it('skips snapshot, persist, and mark-done once already done', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        vi.mocked(dbMod.isCheckpointMigrationDone).mockResolvedValueOnce(true);
+
+        await store.initStore();
+
+        expect(store.getState().hydration).toBe('ready');
+        expect(dbMod.saveCheckpointMigrationSnapshot).not.toHaveBeenCalled();
+        expect(dbMod.markCheckpointMigrationDone).not.toHaveBeenCalled();
+      });
+
+      it('snapshots before conversion, persists, then marks done', async () => {
+        const store = await freshStore();
+        const dbMod = await import('../db/db');
+        const legacyGoal = {
+          id: 'g1',
+          title: 'Legacy project',
+          nodes: [{ id: 'step', title: 'Step', done: false }],
+          milestones: [{ id: 'm1', title: 'Demo', date: '2026-08-10' }],
+        };
+        vi.mocked(dbMod.isCheckpointMigrationDone).mockResolvedValueOnce(false);
+        vi.mocked(dbMod.loadState).mockResolvedValueOnce({
+          goals: [legacyGoal as unknown as Goal], habits: [], tasks: [], sessions: [],
+        });
+
+        const calls: string[] = [];
+        vi.mocked(dbMod.saveCheckpointMigrationSnapshot).mockImplementationOnce(async (goals) => {
+          calls.push('snapshot');
+          expect(goals[0]).toHaveProperty('milestones');
+        });
+        vi.mocked(dbMod.persist).mockImplementationOnce(async (next) => {
+          calls.push('persist');
+          expect(next.goals[0].nodes).toHaveLength(2);
+          expect(next.goals[0]).not.toHaveProperty('milestones');
+        });
+        vi.mocked(dbMod.markCheckpointMigrationDone).mockImplementationOnce(async () => {
+          calls.push('markDone');
+        });
+
+        await store.initStore();
+
+        expect(store.getState().hydration).toBe('ready');
+        expect(calls).toEqual(['snapshot', 'persist', 'markDone']);
+        expect(store.getState().goals[0].nodes[1]).toMatchObject({
+          id: 'm1', checkpoint: true, start: '2026-08-10', deadline: '2026-08-10',
+        });
+      });
+    });
+
     describe('tab lock gates the migration', () => {
       beforeEach(async () => {
         const dbMod = await import('../db/db');
@@ -1467,6 +1604,9 @@ describe('store actions', () => {
         vi.mocked(dbMod.markSlotMigrationDone).mockClear();
         vi.mocked(dbMod.persist).mockClear();
         vi.mocked(dbMod.isSlotMigrationDone).mockClear();
+        vi.mocked(dbMod.saveCheckpointMigrationSnapshot).mockClear();
+        vi.mocked(dbMod.markCheckpointMigrationDone).mockClear();
+        vi.mocked(dbMod.isCheckpointMigrationDone).mockClear();
         vi.mocked(tabLockMocks.acquireTabLock).mockClear();
         vi.mocked(tabLockMocks.acquireTabLock).mockResolvedValue(true);
       });
@@ -1480,6 +1620,7 @@ describe('store actions', () => {
         // `false` fallback that "a non-owning tab..." leaves behind.
         const dbMod = await import('../db/db');
         vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValue(true);
+        vi.mocked(dbMod.isCheckpointMigrationDone).mockResolvedValue(true);
       });
 
       it('a non-owning tab renders normally without migrating', async () => {
@@ -1492,6 +1633,7 @@ describe('store actions', () => {
         // test only; the afterEach above restores the safe default so a
         // short-circuited, unconsumed value can never leak into later tests.
         vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValue(false);
+        vi.mocked(dbMod.isCheckpointMigrationDone).mockResolvedValue(false);
         vi.mocked(tabLockMocks.acquireTabLock).mockResolvedValueOnce(false);
 
         await store.initStore();
@@ -1501,6 +1643,8 @@ describe('store actions', () => {
         expect(dbMod.saveSlotMigrationSnapshot).not.toHaveBeenCalled();
         expect(dbMod.persist).not.toHaveBeenCalled();
         expect(dbMod.markSlotMigrationDone).not.toHaveBeenCalled();
+        expect(dbMod.saveCheckpointMigrationSnapshot).not.toHaveBeenCalled();
+        expect(dbMod.markCheckpointMigrationDone).not.toHaveBeenCalled();
       });
 
       it('the owning tab migrates as usual', async () => {
@@ -1554,21 +1698,22 @@ describe('store actions', () => {
       expect(exportState).toHaveBeenCalledWith({
         goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
       }, 13, planReview, store.getState().availability, store.getState().allDayBlocks,
-      store.getState().sidebarPanels, null);
+       store.getState().sidebarPanels, null, null);
     });
 
     it('loads the pre-migration snapshot and carries it into the export', async () => {
       const { store } = await freshStoreWithLegacyData();
-      const { exportState, loadSlotMigrationSnapshot } = await import('../db/db');
+      const { exportState, loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot } = await import('../db/db');
       vi.mocked(exportState).mockClear();
       const snapshot = { goals: [], tasks: [] };
       vi.mocked(loadSlotMigrationSnapshot).mockResolvedValueOnce(snapshot);
+      vi.mocked(loadCheckpointMigrationSnapshot).mockResolvedValueOnce(null);
 
       await store.actions.exportBackup();
 
       expect(exportState).toHaveBeenCalledWith(
         expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
-        expect.anything(), snapshot,
+        expect.anything(), snapshot, null,
       );
     });
   });
@@ -1866,6 +2011,42 @@ describe('addChildren (AI daily subtasks)', () => {
     const node = getState().goals[0].nodes[0];
     expect(node.done).toBeUndefined();
     expect(node.doneAt).toBeUndefined();
+  });
+
+  it('clears a checkpoint when converting a leaf and undo restores the leaf and flag', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([{
+      ...withStep,
+      nodes: [{ ...withStep.nodes[0], checkpoint: true }],
+    }]);
+
+    actions.addChildren('n', ['Sub A']);
+
+    const converted = getState().goals[0].nodes[0];
+    expect(converted.checkpoint).toBeUndefined();
+    expect(converted.children).toHaveLength(1);
+    expectNoContainerCheckpoints(getState().goals);
+    expect(getState().pendingUndo).not.toBeNull();
+
+    actions.undoLastDelete();
+
+    const restored = getState().goals[0].nodes[0];
+    expect(restored.children).toBeUndefined();
+    expect(restored.checkpoint).toBe(true);
+  });
+
+  it('does not arm undo for a plain non-checkpoint leaf', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([{
+      id: 'g', title: 'G', column: 0,
+      nodes: [{ id: 'n', title: 'Step', done: false }],
+    }]);
+
+    actions.addChildren('n', ['Sub A']);
+
+    expect(getState().pendingUndo).toBeNull();
+    expect(getState().goals[0].nodes[0].children).toHaveLength(1);
+    expectNoContainerCheckpoints(getState().goals);
   });
 
   it('is a no-op for an all-blank list and for a completed (frozen) project', async () => {
@@ -3117,6 +3298,20 @@ describe('restructuring a step tree', () => {
     const [a, b] = getState().goals[0].nodes;
     expect(a).toMatchObject({ id: 'a', done: true, doneAt: '2026-07-14', estimateMin: 90 });
     expect(b.id).toBe('b');
+  });
+
+  it('clears a checkpoint from the new container and restores it with undo', async () => {
+    const { actions, getState } = await storeWithTwoSteps();
+    actions.toggleCheckpoint('a');
+
+    actions.indentNode('b');
+
+    expectNoContainerCheckpoints(getState().goals);
+    expect(getState().goals[0].nodes[0].checkpoint).toBeUndefined();
+
+    actions.undoLastDelete();
+
+    expect(getState().goals[0].nodes[0].checkpoint).toBe(true);
   });
 
   it('offers no undo for a move the tree refused', async () => {

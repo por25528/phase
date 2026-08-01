@@ -210,7 +210,9 @@ function buildImportedGoal(spec: GoalSpec, issues: string[]): Goal {
 /**
  * Drop an invalid `completedAt` from a backup goal so a malformed value can't
  * silently hide a project on import (spec §5). A valid `YYYY-MM-DD` is kept;
- * anything else is removed, leaving the project active.
+ * anything else is removed, leaving the project active. Unknown fields are
+ * deliberately left untouched so a later generation migration can consume
+ * legacy data before removing it.
  */
 export function sanitizeBackupGoal(goal: Goal): Goal {
   const c = (goal as { completedAt?: unknown }).completedAt;

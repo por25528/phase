@@ -164,7 +164,7 @@ export function scrollLeftForCenter(
   return Math.max(0, dateToX(date, rangeStart, pxPerDay) + pxPerDay / 2 - clientW / 2);
 }
 
-// Range spanning every date the timeline can show (goal/node spans, milestones,
+// Range spanning every date the timeline can show (goal/node spans, checkpoints,
 // today, and optionally the date to keep centered), padded so there's always
 // scroll room before the first extension kicks in. Guarantees every bar is
 // on-canvas from the start.

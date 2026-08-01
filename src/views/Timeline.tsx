@@ -31,6 +31,7 @@ import { DaysLane } from './timeline/DaysLane';
 import { Ruler } from './timeline/Ruler';
 import { useReducedMotion } from '../components/useReducedMotion';
 import { hasGoalSpan } from '../lib/schedule';
+import { checkpointDates } from '../lib/checkpoints';
 
 type Scope = 'focus' | 'all' | string; // 'focus' | 'all' | a project id
 
@@ -126,7 +127,7 @@ export function Timeline() {
     const ds: string[] = [];
     for (const g of goals.filter(hasGoalSpan)) {
       ds.push(g.start, g.deadline);
-      for (const m of g.milestones ?? []) ds.push(m.date);
+      ds.push(...checkpointDates(g));
       for (const n of g.nodes) {
         if (n.start) ds.push(n.start);
         if (n.deadline) ds.push(n.deadline);

@@ -5,6 +5,8 @@ import {
   loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
   isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
   resetSlotMigration, loadSlotMigrationSnapshot,
+  isCheckpointMigrationDone, markCheckpointMigrationDone, saveCheckpointMigrationSnapshot,
+  resetCheckpointMigration, loadCheckpointMigrationSnapshot,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
 } from './db';
 import type { AppState, Goal } from './types';
@@ -53,6 +55,18 @@ describe('importStateFromFile', () => {
     expect(result.pxPerDay).toBe(40);
     expect(await loadState()).toEqual({
       goals: [goal('g1')], habits: [], tasks: [task], sessions: [session],
+    });
+  });
+
+  it('accepts an old backup whose goals still carry the legacy markers', async () => {
+    const legacyGoal = {
+      ...goal('legacy-markers'),
+      milestones: [{ id: 'm1', title: 'Demo', date: '2026-08-10' }],
+    };
+    const backup = { goals: [legacyGoal], habits: [], tasks: [], sessions: [] };
+
+    await expect(importStateFromFile(fileOf(JSON.stringify(backup)))).resolves.toMatchObject({
+      goals: [expect.objectContaining({ id: 'legacy-markers' })],
     });
   });
 
@@ -351,6 +365,31 @@ describe('slot migration flag and snapshot', () => {
       });
       expect(await loadSlotMigrationSnapshot()).toBeNull();
     });
+  });
+});
+
+describe('checkpoint migration flag and snapshot', () => {
+  it('isCheckpointMigrationDone is false initially and true after marking done', async () => {
+    expect(await isCheckpointMigrationDone()).toBe(false);
+    await markCheckpointMigrationDone();
+    expect(await isCheckpointMigrationDone()).toBe(true);
+  });
+
+  it('does not overwrite the original checkpoint snapshot', async () => {
+    const original = [goal('original')];
+    await saveCheckpointMigrationSnapshot(original);
+    await saveCheckpointMigrationSnapshot([goal('migrated-should-not-land')]);
+
+    expect(await loadCheckpointMigrationSnapshot()).toEqual({ goals: original });
+  });
+
+  it('reset clears the checkpoint done flag and snapshot', async () => {
+    await saveCheckpointMigrationSnapshot([goal('before-reset')]);
+    await markCheckpointMigrationDone();
+    await resetCheckpointMigration();
+
+    expect(await isCheckpointMigrationDone()).toBe(false);
+    expect(await loadCheckpointMigrationSnapshot()).toBeNull();
   });
 });
 

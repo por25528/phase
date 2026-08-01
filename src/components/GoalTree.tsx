@@ -484,7 +484,7 @@ function GoalTreeNode({
      * Tab used to restructure the project, which made this a keyboard trap in
      * the WCAG 2.1.2 sense: every row is `tabIndex={0}`, so once focus entered
      * the tree neither Tab nor Shift+Tab could move it out, and the drawer's
-     * Notes, Milestones and "+ add step" were unreachable without a mouse. It
+     * Notes, checkpoints and "+ add step" were unreachable without a mouse. It
      * was destructive with it: the second Tab a user pressed re-parented a
      * step, `indentNode` strips the new parent's `done` and planned slot, and
      * none of it is undoable. On the first sibling it silently did nothing, so
@@ -655,6 +655,12 @@ function GoalTreeNode({
             onToggle={() => actions.toggleLeaf(n.id)}
             label={`Mark "${n.title}" as done`}
           />
+        )}
+
+        {n.checkpoint && (
+          <span className="text-accent text-meta leading-none flex-shrink-0" aria-hidden="true">
+            ◆
+          </span>
         )}
 
         {/* Title */}

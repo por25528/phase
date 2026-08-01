@@ -25,6 +25,10 @@ const dbMocks = vi.hoisted(() => ({
   saveSlotMigrationSnapshot: vi.fn(async () => {}),
   loadSlotMigrationSnapshot: vi.fn(async () => null),
   markSlotMigrationDone: vi.fn(async () => {}),
+  isCheckpointMigrationDone: vi.fn(async () => true),
+  saveCheckpointMigrationSnapshot: vi.fn(async () => {}),
+  loadCheckpointMigrationSnapshot: vi.fn(async () => null),
+  markCheckpointMigrationDone: vi.fn(async () => {}),
 }));
 vi.mock('../../db/db', () => dbMocks);
 vi.mock('../../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));
@@ -59,6 +63,11 @@ const plannedLeaf: Goal = {
 const unplannedLeaf: Goal = {
   id: 'g1', title: 'Project',
   nodes: [{ id: 'n1', title: 'Wire up auth', done: false }],
+};
+
+const checkpointLeaf: Goal = {
+  id: 'g1', title: 'Project',
+  nodes: [{ id: 'n1', title: 'Wire up auth', done: false, checkpoint: true }],
 };
 
 const containerNode: Goal = {
@@ -212,6 +221,24 @@ describe('StepPanel', () => {
     expect(screen.getByText('50%')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /estimate for|Set estimate/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /log time/i })).toBeNull();
+  });
+
+  it('offers the checkpoint toggle on a leaf and updates its label when enabled', async () => {
+    const store = await mountPanel(leafWithDates);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark "Wire up auth" as a checkpoint' }));
+
+    expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
+    expect(screen.getByRole('button', { name: 'Remove checkpoint from "Wire up auth"' })).toBeTruthy();
+  });
+
+  it('shows the remove label for a checkpoint and omits the toggle on a container', async () => {
+    await mountPanel(checkpointLeaf);
+    expect(screen.getByRole('button', { name: 'Remove checkpoint from "Wire up auth"' })).toBeTruthy();
+
+    cleanup();
+    await mountPanel(containerNode);
+    expect(screen.queryByRole('button', { name: /checkpoint/i })).toBeNull();
   });
 
   it('closes with the close button', async () => {

@@ -3,13 +3,14 @@ import type { Goal, PlanReview, Session } from '../db/types';
 import {
   weekOf, plannedLeaves, paceStatus, attentionRank,
   weekRecap, planOpeningStep, PACE_THRESHOLD_PTS,
-  projectAttention, milestoneWithin, deadlineBefore, hasUnplannedOpenLeafThisWeek,
-  DUE_SOON_DAYS, MILESTONE_SOON_DAYS, focusSummary,
+  projectAttention, deadlineBefore, hasUnplannedOpenLeafThisWeek,
+  DUE_SOON_DAYS, focusSummary,
   nearestMeaningfulDate, nextOpenAction, attentionBadge, cardPrimaryAction,
   unplannedOpenLeaves, groupPlannedByGoal, railTree,
   loggedTimeForWeek, formatLoggedMinutes,
 } from './plan';
 import type { PlannedLeaf } from './plan';
+import { CHECKPOINT_SOON_DAYS, checkpointWithin } from './checkpoints';
 import { leafCount } from './board';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
@@ -220,19 +221,31 @@ describe('projectAttention', () => {
     expect(projectAttention(g, TODAY)).toBe('on-track');
   });
 
-  it('milestone-soon when a near milestone has nothing planned this week', () => {
+  it('checkpoint-soon when a near checkpoint has nothing planned this week', () => {
     const g = goal({ nodes: [
       { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
-      { id: 'c', title: 'C', done: true }, { id: 'd', title: 'D', done: false },
-    ], milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] });
-    expect(projectAttention(g, TODAY)).toBe('milestone-soon');
+      { id: 'c', title: 'C', done: true },
+      { id: 'd', title: 'Checkpoint', done: false, checkpoint: true, start: '2026-07-20', deadline: '2026-07-20' },
+    ] });
+    expect(projectAttention(g, TODAY)).toBe('checkpoint-soon');
   });
 
-  it('milestone-soon yields once the week has an unfinished planned leaf', () => {
+  it('a done near checkpoint does not produce checkpoint-soon', () => {
     const g = goal({ nodes: [
       { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
-      { id: 'c', title: 'C', done: true }, { id: 'd', title: 'D', done: false, plannedWeek: WEEK },
-    ], milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] });
+      { id: 'c', title: 'C', done: true },
+      { id: 'd', title: 'Checkpoint', done: true, checkpoint: true, start: '2026-07-20', deadline: '2026-07-20' },
+    ] });
+    expect(projectAttention(g, TODAY)).not.toBe('checkpoint-soon');
+    expect(attentionBadge(g, TODAY)?.label).not.toContain('Checkpoint');
+  });
+
+  it('checkpoint-soon yields once the week has an unfinished planned leaf', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', done: true }, { id: 'b', title: 'B', done: true },
+      { id: 'c', title: 'C', done: true },
+      { id: 'd', title: 'Checkpoint', done: false, checkpoint: true, start: '2026-07-20', deadline: '2026-07-20', plannedWeek: WEEK },
+    ] });
     expect(projectAttention(g, TODAY)).toBe('on-track');
   });
 
@@ -288,11 +301,11 @@ describe('shared predicates', () => {
     expect(deadlineBefore('2026-07-15', TODAY)).toBe(false);
   });
 
-  it('milestoneWithin is inclusive of the window edge', () => {
-    const g = goal({ milestones: [{ id: 'm', title: 'M', date: '2026-07-29' }] }); // exactly +14
-    expect(milestoneWithin(g, 14, TODAY)).toBe(true);
-    expect(milestoneWithin(g, 13, TODAY)).toBe(false);
-    expect(milestoneWithin(goal({}), 14, TODAY)).toBe(false);
+  it('checkpointWithin is inclusive of the window edge', () => {
+    const g = goal({ nodes: [{ id: 'cp', title: 'Checkpoint', checkpoint: true, done: false, start: '2026-07-29', deadline: '2026-07-29' }] }); // exactly +14
+    expect(checkpointWithin(g, 14, TODAY)).toBe(true);
+    expect(checkpointWithin(g, 13, TODAY)).toBe(false);
+    expect(checkpointWithin(goal({}), 14, TODAY)).toBe(false);
   });
 
   it('hasUnplannedOpenLeafThisWeek needs an open, unplanned leaf', () => {
@@ -301,9 +314,9 @@ describe('shared predicates', () => {
     expect(hasUnplannedOpenLeafThisWeek(goal({ nodes: [{ id: 'a', title: 'A', done: true }] }), TODAY)).toBe(false);
   });
 
-  it('DUE_SOON_DAYS and MILESTONE_SOON_DAYS are 14', () => {
+  it('DUE_SOON_DAYS and CHECKPOINT_SOON_DAYS are 14', () => {
     expect(DUE_SOON_DAYS).toBe(14);
-    expect(MILESTONE_SOON_DAYS).toBe(14);
+    expect(CHECKPOINT_SOON_DAYS).toBe(14);
   });
 });
 
@@ -407,18 +420,18 @@ describe('weekRecap', () => {
 // ── Card derivations ──────────────────────────────────────────────────────────
 
 describe('nearestMeaningfulDate', () => {
-  it('leads with the soonest upcoming milestone before the deadline', () => {
-    const g = goal({ deadline: '2026-12-31', milestones: [
-      { id: 'm1', title: 'Late', date: '2026-10-01' },
-      { id: 'm2', title: 'Soon', date: '2026-08-01' },
+  it('leads with the soonest upcoming checkpoint before the deadline', () => {
+    const g = goal({ deadline: '2026-12-31', nodes: [
+      { id: 'm1', title: 'Late', checkpoint: true, done: false, start: '2026-10-01', deadline: '2026-10-01' },
+      { id: 'm2', title: 'Soon', checkpoint: true, done: false, start: '2026-08-01', deadline: '2026-08-01' },
     ]});
-    expect(nearestMeaningfulDate(g, TODAY)).toEqual({ date: '2026-08-01', kind: 'milestone', past: false });
+    expect(nearestMeaningfulDate(g, TODAY)).toEqual({ date: '2026-08-01', kind: 'checkpoint', past: false });
   });
 
-  it('ignores milestones that are past or at/after the deadline', () => {
-    const g = goal({ deadline: '2026-08-01', milestones: [
-      { id: 'm1', title: 'Past', date: '2026-06-01' },
-      { id: 'm2', title: 'After deadline', date: '2026-09-01' },
+  it('ignores checkpoints that are past or at/after the deadline', () => {
+    const g = goal({ deadline: '2026-08-01', nodes: [
+      { id: 'm1', title: 'Past', checkpoint: true, done: false, start: '2026-06-01', deadline: '2026-06-01' },
+      { id: 'm2', title: 'After deadline', checkpoint: true, done: false, start: '2026-09-01', deadline: '2026-09-01' },
     ]});
     expect(nearestMeaningfulDate(g, TODAY)).toEqual({ date: '2026-08-01', kind: 'deadline', past: false });
   });
@@ -430,34 +443,34 @@ describe('nearestMeaningfulDate', () => {
       .toEqual({ date: '2026-07-01', kind: 'deadline', past: true });
   });
 
-  it('uses an upcoming milestone but never a legacy deadline when dates are unconfirmed', () => {
+  it('uses an upcoming checkpoint but never a legacy deadline when dates are unconfirmed', () => {
     const legacy = goal({
       datesConfirmed: undefined,
       deadline: '2026-12-31',
-      milestones: [{ id: 'm', title: 'Milestone', date: '2026-08-01' }],
+      nodes: [{ id: 'm', title: 'Checkpoint', checkpoint: true, done: false, start: '2026-08-01', deadline: '2026-08-01' }],
     });
 
     expect(nearestMeaningfulDate(legacy, TODAY))
-      .toEqual({ date: '2026-08-01', kind: 'milestone', past: false });
-    expect(nearestMeaningfulDate({ ...legacy, milestones: [] }, TODAY)).toBeNull();
+      .toEqual({ date: '2026-08-01', kind: 'checkpoint', past: false });
+    expect(nearestMeaningfulDate({ ...legacy, nodes: [] }, TODAY)).toBeNull();
   });
 
-  it('keeps milestones eligible when the project has no deadline', () => {
+  it('keeps checkpoints eligible when the project has no deadline', () => {
     const g = goal({
       deadline: undefined,
       datesConfirmed: true,
-      milestones: [{ id: 'm', title: 'Milestone', date: '2026-08-01' }],
+      nodes: [{ id: 'm', title: 'Checkpoint', checkpoint: true, done: false, start: '2026-08-01', deadline: '2026-08-01' }],
     });
     expect(nearestMeaningfulDate(g, TODAY))
-      .toEqual({ date: '2026-08-01', kind: 'milestone', past: false });
+      .toEqual({ date: '2026-08-01', kind: 'checkpoint', past: false });
   });
 
-  it('uses a confirmed partial deadline as the milestone boundary and fallback', () => {
+  it('uses a confirmed partial deadline as the checkpoint boundary and fallback', () => {
     const g = goal({
       start: undefined,
       deadline: '2026-08-01',
       datesConfirmed: true,
-      milestones: [{ id: 'm', title: 'Later milestone', date: '2026-09-01' }],
+      nodes: [{ id: 'm', title: 'Later checkpoint', checkpoint: true, done: false, start: '2026-09-01', deadline: '2026-09-01' }],
     });
     expect(nearestMeaningfulDate(g, TODAY))
       .toEqual({ date: '2026-08-01', kind: 'deadline', past: false });
@@ -542,10 +555,12 @@ describe('attentionBadge', () => {
     expect(attentionBadge(g, TODAY)).toEqual({ label: 'Overdue', tone: 'warn-strong' });
   });
 
-  it('renders a "Milestone in Nd" badge', () => {
-    const g = goal({ column: 1, deadline: '2026-12-31', nodes: twoLeaves(),
-      milestones: [{ id: 'm', title: 'M', date: '2026-07-20' }] });
-    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Milestone in 5d', tone: 'warn' });
+  it('renders a "Checkpoint in Nd" badge', () => {
+    const g = goal({ column: 1, deadline: '2026-12-31', nodes: [
+      { id: 'a', title: 'A', done: true },
+      { id: 'm', title: 'M', done: false, checkpoint: true, start: '2026-07-20', deadline: '2026-07-20' },
+    ] });
+    expect(attentionBadge(g, TODAY)).toEqual({ label: 'Checkpoint in 5d', tone: 'warn' });
   });
 
   it('renders a "Due in Nd" badge', () => {

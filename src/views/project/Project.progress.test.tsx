@@ -25,6 +25,10 @@ const dbMocks = vi.hoisted(() => ({
   saveSlotMigrationSnapshot: vi.fn(async () => {}),
   loadSlotMigrationSnapshot: vi.fn(async () => null),
   markSlotMigrationDone: vi.fn(async () => {}),
+  isCheckpointMigrationDone: vi.fn(async () => true),
+  saveCheckpointMigrationSnapshot: vi.fn(async () => {}),
+  loadCheckpointMigrationSnapshot: vi.fn(async () => null),
+  markCheckpointMigrationDone: vi.fn(async () => {}),
 }));
 vi.mock('../../db/db', () => dbMocks);
 vi.mock('../../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));

@@ -11,6 +11,7 @@ import { useReducedMotion } from '../../components/useReducedMotion';
 import { paceStatus } from '../../lib/plan';
 import { roadmapWarnings } from '../../lib/roadmap';
 import { hasTrustedSchedule, type GoalWithSpan } from '../../lib/schedule';
+import { checkpointMarkers } from '../../lib/checkpoints';
 
 interface GoalRowProps {
   goal: GoalWithSpan;
@@ -34,7 +35,7 @@ export function canEditProjectSpan(goal: GoalWithSpan): boolean {
 /**
  * One goal's Timeline row: the sticky lane-label column (chevron + `#n` kicker +
  * title), the canvas plot area (segment grid + today line + goal SpanBar +
- * deadline flag + milestones), and — when expanded — the NodeLane sub-goal
+ * deadline flag + checkpoints), and — when expanded — the NodeLane sub-goal
  * section. Owns its own tooltip/preview state; the fixed-position tooltips
  * escape the card overflow. Memoized so scroll-driven header re-renders in the
  * parent don't touch every row.
@@ -46,7 +47,7 @@ export const GoalRow = memo(function GoalRow({
   const reduced = useReducedMotion();
   const [barTip, setBarTip] = useState<{ x: number; y: number } | null>(null);
   const [flagTip, setFlagTip] = useState<{ x: number; y: number } | null>(null);
-  const [msTip, setMsTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [checkpointTip, setCheckpointTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [preview, setPreview] = useState<Span | null>(null);
 
   const flagDeadline = preview ? preview.deadline : g.deadline;
@@ -174,14 +175,14 @@ export const GoalRow = memo(function GoalRow({
             <span className="absolute top-[-1px] left-[-2px] border-[3px] border-transparent border-t-accent pointer-events-none" />
           </div>
 
-          {/* Milestone markers */}
-          {(g.milestones ?? []).map((m) => (
+          {/* Checkpoint markers */}
+          {checkpointMarkers(g).map((m) => (
             <span
               key={m.id}
               className="absolute top-[3px] -translate-x-1/2 text-accent text-tiny leading-none z-[4] cursor-default select-none"
               style={{ left: `${dateToX(m.date, rangeStart, pxPerDay)}px` }}
-              onMouseEnter={(e) => setMsTip({ x: e.clientX, y: e.clientY, text: `${m.title} · ${fmtD(m.date)}` })}
-              onMouseLeave={() => setMsTip(null)}
+              onMouseEnter={(e) => setCheckpointTip({ x: e.clientX, y: e.clientY, text: `${m.title} · ${fmtD(m.date)}` })}
+              onMouseLeave={() => setCheckpointTip(null)}
             >
               ◆
             </span>
@@ -242,13 +243,13 @@ export const GoalRow = memo(function GoalRow({
         </div>
       )}
 
-      {/* Milestone tooltip */}
-      {msTip && (
+      {/* Checkpoint tooltip */}
+      {checkpointTip && (
         <div
           className="fixed z-[50] pointer-events-none bg-panel border border-line-2 rounded-[6px] px-[8px] py-[5px] select-none"
-          style={{ left: msTip.x + 10, top: msTip.y - 38 }}
+          style={{ left: checkpointTip.x + 10, top: checkpointTip.y - 38 }}
         >
-          <span className="text-meta text-muted whitespace-nowrap">{msTip.text}</span>
+          <span className="text-meta text-muted whitespace-nowrap">{checkpointTip.text}</span>
         </div>
       )}
     </div>

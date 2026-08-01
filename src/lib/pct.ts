@@ -34,11 +34,13 @@ import { normalizeEstimate } from './capacity';
  * would almost never apply. (Containers carry no `estimateMin` of their own;
  * `addChild` deletes it when a leaf becomes one.)
  *
- * Unchanged: scheduling metadata (`start`, `deadline`, `plannedWeek`,
- * `plannedDay`, `plannedStartMin`) never affects this, logged `Session` time
- * never affects this, and `Milestone`s never affect this. Ticking a leaf
- * checkbox is still the only thing that moves a number — an estimate changes
- * how much a leaf is WORTH, never whether it is done.
+ * Unchanged: node scheduling metadata (`start`, `deadline`, `plannedWeek`,
+ * `plannedDay`, `plannedStartMin`, `estimateMin`) never affects this, and logged
+ * `Session` time never affects this. A checkpoint is deliberately NOT metadata:
+ * it is a real leaf node and counts in the roll-up, unlike the retired
+ * `Milestone` it replaced. Ticking a leaf checkbox is still the only thing that
+ * moves a number — an estimate changes how much a leaf is WORTH, never whether
+ * it is done.
  */
 
 interface Rollup {

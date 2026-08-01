@@ -6,6 +6,8 @@ import {
   loadAllDayBlocks, saveAllDayBlocks,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
+  isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
+  loadCheckpointMigrationSnapshot,
 } from '../db/db';
 import { clampScale } from '../lib/timeline';
 import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
@@ -19,6 +21,7 @@ import { deferOpenWork } from '../lib/deferWork';
 import { backlogGroups } from '../lib/backlog';
 import { topLevelSelection, openLeavesUnder, selectionRemovalCount } from '../lib/selection';
 import { migrateSlots, describeMigration } from '../lib/migrateSlots';
+import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted, leafCount } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
@@ -327,7 +330,8 @@ export async function initStore(): Promise<void> {
     // actually owning the tab lock — a non-owning tab must never write.
     let migrated = appState;
     let migrationToast: string | null = null;
-    if ((await tabLock) && !(await isSlotMigrationDone())) {
+    const ownsMigrationLock = await tabLock;
+    if (ownsMigrationLock && !(await isSlotMigrationDone())) {
       await saveSlotMigrationSnapshot(appState.goals, appState.tasks);
       const result = migrateSlots(appState.goals, appState.tasks, availability, allDayBlocks);
       migrated = { ...appState, goals: result.goals, tasks: result.tasks };
@@ -342,6 +346,24 @@ export async function initStore(): Promise<void> {
         // swallowed intentionally — see comment above
       }
       migrationToast = describeMigration(result.report);
+    }
+
+    // One-shot: turn legacy milestones into real checkpoint leaves. Snapshot
+    // BEFORE conversion, persist the whole state once, and only then record the
+    // done flag. A retry after a crash is safe because the snapshot is write-once
+    // and migrateCheckpoints removes the legacy field as it converts it.
+    if (ownsMigrationLock && !(await isCheckpointMigrationDone())) {
+      await saveCheckpointMigrationSnapshot(migrated.goals);
+      const result = migrateCheckpoints(migrated.goals);
+      migrated = { ...migrated, goals: result.goals };
+      await persist(migrated);
+      // The data is already correct if this settings write fails. Re-running the
+      // idempotent migration on the next launch is harmless.
+      try {
+        await markCheckpointMigrationDone();
+      } catch {
+        // swallowed intentionally; see the comment above
+      }
     }
 
     state = {
@@ -597,6 +619,16 @@ export const actions = {
     }
   },
 
+  toggleCheckpoint(nodeId: string): void {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
+    const goals = state.goals.map((g) => ({ ...g, nodes: structuredClone(g.nodes) }));
+    const node = findInAll(goals, nodeId);
+    if (!node || node.children) return; // leaves only
+    if (node.checkpoint) delete node.checkpoint;
+    else node.checkpoint = true;
+    setAndPersist({ goals });
+  },
+
   toggleExpand(nodeId: string) {
     const expanded = new Set(state.expanded);
     expanded.has(nodeId) ? expanded.delete(nodeId) : expanded.add(nodeId);
@@ -625,11 +657,13 @@ export const actions = {
     // the armed undo in one click. Same trap as `hasLeaf` in lib/plan.ts.
     const converts = !node.children || node.children.length === 0;
     const carried = converts
-      && (node.done === true || node.plannedWeek !== undefined || node.estimateMin !== undefined);
+      && (node.done === true || node.plannedWeek !== undefined
+        || node.estimateMin !== undefined || node.checkpoint === true);
     if (!node.children) node.children = [];
     node.children.push({ id: uid(), title });
     delete node.done;
     delete node.doneAt;
+    delete node.checkpoint;
     clearPlannedSlot(node); // a container can never carry a planned slot
     delete node.estimateMin;
     const expanded = new Set(state.expanded);
@@ -655,15 +689,24 @@ export const actions = {
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node) return;
+    const converts = !node.children || node.children.length === 0;
+    const carried = converts
+      && (node.done === true || node.plannedWeek !== undefined
+        || node.estimateMin !== undefined || node.checkpoint === true);
     if (!node.children) node.children = [];
     for (const title of clean) node.children.push({ id: uid(), title, done: false });
     delete node.done;
     delete node.doneAt;
+    delete node.checkpoint;
     clearPlannedSlot(node); // a container can never carry a planned slot
     delete node.estimateMin;
     const expanded = new Set(state.expanded);
     expanded.add(nodeId);
-    setAndPersist({ goals }, { expanded });
+    if (carried) {
+      withUndo(`"${node.title}" became a group — its plan was cleared`, 'goals', goals, UNDO_MS, { expanded });
+    } else {
+      setAndPersist({ goals }, { expanded });
+    }
   },
 
   /**
@@ -978,7 +1021,7 @@ export const actions = {
     const title = goal?.title ?? 'project';
     const goals = state.goals.filter((g) => g.id !== goalId);
     // Name the cost. Deleting a project takes two clicks and can take a dozen
-    // steps, milestones and a week of scheduling with it; "Deleted X" alone
+    // steps, checkpoints and a week of scheduling with it; "Deleted X" alone
     // gave no sense of how much was riding on the Undo button.
     const steps = goal ? leafCount(goal.nodes).total : 0;
     const label = steps > 0
@@ -1244,7 +1287,7 @@ export const actions = {
    * emptied parent to `done: false`. Neither was recoverable: both went through
    * bare `setAndPersist`, which additionally swept away any restore already
    * armed. A structural edit that discards a completion has to be at least as
-   * reversible as deleting a milestone.
+    * reversible as deleting a checkpoint.
    */
   indentNode(nodeId: string): void {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
@@ -1636,46 +1679,6 @@ export const actions = {
     ensureWeekRollover();
   },
 
-  // Milestones — markers only, never enter pct roll-up
-  addMilestone(goalId: string, title: string, date: string): void {
-    const goals = state.goals.map((g) =>
-      g.id === goalId
-        ? { ...g, milestones: [...(g.milestones ?? []), { id: uid(), title, date }] }
-        : g,
-    );
-    setAndPersist({ goals });
-  },
-
-  updateMilestone(
-    goalId: string,
-    milestoneId: string,
-    patch: { title?: string; date?: string },
-  ): void {
-    const goals = state.goals.map((g) =>
-      g.id === goalId
-        ? {
-            ...g,
-            milestones: (g.milestones ?? []).map((m) =>
-              m.id === milestoneId ? { ...m, ...patch } : m,
-            ),
-          }
-        : g,
-    );
-    setAndPersist({ goals });
-  },
-
-  removeMilestone(goalId: string, milestoneId: string): void {
-    const goal = state.goals.find((g) => g.id === goalId);
-    const ms = goal?.milestones?.find((m) => m.id === milestoneId);
-    const title = ms?.title ?? 'milestone';
-    const goals = state.goals.map((g) =>
-      g.id === goalId
-        ? { ...g, milestones: (g.milestones ?? []).filter((m) => m.id !== milestoneId) }
-        : g,
-    );
-    withUndo(`Deleted "${title}"`, 'goals', goals);
-  },
-
   undoLastDelete(): void {
     const entry = undoStack.pop();
     if (entry) entry.restore();
@@ -1865,6 +1868,7 @@ export const actions = {
     // neither awaits nor catches. Degrade to "backup without a snapshot",
     // never to "no backup".
     const preSlotMigrationSnapshot = await loadSlotMigrationSnapshot().catch(() => null);
+    const preCheckpointMigrationSnapshot = await loadCheckpointMigrationSnapshot().catch(() => null);
     exportState(
       { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
       state.pxPerDay,
@@ -1873,6 +1877,7 @@ export const actions = {
       state.allDayBlocks,
       state.sidebarPanels,
       preSlotMigrationSnapshot,
+      preCheckpointMigrationSnapshot,
     );
     actions.showToast('Backup exported');
   },

@@ -7,6 +7,7 @@ import { leafCount } from './board';
 import { isPlanningHorizon } from './horizons';
 import { findInAll } from './tree';
 import { hasTrustedSchedule, needsDateConfirmation, isValidLocalDate } from './schedule';
+import { checkpointWithin, CHECKPOINT_SOON_DAYS, nextCheckpoint } from './checkpoints';
 
 // One shared threshold so cards, the insight bar, and the planner never
 // disagree about what "behind" means.
@@ -183,16 +184,9 @@ export function paceStatus(g: Goal, today: string): PaceState {
 // One source of truth for the thresholds the board and the Timeline roadmap both
 // lean on, so a card badge and a roadmap warning can never drift apart.
 export const DUE_SOON_DAYS = 14;
-export const MILESTONE_SOON_DAYS = 14; // separate constant, same value — tunable apart
 
 export function deadlineBefore(date: string, today: string): boolean {
   return date < today;
-}
-
-// A milestone falls within today..today+days, inclusive.
-export function milestoneWithin(g: Goal, days: number, today: string): boolean {
-  const end = addDays(today, days);
-  return (g.milestones ?? []).some((m) => m.date >= today && m.date <= end);
 }
 
 function hasOpenLeaf(g: Goal): boolean {
@@ -215,7 +209,7 @@ function hasOverdueLeaf(g: Goal, today: string): boolean {
 }
 
 // An open leaf exists, but nothing unfinished is planned for this week — the
-// shared condition behind `not-planned` and (given open leaves) `milestone-soon`.
+// shared condition behind `not-planned` and (given open leaves) `checkpoint-soon`.
 export function hasUnplannedOpenLeafThisWeek(g: Goal, today: string): boolean {
   return hasOpenLeaf(g) && !hasPlannedOpenLeafThisWeek(g, today);
 }
@@ -229,7 +223,7 @@ export type ProjectAttention =
   | 'needs-breakdown'
   | 'behind'
   | 'due-soon'
-  | 'milestone-soon'
+  | 'checkpoint-soon'
   | 'not-planned'
   | 'on-track';
 
@@ -239,7 +233,7 @@ function activeWorkState(g: Goal, today: string, pace: PaceState, col: number): 
   if (pace === 'needs-breakdown') return 'needs-breakdown';
   if (pace === 'behind') return 'behind';
   if (g.datesConfirmed === true && g.deadline && g.deadline <= addDays(today, DUE_SOON_DAYS)) return 'due-soon';
-  if (milestoneWithin(g, MILESTONE_SOON_DAYS, today) && !hasPlannedOpenLeafThisWeek(g, today)) return 'milestone-soon';
+  if (checkpointWithin(g, CHECKPOINT_SOON_DAYS, today) && !hasPlannedOpenLeafThisWeek(g, today)) return 'checkpoint-soon';
   if (col === 0 && hasUnplannedOpenLeafThisWeek(g, today)) return 'not-planned';
   return 'on-track';
 }
@@ -262,7 +256,7 @@ export function projectAttention(g: Goal, today: string): ProjectAttention {
 // authority), board order breaking ties. Completed and ready-to-complete
 // projects are dropped — nothing to plan.
 const ATTENTION_ORDER: ProjectAttention[] = [
-  'overdue', 'needs-breakdown', 'behind', 'due-soon', 'milestone-soon', 'not-planned', 'on-track',
+  'overdue', 'needs-breakdown', 'behind', 'due-soon', 'checkpoint-soon', 'not-planned', 'on-track',
 ];
 const ATTENTION_RANK = Object.fromEntries(
   ATTENTION_ORDER.map((s, i) => [s, i]),
@@ -324,20 +318,19 @@ export function focusSummary(goals: Goal[], today: string): FocusSummary {
 
 export interface MeaningfulDate {
   date: string;
-  kind: 'deadline' | 'milestone';
+  kind: 'deadline' | 'checkpoint';
   past: boolean;
 }
 
 // The one date a card leads with: for trusted schedules, the soonest upcoming
-// milestone before the deadline or the deadline itself. Unconfirmed schedules
-// may surface an upcoming milestone, but never their legacy project deadline.
+// checkpoint before the deadline or the deadline itself. Unconfirmed schedules
+// may surface an upcoming checkpoint, but never their legacy project deadline.
 export function nearestMeaningfulDate(g: Goal, today: string): MeaningfulDate | null {
   const confirmedDeadline = g.datesConfirmed === true ? g.deadline : undefined;
-  const upcoming = (g.milestones ?? [])
-    .filter((m) => m.date >= today && (!confirmedDeadline || m.date < confirmedDeadline))
-    .map((m) => m.date)
-    .sort();
-  if (upcoming.length > 0) return { date: upcoming[0], kind: 'milestone', past: false };
+  const upcoming = nextCheckpoint(g, today);
+  if (upcoming && (!confirmedDeadline || upcoming.date < confirmedDeadline)) {
+    return { date: upcoming.date, kind: 'checkpoint', past: false };
+  }
   if (confirmedDeadline) {
     return { date: confirmedDeadline, kind: 'deadline', past: deadlineBefore(confirmedDeadline, today) };
   }
@@ -399,13 +392,10 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
     case 'due-soon':
       if (!g.deadline) return null;
       return { label: `Due in ${daysBetween(today, g.deadline)}d`, tone: 'warn' };
-    case 'milestone-soon': {
-      const soon = (g.milestones ?? [])
-        .filter((m) => m.date >= today && m.date <= addDays(today, MILESTONE_SOON_DAYS))
-        .map((m) => m.date)
-        .sort();
-      if (soon.length === 0) return null; // unreachable given the state, but keep total
-      return { label: `Milestone in ${daysBetween(today, soon[0])}d`, tone: 'warn' };
+    case 'checkpoint-soon': {
+      const soon = nextCheckpoint(g, today);
+      if (!soon) return null; // unreachable given the state, but keep total
+      return { label: `Checkpoint in ${daysBetween(today, soon.date)}d`, tone: 'warn' };
     }
     case 'not-planned':
       return { label: 'Not planned this week', tone: 'plan' };

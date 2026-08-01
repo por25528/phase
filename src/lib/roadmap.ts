@@ -3,7 +3,8 @@ import { addDays } from './dates';
 import {
   daysBetween, spanOutside, clampScale, PX_PER_DAY,
 } from './timeline';
-import { deadlineBefore, milestoneWithin, hasUnplannedOpenLeafThisWeek, MILESTONE_SOON_DAYS } from './plan';
+import { checkpointDates, checkpointWithin, CHECKPOINT_SOON_DAYS } from './checkpoints';
+import { deadlineBefore, hasUnplannedOpenLeafThisWeek } from './plan';
 import { hasGoalSpan, type GoalWithSpan } from './schedule';
 
 // Pure roadmap logic for the Timeline (spec §3.4 / §3.2). Warnings derive from a
@@ -17,7 +18,7 @@ export type RoadmapWarningKind =
   | 'phase-overdue'
   | 'phase-outside-project'
   | 'unscheduled-phases'
-  | 'milestone-unplanned';
+  | 'checkpoint-unplanned';
 
 export interface RoadmapWarning {
   kind: RoadmapWarningKind;
@@ -64,10 +65,10 @@ export function roadmapWarnings(goal: Goal, today: string): RoadmapWarning[] {
     }
   }
 
-  // Same milestone window + unplanned-this-week predicate as the board's
-  // milestone-soon signal, so the two surfaces can't drift (spec §3.4 / §4.2).
-  if (milestoneWithin(goal, MILESTONE_SOON_DAYS, today) && hasUnplannedOpenLeafThisWeek(goal, today)) {
-    out.push({ kind: 'milestone-unplanned', message: 'Milestone soon, nothing planned this week' });
+  // Same checkpoint window + unplanned-this-week predicate as the board's
+  // checkpoint-soon signal, so the two surfaces can't drift (spec §3.4 / §4.2).
+  if (checkpointWithin(goal, CHECKPOINT_SOON_DAYS, today) && hasUnplannedOpenLeafThisWeek(goal, today)) {
+    out.push({ kind: 'checkpoint-unplanned', message: 'Checkpoint soon, nothing planned this week' });
   }
 
   return out;
@@ -130,13 +131,13 @@ export interface FitResult {
 }
 
 // Every date belonging to the selection: project span, scheduled first-level
-// phase dates, milestones.
+// phase dates, checkpoints.
 function collectDates(goals: Goal[]): string[] {
   const out: string[] = [];
   for (const g of goals.filter(hasGoalSpan)) {
     out.push(g.start, g.deadline);
     for (const n of g.nodes) if (isScheduled(n)) out.push(n.start!, n.deadline!);
-    for (const m of g.milestones ?? []) out.push(m.date);
+    out.push(...checkpointDates(g));
   }
   return out;
 }
