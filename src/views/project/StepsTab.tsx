@@ -4,6 +4,9 @@ import type { Goal } from '../../db/types';
 import { GoalTree } from '../../components/GoalTree';
 import { SubtaskAiModal } from '../../components/SubtaskAiModal';
 import { leafCount } from '../../lib/board';
+import { findNode } from '../../lib/tree';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { StepPanel } from './StepPanel';
 
 // ── Steps column (the working area) ───────────────────────────────────────────
 export function StepsTab({
@@ -21,6 +24,8 @@ export function StepsTab({
   const isCompleted = !!g.completedAt;
   const hasSteps = g.nodes.length > 0;
   const { total, done } = leafCount(g.nodes);
+  const wide = useMediaQuery('(min-width: 768px)');
+  const openNode = openStepId ? findNode(g.nodes, openStepId) : null;
 
   return (
     <section>
@@ -41,7 +46,20 @@ export function StepsTab({
       )}
 
       <div className={isCompleted ? 'opacity-70 pointer-events-none' : ''} aria-disabled={isCompleted}>
-        <GoalTree nodes={g.nodes} />
+        <div className={openNode ? (wide ? 'flex items-start' : 'flex flex-col') : undefined}>
+          <div className="min-w-0 flex-1">
+            <GoalTree nodes={g.nodes} />
+          </div>
+          {openNode && (
+            <div
+              className={wide
+                ? 'w-[300px] flex-none border-l border-line'
+                : 'w-full border-t border-line'}
+            >
+              <StepPanel goal={g} node={openNode} actions={actions} />
+            </div>
+          )}
+        </div>
       </div>
 
       {!isCompleted && (

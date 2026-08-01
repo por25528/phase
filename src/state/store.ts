@@ -1536,11 +1536,12 @@ export const actions = {
     const goals = cloneGoals(state.goals);
     clearPlannedSlot(findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!);
     withUndo(`Removed "${node.title}" from plan`, 'goals', goals);
-    // Point at where it landed. The rail sorts undated work last and caps each
-    // project at three, so a step taken off the grid can drop straight behind
-    // "+N more" — clicking × and having the row appear nowhere is the same
-    // "did that work?" the reveal path exists to answer.
-    actions.revealInPlan('step', nodeId);
+    // The reveal answers "where did it go?" — a question only the Plan view
+    // raises, where the rail can bury an unscheduled step behind "+N more".
+    // On the project page the step is still in the tree with its panel open,
+    // so jumping the user to another view would be the only thing that lost
+    // their place.
+    if (state.view === 'plan') actions.revealInPlan('step', nodeId);
   },
 
   /**
@@ -1770,6 +1771,24 @@ export const actions = {
   clearFocusNode() {
     if (state.focusNodeId === null) return;
     set({ focusNodeId: null });
+  },
+
+  /**
+   * Select a step for the detail panel.
+   *
+   * Distinct from `openProject(goalId, nodeId)`: that is an ARRIVAL, and it
+   * pulses the row and forces the steps tab because the user came from
+   * somewhere else. This is a selection made by someone already on the page,
+   * so it changes nothing but the selection.
+   */
+  openStep(nodeId: string) {
+    if (!findNodePath(state.goals, nodeId)) return;
+    set({ openStepId: nodeId });
+  },
+
+  closeStep() {
+    if (state.openStepId === null) return;
+    set({ openStepId: null });
   },
 
   /**

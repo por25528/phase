@@ -13,6 +13,7 @@ import {
   resolveAppKeyCommand,
   shouldConsumePaletteShortcut,
   shouldConsumeTaskCaptureShortcut,
+  shouldCloseStepPanel,
   shouldLeaveProjectPage,
 } from './lib/appKeyboard';
 import { modalRegistry } from './lib/modalRegistry';
@@ -58,7 +59,7 @@ function MoonIcon() {
 }
 
 export function App() {
-  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, actions } = useAppStore();
+  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -135,9 +136,14 @@ export function App() {
         (e.target as HTMLElement).blur();
         return;
       }
+      // Escape precedence: open modal -> step panel -> project page.
+      if (shouldCloseStepPanel(command, view, modalRegistry.hasOpenModal(), openStepId !== null)) {
+        actions.closeStep();
+        return;
+      }
       // Escape on the project page goes back to the board. `close-drawer` is
       // the command's historical name; the drawer it referred to is gone.
-      if (shouldLeaveProjectPage(command, view, modalRegistry.hasOpenModal())) actions.closeProject();
+      if (shouldLeaveProjectPage(command, view, modalRegistry.hasOpenModal(), openStepId !== null)) actions.closeProject();
       // View/navigation shortcuts must not fire underneath an open dialog — inside
       // a dialog, 1–7 mean "plan this step on that weekday", not "switch view".
       if (modalRegistry.hasOpenModal()) return;
@@ -147,7 +153,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [actions, hydration, showShortcuts, view]);
+  }, [actions, hydration, openStepId, showShortcuts, view]);
 
   return (
     <>

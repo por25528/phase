@@ -3,6 +3,7 @@ import {
   resolveAppKeyCommand,
   shouldConsumePaletteShortcut,
   shouldConsumeTaskCaptureShortcut,
+  shouldCloseStepPanel,
   shouldLeaveProjectPage,
 } from './appKeyboard';
 
@@ -128,18 +129,34 @@ describe('resolveAppKeyCommand', () => {
 
 describe('shouldLeaveProjectPage', () => {
   it('returns true for Escape on the project page with no modal open', () => {
-    expect(shouldLeaveProjectPage('close-drawer', 'project', false)).toBe(true);
+    expect(shouldLeaveProjectPage('close-drawer', 'project', false, false)).toBe(true);
   });
 
   it('returns false when a modal is open, even on the project page', () => {
-    expect(shouldLeaveProjectPage('close-drawer', 'project', true)).toBe(false);
+    expect(shouldLeaveProjectPage('close-drawer', 'project', true, false)).toBe(false);
   });
 
   it.each(['goals', 'plan', 'timeline'])('returns false on the %s view', (view) => {
-    expect(shouldLeaveProjectPage('close-drawer', view, false)).toBe(false);
+    expect(shouldLeaveProjectPage('close-drawer', view, false, false)).toBe(false);
   });
 
   it('returns false for any other command', () => {
-    expect(shouldLeaveProjectPage('view-plan', 'project', false)).toBe(false);
+    expect(shouldLeaveProjectPage('view-plan', 'project', false, false)).toBe(false);
+  });
+
+  it('does not leave the page while a step panel is open', () => {
+    expect(shouldLeaveProjectPage('close-drawer', 'project', false, true)).toBe(false);
+  });
+
+  it('leaves the page once the panel is closed', () => {
+    expect(shouldLeaveProjectPage('close-drawer', 'project', false, false)).toBe(true);
+  });
+});
+
+describe('shouldCloseStepPanel', () => {
+  it('closes the step panel on Escape when one is open and no modal is up', () => {
+    expect(shouldCloseStepPanel('close-drawer', 'project', false, true)).toBe(true);
+    expect(shouldCloseStepPanel('close-drawer', 'project', true, true)).toBe(false);
+    expect(shouldCloseStepPanel('close-drawer', 'project', false, false)).toBe(false);
   });
 });

@@ -761,6 +761,37 @@ describe('store actions', () => {
       expect(restored.plannedStartMin).toBe(600);
     });
 
+    it('unscheduling from the project page does not navigate away', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
+      actions.openProject(gid, nid);
+
+      actions.unscheduleNode(gid, nid);
+
+      expect(getState().view).toBe('project');
+      expect(getState().revealItem).toBeNull();
+    });
+
+    it('unscheduling from the Plan view still reveals the step', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
+
+      actions.unscheduleNode(gid, nid);
+
+      expect(getState().view).toBe('plan');
+      expect(getState().revealItem).toMatchObject({ kind: 'step', id: nid });
+    });
+
     // Regression guard for excludeId in scheduleNode's own `placed` lookup:
     // without it, a node already sitting at 600..660 on this day would appear
     // in its own `placed` list, collide with itself at every aim minute in
@@ -1723,6 +1754,43 @@ describe('openProject node focus (T8)', () => {
     expect(s.view).toBe('project');
     expect(s.openGoalId).toBe('gp');
     expect(s.openStepId).toBe('leaf');
+  });
+
+  it('openStep selects a node without disturbing the page or the tab', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+    actions.setProjectTab('notes');
+
+    actions.openStep('leaf');
+    const s = getState();
+    expect(s.openStepId).toBe('leaf');
+    expect(s.view).toBe('project');
+    expect(s.openGoalId).toBe('gp');
+    // Opening a step is a selection, not a navigation: it must not yank the
+    // user back to another tab.
+    expect(s.projectTab).toBe('notes');
+    // And it is NOT a pulse — that belongs to arriving from elsewhere.
+    expect(s.focusNodeId).toBeNull();
+  });
+
+  it('closeStep clears only the selection', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp', 'leaf');
+    actions.closeStep();
+    const s = getState();
+    expect(s.openStepId).toBeNull();
+    expect(s.view).toBe('project');
+    expect(s.openGoalId).toBe('gp');
+  });
+
+  it('openStep ignores an unknown node id', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+    actions.openStep('ghost');
+    expect(getState().openStepId).toBeNull();
   });
 
   it('setView away from the project clears all project pointers', async () => {

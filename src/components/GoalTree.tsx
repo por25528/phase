@@ -737,6 +737,26 @@ function GoalTreeNode({
           />
         )}
 
+        {/* Open the detail panel. `GoalNode` has carried `start`, `deadline`,
+            `plannedWeek` and `estimateMin` for a long time with almost nowhere
+            to show them; this is that place. It is a separate control rather
+            than a row click because the row click is the completion gesture,
+            and reassigning the single action that moves every number in the
+            product would be a bad trade for a disclosure affordance. */}
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={`Open details for "${n.title}"`}
+          title="Details"
+          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.openStep(n.id);
+          }}
+        >
+          ◈
+        </button>
+
         {/* Rename. Double-clicking the title still works, but it was the ONLY
             route — an invisible affordance on the single most common edit, and
             the one place a hover control was missing while drag, + sub and

@@ -78,8 +78,18 @@ export function shouldLeaveProjectPage(
   command: AppKeyCommand | null,
   view: string,
   modalOpen: boolean,
+  stepPanelOpen: boolean,
 ): boolean {
-  return command === 'close-drawer' && view === 'project' && !modalOpen;
+  return command === 'close-drawer' && view === 'project' && !modalOpen && !stepPanelOpen;
+}
+
+export function shouldCloseStepPanel(
+  command: AppKeyCommand | null,
+  view: string,
+  modalOpen: boolean,
+  stepPanelOpen: boolean,
+): boolean {
+  return command === 'close-drawer' && view === 'project' && !modalOpen && stepPanelOpen;
 }
 
 // ⌘K / Ctrl+K. Chromium binds Ctrl+K to the address bar, so the caller must

@@ -103,6 +103,31 @@ describe('Project page', () => {
     expect(screen.getByText('Define the topics')).toBeTruthy();
   });
 
+  it('shows the step panel when a step is open, and the tree stays visible', async () => {
+    const store = await mountPage();
+    store.actions.openStep('n1');
+
+    expect(await screen.findByRole('heading', { name: 'Define the topics' })).toBeTruthy();
+    expect(screen.getByText('Order the topics')).toBeTruthy();
+  });
+
+  it('hides the panel when the step is closed', async () => {
+    const store = await mountPage();
+    store.actions.openStep('n1');
+    store.actions.closeStep();
+
+    expect(screen.queryByRole('button', { name: 'Close step details' })).toBeNull();
+  });
+
+  it('drops the panel when its step is deleted', async () => {
+    const store = await mountPage();
+    store.actions.openStep('n1');
+    store.actions.removeNode('n1');
+
+    expect(store.getState().openStepId).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close step details' })).toBeNull();
+  });
+
   it('keeps the navigated step selected after the pulse pointer clears', async () => {
     vi.useFakeTimers();
     try {
