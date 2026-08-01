@@ -86,10 +86,14 @@ export function NoteEditor({ docKey, value, onChange, placeholder, ariaLabel, cl
 - [ ] **Step 1: Install**
 
 ```bash
-npm install @tiptap/react @tiptap/pm @tiptap/starter-kit @tiptap/extension-link tiptap-markdown
+npm install @tiptap/react @tiptap/pm @tiptap/starter-kit @tiptap/markdown
 ```
 
-Do NOT hand-write versions into `package.json`. After installing, record the resolved versions in your report. If `tiptap-markdown` is incompatible with the installed Tiptap major, STOP and report rather than pinning an old Tiptap.
+**Use the first-party `@tiptap/markdown`, not the third-party `tiptap-markdown`.** Checked at planning time: Tiptap is on 3.29.2, and `@tiptap/markdown` is published at the same version with `peerDependencies` pinned to the exact `3.29.2` for both `@tiptap/core` and `@tiptap/pm`. The third-party package works too — its peer range is `^3.0.1` — but a floating range across a major that just shipped is a needless risk when a version-locked first-party option exists.
+
+`@tiptap/markdown` also avoids pulling in `markdown-it-task-lists`, and task lists are deliberately out of scope here.
+
+Do NOT hand-write versions into `package.json`. **Check what `StarterKit` v3 already bundles before adding extension packages** — in v3 several extensions that used to be separate are included, and installing a duplicate registers the node twice. Add only what is genuinely missing, and say in your report which extensions came from StarterKit and which you added.
 
 - [ ] **Step 2: Write the failing round-trip test**
 
@@ -122,7 +126,7 @@ const SAMPLE = [
 
 /**
  * Parse `md` into a Tiptap document and serialize it straight back. Export a
- * tiny helper from NoteEditor.tsx that does this WITHOUT React — `tiptap-markdown`
+ * tiny helper from NoteEditor.tsx that does this WITHOUT React — `@tiptap/markdown`
  * exposes parse/serialize on the editor's storage, and a headless `Editor`
  * instance is enough. A pure round-trip is far easier to assert on than one
  * driven through the DOM.
@@ -154,7 +158,7 @@ it('produces an empty string for an empty document', () => {
 });
 ```
 
-The idempotence test is the important one. If `tiptap-markdown` normalises something — `*` bullets to `-`, `___` to `---`, fence style — that is acceptable ONLY if a second pass is stable, because otherwise a user's file mutates a little on every edit. Record any normalisation you observe in your report. **Anything genuinely lossy is a stop-and-report, not a test to relax.**
+The idempotence test is the important one. If `@tiptap/markdown` normalises something — `*` bullets to `-`, `___` to `---`, fence style — that is acceptable ONLY if a second pass is stable, because otherwise a user's file mutates a little on every edit. Record any normalisation you observe in your report. **Anything genuinely lossy is a stop-and-report, not a test to relax.**
 
 Then, through the DOM:
 
@@ -559,7 +563,7 @@ git add CLAUDE.md && git commit -m "docs: record the asset and autosave invarian
 ## Risks
 
 1. **Blob round-tripping through the export** — the only path where a bug loses real data. Task 7's full export→clear→import→render cycle is the mitigation.
-2. **Markdown round-trip fidelity.** `tiptap-markdown` may normalise constructs. Task 1 requires normalisation to be idempotent and recorded; anything lossy is a stop-and-report.
+2. **Markdown round-trip fidelity.** `@tiptap/markdown` may normalise constructs. Task 1 requires normalisation to be idempotent and recorded; anything lossy is a stop-and-report.
 3. **Tiptap is the first non-trivial UI dependency** (~150KB). Negligible for Electron, acceptable for the browser build. Its prose styles must use theme tokens or `designScale.test.ts` fails the build.
 4. **Object-URL leaks.** Task 6 tests revocation explicitly because the failure is invisible until a long session degrades.
 5. **The editor reused across two subjects.** Both `NoteEditor` hosts must reseed on identity change. This exact bug already shipped once, in `StepPanel`'s title.
