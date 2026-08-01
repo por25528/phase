@@ -38,6 +38,12 @@ const dbMocks = vi.hoisted(() => ({
 
 vi.mock('../db/db', () => dbMocks);
 
+const assetMocks = vi.hoisted(() => ({
+  putAsset: vi.fn(async () => {}),
+}));
+
+vi.mock('../db/assets', () => assetMocks);
+
 const tabLockMocks = vi.hoisted(() => ({
   acquireTabLock: vi.fn(async () => true),
 }));
@@ -85,7 +91,12 @@ async function freshStoreWithLegacyData() {
 }
 
 describe('store actions', () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    assetMocks.putAsset.mockClear();
+    tabLockMocks.acquireTabLock.mockClear();
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+  });
   afterEach(() => vi.useRealTimers());
 
   it('addGoal → addRootNode → toggleLeaf round-trip', async () => {
@@ -735,6 +746,32 @@ describe('store actions', () => {
     expect(node.start).toBe(before.start);
     expect(node.deadline).toBe(before.deadline);
     expect(goalPct(getState().goals[0])).toBe(pctBefore);
+  });
+
+  describe('addAsset', () => {
+    const encoder = async (file: Blob) => ({ bytes: file, width: 4, height: 3 });
+
+    it('does not write from a tab that does not own the lock', async () => {
+      tabLockMocks.acquireTabLock.mockResolvedValueOnce(false);
+      const store = await freshStore();
+      await store.initStore();
+
+      await expect(store.actions.addAsset(new Blob(['image']), encoder)).rejects.toThrow(/another tab/);
+      expect(assetMocks.putAsset).not.toHaveBeenCalled();
+      expect(store.getState().persistFailed).toBe(false);
+    });
+
+    it('latches persistence failure and clears it after a later asset write succeeds', async () => {
+      const { actions, getState } = await freshStore();
+      assetMocks.putAsset.mockRejectedValueOnce(new Error('disk full'));
+
+      await expect(actions.addAsset(new Blob(['image']), encoder)).rejects.toThrow('disk full');
+      expect(getState().persistFailed).toBe(true);
+
+      await expect(actions.addAsset(new Blob(['image']), encoder)).resolves.toMatch(/^a_/);
+      expect(getState().persistFailed).toBe(false);
+      expect(assetMocks.putAsset).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('scheduling a node never affects pct roll-up', async () => {
@@ -1769,6 +1806,22 @@ describe('store actions', () => {
       expect(exportState).toHaveBeenCalledWith(
         expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
         expect.anything(), snapshot, null,
+      );
+    });
+
+    it('still exports when migration snapshot reads fail', async () => {
+      const { store } = await freshStoreWithLegacyData();
+      const { exportState, loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot } = await import('../db/db');
+      vi.mocked(exportState).mockClear();
+      vi.mocked(loadSlotMigrationSnapshot).mockRejectedValueOnce(new Error('snapshot unavailable'));
+      vi.mocked(loadCheckpointMigrationSnapshot).mockRejectedValueOnce(new Error('snapshot unavailable'));
+
+      await store.actions.exportBackup();
+
+      expect(exportState).toHaveBeenCalledOnce();
+      expect(exportState).toHaveBeenCalledWith(
+        expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+        expect.anything(), null, null,
       );
     });
   });

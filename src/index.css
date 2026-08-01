@@ -239,6 +239,15 @@
   .note-prose > div > pre code {
     @apply block rounded-none bg-transparent p-0 text-ink;
   }
+  .note-prose .note-image {
+    @apply my-3;
+  }
+  .note-prose .note-image img {
+    @apply block max-w-full rounded-[6px];
+  }
+  .note-prose .note-image-missing {
+    @apply inline-flex min-h-[64px] items-center rounded-[6px] border border-line bg-hover px-3 py-2 text-muted;
+  }
   .note-prose[data-empty="true"]::before {
     content: attr(data-placeholder);
     @apply pointer-events-none float-left h-0 text-muted;

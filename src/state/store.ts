@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow } from '../db/types';
+import type { Goal, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
@@ -9,6 +9,7 @@ import {
   isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
   loadCheckpointMigrationSnapshot,
 } from '../db/db';
+import { putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
 import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
 import { todayStr, addDays, fmtD } from '../lib/dates';
@@ -30,6 +31,7 @@ import { formatEstimateValue } from '../lib/estimateInput';
 import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN } from '../lib/slot';
 import { spansOn } from '../lib/scheduled';
 import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
+import { MAX_IMAGE_EDGE, scaledDimensions } from '../lib/imageScale';
 import {
   type Theme,
   resolveTheme,
@@ -197,6 +199,115 @@ function ifOwner(write: () => Promise<unknown>): void {
   if (!ownsTabLock) return;
   void write().catch(() => {});
 }
+
+export interface EncodedAssetImage {
+  bytes: Blob;
+  width: number;
+  height: number;
+}
+
+export type AssetEncoder = (file: Blob) => Promise<EncodedAssetImage>;
+
+interface DecodedImage {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  close: () => void;
+}
+
+async function decodeImage(file: Blob): Promise<DecodedImage> {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file);
+    return {
+      source: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      close: () => bitmap.close(),
+    };
+  }
+
+  if (typeof document === 'undefined' || typeof Image === 'undefined'
+    || typeof URL.createObjectURL !== 'function') {
+    throw new Error('This browser cannot decode pasted images.');
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('Could not decode the pasted image.'));
+      element.src = url;
+    });
+    return {
+      source: image,
+      width: image.naturalWidth || image.width,
+      height: image.naturalHeight || image.height,
+      close: () => URL.revokeObjectURL(url),
+    };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
+export async function encodeAssetImage(file: Blob): Promise<EncodedAssetImage> {
+  if (typeof document === 'undefined') {
+    throw new Error('Pasted image encoding requires a browser.');
+  }
+
+  const decoded = await decodeImage(file);
+  try {
+    const { width, height } = scaledDimensions(decoded.width, decoded.height, MAX_IMAGE_EDGE);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('This browser cannot draw pasted images.');
+    context.drawImage(decoded.source, 0, 0, width, height);
+
+    const encoded = await new Promise<Blob>((resolve, reject) => {
+      if (typeof canvas.toBlob !== 'function') {
+        reject(new Error('This browser cannot encode pasted images.'));
+        return;
+      }
+      canvas.toBlob(
+        (blob) => blob ? resolve(blob) : reject(new Error('Could not encode the pasted image.')),
+        'image/webp',
+        0.82,
+      );
+    });
+    if (encoded.type !== 'image/webp') {
+      throw new Error('This browser cannot encode WebP images.');
+    }
+    return {
+      bytes: encoded,
+      width,
+      height,
+    };
+  } finally {
+    decoded.close();
+  }
+}
+
+function ownerAssetWrite<T>(write: () => Promise<T>): Promise<T> {
+  let invoked = false;
+  let rejectResult: (reason?: unknown) => void = () => {};
+  const result = new Promise<T>((resolve, reject) => {
+    rejectResult = reject;
+    ifOwner(async () => {
+      invoked = true;
+      try {
+        resolve(await write());
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+  if (!invoked) rejectResult(new Error('Phase is open in another tab.'));
+  return result;
+}
+
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -1026,6 +1137,41 @@ export const actions = {
     if (markdown === '') delete node.notes;
     else node.notes = markdown;
     setAndPersist({ goals });
+  },
+
+  async addAsset(file: Blob, encoder: AssetEncoder = encodeAssetImage): Promise<string> {
+    // Do not decode or allocate image data in a tab that cannot write it.
+    if (!ownsTabLock) {
+      return ownerAssetWrite(async () => {
+        throw new Error('Phase is open in another tab.');
+      });
+    }
+
+    // Encoding is separate from the DB write so an unavailable canvas is not
+    // mistaken for a failed persistence operation. Tests can inject this
+    // browser boundary without pretending jsdom has a working canvas.
+    const encoded = await encoder(file);
+    const id = `a_${uid()}`;
+    const asset: Asset = {
+      id,
+      mime: 'image/webp',
+      bytes: encoded.bytes,
+      width: encoded.width,
+      height: encoded.height,
+      createdAt: todayStr(),
+    };
+
+    return ownerAssetWrite(async () => {
+      try {
+        await putAsset(asset);
+      } catch (error) {
+        actions.showToast('Saving failed — export a backup now');
+        if (!state.persistFailed) set({ persistFailed: true });
+        throw error;
+      }
+      if (state.persistFailed) set({ persistFailed: false });
+      return id;
+    });
   },
 
   removeGoal(goalId: string) {
@@ -1881,17 +2027,21 @@ export const actions = {
     // never to "no backup".
     const preSlotMigrationSnapshot = await loadSlotMigrationSnapshot().catch(() => null);
     const preCheckpointMigrationSnapshot = await loadCheckpointMigrationSnapshot().catch(() => null);
-    exportState(
-      { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
-      state.pxPerDay,
-      state.planReview,
-      state.availability,
-      state.allDayBlocks,
-      state.sidebarPanels,
-      preSlotMigrationSnapshot,
-      preCheckpointMigrationSnapshot,
-    );
-    actions.showToast('Backup exported');
+    try {
+      await exportState(
+        { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
+        state.pxPerDay,
+        state.planReview,
+        state.availability,
+        state.allDayBlocks,
+        state.sidebarPanels,
+        preSlotMigrationSnapshot,
+        preCheckpointMigrationSnapshot,
+      );
+      actions.showToast('Backup exported');
+    } catch {
+      actions.showToast('Could not export backup.');
+    }
   },
 
   async importBackup(file: File) {

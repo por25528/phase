@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const noteActionMocks = vi.hoisted(() => ({
+  addAsset: vi.fn(),
+}));
+
+vi.mock('../state/store', () => ({ actions: noteActionMocks }));
+
 import { NoteEditor, roundTrip } from './NoteEditor';
 
 const SAMPLE = [
@@ -27,7 +34,10 @@ const SAMPLE = [
   '[a link](https://example.com)',
 ].join('\n');
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  noteActionMocks.addAsset.mockReset();
+});
 
 describe('roundTrip', () => {
   it('preserves every supported construct', () => {
@@ -74,6 +84,14 @@ describe('roundTrip', () => {
     expect(out).toContain('- [ ] task one');
     expect(out).toContain('plain two');
   });
+
+  it('serializes asset image refs without escaping them', () => {
+    expect(roundTrip('![](asset:a_1)')).toBe('![](asset:a_1)');
+  });
+
+  it('preserves image alt text', () => {
+    expect(roundTrip('![a shot](asset:a_1)')).toBe('![a shot](asset:a_1)');
+  });
 });
 
 describe('NoteEditor', () => {
@@ -92,5 +110,27 @@ describe('NoteEditor', () => {
     const { rerender } = render(<NoteEditor docKey="a" value="Note A" onChange={() => {}} placeholder="" ariaLabel="Notes" />);
     rerender(<NoteEditor docKey="b" value="Note B" onChange={() => {}} placeholder="" ariaLabel="Notes" />);
     expect(screen.getByLabelText('Notes').textContent).toContain('Note B');
+  });
+
+  it('inserts an image node and serializes its asset reference for an image paste', async () => {
+    noteActionMocks.addAsset.mockResolvedValue('a_pasted');
+    const onChange = vi.fn();
+    render(<NoteEditor docKey="g1" value="before" onChange={onChange} placeholder="" ariaLabel="Notes" />);
+    const editor = screen.getByLabelText('Notes');
+    const file = new File(['image bytes'], 'shot.png', { type: 'image/png' });
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: {
+        items: [{ type: 'image/png', getAsFile: () => file }],
+        getData: () => '',
+      },
+    });
+
+    editor.dispatchEvent(event);
+
+    await waitFor(() => expect(editor.querySelector('.note-image')).not.toBeNull());
+    expect(event.defaultPrevented).toBe(true);
+    expect(noteActionMocks.addAsset).toHaveBeenCalledWith(file);
+    expect(onChange).toHaveBeenLastCalledWith(expect.stringContaining('![](asset:a_pasted)'));
   });
 });

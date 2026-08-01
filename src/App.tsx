@@ -310,6 +310,7 @@ export function App() {
           <button
             type="button"
             onClick={() => actions.exportBackup()}
+            disabled={hydration !== 'ready'}
             className="font-semibold underline hover:no-underline min-h-[24px] inline-flex items-center"
           >
             Export a backup

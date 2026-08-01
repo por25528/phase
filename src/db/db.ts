@@ -1,10 +1,12 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow } from './types';
+import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow, Asset } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
 import { parseAvailability, serializeAvailability } from '../lib/availability';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
+import { assetIdsInMarkdown } from '../lib/notes';
+import { decodeAssets, encodeAssets } from '../lib/backupAssets';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -13,6 +15,7 @@ class PhaseDB extends Dexie {
   sessions!: Table<Session, string>;
   settings!: Table<{ key: string; value: string }, string>;
   planReview!: Table<PlanReview, string>;
+  assets!: Table<Asset, string>;
 
   constructor() {
     super('phase');
@@ -42,6 +45,15 @@ class PhaseDB extends Dexie {
       sessions: 'id',
       planReview: 'week',
     });
+    this.version(5).stores({
+      goals: 'id',
+      habits: 'id',
+      tasks: 'id',
+      settings: 'key',
+      sessions: 'id',
+      planReview: 'week',
+      assets: 'id',
+    });
   }
 }
 
@@ -58,6 +70,10 @@ export async function loadState(): Promise<AppState> {
 }
 
 export async function persist(state: AppState): Promise<void> {
+  // Assets deliberately do not belong to AppState or this transaction. This
+  // is a full clear + bulkPut of the four app-data tables, so putting image
+  // bytes in a goal would rewrite every screenshot on every ordinary edit.
+  // Asset writes are surgical: one row at paste time, through db/assets.ts.
   // One rw transaction: either every table reflects `state`, or none does.
   // (The previous Promise.all of independent clear→bulkPut chains could leave
   // the DB partially wiped if one chain failed mid-flight.)
@@ -302,7 +318,31 @@ export async function savePlanReview(review: PlanReview): Promise<void> {
   });
 }
 
-export function exportState(
+function referencedAssetIds(state: AppState): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const collect = (markdown: string | undefined) => {
+    if (typeof markdown !== 'string') return;
+    for (const id of assetIdsInMarkdown(markdown)) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  };
+  const walk = (nodes: Goal['nodes']) => {
+    for (const node of nodes) {
+      collect(node.notes);
+      if (node.children) walk(node.children);
+    }
+  };
+  for (const goal of state.goals) {
+    collect(goal.notes);
+    walk(goal.nodes);
+  }
+  return ids;
+}
+
+export async function exportState(
   state: AppState,
   pxPerDay: number,
   planReview: PlanReview | null,
@@ -315,7 +355,10 @@ export function exportState(
   sidebarPanels: SidebarPanel[],
   preSlotMigrationSnapshot?: { goals: Goal[]; tasks: Task[] } | null,
   preCheckpointMigrationSnapshot?: { goals: Goal[] } | null,
-): void {
+): Promise<void> {
+  const ids = referencedAssetIds(state);
+  const storedAssets = await db.assets.bulkGet(ids);
+  const assets = await encodeAssets(storedAssets.filter((asset): asset is Asset => asset !== undefined));
   const backup = {
     ...state,
     pxPerDay,
@@ -325,6 +368,7 @@ export function exportState(
     ...(planReview ? { planReview } : {}),
     ...(preSlotMigrationSnapshot ? { preSlotMigrationSnapshot } : {}),
     ...(preCheckpointMigrationSnapshot ? { preCheckpointMigrationSnapshot } : {}),
+    assets,
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -372,6 +416,7 @@ export async function importStateFromFile(
       // Same rule for the checkpoint migration: this belongs to the exporting
       // device's generation and must never become this device's recovery copy.
       preCheckpointMigrationSnapshot?: unknown;
+      assets?: unknown;
     }
   >;
   try {
@@ -427,6 +472,13 @@ export async function importStateFromFile(
     sessions: raw.sessions ?? [],
   };
   await persist(parsed);
+  const importedAssets = decodeAssets(raw.assets);
+  // Asset storage is a generation, not ordinary app state. Replace it in one
+  // transaction so old, unreferenced images never survive an import.
+  await db.transaction('rw', db.assets, async () => {
+    await db.assets.clear();
+    await db.assets.bulkPut(importedAssets);
+  });
   await saveScale(pxPerDay);
   await saveAvailability(availability);
   await saveAllDayBlocks(allDayBlocks);

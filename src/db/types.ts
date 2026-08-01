@@ -142,6 +142,15 @@ export interface AppState {
   sessions: Session[];
 }
 
+export interface Asset {
+  id: string; // 'a_' + uid()
+  mime: string; // 'image/webp' | 'image/png' | 'image/jpeg'
+  bytes: Blob;
+  width: number;
+  height: number;
+  createdAt: string; // 'YYYY-MM-DD'
+}
+
 // A weekday's availability window. Absent dow means that day is off.
 export interface AvailabilityWindow {
   dow: number;      // 0 = Mon … 6 = Sun, matching weekDates() order

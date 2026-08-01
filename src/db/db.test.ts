@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  db, persist, importStateFromFile, loadState,
+  db, persist, exportState, importStateFromFile, loadState,
   loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
   isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
   resetSlotMigration, loadSlotMigrationSnapshot,
@@ -9,7 +9,7 @@ import {
   resetCheckpointMigration, loadCheckpointMigrationSnapshot,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
 } from './db';
-import type { AppState, Goal } from './types';
+import type { AppState, Asset, Goal } from './types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
 
 function goal(id: string): Goal {
@@ -22,7 +22,12 @@ const stateB: AppState = { goals: [goal('c')], habits: [], tasks: [], sessions: 
 beforeEach(async () => {
   await Promise.all([
     db.goals.clear(), db.habits.clear(), db.tasks.clear(), db.sessions.clear(), db.settings.clear(),
+    db.planReview.clear(), db.assets.clear(),
   ]);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('persist', () => {
@@ -43,7 +48,97 @@ function fileOf(contents: string): File {
   return new File([contents], 'backup.json', { type: 'application/json' });
 }
 
+function asset(id: string, bytes: number[]): Asset {
+  return {
+    id,
+    mime: 'image/png',
+    bytes: new Blob([new Uint8Array(bytes)], { type: 'image/png' }),
+    width: 2,
+    height: 2,
+    createdAt: '2026-08-01',
+  };
+}
+
+async function exportedPayload(state: AppState): Promise<Record<string, unknown>> {
+  let backupBlob: Blob | undefined;
+  const anchor = { href: '', download: '', click: vi.fn() };
+  vi.stubGlobal('document', { createElement: vi.fn(() => anchor) });
+  vi.stubGlobal('URL', {
+    createObjectURL: vi.fn((blob: Blob) => {
+      backupBlob = blob;
+      return 'blob:backup';
+    }),
+  });
+
+  await exportState(state, 13, null, DEFAULT_AVAILABILITY, true, []);
+  expect(anchor.click).toHaveBeenCalledOnce();
+  return JSON.parse(await backupBlob!.text()) as Record<string, unknown>;
+}
+
 describe('importStateFromFile', () => {
+  it('imports a legacy backup with no assets key and clears existing assets', async () => {
+    await db.assets.put(asset('a_stale', [9, 8, 7]));
+
+    await importStateFromFile(fileOf(JSON.stringify({
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+    })));
+
+    expect(await db.assets.count()).toBe(0);
+  });
+
+  it('exports only referenced project and step assets', async () => {
+    await db.assets.bulkPut([
+      asset('a_project', [1]),
+      asset('a_step', [2]),
+      asset('a_orphan', [3]),
+    ]);
+    const state: AppState = {
+      goals: [{
+        ...goal('g1'),
+        notes: 'Project image: asset:a_project',
+        nodes: [{
+          id: 'n1',
+          title: 'Step',
+          notes: 'Step image: asset:a_step',
+        }],
+      }],
+      habits: [],
+      tasks: [],
+      sessions: [],
+    };
+
+    const backup = await exportedPayload(state);
+    expect((backup.assets as Array<{ id: string }>).map((entry) => entry.id).sort()).toEqual([
+      'a_project', 'a_step',
+    ]);
+  });
+
+  it('preserves asset bytes through export, clear, and import', async () => {
+    const bytes = new Uint8Array([0, 17, 34, 127, 128, 238, 255]);
+    await db.assets.put(asset('a_cycle', [...bytes]));
+    const state: AppState = {
+      goals: [{
+        ...goal('g1'),
+        notes: '![image](asset:a_cycle)',
+        nodes: [],
+      }],
+      habits: [],
+      tasks: [],
+      sessions: [],
+    };
+
+    const backup = await exportedPayload(state);
+    await Promise.all([
+      db.goals.clear(), db.habits.clear(), db.tasks.clear(), db.sessions.clear(),
+      db.settings.clear(), db.planReview.clear(), db.assets.clear(),
+    ]);
+    await importStateFromFile(fileOf(JSON.stringify(backup)));
+
+    const restored = await db.assets.get('a_cycle');
+    expect(restored).toBeDefined();
+    expect(new Uint8Array(await restored!.bytes.arrayBuffer())).toEqual(bytes);
+  });
+
   it('imports a valid backup, persists it, and returns the scale', async () => {
     const task = { id: 't1', title: 'Legacy task', date: '2026-07-05', done: false, goalId: null };
     const session = { id: 's1', goalId: 'g1', date: '2026-07-05', minutes: 30, note: 'Legacy log' };
@@ -253,7 +348,7 @@ describe('loadState', () => {
       goalId: null,
     };
 
-    expect(db.verno).toBe(4);
+    expect(db.verno).toBe(5);
     await db.goals.put(legacyGoal);
     await db.tasks.put(legacyTask);
 
