@@ -90,36 +90,33 @@ describe('task capture host requests', () => {
   it('does not open during deferred or failed hydration', () => {
     const closed = { open: false, focusRequest: 0 };
 
-    expect(requestTaskCaptureForCommand(closed, 'loading', false, false)).toEqual(closed);
-    expect(requestTaskCaptureForCommand(closed, 'error', false, false)).toEqual(closed);
+    expect(requestTaskCaptureForCommand(closed, 'loading', false)).toEqual(closed);
+    expect(requestTaskCaptureForCommand(closed, 'error', false)).toEqual(closed);
   });
 
   it('opens only when ready and no other shared modal is open', () => {
     const closed = { open: false, focusRequest: 0 };
 
-    expect(requestTaskCaptureForCommand(closed, 'ready', true, false)).toEqual(closed);
-    expect(requestTaskCaptureForCommand(closed, 'ready', false, false)).toEqual({
+    expect(requestTaskCaptureForCommand(closed, 'ready', true)).toEqual(closed);
+    expect(requestTaskCaptureForCommand(closed, 'ready', false)).toEqual({
       open: true,
       focusRequest: 1,
     });
   });
 
-  it('does not open over the app GoalDrawer', () => {
+  it('opens while the project page is showing', () => {
     const closed = { open: false, focusRequest: 0 };
 
-    expect(requestTaskCaptureForCommand(
-      closed,
-      'ready',
-      false,
-      true,
-    )).toBe(closed);
+    expect(requestTaskCaptureForCommand(closed, 'ready', false)).toEqual({
+      open: true,
+      focusRequest: 1,
+    });
   });
 
   it('still refocuses capture itself without opening another modal', () => {
     expect(requestTaskCaptureForCommand(
       { open: true, focusRequest: 2 },
       'error',
-      true,
       true,
     )).toEqual({
       open: true,

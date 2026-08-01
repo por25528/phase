@@ -48,10 +48,9 @@ export function requestTaskCaptureForCommand(
   state: TaskCaptureHostState,
   hydration: TaskCaptureHydration,
   sharedModalOpen: boolean,
-  goalDrawerOpen: boolean,
 ): TaskCaptureHostState {
   if (state.open) return requestTaskCapture(state);
-  if (hydration !== 'ready' || sharedModalOpen || goalDrawerOpen) return state;
+  if (hydration !== 'ready' || sharedModalOpen) return state;
   return requestTaskCapture(state);
 }
 

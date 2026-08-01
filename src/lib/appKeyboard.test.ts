@@ -3,6 +3,7 @@ import {
   resolveAppKeyCommand,
   shouldConsumePaletteShortcut,
   shouldConsumeTaskCaptureShortcut,
+  shouldLeaveProjectPage,
 } from './appKeyboard';
 
 const inputTarget = { tagName: 'INPUT', isContentEditable: false };
@@ -122,5 +123,23 @@ describe('resolveAppKeyCommand', () => {
     it('does not bind redo', () => {
       expect(resolveAppKeyCommand({ key: 'z', metaKey: true, shiftKey: true })).toBeNull();
     });
+  });
+});
+
+describe('shouldLeaveProjectPage', () => {
+  it('returns true for Escape on the project page with no modal open', () => {
+    expect(shouldLeaveProjectPage('close-drawer', 'project', false)).toBe(true);
+  });
+
+  it('returns false when a modal is open, even on the project page', () => {
+    expect(shouldLeaveProjectPage('close-drawer', 'project', true)).toBe(false);
+  });
+
+  it.each(['goals', 'plan', 'timeline'])('returns false on the %s view', (view) => {
+    expect(shouldLeaveProjectPage('close-drawer', view, false)).toBe(false);
+  });
+
+  it('returns false for any other command', () => {
+    expect(shouldLeaveProjectPage('view-plan', 'project', false)).toBe(false);
   });
 });

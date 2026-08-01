@@ -182,9 +182,10 @@ export function CommandPalette({
      * and driven by `aria-activedescendant`, so there is nothing else inside to
      * Tab to. Without this, one Tab left the dialog entirely and landed on the
      * header buttons behind the scrim — and from there Escape was resolved by
-     * App's global handler as 'close-drawer', closing the project drawer while
+     * App's global handler as 'close-drawer', closing the Project page while
      * the palette stayed open. Swallowing Tab is the whole trap this needs;
-     * `Modal` and `GoalDrawer` both cycle because they hold several controls.
+     * `Modal` cycles because it holds several controls; the Project page is not
+     * a dialog, so it has no comparable trap.
      */
     if (e.key === 'Tab') e.preventDefault();
   }

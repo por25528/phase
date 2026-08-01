@@ -20,7 +20,7 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - `src/db/db.ts` — Dexie persistence. The only module that touches IndexedDB.
 - `src/lib/*` — pure, side-effect-free helpers; new logic here ships with a sibling `*.test.ts`.
 - `src/state/store.ts` — the single global store (`useSyncExternalStore`). All mutations go through `actions`, which call `setAndPersist`. Views never call `db` directly.
-- `src/views/<View>.tsx` orchestrates a top-level view; its components live in a per-view subfolder (`today/`, `timeline/`, `goals/`).
+- `src/views/<View>.tsx` orchestrates a top-level view; its components live in a per-view subfolder (`plan/`, `timeline/`, `goals/`, `project/`).
 - `src/components/` — shared visual primitives.
 - `electron/main.cjs` — desktop shell (BrowserWindow, dev-server/dist URL switch).
 

@@ -86,8 +86,8 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
    * Nothing here honoured that: focus was never moved in, never trapped, and
    * never restored, so a screen-reader user was told the rest of the page was
    * unavailable while their focus was still sitting in it — nothing reachable
-   * at all. Its two sibling dialogs (Modal, GoalDrawer) both do this; the cheat
-   * sheet was the one that only made the claim.
+   * at all. `Modal` does this; the Project surface is a page, not a sibling
+   * dialog, so the cheat sheet was the one that only made the claim.
    */
   useEffect(() => {
     if (!open) return;

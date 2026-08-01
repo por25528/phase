@@ -98,7 +98,7 @@ export function RecapPanel() {
                 <button
                   type="button"
                   onClick={() => {
-                    actions.openDrawer(e.goalId, e.nodeId);
+                    actions.openProject(e.goalId, e.nodeId);
                   }}
                   className="text-meta font-semibold text-ink-soft hover:text-ink px-[4px]"
                 >

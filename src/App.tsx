@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAppStore, initStore } from './state/store';
+import { useAppStore, initStore, VIEW_LABELS } from './state/store';
 import { Goals } from './views/Goals';
 import { Timeline } from './views/Timeline';
 import { Plan } from './views/Plan';
-import { GoalDrawer } from './components/GoalDrawer';
+import { Project } from './views/Project';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { useLocalDate } from './hooks/useLocalDate';
@@ -13,6 +13,7 @@ import {
   resolveAppKeyCommand,
   shouldConsumePaletteShortcut,
   shouldConsumeTaskCaptureShortcut,
+  shouldLeaveProjectPage,
 } from './lib/appKeyboard';
 import { modalRegistry } from './lib/modalRegistry';
 import {
@@ -35,9 +36,9 @@ const THEME_LABEL: Record<Theme, string> = { system: 'SYSTEM', light: 'LIGHT', d
 // The nav, in the order the number keys 1–3 select them (see lib/appKeyboard).
 // The board is labelled "Projects" because every string on it says project.
 const NAV_TABS = [
-  ['plan', 'Plan'],
-  ['goals', 'Projects'],
-  ['timeline', 'Timeline'],
+  ['plan', VIEW_LABELS.plan],
+  ['goals', VIEW_LABELS.goals],
+  ['timeline', VIEW_LABELS.timeline],
 ] as const;
 
 function SunIcon() {
@@ -57,7 +58,7 @@ function MoonIcon() {
 }
 
 export function App() {
-  const { view, openGoalId, drawerFocusNodeId, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, actions } = useAppStore();
+  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -73,7 +74,6 @@ export function App() {
     current,
     hydration,
     modalRegistry.hasOpenModal(),
-    openGoalId !== null,
   ));
 
   useEffect(() => {
@@ -94,6 +94,8 @@ export function App() {
   }, []);
 
   const effectiveTheme = resolveTheme(theme, sysDark);
+  const isNavItemActive = (key: (typeof NAV_TABS)[number][0]): boolean =>
+    view === key || (view === 'project' && key === 'goals');
 
   useEffect(() => {
     function onKey(e: globalThis.KeyboardEvent) {
@@ -133,7 +135,9 @@ export function App() {
         (e.target as HTMLElement).blur();
         return;
       }
-      if (command === 'close-drawer') actions.closeDrawer();
+      // Escape on the project page goes back to the board. `close-drawer` is
+      // the command's historical name; the drawer it referred to is gone.
+      if (shouldLeaveProjectPage(command, view, modalRegistry.hasOpenModal())) actions.closeProject();
       // View/navigation shortcuts must not fire underneath an open dialog — inside
       // a dialog, 1–7 mean "plan this step on that weekday", not "switch view".
       if (modalRegistry.hasOpenModal()) return;
@@ -143,9 +147,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [actions, hydration, openGoalId, showShortcuts]);
-
-  const openGoal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
+  }, [actions, hydration, showShortcuts, view]);
 
   return (
     <>
@@ -170,21 +172,24 @@ export function App() {
         </div>
         {/* Primary nav. Below md it moves to the bottom bar for thumb reach. */}
         <nav aria-label="Views" className="hidden md:flex gap-[4px] min-w-0">
-          {NAV_TABS.map(([key, label], i) => (
-            <button
-              key={key}
-              onClick={() => actions.setView(key)}
-              aria-current={view === key ? 'page' : undefined}
-              title={`${label} (${i + 1})`}
-              className={`px-[14px] py-[6px] rounded-full text-body whitespace-nowrap ${
-                view === key
-                  ? 'bg-ink text-paper font-semibold'
-                  : 'text-ink-soft font-medium hover:bg-hover-deep'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+          {NAV_TABS.map(([key, label], i) => {
+            const active = isNavItemActive(key);
+            return (
+              <button
+                key={key}
+                onClick={() => actions.setView(key)}
+                aria-current={active ? 'page' : undefined}
+                title={`${label} (${i + 1})`}
+                className={`px-[14px] py-[6px] rounded-full text-body whitespace-nowrap ${
+                  active
+                    ? 'bg-ink text-paper font-semibold'
+                    : 'text-ink-soft font-medium hover:bg-hover-deep'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </nav>
         <div className="flex-1 min-w-0" />
 
@@ -340,6 +345,10 @@ export function App() {
           <div className="w-full px-[16px] sm:px-[36px] py-[32px]">
             <Timeline />
           </div>
+        ) : view === 'project' ? (
+          <div className="w-full px-[16px] sm:px-[36px] py-[28px] pb-[90px]">
+            <Project />
+          </div>
         ) : (
           <div className="max-w-[1280px] mx-auto px-[16px] sm:px-[36px] py-[42px] pb-[90px]">
             <Goals />
@@ -353,27 +362,29 @@ export function App() {
         aria-label="Views"
         className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-bg border-t border-line flex"
       >
-        {NAV_TABS.map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => actions.setView(key)}
-            aria-current={view === key ? 'page' : undefined}
-            className={`flex-1 min-w-0 py-[10px] text-compact truncate ${
-              view === key ? 'text-ink font-semibold' : 'text-muted font-medium'
-            }`}
-          >
-            {label}
-            <span
-              aria-hidden="true"
-              className={`block mx-auto mt-[4px] h-[2px] w-[18px] rounded-full ${
-                view === key ? 'bg-accent' : 'bg-transparent'
+        {NAV_TABS.map(([key, label]) => {
+          const active = isNavItemActive(key);
+          return (
+            <button
+              key={key}
+              onClick={() => actions.setView(key)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex-1 min-w-0 py-[10px] text-compact truncate ${
+                active ? 'text-ink font-semibold' : 'text-muted font-medium'
               }`}
-            />
-          </button>
-        ))}
+            >
+              {label}
+              <span
+                aria-hidden="true"
+                className={`block mx-auto mt-[4px] h-[2px] w-[18px] rounded-full ${
+                  active ? 'bg-accent' : 'bg-transparent'
+                }`}
+              />
+            </button>
+          );
+        })}
       </nav>
 
-      <GoalDrawer goal={openGoal ?? null} actions={actions} focusNodeId={drawerFocusNodeId} />
       <TaskCaptureModal
         open={taskCapture.open}
         focusRequest={taskCapture.focusRequest}
@@ -387,7 +398,7 @@ export function App() {
         goals={goals}
         tasks={tasks}
         habits={habits}
-        onOpenGoal={actions.openDrawer}
+        onOpenGoal={actions.openProject}
         onSetView={actions.setView}
         onReveal={actions.revealInPlan}
       />

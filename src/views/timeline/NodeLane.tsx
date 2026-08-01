@@ -78,7 +78,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
   function schedule(node: GoalNode) {
     const sp = defaultNodeSpan({ start: goal.start, deadline: goal.deadline }, today);
     actions.setNodeDates(goal.id, node.id, sp.start, sp.deadline);
-    actions.openDrawer(goal.id, node.id);
+    actions.openProject(goal.id, node.id);
   }
 
   if (goal.nodes.length === 0) {
@@ -127,7 +127,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
                 height={18}
                 warn={warn}
                 onCommit={(next) => actions.setNodeDates(goal.id, node.id, next.start, next.deadline)}
-                onOpen={() => actions.openDrawer(goal.id, node.id)}
+                onOpen={() => actions.openProject(goal.id, node.id)}
                 onHover={(pos) =>
                   setTip(pos ? { x: pos.x, y: pos.y, text: `${node.title} · ${fmtD(span.start)} → ${fmtD(span.deadline)}` } : null)
                 }
@@ -164,7 +164,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
                   <span className="text-faint">·</span>
                   <button
                     type="button"
-                    onClick={() => actions.openDrawer(goal.id, node.id)}
+                    onClick={() => actions.openProject(goal.id, node.id)}
                     className="text-muted hover:text-ink"
                   >
                     Open

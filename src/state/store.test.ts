@@ -1611,7 +1611,7 @@ describe('store actions', () => {
   });
 });
 
-describe('openDrawer node focus (T8)', () => {
+describe('openProject node focus (T8)', () => {
   const nested: Goal = {
     id: 'gp', title: 'Project', start: '2026-01-01', deadline: '2026-12-31', column: 0,
     nodes: [
@@ -1621,17 +1621,20 @@ describe('openDrawer node focus (T8)', () => {
     ],
   };
 
-  it('focuses a node: sets openGoalId + drawerFocusNodeId and re-expands its ancestor containers', async () => {
+  it('focuses a node: switches view, sets openGoalId + focusNodeId + openStepId, re-expands ancestors', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([nested]);
     actions.toggleExpand('root-a'); // collapse what addGoals auto-expanded
     actions.toggleExpand('mid');
     expect(getState().expanded.has('root-a')).toBe(false);
 
-    actions.openDrawer('gp', 'leaf');
+    actions.openProject('gp', 'leaf');
     const s = getState();
+    expect(s.view).toBe('project');
     expect(s.openGoalId).toBe('gp');
-    expect(s.drawerFocusNodeId).toBe('leaf');
+    expect(s.focusNodeId).toBe('leaf');
+    expect(s.openStepId).toBe('leaf');
+    expect(s.projectTab).toBe('steps');
     expect(s.expanded.has('root-a')).toBe(true);
     expect(s.expanded.has('mid')).toBe(true);
   });
@@ -1639,26 +1642,129 @@ describe('openDrawer node focus (T8)', () => {
   it('opens at the root when no node is given', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([nested]);
-    actions.openDrawer('gp');
-    expect(getState().openGoalId).toBe('gp');
-    expect(getState().drawerFocusNodeId).toBeNull();
+    actions.openProject('gp');
+    const s = getState();
+    expect(s.view).toBe('project');
+    expect(s.openGoalId).toBe('gp');
+    expect(s.focusNodeId).toBeNull();
+    expect(s.openStepId).toBeNull();
   });
 
   it('ignores an unknown node id but still opens the project', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([nested]);
-    actions.openDrawer('gp', 'ghost');
-    expect(getState().openGoalId).toBe('gp');
-    expect(getState().drawerFocusNodeId).toBeNull();
+    actions.openProject('gp', 'ghost');
+    const s = getState();
+    expect(s.view).toBe('project');
+    expect(s.openGoalId).toBe('gp');
+    expect(s.focusNodeId).toBeNull();
+    expect(s.openStepId).toBeNull();
   });
 
-  it('closeDrawer clears both the open project and the focus node', async () => {
+  it('always opens on the steps tab, even after the notes tab was last used', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([nested]);
-    actions.openDrawer('gp', 'leaf');
-    actions.closeDrawer();
-    expect(getState().openGoalId).toBeNull();
-    expect(getState().drawerFocusNodeId).toBeNull();
+    actions.openProject('gp');
+    actions.setProjectTab('notes');
+    expect(getState().projectTab).toBe('notes');
+    actions.closeProject();
+    actions.openProject('gp');
+    expect(getState().projectTab).toBe('steps');
+  });
+
+  it.each([
+    ['timeline', 'timeline'],
+    ['plan', 'plan'],
+    ['goals', 'goals'],
+  ] as const)('closeProject returns to the %s view and clears project state', async (sourceView, expectedView) => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.setView(sourceView);
+    actions.openProject('gp', 'leaf');
+    actions.closeProject();
+    const s = getState();
+    expect(s.view).toBe(expectedView);
+    expect(s.openGoalId).toBeNull();
+    expect(s.focusNodeId).toBeNull();
+    expect(s.openStepId).toBeNull();
+  });
+
+  it('keeps the original return view when opening another project from the project page', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested, { ...nested, id: 'gb', title: 'Project B' }]);
+    actions.setView('timeline');
+
+    actions.openProject('gp');
+    actions.openProject('gb');
+    actions.closeProject();
+
+    expect(getState().view).toBe('timeline');
+  });
+
+  it('preserves the active horizon across a project round-trip', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.setActiveHorizon(2);
+    actions.setView('goals');
+
+    actions.openProject('gp');
+    actions.closeProject();
+
+    expect(getState().activeHorizon).toBe(2);
+  });
+
+  it('clearFocusNode drops the pulse pointer without leaving the page', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp', 'leaf');
+    actions.clearFocusNode();
+    const s = getState();
+    expect(s.focusNodeId).toBeNull();
+    expect(s.view).toBe('project');
+    expect(s.openGoalId).toBe('gp');
+    expect(s.openStepId).toBe('leaf');
+  });
+
+  it('setView away from the project clears all project pointers', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp', 'leaf');
+
+    actions.setView('plan');
+
+    const s = getState();
+    expect(s.view).toBe('plan');
+    expect(s.openGoalId).toBeNull();
+    expect(s.openStepId).toBeNull();
+    expect(s.focusNodeId).toBeNull();
+  });
+
+  it('clears the open step when its node is removed, while undo restores the node only', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp', 'leaf');
+
+    actions.removeNode('leaf');
+
+    expect(getState().openStepId).toBeNull();
+    expect(getState().goals[0].nodes[0].children?.[0].children).toHaveLength(0);
+
+    actions.undoLastDelete();
+
+    expect(getState().goals[0].nodes[0].children?.[0].children?.[0].id).toBe('leaf');
+    expect(getState().openStepId).toBeNull();
+  });
+
+  it('keeps the open step when a different node is removed', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.addRootNode('gp', 'Other');
+    const otherId = getState().goals.find((g) => g.id === 'gp')!.nodes[1].id;
+    actions.openProject('gp', 'leaf');
+
+    actions.removeNode(otherId);
+
+    expect(getState().openStepId).toBe('leaf');
   });
 });
 
@@ -2795,6 +2901,22 @@ describe('bulk step operations', () => {
     expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'grp', 'd']);
   });
 
+  it('clears the open step for bulk removal, but not for another node', async () => {
+    const { actions, getState } = await storeWithPsets();
+    actions.openProject('g', 'b');
+
+    actions.removeNodes(['d']);
+    expect(getState().openStepId).toBe('b');
+
+    actions.undoLastDelete();
+    actions.removeNodes(['b']);
+    expect(getState().openStepId).toBeNull();
+
+    actions.undoLastDelete();
+    expect(getState().goals[0].nodes.some((n) => n.id === 'b')).toBe(true);
+    expect(getState().openStepId).toBeNull();
+  });
+
   it('counts the subtree, not the selected rows, in the toast', async () => {
     const { actions, getState } = await storeWithPsets();
     actions.removeNodes(['grp']);
@@ -3124,5 +3246,33 @@ describe('undo durability', () => {
     // The import survives, in memory and on disk.
     expect(getState().goals.map((g) => g.id)).toEqual(['imported']);
     expect(vi.mocked(persist)).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The generation boundary covers where the user is STANDING, not just the
+   * undo stack. Re-importing an export of the same dataset reuses every id, so
+   * a project page left open would keep rendering — pointed at a node from the
+   * replaced generation rather than the one it was opened on.
+   */
+  it('leaves the project page and clears its pointers across an import', async () => {
+    const { importStateFromFile } = await import('../db/db');
+    const { actions, getState } = await storeWithProject();
+
+    actions.openProject('g');
+    expect(getState().view).toBe('project');
+    expect(getState().openGoalId).toBe('g');
+
+    vi.mocked(importStateFromFile).mockResolvedValueOnce({
+      goals: [{ id: 'g', title: 'Same id, new generation', column: 0, nodes: [] }],
+      habits: [], tasks: [], sessions: [],
+      pxPerDay: 13, availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
+    });
+    await actions.importBackup(new File([''], 'backup.json'));
+
+    const s = getState();
+    expect(s.view).toBe('goals');
+    expect(s.openGoalId).toBeNull();
+    expect(s.focusNodeId).toBeNull();
+    expect(s.openStepId).toBeNull();
   });
 });

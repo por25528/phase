@@ -102,7 +102,7 @@ export const GoalRow = memo(function GoalRow({
             {warnings.length > 0 && (
               <button
                 type="button"
-                onClick={() => actions.openDrawer(g.id, warnings[0].nodeIds?.[0])}
+                onClick={() => actions.openProject(g.id, warnings[0].nodeIds?.[0])}
                 className="text-badge text-warn text-left leading-[1.3] truncate hover:underline min-h-[24px] inline-flex items-center rounded-[4px]"
                 title={warnings.map((w) => w.message).join(' · ')}
               >
@@ -129,7 +129,7 @@ export const GoalRow = memo(function GoalRow({
               height={24}
               warn={projectOverdue}
               onCommit={(next) => actions.setGoalDates(g.id, next.start, next.deadline)}
-              onOpen={() => actions.openDrawer(g.id)}
+              onOpen={() => actions.openProject(g.id)}
               onHover={(pos) => setBarTip(pos)}
               onPreview={(s) => setPreview(s)}
             />
@@ -137,7 +137,7 @@ export const GoalRow = memo(function GoalRow({
             <button
               type="button"
               aria-label={`${g.title}: dates unconfirmed, ${fmtD(g.start)}–${fmtD(g.deadline)}. Open project to review dates.`}
-              onClick={() => actions.openDrawer(g.id)}
+              onClick={() => actions.openProject(g.id)}
               onMouseMove={(e) => setBarTip({ x: e.clientX, y: e.clientY })}
               onMouseLeave={() => setBarTip(null)}
               onFocus={(e) => {

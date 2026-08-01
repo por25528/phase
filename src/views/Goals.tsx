@@ -35,7 +35,7 @@ const COL_COUNT = COLUMNS.length;
 // ── Goals view ────────────────────────────────────────────────────────────────
 
 export function Goals() {
-  const { goals, dateReviewDismissed, actions } = useAppStore();
+  const { goals, dateReviewDismissed, activeHorizon, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
   const [filter, setFilter] = useState<FocusFilter | null>(null);
   // The card the date-review banner (or a horizon move) is pointing at, plus a
@@ -53,7 +53,6 @@ export function Goals() {
   // time — rather than compressing (spec §2.1/§6). Cross-horizon moves then go
   // through the card's ⋯ menu instead of a drag.
   const wide = useMediaQuery('(min-width: 920px)');
-  const [activeHorizon, setActiveHorizon] = useState(0);
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -194,7 +193,7 @@ export function Goals() {
     if (!goal) return;
     if (Math.min(Math.max(goal.column ?? 0, 0), COL_COUNT - 1) === target) return;
     actions.moveGoalToColumn(goalId, target);
-    if (!wide) setActiveHorizon(target);
+    if (!wide) actions.setActiveHorizon(target);
     setHighlight({ id: goalId, nonce: highlightNonce.current += 1 });
   }
 
@@ -250,7 +249,7 @@ export function Goals() {
     const at = reviewCursor % unconfirmed.length;
     const goal = unconfirmed[at];
     setReviewCursor(at + 1);
-    if (!wide) setActiveHorizon(goal.column ?? 0);
+    if (!wide) actions.setActiveHorizon(goal.column ?? 0);
     setHighlight({ id: goal.id, nonce: highlightNonce.current += 1 });
   }
 
@@ -402,7 +401,7 @@ export function Goals() {
               type="button"
               aria-pressed={i === activeHorizon}
               aria-label={`Show ${col.label} — ${(columns[i] ?? []).length} project${(columns[i] ?? []).length === 1 ? '' : 's'}`}
-              onClick={() => setActiveHorizon(i)}
+              onClick={() => actions.setActiveHorizon(i)}
               className={`flex-1 text-ui font-medium px-[6px] py-[7px] rounded-field transition-colors ${
                 i === activeHorizon ? 'bg-panel text-ink shadow-card' : 'text-muted hover:text-ink'
               }`}
@@ -441,15 +440,15 @@ export function Goals() {
                       key={id}
                       goal={g}
                       today={currentDate}
-                      onOpen={actions.openDrawer}
+                      onOpen={actions.openProject}
                       onPlan={onPlan}
-                      onDefine={actions.openDrawer}
+                      onDefine={actions.openProject}
                       onComplete={actions.completeGoal}
                       onMove={moveToHorizon}
                       onRank={moveRank}
                       onDelete={actions.removeGoal}
                       onConfirmDates={confirmDatesFromCard}
-                      onEditDates={actions.openDrawer}
+                      onEditDates={actions.openProject}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}

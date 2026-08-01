@@ -84,7 +84,7 @@ async function mountTree(): Promise<{ store: Store; user: ReturnType<typeof user
   const store = await import('../state/store');
   await store.initStore();
   const { GoalTree } = await import('./GoalTree');
-  // Subscribed, exactly as `GoalDrawer` does — it reads `goal.nodes` from the
+  // Subscribed, exactly as the `Project` page does — it reads `goal.nodes` from the
   // store on every render. Passing a captured snapshot instead would freeze the
   // tree, and the selection's pruning is precisely the behaviour that depends
   // on `nodes` changing identity when the data does.

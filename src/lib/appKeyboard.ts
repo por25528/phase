@@ -66,6 +66,22 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
   return null;
 }
 
+/**
+ * Whether Escape should leave the project page.
+ *
+ * Escape belongs to the topmost thing on screen. With a dialog open over the
+ * page — the subtask modal is reachable straight from the Steps tab — the
+ * dialog consumes it, and navigating away as well would throw the user off
+ * the page they were working on for a keypress that meant "dismiss this".
+ */
+export function shouldLeaveProjectPage(
+  command: AppKeyCommand | null,
+  view: string,
+  modalOpen: boolean,
+): boolean {
+  return command === 'close-drawer' && view === 'project' && !modalOpen;
+}
+
 // ⌘K / Ctrl+K. Chromium binds Ctrl+K to the address bar, so the caller must
 // preventDefault as it does for ⌘N.
 export function shouldConsumePaletteShortcut(event: AppKeyEvent): boolean {

@@ -46,15 +46,31 @@ import {
   insertSiblingAfter as treeInsertSiblingAfter,
 } from '../lib/tree';
 
-export type ViewName = 'plan' | 'goals' | 'timeline';
+export type ViewName = 'plan' | 'goals' | 'timeline' | 'project';
+
+export const VIEW_LABELS = {
+  plan: 'Plan',
+  goals: 'Projects',
+  timeline: 'Timeline',
+} as const;
+
+/** Which tab the project page is showing. */
+export type ProjectTab = 'steps' | 'notes';
 
 interface UIState {
   view: ViewName;
+  projectReturnView: ViewName;
   selDate: string;
   openGoalId: string | null;
-  drawerFocusNodeId: string | null; // node the drawer should scroll to + highlight
+  // Node the project page should scroll to + pulse. One-shot: it is a pointer
+  // to a MOMENT, and the page clears it once the pulse has run.
+  focusNodeId: string | null;
+  // Node whose detail panel is open. Distinct from `focusNodeId` and longer
+  // lived: this one persists until the panel is closed. Read from plan 2 on.
+  openStepId: string | null;
+  projectTab: ProjectTab;
   // Task/habit the Plan view should scroll to + highlight — the same idea as
-  // `drawerFocusNodeId`, for the two kinds that have no drawer of their own.
+  // `focusNodeId`, for the two kinds that have no page of their own.
   revealItem: RevealTarget | null;
   // A step that was just created and should open ready to type. One-shot: the
   // row clears it as it mounts, so collapsing and re-expanding cannot reopen it.
@@ -74,6 +90,7 @@ interface UIState {
   availability: AvailabilityWindow[]; // per-weekday planning window (device preference)
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
   sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
+  activeHorizon: number;              // narrow Projects-board horizon (UI only)
 }
 
 interface FullState extends AppState, UIState {}
@@ -84,9 +101,12 @@ let state: FullState = {
   tasks: [],
   sessions: [],
   view: 'plan',
+  projectReturnView: 'goals',
   selDate: todayStr(),
   openGoalId: null,
-  drawerFocusNodeId: null,
+  focusNodeId: null,
+  openStepId: null,
+  projectTab: 'steps',
   revealItem: null,
   newNodeId: null,
   expanded: new Set(),
@@ -101,6 +121,7 @@ let state: FullState = {
   availability: DEFAULT_AVAILABILITY,
   allDayBlocks: true,
   sidebarPanels: [],
+  activeHorizon: 0,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
   // non-DOM contexts (tests).
@@ -427,6 +448,15 @@ function isActiveNode(nodeId: string): boolean {
   return !goalOfNode(nodeId)?.completedAt;
 }
 
+function nodeContains(ancestorId: string, descendantId: string): boolean {
+  const ancestorPath = findNodePath(state.goals, ancestorId);
+  const descendantPath = findNodePath(state.goals, descendantId);
+  return ancestorPath !== null
+    && descendantPath !== null
+    && ancestorPath.length <= descendantPath.length
+    && ancestorPath.every((id, index) => id === descendantPath[index]);
+}
+
 // Minutes-since-midnight for the live clock — the one place the store reads it.
 function nowMoment(): Now {
   const d = new Date();
@@ -721,12 +751,19 @@ export const actions = {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const node = findInAll(state.goals, nodeId);
     const title = node?.title ?? 'item';
+    const clearsOpenStep = state.openStepId !== null && nodeContains(nodeId, state.openStepId);
     const goals = state.goals.map((g) => {
       const nodes = structuredClone(g.nodes);
       removeNode(nodes, nodeId);
       return { ...g, nodes };
     });
-    withUndo(`Deleted "${title}"`, 'goals', goals, DESTRUCTIVE_UNDO_MS);
+    withUndo(
+      `Deleted "${title}"`,
+      'goals',
+      goals,
+      DESTRUCTIVE_UNDO_MS,
+      clearsOpenStep ? { openStepId: null } : undefined,
+    );
   },
 
   /**
@@ -752,12 +789,16 @@ export const actions = {
     const targets = topLevelSelection(roots, wanted);
     if (targets.length === 0) return false;
     const removed = selectionRemovalCount(roots, wanted);
+    const openStepId = state.openStepId;
+    const clearsOpenStep = openStepId !== null
+      && targets.some((id) => nodeContains(id, openStepId));
     for (const g of goals) for (const id of targets) removeNode(g.nodes, id);
     withUndo(
       `Deleted ${removed} step${removed === 1 ? '' : 's'}`,
       'goals',
       goals,
       DESTRUCTIVE_UNDO_MS,
+      clearsOpenStep ? { openStepId: null } : undefined,
     );
     return true;
   },
@@ -1646,7 +1687,11 @@ export const actions = {
 
   // UI
   setView(v: ViewName) {
-    set({ view: v });
+    if (v === 'project') {
+      set({ view: v });
+      return;
+    }
+    set({ view: v, openGoalId: null, openStepId: null, focusNodeId: null });
   },
 
   // Theme is a per-device UI preference: persist to localStorage, apply the
@@ -1662,30 +1707,69 @@ export const actions = {
     set({ selDate: s });
   },
 
+  setActiveHorizon(horizon: number): void {
+    const next = Math.min(Math.max(horizon, 0), HORIZON_COUNT - 1);
+    if (next === state.activeHorizon) return;
+    set({ activeHorizon: next });
+  },
+
   goToToday() {
     set({ selDate: todayStr() });
   },
 
-  // Open the project drawer, optionally focused on a node (Q10). A node focus
-  // expands the node's ancestor containers so the row is on-screen for the
-  // drawer to scroll to and highlight; an unknown node falls back to the root.
-  openDrawer(goalId: string, nodeId?: string) {
+  /**
+   * Navigate to a project's page, optionally pointed at one node.
+   *
+   * A node focus expands the node's ancestor containers so the row is on-screen
+   * for the page to scroll to; an unknown node falls back to the project root.
+   * It also sets `openStepId`, so arriving from ⌘K on a step lands you IN that
+   * step rather than merely beside a highlighted row.
+   *
+   * Always opens on the steps tab. The tab is a property of the visit, not of
+   * the project — landing on notes because that is where you were last time is
+   * a surprise, and steps are what the page is for.
+   */
+  openProject(goalId: string, nodeId?: string) {
+    const returnView = state.view === 'project' ? state.projectReturnView : state.view;
+    const projectReturnView = returnView === 'project' ? 'goals' : returnView;
+    const base = {
+      view: 'project' as const,
+      projectReturnView,
+      openGoalId: goalId,
+      projectTab: 'steps' as const,
+    };
     if (!nodeId) {
-      set({ openGoalId: goalId, drawerFocusNodeId: null });
+      set({ ...base, focusNodeId: null, openStepId: null });
       return;
     }
     const path = findNodePath(state.goals, nodeId);
     if (!path) {
-      set({ openGoalId: goalId, drawerFocusNodeId: null });
+      set({ ...base, focusNodeId: null, openStepId: null });
       return;
     }
     const expanded = new Set(state.expanded);
     for (const id of path.slice(0, -1)) expanded.add(id); // ancestor containers
-    set({ openGoalId: goalId, drawerFocusNodeId: nodeId, expanded });
+    set({ ...base, focusNodeId: nodeId, openStepId: nodeId, expanded });
   },
 
-  closeDrawer() {
-    set({ openGoalId: null, drawerFocusNodeId: null });
+  /** Leave the project page for the view it was opened from. */
+  closeProject() {
+    const view = state.projectReturnView === 'project' ? 'goals' : state.projectReturnView;
+    set({ view, openGoalId: null, focusNodeId: null, openStepId: null });
+  },
+
+  setProjectTab(tab: ProjectTab) {
+    set({ projectTab: tab });
+  },
+
+  /**
+   * Drop the pulse pointer once the page has used it. `focusNodeId` names a
+   * MOMENT, not a selection: left set, collapsing and re-expanding the tree
+   * would replay the highlight for a navigation that happened minutes ago.
+   */
+  clearFocusNode() {
+    if (state.focusNodeId === null) return;
+    set({ focusNodeId: null });
   },
 
   /**
@@ -1803,6 +1887,16 @@ export const actions = {
         planReview,
         expanded: collectContainers(appState.goals),
         pendingUndo: null,
+        // The generation boundary applies to where the user is STANDING too.
+        // `openGoalId`/`openStepId` name rows in the PREVIOUS dataset, and an
+        // import that reuses an id (exporting and re-importing the same data
+        // always does) would leave the project page pointed at a node that is
+        // no longer the one it was opened on. Leaving the page is the honest
+        // response to the data underneath it being replaced.
+        ...(state.view === 'project' ? { view: 'goals' as const } : {}),
+        openGoalId: null,
+        focusNodeId: null,
+        openStepId: null,
       });
       ensureWeekRollover();
       actions.showToast('Backup imported');
