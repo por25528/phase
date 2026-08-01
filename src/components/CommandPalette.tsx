@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { modalRegistry } from '../lib/modalRegistry';
 import { buildSearchIndex, searchEntries, type SearchEntry, type SearchHit, type SearchKind } from '../lib/search';
 import type { Goal, Habit, Task } from '../db/types';
-import type { ViewName } from '../state/store';
+import type { ProjectTab, ViewName } from '../state/store';
 
 // One input that both finds and acts (the Linear ⌘K pattern). Navigation verbs
 // share the list with search results, so nothing needs a separate surface.
@@ -59,6 +59,7 @@ export function CommandPalette({
   tasks,
   habits,
   onOpenGoal,
+  onSetProjectTab,
   onSetView,
   onReveal,
 }: {
@@ -68,6 +69,7 @@ export function CommandPalette({
   tasks: Task[];
   habits: Habit[];
   onOpenGoal: (goalId: string, nodeId?: string) => void;
+  onSetProjectTab: (tab: ProjectTab) => void;
   onSetView: (view: ViewName) => void;
   /** Take the user to a task/habit on the Plan view and highlight it. */
   onReveal: (kind: 'task' | 'habit', id: string) => void;
@@ -139,6 +141,7 @@ export function CommandPalette({
     const entry: SearchEntry = row.hit.entry;
     if (entry.kind === 'project') {
       onOpenGoal(entry.goalId!);
+      if (row.hit.snippet !== undefined) onSetProjectTab('notes');
     } else if (entry.kind === 'step') {
       onOpenGoal(entry.goalId!, entry.nodeId);
     } else {
@@ -267,7 +270,7 @@ export function CommandPalette({
                   </button>
                 );
               }
-              const { entry, titleMatches } = row.hit;
+              const { entry, titleMatches, snippet } = row.hit;
               return (
                 <button
                   key={`${entry.kind}-${entry.id}`}
@@ -292,6 +295,11 @@ export function CommandPalette({
                       <span className="block truncate text-compact text-muted mt-[1px]">
                         {entry.context}
                         {entry.archived && ' · archived'}
+                      </span>
+                    )}
+                    {snippet !== undefined && (
+                      <span className="block truncate text-compact text-muted mt-[1px]">
+                        {snippet}
                       </span>
                     )}
                   </span>

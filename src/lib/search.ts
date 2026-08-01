@@ -1,4 +1,5 @@
 import type { Goal, GoalNode, Habit, Task } from '../db/types';
+import { stripAssetRefs } from './notes';
 
 // Everything the palette can find. The store already holds the whole dataset in
 // memory, so this is a derived projection rebuilt per keystroke-batch rather
@@ -11,6 +12,8 @@ export interface SearchEntry {
   title: string;
   /** The parent project's title — shown as the disambiguating second line. */
   context?: string;
+  /** Note markdown with opaque asset references removed. */
+  body?: string;
   /** Project to open. Null for a task/habit with no project tag. */
   goalId: string | null;
   /** Set on step entries so the drawer can scroll to and highlight the node. */
@@ -24,11 +27,14 @@ export interface SearchHit {
   score: number;
   /** Indices into `entry.title` that matched, for highlighting. */
   titleMatches: number[];
+  /** A short excerpt from a matching note body, when one matched. */
+  snippet?: string;
 }
 
 // A match in the title is worth double one in the project context: typing
 // "raft" should surface the Raft project before every step inside it.
 const CONTEXT_WEIGHT = 0.5;
+const BODY_WEIGHT = 0.25;
 
 // Demotions are larger than any achievable match score, so they act as sort
 // tiers rather than nudges — done work never outranks open work on a tie.
@@ -47,6 +53,7 @@ function flattenNodes(
       id: node.id,
       title: node.title,
       context: goal.title,
+      ...(node.notes === undefined ? {} : { body: stripAssetRefs(node.notes) }),
       goalId: goal.id,
       nodeId: node.id,
       done: node.done === true,
@@ -69,6 +76,7 @@ export function buildSearchIndex(
       kind: 'project',
       id: goal.id,
       title: goal.title,
+      ...(goal.notes === undefined ? {} : { body: stripAssetRefs(goal.notes) }),
       goalId: goal.id,
       archived,
     });
@@ -135,37 +143,55 @@ function matchTerm(haystack: string, term: string): TermMatch | null {
   return { score: 100 + Math.round(density * 100), indices };
 }
 
+function makeSnippet(body: string, indices: number[]): string {
+  const matchStart = indices[0];
+  const matchEnd = indices[indices.length - 1] + 1;
+  const context = Math.max(0, Math.floor((80 - (matchEnd - matchStart)) / 2));
+  let start = Math.max(0, matchStart - context);
+  let end = Math.min(body.length, start + 80);
+  if (end - start < 80) start = Math.max(0, end - 80);
+  return `${start > 0 ? '…' : ''}${body.slice(start, end)}${end < body.length ? '…' : ''}`;
+}
+
 function scoreEntry(entry: SearchEntry, terms: string[]): SearchHit | null {
   let total = 0;
   const titleMatches = new Set<number>();
+  let snippet: string | undefined;
 
   for (const term of terms) {
     const inTitle = matchTerm(entry.title, term);
     const inContext = entry.context ? matchTerm(entry.context, term) : null;
+    const inBody = entry.body ? matchTerm(entry.body, term) : null;
 
     // Every term must land somewhere, so a multi-term query narrows.
-    if (!inTitle && !inContext) return null;
+    if (!inTitle && !inContext && !inBody) return null;
 
     const titleScore = inTitle ? inTitle.score : 0;
     const contextScore = inContext ? inContext.score * CONTEXT_WEIGHT : 0;
+    const bodyScore = inBody ? inBody.score * BODY_WEIGHT : 0;
 
-    if (titleScore >= contextScore) {
+    if (titleScore >= contextScore && titleScore >= bodyScore) {
       total += titleScore;
       inTitle!.indices.forEach((i) => titleMatches.add(i));
-    } else {
+    } else if (contextScore >= bodyScore) {
       total += contextScore;
+    } else {
+      total += bodyScore;
     }
+    if (inBody && snippet === undefined) snippet = makeSnippet(entry.body!, inBody.indices);
   }
 
   let score = total / terms.length;
   if (entry.done) score -= DONE_PENALTY;
   if (entry.archived) score -= ARCHIVED_PENALTY;
 
-  return {
+  const hit: SearchHit = {
     entry,
     score,
     titleMatches: [...titleMatches].sort((a, b) => a - b),
   };
+  if (snippet !== undefined) hit.snippet = snippet;
+  return hit;
 }
 
 export function searchEntries(

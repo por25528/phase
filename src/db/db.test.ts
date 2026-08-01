@@ -139,6 +139,23 @@ describe('importStateFromFile', () => {
     expect(new Uint8Array(await restored!.bytes.arrayBuffer())).toEqual(bytes);
   });
 
+  it('keeps imported app state when saving imported assets fails', async () => {
+    const bulkPut = vi.spyOn(db.assets, 'bulkPut').mockRejectedValueOnce(new Error('quota exceeded'));
+    try {
+      await expect(importStateFromFile(fileOf(JSON.stringify({
+        goals: [{
+          ...goal('g1'),
+          notes: '![image](asset:a_1)',
+        }],
+        habits: [], tasks: [], sessions: [], assets: [],
+      })))).rejects.toThrow(/images could not be saved/);
+
+      expect((await loadState()).goals[0].notes).toBe('![image](asset:a_1)');
+    } finally {
+      bulkPut.mockRestore();
+    }
+  });
+
   it('imports a valid backup, persists it, and returns the scale', async () => {
     const task = { id: 't1', title: 'Legacy task', date: '2026-07-05', done: false, goalId: null };
     const session = { id: 's1', goalId: 'g1', date: '2026-07-05', minutes: 30, note: 'Legacy log' };

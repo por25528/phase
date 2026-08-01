@@ -71,6 +71,19 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const reclaimSpace = () => {
+    void actions.reclaimSpace()
+      .then((result) => {
+        if ('deferred' in result) {
+          actions.showToast('Reclaim deferred — try again after the Undo window expires');
+          return;
+        }
+        const { count, bytes } = result;
+        actions.showToast(`Reclaimed ${count} asset${count === 1 ? '' : 's'} (${bytes} bytes freed)`);
+      })
+      .catch(() => actions.showToast('Could not reclaim space.'));
+  };
+
   const openTaskCapture = () => setTaskCapture((current) => requestTaskCaptureForCommand(
     current,
     hydration,
@@ -246,6 +259,7 @@ export function App() {
             <span>{THEME_LABEL[theme]}</span>
           </button>
           <button onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↓ EXPORT</button>
+          <button onClick={reclaimSpace} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">RECLAIM SPACE</button>
           <button onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↑ IMPORT</button>
         </div>
 
@@ -261,6 +275,10 @@ export function App() {
           <HeaderMenuItem onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'}>
             <span aria-hidden="true" className="w-[14px] text-center">↓</span>
             Export backup
+          </HeaderMenuItem>
+          <HeaderMenuItem onClick={reclaimSpace} disabled={hydration !== 'ready'}>
+            <span aria-hidden="true" className="w-[14px] text-center">⌫</span>
+            Reclaim space
           </HeaderMenuItem>
           <HeaderMenuItem onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'}>
             <span aria-hidden="true" className="w-[14px] text-center">↑</span>
@@ -406,6 +424,7 @@ export function App() {
         tasks={tasks}
         habits={habits}
         onOpenGoal={actions.openProject}
+        onSetProjectTab={actions.setProjectTab}
         onSetView={actions.setView}
         onReveal={actions.revealInPlan}
       />

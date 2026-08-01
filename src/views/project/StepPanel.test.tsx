@@ -212,6 +212,56 @@ describe('StepPanel', () => {
     }
   });
 
+  it('flushes a pending note before deleting the active step so Undo restores the typing', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = await preparePanel(twoStepGoal);
+      const { StepPanel } = await import('./StepPanel');
+      const goal = store.getState().goals[0];
+      render(createElement(StepPanel, {
+        goal, node: goal.nodes[0], actions: store.actions,
+      }));
+      const setNodeNotes = vi.spyOn(store.actions, 'setNodeNotes');
+
+      const editor = screen.getByLabelText('Step notes');
+      editor.innerHTML = '<p>Typed before delete</p>';
+      fireEvent.input(editor);
+      await act(async () => { await Promise.resolve(); });
+
+      store.actions.removeNode('n1');
+      expect(setNodeNotes).toHaveBeenCalledWith('n1', 'Typed before delete');
+      store.actions.undoLastDelete();
+
+      expect(store.getState().goals[0].nodes[0].notes).toBe('Typed before delete');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes a pending note before bulk deletion so Undo restores the typing', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = await preparePanel(twoStepGoal);
+      const { StepPanel } = await import('./StepPanel');
+      const goal = store.getState().goals[0];
+      render(createElement(StepPanel, {
+        goal, node: goal.nodes[0], actions: store.actions,
+      }));
+
+      const editor = screen.getByLabelText('Step notes');
+      editor.innerHTML = '<p>Typed before bulk delete</p>';
+      fireEvent.input(editor);
+      await act(async () => { await Promise.resolve(); });
+
+      store.actions.removeNodes(['n1']);
+      store.actions.undoLastDelete();
+
+      expect(store.getState().goals[0].nodes[0].notes).toBe('Typed before bulk delete');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('renames the selected step from the title editor', async () => {
     const store = await preparePanel(twoStepGoal);
     const { StepPanel } = await import('./StepPanel');

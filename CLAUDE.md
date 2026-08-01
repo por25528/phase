@@ -17,7 +17,8 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 ## Layers
 
 - `src/db/types.ts` — all domain types: `Goal`, `GoalNode`, `Habit`, `Task`, and `Session`.
-- `src/db/db.ts` — Dexie persistence. The only module that touches IndexedDB.
+- `src/db/db.ts` — Dexie persistence for app state and settings.
+- `src/db/assets.ts` — the only module that touches the `assets` table.
 - `src/lib/*` — pure, side-effect-free helpers; new logic here ships with a sibling `*.test.ts`.
 - `src/state/store.ts` — the single global store (`useSyncExternalStore`). All mutations go through `actions`, which call `setAndPersist`. Views never call `db` directly.
 - `src/views/<View>.tsx` orchestrates a top-level view; its components live in a per-view subfolder (`plan/`, `timeline/`, `goals/`, `project/`).
@@ -32,6 +33,8 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - **The Undo toast never outlives its restore.** `setAndPersist`'s sweep drops every non-surgical entry when an ordinary edit lands, and clears `pendingUndo` in the same write (`armedSurgical`). A visible Undo button that does nothing is worse than no button.
 - **An import is a generation boundary.** `importBackup` clears `undoStack`/`pendingUndo`: a whole-slice restore armed against the previous dataset would otherwise overwrite the imported one and persist it.
 - Backup export/import is disabled until `hydration === 'ready'` (`App.tsx`). A Web Lock (`src/lib/tabLock.ts`) rejects a second tab — Phase assumes a single writer. **A tab that does not own the lock never writes at all**: `persist` is gated in `setAndPersist`, every settings write goes through `ifOwner`, and `importBackup` refuses outright. A single write is a full clear + bulkPut of all four tables, so one from a stale tab rewrites the whole database.
+- **`assets` lives outside `AppState` and outside `persist()`.** A single write is a full clear + bulkPut of all four tables, so image bytes in a goal row would be rewritten on every checkbox tick. Asset writes are surgical, go through `ifOwner`, and are append-only — an orphaned blob is inert, and deleting one eagerly would let undo restore a note pointing at nothing, exactly as `Session.nodeId` is allowed to dangle.
+- **Note autosave is held while `pendingUndo` is live.** `setAndPersist`'s sweep is correct and must not be exempted; instead a *timer* never spends the undo, while an explicit departure — blur, navigation, unmount — always saves, because losing typing is worse than losing an unused undo.
 - A failed write latches `persistFailed` until a later write succeeds, and `App.tsx` renders it as a banner. In-memory state advances regardless, so Export stays available as the recovery path.
 - "Free" is tense-sensitive: `weekCapacity` reports what a PAST day held (`NO_PAST_LIMIT`) and what a current/future day has LEFT. The week total is the SUM of those day figures — it and `plannedMin` get compared by `isOverCommitted`, so they must cover the same days. Moving or resizing something already on the grid is an adjustment, not a new booking, and also uses `NO_PAST_LIMIT`.
 - In the backlog rail, a due date only reorders a row if `dueChip` will also show it (`DUE_CHIP_DAYS`). Anything that jumps the queue has to say why.

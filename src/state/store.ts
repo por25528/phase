@@ -7,9 +7,9 @@ import {
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
   isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
-  loadCheckpointMigrationSnapshot,
+  loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
 } from '../db/db';
-import { putAsset } from '../db/assets';
+import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
 import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
 import { todayStr, addDays, fmtD } from '../lib/dates';
@@ -30,6 +30,7 @@ import { normalizeEstimate, type Now } from '../lib/capacity';
 import { formatEstimateValue } from '../lib/estimateInput';
 import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN } from '../lib/slot';
 import { spansOn } from '../lib/scheduled';
+import { assetIdsInMarkdown } from '../lib/notes';
 import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
 import { MAX_IMAGE_EDGE, scaledDimensions } from '../lib/imageScale';
 import {
@@ -183,6 +184,20 @@ let writingUndoableEdit = false;
  * refuse a write during hydration.
  */
 let ownsTabLock = true;
+
+let activeNoteFlush: (() => void) | null = null;
+
+/** Register the one mounted note editor so destructive snapshots can flush it. */
+export function registerPendingNoteFlush(flush: () => void): () => void {
+  activeNoteFlush = flush;
+  return () => {
+    if (activeNoteFlush === flush) activeNoteFlush = null;
+  };
+}
+
+function flushPendingNote(): void {
+  activeNoteFlush?.();
+}
 
 /**
  * Run a settings write only if this tab owns the single-writer lock.
@@ -709,6 +724,36 @@ function ensureWeekRollover(): void {
   ifOwner(() => savePlanReview(review));
 }
 
+function isAssetImportFailure(error: unknown): error is AssetImportFailure {
+  if (!(error instanceof Error)) return false;
+  const candidate = error as Partial<AssetImportFailure>;
+  return candidate.code === 'asset-import-failed' && candidate.imported !== undefined;
+}
+
+async function applyImportedBackup(appState: ImportedBackupState): Promise<void> {
+  const planReview = await loadPlanReview();
+  // An import is a generation boundary: nothing armed against the previous
+  // dataset can mean anything against this one.
+  undoStack = [];
+  armedSurgical = false;
+  if (undoTimer) {
+    clearTimeout(undoTimer);
+    undoTimer = null;
+  }
+  set({
+    ...appState,
+    planReview,
+    expanded: collectContainers(appState.goals),
+    pendingUndo: null,
+    // The generation boundary applies to where the user is standing too.
+    ...(state.view === 'project' ? { view: 'goals' as const } : {}),
+    openGoalId: null,
+    focusNodeId: null,
+    openStepId: null,
+  });
+  ensureWeekRollover();
+}
+
 // ---- actions ----
 export const actions = {
   // Goals / nodes
@@ -905,6 +950,7 @@ export const actions = {
 
   removeNode(nodeId: string) {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
+    flushPendingNote();
     const node = findInAll(state.goals, nodeId);
     const title = node?.title ?? 'item';
     const clearsOpenStep = state.openStepId !== null && nodeContains(nodeId, state.openStepId);
@@ -940,6 +986,7 @@ export const actions = {
   removeNodes(ids: string[]): boolean {
     const wanted = new Set(ids.filter((id) => isActiveNode(id)));
     if (wanted.size === 0) return false;
+    flushPendingNote();
     const goals = cloneGoals(state.goals);
     const roots = goals.flatMap((g) => g.nodes);
     const targets = topLevelSelection(roots, wanted);
@@ -1169,12 +1216,56 @@ export const actions = {
         if (!state.persistFailed) set({ persistFailed: true });
         throw error;
       }
-      if (state.persistFailed) set({ persistFailed: false });
       return id;
     });
   },
 
+  async reclaimSpace(): Promise<{ count: number; bytes: number } | { deferred: true }> {
+    // Reclamation is deliberately explicit and never part of note edits. An
+    // orphaned asset is safe to keep, while deleting it eagerly would let undo
+    // restore a note that points at a missing blob.
+    if (!ownsTabLock) return { count: 0, bytes: 0 };
+    return ownerAssetWrite(async () => {
+      if (undoStack.length > 0 || state.pendingUndo !== null) return { deferred: true };
+      const referenced = new Set<string>();
+      const collect = (markdown: string | undefined) => {
+        if (markdown !== undefined) {
+          assetIdsInMarkdown(markdown).forEach((id) => referenced.add(id));
+        }
+      };
+      const visit = (nodes: Goal['nodes']) => {
+        for (const node of nodes) {
+          collect(node.notes);
+          if (node.children?.length) visit(node.children);
+        }
+      };
+
+      for (const goal of state.goals) {
+        collect(goal.notes);
+        visit(goal.nodes);
+      }
+
+      const ids = await allAssetIds();
+      const orphanIds = ids.filter((id) => !referenced.has(id));
+      let bytes = 0;
+      for (const id of orphanIds) {
+        const asset = await getAsset(id);
+        if (asset) bytes += asset.bytes.size;
+      }
+
+      try {
+        await deleteAssets(orphanIds);
+      } catch (error) {
+        actions.showToast('Saving failed — export a backup now');
+        if (!state.persistFailed) set({ persistFailed: true });
+        throw error;
+      }
+      return { count: orphanIds.length, bytes };
+    });
+  },
+
   removeGoal(goalId: string) {
+    flushPendingNote();
     const goal = state.goals.find((g) => g.id === goalId);
     const title = goal?.title ?? 'project';
     const goals = state.goals.filter((g) => g.id !== goalId);
@@ -2053,40 +2144,15 @@ export const actions = {
     }
     try {
       const appState = await importStateFromFile(file);
-      const planReview = await loadPlanReview();
-      // An import is a generation boundary: nothing armed against the PREVIOUS
-      // dataset can mean anything against this one. Left alone, an undo armed
-      // moments before (deleting a project arms a 15-second window) stayed on
-      // the stack, and ⌘Z — the most natural reflex right after "I just
-      // restored a backup" — replayed a whole-slice snapshot of the old data
-      // over the imported data AND persisted it. The recovery mechanism
-      // destroyed the recovery. `set` does not sweep the stack the way
-      // `setAndPersist` does, so this has to be explicit.
-      undoStack = [];
-      armedSurgical = false;
-      if (undoTimer) {
-        clearTimeout(undoTimer);
-        undoTimer = null;
-      }
-      set({
-        ...appState,
-        planReview,
-        expanded: collectContainers(appState.goals),
-        pendingUndo: null,
-        // The generation boundary applies to where the user is STANDING too.
-        // `openGoalId`/`openStepId` name rows in the PREVIOUS dataset, and an
-        // import that reuses an id (exporting and re-importing the same data
-        // always does) would leave the project page pointed at a node that is
-        // no longer the one it was opened on. Leaving the page is the honest
-        // response to the data underneath it being replaced.
-        ...(state.view === 'project' ? { view: 'goals' as const } : {}),
-        openGoalId: null,
-        focusNodeId: null,
-        openStepId: null,
-      });
-      ensureWeekRollover();
+      await applyImportedBackup(appState);
       actions.showToast('Backup imported');
     } catch (e) {
+      if (isAssetImportFailure(e)) {
+        await applyImportedBackup(e.imported);
+        set({ persistFailed: true });
+        actions.showToast('Import completed, but images could not be saved — export a backup now');
+        return;
+      }
       actions.showToast(e instanceof Error ? e.message : 'Could not read that file.');
     }
   },

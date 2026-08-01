@@ -81,6 +81,19 @@ describe('buildSearchIndex', () => {
   it('carries the goalId a project entry opens', () => {
     expect(index().find((e) => e.id === 'g-raft')).toMatchObject({ kind: 'project', goalId: 'g-raft' });
   });
+
+  it('indexes project and step note bodies without asset references', () => {
+    const entries = buildSearchIndex([goal({
+      id: 'g-notes',
+      title: 'Research',
+      notes: 'Late days were discussed in the review asset:a_project',
+      nodes: [{ id: 'n-note', title: 'Follow-up', notes: 'The late days policy is here asset:a_step' }],
+    })], [], []);
+
+    expect(entries.find((entry) => entry.id === 'g-notes')?.body).toContain('Late days');
+    expect(entries.find((entry) => entry.id === 'g-notes')?.body).not.toContain('a_project');
+    expect(entries.find((entry) => entry.id === 'n-note')?.body).not.toContain('a_step');
+  });
 });
 
 describe('searchEntries', () => {
@@ -155,5 +168,49 @@ describe('searchEntries', () => {
 
   it('finds a habit', () => {
     expect(searchEntries(index(), 'run')[0].entry.kind).toBe('habit');
+  });
+
+  it('returns a note-only match with a snippet containing the match', () => {
+    const entries = buildSearchIndex([goal({
+      id: 'g-notes', title: 'Research', notes: 'A long review about late days and deadlines.', nodes: [],
+    })], [], []);
+
+    const hit = searchEntries(entries, 'deadlines')[0];
+    expect(hit.entry.id).toBe('g-notes');
+    expect(hit.snippet).toContain('deadlines');
+  });
+
+  it('ranks a title match above a body match', () => {
+    const entries = buildSearchIndex([
+      goal({ id: 'g-title', title: 'Deadlines', notes: 'Unrelated project notes', nodes: [] }),
+      goal({ id: 'g-body', title: 'Research', notes: 'Deadlines are recorded here', nodes: [] }),
+    ], [], []);
+
+    expect(searchEntries(entries, 'deadlines')[0].entry.id).toBe('g-title');
+  });
+
+  it('does not match opaque asset references in notes', () => {
+    const entries = buildSearchIndex([goal({
+      id: 'g-assets', title: 'Research', notes: '![image](asset:a_secret)', nodes: [],
+    })], [], []);
+
+    expect(searchEntries(entries, 'a_secret')).toEqual([]);
+  });
+
+  it('carries the node id for a step note hit', () => {
+    const entries = buildSearchIndex([goal({
+      id: 'g-step-note', title: 'Research', nodes: [{
+        id: 'n-step-note', title: 'Step', notes: 'A finding from fieldwork',
+      }],
+    })], [], []);
+
+    const hit = searchEntries(entries, 'fieldwork')[0];
+    expect(hit.entry).toMatchObject({ kind: 'step', goalId: 'g-step-note', nodeId: 'n-step-note' });
+  });
+
+  it('leaves entries without notes unaffected', () => {
+    const entry = index().find((candidate) => candidate.id === 'g-raft');
+    expect(entry).not.toHaveProperty('body');
+    expect(searchEntries(index(), 'cutlass')[0].snippet).toBeUndefined();
   });
 });

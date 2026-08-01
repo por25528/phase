@@ -377,6 +377,18 @@ export async function exportState(
   a.click();
 }
 
+export type ImportedBackupState = AppState & {
+  pxPerDay: number;
+  availability: AvailabilityWindow[];
+  allDayBlocks: boolean;
+  sidebarPanels: SidebarPanel[];
+};
+
+export type AssetImportFailure = Error & {
+  code: 'asset-import-failed';
+  imported: ImportedBackupState;
+};
+
 function isEntityArray(v: unknown): boolean {
   return Array.isArray(v) && v.every(
     (x) => !!x && typeof x === 'object' && typeof (x as { id?: unknown }).id === 'string',
@@ -385,12 +397,7 @@ function isEntityArray(v: unknown): boolean {
 
 export async function importStateFromFile(
   file: File,
-): Promise<AppState & {
-  pxPerDay: number;
-  availability: AvailabilityWindow[];
-  allDayBlocks: boolean;
-  sidebarPanels: SidebarPanel[];
-}> {
+): Promise<ImportedBackupState> {
   let text: string;
   try {
     text = await file.text();
@@ -472,13 +479,21 @@ export async function importStateFromFile(
     sessions: raw.sessions ?? [],
   };
   await persist(parsed);
-  const importedAssets = decodeAssets(raw.assets);
-  // Asset storage is a generation, not ordinary app state. Replace it in one
-  // transaction so old, unreferenced images never survive an import.
-  await db.transaction('rw', db.assets, async () => {
-    await db.assets.clear();
-    await db.assets.bulkPut(importedAssets);
-  });
+  let assetWriteFailed = false;
+  try {
+    const importedAssets = decodeAssets(raw.assets);
+    // Asset storage is a generation, not ordinary app state. Replace it in one
+    // transaction so old, unreferenced images never survive an import.
+    await db.transaction('rw', db.assets, async () => {
+      await db.assets.clear();
+      await db.assets.bulkPut(importedAssets);
+    });
+  } catch {
+    // `persist(parsed)` already landed. Continue the generation-boundary work,
+    // then report the partial import explicitly rather than pretending it was
+    // atomic or rolling back the app tables.
+    assetWriteFailed = true;
+  }
   await saveScale(pxPerDay);
   await saveAvailability(availability);
   await saveAllDayBlocks(allDayBlocks);
@@ -504,5 +519,11 @@ export async function importStateFromFile(
   } else {
     await db.planReview.clear();
   }
-  return { ...parsed, pxPerDay, availability, allDayBlocks, sidebarPanels };
+  const imported = { ...parsed, pxPerDay, availability, allDayBlocks, sidebarPanels };
+  if (assetWriteFailed) {
+    const failure = new Error('Imported goals and notes, but images could not be saved.');
+    Object.assign(failure, { code: 'asset-import-failed', imported });
+    throw failure as AssetImportFailure;
+  }
+  return imported;
 }

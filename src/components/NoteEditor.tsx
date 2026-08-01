@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Editor,
   EditorContent,
@@ -11,6 +11,7 @@ import Image from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
+import type { EditorView } from 'prosemirror-view';
 import { actions } from '../state/store';
 import { useAssetUrl } from './useAssetUrl';
 
@@ -19,16 +20,19 @@ function AssetImageView({ node }: NodeViewProps) {
   const isAsset = src?.startsWith('asset:') ?? false;
   const assetId = isAsset ? src?.slice('asset:'.length) ?? '' : null;
   const { url, missing } = useAssetUrl(assetId);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
+  const imageSrc = url ?? (src && !isAsset ? src : null);
+  const imageFailed = imageSrc !== null && failedSrc === imageSrc;
 
   return (
     <NodeViewWrapper className="note-image" data-asset-id={assetId ?? undefined}>
-      {missing ? (
+      {missing || imageFailed ? (
         <span className="note-image-missing" role="img" aria-label="Image unavailable">
           Image unavailable
         </span>
-      ) : url || (src && !isAsset) ? (
-        <img src={url ?? src ?? undefined} alt={alt} />
+      ) : imageSrc ? (
+        <img src={imageSrc} alt={alt} onError={() => setFailedSrc(imageSrc)} />
       ) : (
         <span className="note-image-missing" role="img" aria-label="Loading image">
           Loading image...
@@ -59,6 +63,19 @@ const NOTE_EXTENSIONS = [
   Markdown,
 ];
 
+const RAW_HTML_TAG = /(?<!\\)<(?=\/?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*)?\/?\s*>)/g;
+
+function literalizeRawHtml(markdown: string): string {
+  return markdown.replace(RAW_HTML_TAG, '\\<');
+}
+
+export function insertPastedAsset(view: EditorView, id: string) {
+  if (view.isDestroyed) return;
+  const image = view.state.schema.nodes.image.create({ src: `asset:${id}` });
+  const { from, to } = view.state.selection;
+  view.dispatch(view.state.tr.replaceRangeWith(from, to, image));
+}
+
 export interface NoteEditorProps {
   /** Identity of the document being edited, not the current text. */
   docKey: string;
@@ -74,7 +91,7 @@ export interface NoteEditorProps {
 export function roundTrip(markdown: string): string {
   const editor = new Editor({
     extensions: NOTE_EXTENSIONS,
-    content: markdown,
+    content: literalizeRawHtml(markdown),
     contentType: 'markdown',
   });
 
@@ -100,7 +117,7 @@ export function NoteEditor({
 
   const editor = useEditor({
     extensions: NOTE_EXTENSIONS,
-    content: initialValue.current,
+    content: literalizeRawHtml(initialValue.current),
     contentType: 'markdown',
     immediatelyRender: true,
     shouldRerenderOnTransaction: true,
@@ -116,11 +133,8 @@ export function NoteEditor({
         if (!file) return false;
 
         event.preventDefault();
-        const { from, to } = view.state.selection;
         void actions.addAsset(file).then((id) => {
-          if (view.isDestroyed) return;
-          const image = view.state.schema.nodes.image.create({ src: `asset:${id}` });
-          view.dispatch(view.state.tr.replaceRangeWith(from, to, image));
+          insertPastedAsset(view, id);
         }).catch(() => {
           // The store owns persistence errors and its recovery banner.
         });
@@ -136,7 +150,7 @@ export function NoteEditor({
     if (!editor || previousDocKey.current === docKey) return;
 
     previousDocKey.current = docKey;
-    editor.commands.setContent(value, {
+    editor.commands.setContent(literalizeRawHtml(value), {
       contentType: 'markdown',
       emitUpdate: false,
     });

@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
 import { leafCount } from '../lib/board';
-import type { Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
+import type { Asset, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
 
 const dbMocks = vi.hoisted(() => ({
@@ -40,6 +40,9 @@ vi.mock('../db/db', () => dbMocks);
 
 const assetMocks = vi.hoisted(() => ({
   putAsset: vi.fn(async () => {}),
+  allAssetIds: vi.fn(async () => [] as string[]),
+  getAsset: vi.fn(async (_id: string): Promise<Asset | undefined> => undefined),
+  deleteAssets: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/assets', () => assetMocks);
@@ -94,6 +97,9 @@ describe('store actions', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     assetMocks.putAsset.mockClear();
+    assetMocks.allAssetIds.mockClear();
+    assetMocks.getAsset.mockClear();
+    assetMocks.deleteAssets.mockClear();
     tabLockMocks.acquireTabLock.mockClear();
     tabLockMocks.acquireTabLock.mockResolvedValue(true);
   });
@@ -761,7 +767,7 @@ describe('store actions', () => {
       expect(store.getState().persistFailed).toBe(false);
     });
 
-    it('latches persistence failure and clears it after a later asset write succeeds', async () => {
+    it('latches persistence failure and keeps it after a later asset write succeeds', async () => {
       const { actions, getState } = await freshStore();
       assetMocks.putAsset.mockRejectedValueOnce(new Error('disk full'));
 
@@ -769,8 +775,74 @@ describe('store actions', () => {
       expect(getState().persistFailed).toBe(true);
 
       await expect(actions.addAsset(new Blob(['image']), encoder)).resolves.toMatch(/^a_/);
-      expect(getState().persistFailed).toBe(false);
+      expect(getState().persistFailed).toBe(true);
       expect(assetMocks.putAsset).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('reclaimSpace', () => {
+    it('deletes only unreferenced project and step assets and reports bytes freed', async () => {
+      const store = await freshStore();
+      await store.initStore();
+      store.actions.addGoals([{
+        id: 'g', title: 'Project', notes: '![project](asset:project)', nodes: [{
+          id: 'n', title: 'Step', notes: '![step](asset:step)', children: [{
+            id: 'leaf', title: 'Leaf', notes: 'asset:step',
+          }],
+        }],
+      }]);
+      assetMocks.allAssetIds.mockResolvedValueOnce(['project', 'step', 'orphan']);
+      assetMocks.getAsset.mockImplementation(async (id: string) => ({
+        id,
+        mime: 'image/webp',
+        bytes: new Blob([id.repeat(id === 'orphan' ? 4 : 1)]),
+        width: 1,
+        height: 1,
+        createdAt: '2026-08-01',
+      }));
+
+      await expect(store.actions.reclaimSpace()).resolves.toEqual({ count: 1, bytes: 24 });
+      expect(assetMocks.deleteAssets).toHaveBeenCalledWith(['orphan']);
+      expect(assetMocks.getAsset).toHaveBeenCalledWith('orphan');
+    });
+
+    it('does not sweep or delete from a non-owning tab', async () => {
+      tabLockMocks.acquireTabLock.mockResolvedValueOnce(false);
+      const store = await freshStore();
+      await store.initStore();
+
+      await expect(store.actions.reclaimSpace()).resolves.toEqual({ count: 0, bytes: 0 });
+      expect(assetMocks.allAssetIds).not.toHaveBeenCalled();
+      expect(assetMocks.getAsset).not.toHaveBeenCalled();
+      expect(assetMocks.deleteAssets).not.toHaveBeenCalled();
+    });
+
+    it('defers while an undo is armed, leaving its asset reachable for restore', async () => {
+      const store = await freshStore();
+      await store.initStore();
+      store.actions.addGoals([{
+        id: 'g', title: 'Project', notes: '![image](asset:a_1)', nodes: [],
+      }]);
+
+      store.actions.removeGoal('g');
+      expect(store.getState().pendingUndo).not.toBeNull();
+
+      await expect(store.actions.reclaimSpace()).resolves.toEqual({ deferred: true });
+      expect(assetMocks.allAssetIds).not.toHaveBeenCalled();
+      expect(assetMocks.deleteAssets).not.toHaveBeenCalled();
+
+      store.actions.undoLastDelete();
+      expect(store.getState().goals[0].notes).toBe('![image](asset:a_1)');
+      expect(assetMocks.deleteAssets).not.toHaveBeenCalled();
+    });
+
+    it('never runs during hydration without the explicit action', async () => {
+      const store = await freshStore();
+
+      await store.initStore();
+
+      expect(assetMocks.allAssetIds).not.toHaveBeenCalled();
+      expect(assetMocks.deleteAssets).not.toHaveBeenCalled();
     });
   });
 
@@ -3129,7 +3201,7 @@ describe('planNextStepFor', () => {
   });
 });
 
-describe('persist failure', () => {
+  describe('persist failure', () => {
   it('latches a banner flag until a later write succeeds', async () => {
     const { persist } = await import('../db/db');
     const { actions, getState } = await freshStore();
@@ -3160,6 +3232,47 @@ describe('persist failure', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     expect(getState().goals.map((g) => g.title)).toContain('Startup: investor deck');
+  });
+
+  it('does not clear an app-state failure when an asset write succeeds', async () => {
+    const { persist } = await import('../db/db');
+    const { actions, getState } = await freshStore();
+    const encoder = async (file: Blob) => ({ bytes: file, width: 4, height: 3 });
+
+    vi.mocked(persist).mockRejectedValueOnce(new Error('disk full'));
+    actions.addGoal('Unsaved edit');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getState().persistFailed).toBe(true);
+
+    await actions.addAsset(new Blob(['image']), encoder);
+    expect(getState().persistFailed).toBe(true);
+
+    actions.addGoal('Saved edit');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getState().persistFailed).toBe(false);
+  });
+
+  it('reports an asset import failure without rolling back imported app state', async () => {
+    const { importStateFromFile } = await import('../db/db');
+    const { actions, getState } = await freshStore();
+    const imported = {
+      goals: [{ id: 'imported', title: 'Imported project', column: 0, nodes: [{
+        id: 'step', title: 'Imported step', notes: '![image](asset:a_1)', done: false,
+      }] }],
+      habits: [], tasks: [], sessions: [], pxPerDay: 13,
+      availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
+    };
+    const failure = Object.assign(
+      new Error('Imported goals and notes, but images could not be saved.'),
+      { code: 'asset-import-failed', imported },
+    );
+    vi.mocked(importStateFromFile).mockRejectedValueOnce(failure);
+
+    await actions.importBackup(new File([''], 'backup.json'));
+
+    expect(getState().persistFailed).toBe(true);
+    expect(getState().toast).toMatch(/images could not be saved/);
+    expect(getState().goals).toEqual(imported.goals);
   });
 });
 

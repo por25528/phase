@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FocusEvent, type JSX } from 'react';
 import type { Goal, GoalNode } from '../../db/types';
-import { useAppStore } from '../../state/store';
+import { registerPendingNoteFlush, useAppStore } from '../../state/store';
 import { DateField } from '../../components/DateField';
 import { EstimateControl } from '../../components/EstimateControl';
 import { InlineEdit } from '../../components/InlineEdit';
@@ -65,6 +65,8 @@ export function StepPanel({ goal, node, actions }: {
 
   const flushNotesRef = useRef(flushNotes);
   flushNotesRef.current = flushNotes;
+
+  useEffect(() => registerPendingNoteFlush(() => flushNotesRef.current('unmount')), []);
 
   // The editor is intentionally reused across steps, so reset the draft when
   // its subject changes instead of relying on a remount.

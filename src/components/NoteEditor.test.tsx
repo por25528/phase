@@ -1,14 +1,19 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const noteActionMocks = vi.hoisted(() => ({
   addAsset: vi.fn(),
 }));
 
-vi.mock('../state/store', () => ({ actions: noteActionMocks }));
+const assetMocks = vi.hoisted(() => ({
+  getAsset: vi.fn(),
+}));
 
-import { NoteEditor, roundTrip } from './NoteEditor';
+vi.mock('../state/store', () => ({ actions: noteActionMocks }));
+vi.mock('../db/assets', () => assetMocks);
+
+import { insertPastedAsset, NoteEditor, roundTrip } from './NoteEditor';
 
 const SAMPLE = [
   '# Heading one',
@@ -37,6 +42,12 @@ const SAMPLE = [
 afterEach(() => {
   cleanup();
   noteActionMocks.addAsset.mockReset();
+  assetMocks.getAsset.mockReset();
+  vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  assetMocks.getAsset.mockResolvedValue(undefined);
 });
 
 describe('roundTrip', () => {
@@ -92,6 +103,14 @@ describe('roundTrip', () => {
   it('preserves image alt text', () => {
     expect(roundTrip('![a shot](asset:a_1)')).toBe('![a shot](asset:a_1)');
   });
+
+  it('preserves raw HTML as literal text and remains idempotent', () => {
+    const source = '<span data-x="1">hello</span>';
+    const once = roundTrip(source);
+
+    expect(once).toBe('&lt;span data-x="1"&gt;hello&lt;/span&gt;');
+    expect(roundTrip(once)).toBe(once);
+  });
 });
 
 describe('NoteEditor', () => {
@@ -132,5 +151,68 @@ describe('NoteEditor', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(noteActionMocks.addAsset).toHaveBeenCalledWith(file);
     expect(onChange).toHaveBeenLastCalledWith(expect.stringContaining('![](asset:a_pasted)'));
+  });
+
+  it('inserts a slow paste at the current selection after the document changes', async () => {
+    const replaceRangeWith = vi.fn().mockReturnValue('transaction');
+    const image = 'image-node';
+    const state = {
+      selection: { from: 1, to: 1 },
+      schema: { nodes: { image: { create: vi.fn().mockReturnValue(image) } } },
+      tr: { replaceRangeWith },
+    };
+    const dispatch = vi.fn();
+    const view = { isDestroyed: false, state, dispatch } as unknown as Parameters<typeof insertPastedAsset>[0];
+    let resolveAsset!: (id: string) => void;
+    const pendingAsset = new Promise<string>((resolve) => {
+      resolveAsset = resolve;
+    });
+
+    const insertion = pendingAsset.then((id) => insertPastedAsset(view, id));
+    state.selection = { from: 8, to: 8 };
+    resolveAsset('a_slow');
+    await insertion;
+
+    expect(replaceRangeWith).toHaveBeenCalledWith(8, 8, image);
+    expect(dispatch).toHaveBeenCalledWith('transaction');
+  });
+
+  it('falls back to the missing-image placeholder when an asset image fails to load', async () => {
+    assetMocks.getAsset.mockResolvedValue({
+      id: 'a_corrupt',
+      mime: 'image/png',
+      bytes: new Blob(['not an image'], { type: 'image/png' }),
+      width: 1,
+      height: 1,
+      createdAt: '2026-08-01',
+    });
+    const createObjectURL = vi.fn().mockReturnValue('blob:a_corrupt');
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+    const onChange = vi.fn();
+    render(<NoteEditor docKey="g1" value="![](asset:a_corrupt)" onChange={onChange} placeholder="" ariaLabel="Notes" />);
+    const editor = screen.getByLabelText('Notes');
+
+    await waitFor(() => expect(editor.querySelector('img')).not.toBeNull());
+    const image = editor.querySelector('img');
+    if (!image) throw new Error('Expected the asset image');
+    fireEvent.error(image);
+
+    expect((await screen.findByRole('img', { name: 'Image unavailable' })).textContent).toBe('Image unavailable');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('renders a healthy asset as an image', async () => {
+    assetMocks.getAsset.mockResolvedValue({
+      id: 'a_good',
+      mime: 'image/png',
+      bytes: new Blob(['image bytes'], { type: 'image/png' }),
+      width: 1,
+      height: 1,
+      createdAt: '2026-08-01',
+    });
+    vi.stubGlobal('URL', { createObjectURL: vi.fn().mockReturnValue('blob:a_good'), revokeObjectURL: vi.fn() });
+    render(<NoteEditor docKey="g1" value="![](asset:a_good)" onChange={() => {}} placeholder="" ariaLabel="Notes" />);
+
+    await waitFor(() => expect(screen.getByLabelText('Notes').querySelector('img')).not.toBeNull());
   });
 });
