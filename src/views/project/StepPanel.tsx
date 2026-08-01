@@ -26,7 +26,7 @@ export function StepPanel({ goal, node, actions }: {
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftStart, setDraftStart] = useState(node.start ?? '');
   const [draftDeadline, setDraftDeadline] = useState(node.deadline ?? '');
-  const isContainer = Boolean(node.children && node.children.length > 0);
+  const isLeaf = !node.children || node.children.length === 0;
 
   useEffect(() => {
     setEditingTitle(false);
@@ -73,7 +73,7 @@ export function StepPanel({ goal, node, actions }: {
             </button>
           )}
         </h2>
-        {!isContainer && (
+        {isLeaf && (
           <button
             type="button"
             aria-label={
@@ -142,7 +142,7 @@ export function StepPanel({ goal, node, actions }: {
         )}
       </section>
 
-      {!isContainer && (
+      {isLeaf && (
         <>
           <section className="mt-[22px]">
             <SectionLabel>Estimate</SectionLabel>
@@ -166,7 +166,7 @@ export function StepPanel({ goal, node, actions }: {
         </>
       )}
 
-      {isContainer && (
+      {!isLeaf && (
         <section className="mt-[22px]">
           <SectionLabel>Progress</SectionLabel>
           <span className="text-title text-ink-soft tabular-nums">{Math.round(nodePct(node))}%</span>

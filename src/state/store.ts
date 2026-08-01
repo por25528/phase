@@ -623,7 +623,9 @@ export const actions = {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = state.goals.map((g) => ({ ...g, nodes: structuredClone(g.nodes) }));
     const node = findInAll(goals, nodeId);
-    if (!node || node.children) return; // leaves only
+    if (!node) return;
+    const isLeaf = !node.children || node.children.length === 0;
+    if (!isLeaf) return;
     if (node.checkpoint) delete node.checkpoint;
     else node.checkpoint = true;
     setAndPersist({ goals });

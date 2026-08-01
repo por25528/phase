@@ -58,6 +58,25 @@ describe('migrateCheckpoints', () => {
     expect(result.goals[0].nodes.map((node) => node.id)).toEqual(['first', 'second', 'm1']);
   });
 
+  it('keeps existing node ids when a milestone id collides', () => {
+    const goal: LegacyGoal = {
+      id: 'g1',
+      title: 'Project',
+      nodes: [{ id: 'x', title: 'Existing step', done: false }],
+      milestones: [{ id: 'x', title: 'Marker', date: '2026-08-01' }],
+    };
+
+    const result = migrateCheckpoints([goal]);
+    const nodes = result.goals[0].nodes;
+
+    expect(nodes[0].id).toBe('x');
+    expect(nodes[1]).toMatchObject({ title: 'Marker', checkpoint: true });
+    expect(nodes[1].id).not.toBe('x');
+    expect(new Set(nodes.map((node) => node.id)).size).toBe(2);
+
+    expect(migrateCheckpoints(result.goals).goals).toEqual(result.goals);
+  });
+
   it('is idempotent', () => {
     const goal: LegacyGoal = {
       id: 'g1',
@@ -82,6 +101,18 @@ describe('migrateCheckpoints', () => {
     expect(result.goals).toBe(goals);
     expect(result.goals[0]).toBe(goal);
     expect(result.report).toEqual({ goalsMigrated: 0, checkpointsCreated: 0 });
+  });
+
+  it('removes an explicitly empty milestones field', () => {
+    const goal: LegacyGoal = {
+      id: 'g1', title: 'Project', nodes: [], milestones: [],
+    };
+
+    const result = migrateCheckpoints([goal]);
+
+    expect(result.goals[0]).not.toHaveProperty('milestones');
+    expect(result.goals[0]).not.toBe(goal);
+    expect(result.report).toEqual({ goalsMigrated: 1, checkpointsCreated: 0 });
   });
 
   it('reports migrated goals and created checkpoints', () => {

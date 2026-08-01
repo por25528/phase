@@ -58,16 +58,25 @@ describe('importStateFromFile', () => {
     });
   });
 
-  it('accepts an old backup whose goals still carry the legacy markers', async () => {
+  it('converts legacy markers before persisting an imported backup', async () => {
     const legacyGoal = {
       ...goal('legacy-markers'),
       milestones: [{ id: 'm1', title: 'Demo', date: '2026-08-10' }],
     };
     const backup = { goals: [legacyGoal], habits: [], tasks: [], sessions: [] };
 
-    await expect(importStateFromFile(fileOf(JSON.stringify(backup)))).resolves.toMatchObject({
-      goals: [expect.objectContaining({ id: 'legacy-markers' })],
-    });
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+
+    expect(imported.goals[0].nodes).toEqual([{
+      id: 'm1',
+      title: 'Demo',
+      checkpoint: true,
+      done: false,
+      start: '2026-08-10',
+      deadline: '2026-08-10',
+    }]);
+    expect(imported.goals[0]).not.toHaveProperty('milestones');
+    expect((await loadState()).goals[0]).toEqual(imported.goals[0]);
   });
 
   it('preserves absent completion and date-confirmation fields in a legacy backup', async () => {

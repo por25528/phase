@@ -9,10 +9,10 @@ export interface CheckpointMigrationReport {
 /**
  * Replace legacy goal milestones with real root-level checkpoint nodes.
  *
- * A migrated goal is rebuilt only when it has milestones, so a no-op migration
- * preserves the original goals and goal objects by identity. Removing the
- * legacy field makes a second run harmless and is what makes retrying after a
- * crash or a failed done-flag write idempotent.
+ * A migrated goal is rebuilt only when it carries the legacy field, so a no-op
+ * migration preserves the original goals and goal objects by identity. Removing
+ * the legacy field makes a second run harmless and is what makes retrying after
+ * a crash or a failed done-flag write idempotent.
  */
 export function migrateCheckpoints(
   goals: Goal[],
@@ -21,8 +21,9 @@ export function migrateCheckpoints(
   let changed = false;
 
   const nextGoals = goals.map((goal) => {
+    const hasLegacyField = Object.prototype.hasOwnProperty.call(goal, 'milestones');
     const checkpoints = milestonesToCheckpointNodes(goal);
-    if (checkpoints.length === 0) return goal;
+    if (!hasLegacyField) return goal;
 
     changed = true;
     report.goalsMigrated++;

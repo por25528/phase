@@ -113,4 +113,17 @@ describe('milestonesToCheckpointNodes', () => {
   it('returns no nodes when the goal has no milestones', () => {
     expect(milestonesToCheckpointNodes(baseGoal)).toEqual([]);
   });
+
+  it('mints a fresh id when a milestone collides with a node in the tree', () => {
+    const goal = {
+      ...baseGoal,
+      nodes: [{ id: 'x', title: 'Existing step', done: false }],
+      milestones: [{ id: 'x', title: 'Marker', date: '2026-08-01' }],
+    } as Goal;
+
+    const [checkpoint] = milestonesToCheckpointNodes(goal);
+
+    expect(checkpoint.id).not.toBe('x');
+    expect(checkpoint).toMatchObject({ title: 'Marker', checkpoint: true });
+  });
 });

@@ -4,6 +4,7 @@ import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
 import { parseAvailability, serializeAvailability } from '../lib/availability';
+import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -414,8 +415,13 @@ export async function importStateFromFile(
   const sidebarPanels = raw.sidebarPanels === undefined
     ? await loadSidebarPanels()
     : parseSidebarPanels(JSON.stringify(raw.sidebarPanels));
+  const sanitizedGoals = (raw.goals ?? []).map(sanitizeBackupGoal);
+  // Imported data must never enter the running store with the retired field:
+  // converting before persist also makes a crash before resetCheckpointMigration
+  // safe, because the done-flag cannot strand the just-imported milestones.
+  const { goals } = migrateCheckpoints(sanitizedGoals);
   const parsed: AppState = {
-    goals: (raw.goals ?? []).map(sanitizeBackupGoal),
+    goals,
     habits: (raw.habits ?? []).map(sanitizeBackupHabit),
     tasks: raw.tasks ?? [],
     sessions: raw.sessions ?? [],
@@ -435,7 +441,9 @@ export async function importStateFromFile(
   await resetSlotMigration();
   // The imported data is a new generation for checkpoint migration too. Do not
   // adopt a snapshot from the exporting device; take this device's own copy on
-  // the next hydration instead.
+  // the next hydration instead. Keep clearing both rows even though conversion
+  // happened during import: the done-flag and snapshot belong to the replaced
+  // pre-import generation, not the data just written.
   await resetCheckpointMigration();
   // Optional: restore the week-review snapshot if the backup carries a sane one.
   const pr = (raw as { planReview?: PlanReview }).planReview;

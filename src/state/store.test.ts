@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
 import { leafCount } from '../lib/board';
@@ -357,6 +358,22 @@ describe('store actions', () => {
 
       expect(getState().goals[0].nodes[0].checkpoint).toBeUndefined();
       expect(dbMocks.persist).not.toHaveBeenCalled();
+    });
+
+    it('toggles a leaf whose children array is empty', async () => {
+      const { actions, getState } = await freshStore();
+      const goal: Goal = {
+        id: 'g-empty-children', title: 'G', nodes: [
+          { id: 'leaf-with-empty-children', title: 'Leaf', children: [] },
+        ],
+      };
+      actions.addGoals([goal]);
+      dbMocks.persist.mockClear();
+
+      actions.toggleCheckpoint('leaf-with-empty-children');
+
+      expect(getState().goals[0].nodes[0].checkpoint).toBe(true);
+      expect(dbMocks.persist).toHaveBeenCalledOnce();
     });
 
     it('keeps checkpoint leaves in leafCount and goalPct, and ticking one moves the percentage', async () => {
@@ -3509,6 +3526,30 @@ describe('undo durability', () => {
     // The import survives, in memory and on disk.
     expect(getState().goals.map((g) => g.id)).toEqual(['imported']);
     expect(vi.mocked(persist)).not.toHaveBeenCalled();
+  });
+
+  it('places legacy milestones into the store as checkpoints immediately on import', async () => {
+    vi.useRealTimers();
+    const { importStateFromFile } = await import('../db/db');
+    const actualDb = await vi.importActual<typeof import('../db/db')>('../db/db');
+    const { actions, getState } = await storeWithProject();
+    vi.mocked(importStateFromFile).mockImplementationOnce((file) => actualDb.importStateFromFile(file));
+
+    await actions.importBackup(new File([JSON.stringify({
+      goals: [{
+        id: 'imported',
+        title: 'Restored project',
+        column: 0,
+        nodes: [],
+        milestones: [{ id: 'm1', title: 'Demo', date: '2026-08-10' }],
+      }],
+      habits: [], tasks: [], sessions: [],
+    })], 'backup.json'));
+
+    expect(getState().goals[0].nodes).toMatchObject([{
+      id: 'm1', title: 'Demo', checkpoint: true, start: '2026-08-10', deadline: '2026-08-10',
+    }]);
+    expect(getState().goals[0]).not.toHaveProperty('milestones');
   });
 
   /**

@@ -1,5 +1,6 @@
 import type { Goal, GoalNode } from '../db/types';
 import { addDays } from './dates';
+import { uid } from './tree';
 
 interface LegacyMarker {
   id: string;
@@ -77,14 +78,28 @@ export function nextCheckpoint(g: Goal, today: string): { title: string; date: s
 
 export function milestonesToCheckpointNodes(g: Goal): GoalNode[] {
   const legacy = g as GoalWithLegacyMarkers;
+  const usedIds = new Set<string>();
+  function collectIds(nodes: GoalNode[]): void {
+    for (const node of nodes) {
+      usedIds.add(node.id);
+      if (node.children) collectIds(node.children);
+    }
+  }
+  collectIds(g.nodes);
+
   return [...(legacy.milestones ?? [])]
     .sort((a, b) => a.date.localeCompare(b.date))
-    .map((m) => ({
-      id: m.id,
-      title: m.title,
-      checkpoint: true,
-      done: false,
-      start: m.date,
-      deadline: m.date,
-    }));
+    .map((m) => {
+      let id = m.id;
+      while (usedIds.has(id)) id = uid();
+      usedIds.add(id);
+      return {
+        id,
+        title: m.title,
+        checkpoint: true,
+        done: false,
+        start: m.date,
+        deadline: m.date,
+      };
+    });
 }

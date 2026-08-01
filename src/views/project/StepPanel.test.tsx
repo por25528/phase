@@ -70,6 +70,11 @@ const checkpointLeaf: Goal = {
   nodes: [{ id: 'n1', title: 'Wire up auth', done: false, checkpoint: true }],
 };
 
+const emptyChildrenLeaf: Goal = {
+  id: 'g1', title: 'Project',
+  nodes: [{ id: 'n1', title: 'Wire up auth', done: false, children: [] }],
+};
+
 const containerNode: Goal = {
   id: 'g1', title: 'Project',
   nodes: [{
@@ -230,6 +235,14 @@ describe('StepPanel', () => {
 
     expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
     expect(screen.getByRole('button', { name: 'Remove checkpoint from "Wire up auth"' })).toBeTruthy();
+  });
+
+  it('offers and activates the checkpoint toggle on a leaf with empty children', async () => {
+    const store = await mountPanel(emptyChildrenLeaf);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark "Wire up auth" as a checkpoint' }));
+
+    expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
   });
 
   it('shows the remove label for a checkpoint and omits the toggle on a container', async () => {
