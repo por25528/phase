@@ -1455,14 +1455,22 @@ Expected: no matches. Any hit is a missed call site.
 Run: `npm run dev`
 Open the Plan view.
 
-- [ ] **Step 4: Check the four things that could only break here**
+- [ ] **Step 4: Check the five things that could only break here**
 
-These are behavioural and no unit test covers them:
+These are behavioural and no unit test covers them. Two of the five have already
+caught real shipped defects during this plan's own review rounds, so treat a
+"looks fine" here as a result worth recording rather than a formality:
 
 1. **The grid opens on your working hours, not midnight.** Watch the first paint — a flash of 00:00 before it jumps means the layout effect in Task 6 became an effect.
 2. **Density is unchanged.** A 60-minute block should be the same height it was before this plan. If it is not, `PX_PER_MINUTE` moved.
 3. **An outlier no longer compresses the week.** Schedule something at 06:00. Every other block on the week must keep its size — this is the defect the whole plan exists to fix.
-4. **Drag after scrolling lands where the ghost is.** Scroll the grid down several hours, then drag a block from the rail onto a day. It must land at the hour under the pointer, not offset by the scroll. Then drag from the top of the grid to the bottom and confirm the view follows.
+4. **Drag lands where the ghost is.** This is the one that no test can cover — jsdom has no layout, so `getBoundingClientRect`, `offsetTop` and `scrollTop` are all `0` there and every variant of the arithmetic looks identical. It is also where this plan has already shipped two separate defects. Check all four:
+   - **Rail → grid, at the default mount scroll.** Drag a backlog row onto a day without touching the scroll first. It must land at the hour under the ghost. If it lands ~8 hours late, the aim is double-counting the grid's mount scroll.
+   - **Rail → grid, after scrolling.** Scroll the grid down several hours, then drag. Same requirement.
+   - **Block → block, mid-grid.** Move an already-placed block a couple of hours. It must not jump.
+   - **Auto-scroll during a drag.** Drag from the top of the grid toward the bottom edge and let the view scroll itself, then drop. The landing time must still match the ghost — a drift of roughly a minute per pixel scrolled is the signature of the scroll being counted twice.
+
+5. **Keyboard drag still works.** Tab to a backlog row, start a keyboard drag, move with the arrow keys, and drop. `KeyboardSensor` is registered on this `DndContext` and the drop handler now bails early when `translated` is null; if keyboard drags silently do nothing, that guard is the cause.
 
 - [ ] **Step 5: Check the stacking order**
 
