@@ -359,7 +359,19 @@ export function Plan() {
     // `rectIntersection` in `collisionDetection` above.
     const initialTop = e.active.rect.current.initial?.top ?? rect.top;
     const draggedTop = initialTop + e.delta.y;
-    const aim = aimMinuteFor(draggedTop, rect.top, rect.height, range);
+    // aimMinuteFor now works in absolute day-minute (0-1440) content space at
+    // 1px/minute, not range-relative percentage space. This grid is still the
+    // old fixed-height, non-scrolling one (that's a later task), so there is
+    // no real scroller yet: scrollTop is 0, and rect.top already lines up
+    // with range.startMin at the same 1px/minute scale (GRID_HEIGHT_PX === 720
+    // === range span for the default 08:00-20:00 window), so gridOffsetPx of
+    // -range.startMin shifts that rect-relative pixel into day-minute space.
+    const aim = aimMinuteFor({
+      draggedTopViewport: draggedTop,
+      scrollerTopViewport: rect.top,
+      scrollTop: 0,
+      gridOffsetPx: -range.startMin,
+    });
 
     if (data.kind === 'task') actions.scheduleTask(data.id, date, aim);
     else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim);
