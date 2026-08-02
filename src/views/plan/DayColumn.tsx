@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import type { AvailabilityWindow } from '../../db/types';
-import type { Interval } from '../../lib/capacity';
-import { minuteToPct } from '../../lib/grid';
+import { minuteToPx, DAY_HEIGHT_PX, Z_NOW_LINE } from '../../lib/grid';
 import { fmtD } from '../../lib/dates';
 
 /**
@@ -16,13 +15,12 @@ import { fmtD } from '../../lib/dates';
  * neighbouring component (Task 13) adds `window.addEventListener` calls.
  */
 export function DayColumn({
-  date, isToday, availabilityWindow, nowMinute, range, readOnly, children,
+  date, isToday, availabilityWindow, nowMinute, readOnly, children,
 }: {
   date: string;
   isToday: boolean;
   availabilityWindow: AvailabilityWindow | null;
   nowMinute: number | null;
-  range: Interval;
   /** True when this column belongs to a past week — every drop is refused. */
   readOnly?: boolean;
   children: ReactNode;
@@ -50,21 +48,21 @@ export function DayColumn({
         <>
           <div
             className="absolute left-0 right-0 top-0 bg-hover/60 pointer-events-none"
-            style={{ height: `${Math.max(0, minuteToPct(availabilityWindow.startMin, range))}%` }}
+            style={{ height: `${minuteToPx(availabilityWindow.startMin)}px` }}
           />
           <div
             className="absolute left-0 right-0 bottom-0 bg-hover/60 pointer-events-none"
-            style={{ height: `${Math.max(0, 100 - minuteToPct(availabilityWindow.endMin, range))}%` }}
+            style={{ height: `${DAY_HEIGHT_PX - minuteToPx(availabilityWindow.endMin)}px` }}
           />
         </>
       )}
 
       {children}
 
-      {isToday && nowMinute !== null && nowMinute >= range.startMin && nowMinute <= range.endMin && (
+      {isToday && nowMinute !== null && (
         <div
-          className="absolute left-0 right-0 h-0 border-t border-accent pointer-events-none z-[2]"
-          style={{ top: `${minuteToPct(nowMinute, range)}%` }}
+          className="absolute left-0 right-0 h-0 border-t border-accent pointer-events-none"
+          style={{ top: `${minuteToPx(nowMinute)}px`, zIndex: Z_NOW_LINE }}
           aria-hidden="true"
         />
       )}

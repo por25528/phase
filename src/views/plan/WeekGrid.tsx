@@ -227,7 +227,6 @@ export function WeekGrid({
               isToday={iso === today}
               availabilityWindow={windowForDate(iso, windows)}
               nowMinute={iso === today ? nowMinute : null}
-              range={range}
               readOnly={readOnly}
             >
               {children(iso)}
