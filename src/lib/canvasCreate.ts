@@ -2,6 +2,13 @@ import { DEFAULT_SLOT_MIN, SLOT_GRANULARITY_MIN } from './slot';
 import { pxToMinute, DAY_START_MIN, DAY_END_MIN } from './grid';
 
 /**
+ * No production caller yet. Built ahead of the direct-manipulation gestures
+ * (spec §2 — click/drag-to-create, resize-from-start) that consume it,
+ * which land in the grid remaster's plan 2. Pure and testable in isolation,
+ * so landing it here made that plan's first component task smaller.
+ */
+
+/**
  * Below this much pointer travel the gesture is a click, not a drag.
  *
  * Expressed in pixels rather than minutes because it is a property of the

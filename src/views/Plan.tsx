@@ -377,9 +377,26 @@ export function Plan() {
     const scroller = scrollerRef.current;
     const translated = e.active.rect.current.translated;
     if (!scroller || !translated) return;
+
+    /*
+     * Refuse a release that is not actually over the calendar.
+     *
+     * A day column is a grid item of a 1440px-tall grid inside a 720px
+     * scroller, and `getBoundingClientRect` — how dnd-kit measures droppables
+     * — is NOT clipped by an ancestor's overflow. Each column's rect therefore
+     * reaches hundreds of pixels above and below the visible grid, across the
+     * week header, the availability banner and the panels beneath it, so
+     * `over` is set for releases that are plainly not on the calendar.
+     *
+     * Not reachable before the grid scrolled: at a fixed height with no
+     * overflow, the column's rect WAS the visible column.
+     */
+    const scrollerRect = scroller.getBoundingClientRect();
+    if (translated.top < scrollerRect.top || translated.top > scrollerRect.bottom) return;
+
     const aim = aimMinuteFor({
       draggedTopViewport: translated.top,
-      scrollerTopViewport: scroller.getBoundingClientRect().top,
+      scrollerTopViewport: scrollerRect.top,
       scrollTop: scroller.scrollTop,
       gridOffsetPx: gridRef.current?.offsetTop ?? 0,
     });

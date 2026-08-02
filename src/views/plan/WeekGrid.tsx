@@ -3,7 +3,7 @@ import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
 import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
 import { windowForDate } from '../../lib/availability';
-import { minuteToPx, hourMarks, DAY_HEIGHT_PX, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
+import { minuteToPx, hourMarks, DAY_HEIGHT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
 import { DayColumn } from './DayColumn';
 
@@ -14,10 +14,12 @@ import { clockLabel } from '../../lib/clock';
 /**
  * How tall the scroller itself is — the window onto the day, not the day.
  *
- * 720px is the height the old fixed grid occupied, kept so the page layout and
- * the sidebar bounded against it are unchanged. The sticky day headings live
- * inside this box and eat into it, exactly as they do in every calendar; the
- * content behind them is `DAY_HEIGHT_PX` and reachable by scrolling.
+ * 720px is the scroller's own height: the sticky day headings now live INSIDE
+ * this box, eating into it, exactly as they do in every calendar, so the
+ * visible hour grid is shorter than 720px by whatever the heading row costs.
+ * The sidebar bounds itself to this region, whatever it nets out to — see
+ * the rail note in CLAUDE.md. The content behind the headings is
+ * `DAY_HEIGHT_PX` tall and reachable by scrolling.
  */
 export const GRID_VIEWPORT_PX = 720;
 
@@ -252,7 +254,7 @@ export function WeekGrid({
             <div
               key={m}
               className="absolute left-0 right-0 border-t border-line-soft pointer-events-none"
-              style={{ top: `${minuteToPx(m)}px` }}
+              style={{ top: `${minuteToPx(m)}px`, zIndex: Z_RULES }}
               aria-hidden="true"
             />
           ))}

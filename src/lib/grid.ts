@@ -144,6 +144,10 @@ export const Z_CORNER = 6;
  * justification disappears once every minute of the day is reachable by
  * scrolling. `blocks` went the same way: a calendar event is a reason to look
  * somewhere, not a reason to reshape the grid.
+ *
+ * `endMin` currently has no consumer — `WeekGrid` reads only `startMin` — and
+ * is retained for the all-day lane and gutter planned later, so it is
+ * deliberately kept computed rather than dropped as dead.
  */
 export function initialScrollWindow(
   dates: string[],

@@ -65,8 +65,9 @@ export function DayBlocks({
 }) {
   // Handed in, not re-derived. This used to call `scheduledOn(goals, tasks,
   // date)` itself — a full walk of every goal's leaf tree plus every task, once
-  // per day column, on top of the identical seven passes Plan had already done
-  // to compute the visible range.
+  // per day column, on top of the identical seven passes Plan itself had
+  // already done. Plan no longer does those passes either; the `scheduledSpans`
+  // memo that used to compute them was deleted in favour of `scheduledByDate`.
   const work: DayItem[] = items.map((item) => ({
     key: `${item.kind}:${item.id}`,
     kind: item.kind,

@@ -59,8 +59,8 @@ export function scheduledOn(goals: Goal[], tasks: Task[], date: string): Schedul
  * Everything drawn across `dates`, bucketed by day, in ONE pass.
  *
  * `scheduledOn` walks every goal's full leaf tree and every task to answer for
- * a single day, so a week cost seven passes — and the Plan view paid twice,
- * once to compute the visible range and again inside each `DayBlocks`, for
+ * a single day, so a week cost seven passes — and the Plan view used to pay
+ * for that twice over, once itself and again inside each `DayBlocks`, for
  * fourteen full scans of the dataset on every render. With a couple of hundred
  * tasks and a 60-second now-line tick re-rendering the subtree, that is felt.
  *

@@ -8,11 +8,11 @@ import { fmtD } from '../../lib/dates';
  * One day. Draws the availability shading, the now-line, and nothing else —
  * the blocks themselves arrive as `children` so this file stays about geometry.
  *
- * A day with no window is hatched and, from Task 13 onward, refuses drops.
+ * A day with no window is hatched and refuses drops.
  *
  * The availability window prop is named `availabilityWindow` rather than
  * `window` because the latter shadows the global `window` object — a
- * neighbouring component (Task 13) adds `window.addEventListener` calls.
+ * neighbouring component adds `window.addEventListener` calls.
  */
 export function DayColumn({
   date, isToday, availabilityWindow, nowMinute, readOnly, children,
