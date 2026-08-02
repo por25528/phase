@@ -1337,13 +1337,15 @@ Keep the three handler bodies and their comments exactly as they are; only `rang
 
 - [ ] **Step 8: Delete the percentage API**
 
-This is the last caller. Now — and only now — remove from `src/lib/grid.ts`: `visibleRange` and its doc comment, `minuteToPct`, `pctToMinute`, and the `BusyBlock` import that only `visibleRange` used. `floorToHour`/`ceilToHour` stay (`initialScrollWindow` uses them); `MIN_VISIBLE_START`/`MIN_VISIBLE_END` stay; `assignLanes` and its types stay.
+This is the last caller. Now — and only now — remove from `src/views/plan/dropTarget.ts` the transitional `aimMinuteInRange` and its doc comment, and from `src/views/plan/dropTarget.test.ts` its `describe` block. Step 4 above replaced its only caller with `aimMinuteFor`.
+
+Then remove from `src/lib/grid.ts`: `visibleRange` and its doc comment, `minuteToPct`, `pctToMinute`, and the `BusyBlock` import that only `visibleRange` used. `floorToHour`/`ceilToHour` stay (`initialScrollWindow` uses them); `MIN_VISIBLE_START`/`MIN_VISIBLE_END` stay; `assignLanes` and its types stay.
 
 From `src/lib/grid.test.ts`, remove the `describe('visibleRange', …)` and `describe('minute ↔ percentage', …)` blocks and the now-unused `block()` and `span()` helpers, the `BusyBlock` type import, and `visibleRange`/`minuteToPct`/`pctToMinute`/`type LaneSpan` from the import list. The `assignLanes` describe declares its own local `span` and is unaffected.
 
 Confirm nothing survived:
 
-Run: `grep -rn "visibleRange\|minuteToPct\|pctToMinute\|GRID_HEIGHT_PX\|gridHeightPx" src`
+Run: `grep -rn "visibleRange\|minuteToPct\|pctToMinute\|GRID_HEIGHT_PX\|gridHeightPx\|aimMinuteInRange" src`
 Expected: no matches.
 
 - [ ] **Step 9: Typecheck**
