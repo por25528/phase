@@ -738,7 +738,7 @@ adding `import { DAY_START_MIN, DAY_END_MIN } from '../../lib/grid';`. This path
 - [ ] **Step 7: Typecheck and test**
 
 Run: `npx tsc -b && npm test`
-Expected: both clean. `WeekGrid` still passes `range`/`gridHeightPx` in its JSX, which is now surplus — TypeScript accepts extra props on a call only if they are declared, so **if `tsc` reports an error in `WeekGrid.tsx`, remove those two attributes from its `<DayBlocks>` call as part of this task.** That is a one-line change and it keeps the build green; do not defer it to Task 6.
+Expected: both clean. The `<DayBlocks>` JSX lives in **`src/views/Plan.tsx`**, inside the callback it passes as `WeekGrid`'s `children` — not in `WeekGrid.tsx`, which only forwards `range` to `DayColumn`. It still passes `range` and `gridHeightPx`, which are now undeclared props, so **remove those two attributes there, along with the now-unused `GRID_HEIGHT_PX` import, as part of this task.** Keep the three handler bodies and their comments untouched. Do not defer it; the build must stay green.
 
 A `BoardCard.keyboard.test.tsx` failure is a known flake — re-run once.
 
