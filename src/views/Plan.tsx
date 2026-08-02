@@ -24,7 +24,7 @@ import { resolvePlanKey } from '../lib/planKeyboard';
 import { showPlanHint } from '../lib/planHint';
 import { revealDomId, weekForReveal, REVEAL_MS } from '../lib/reveal';
 import { useReducedMotion } from '../components/useReducedMotion';
-import { WeekGrid, GRID_HEIGHT_PX } from './plan/WeekGrid';
+import { WeekGrid } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { WeekHeader } from './plan/WeekHeader';
 import { UnestimatedPanel } from './plan/UnestimatedPanel';
@@ -485,10 +485,8 @@ export function Plan() {
                 date={date}
                 items={scheduledByDay.get(date) ?? []}
                 blocks={[]}
-                range={range}
                 allDayBlocks={allDayBlocks}
                 readOnly={isPast}
-                gridHeightPx={GRID_HEIGHT_PX}
                 reveal={revealItem}
                 onRemove={(kind, id, goalId) => {
                   if (kind === 'task') actions.unscheduleTask(id);

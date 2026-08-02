@@ -1,6 +1,5 @@
 import type { BusyBlock } from '../../db/types';
-import type { Interval } from '../../lib/capacity';
-import { assignLanes, type LaneSpan } from '../../lib/grid';
+import { assignLanes, DAY_END_MIN, DAY_START_MIN, type LaneSpan } from '../../lib/grid';
 import type { ScheduledItem } from '../../lib/scheduled';
 import { EventBlock, type GridBlock } from './EventBlock';
 import type { PlanDragData } from './dropTarget';
@@ -35,14 +34,13 @@ interface DayItem extends LaneSpan {
  * currently unexercised. It still has to be correct when it lights up.
  */
 export function DayBlocks({
-  date, items, blocks, range, allDayBlocks, readOnly, onRemove, onComplete, onResize,
-  gridHeightPx, reveal,
+  date, items, blocks, allDayBlocks, readOnly, onRemove, onComplete, onResize,
+  reveal,
 }: {
   date: string;
   /** This day's slice of `scheduledByDate` — already filtered and sorted. */
   items: ScheduledItem[];
   blocks: BusyBlock[];
-  range: Interval;
   allDayBlocks: boolean;
   /**
    * True on a past week — suppresses the remove (×) affordance and the resize
@@ -62,7 +60,6 @@ export function DayBlocks({
   /** No `goalId`: both `toggleTask` and `toggleLeaf` key off the id alone. */
   onComplete: (kind: 'step' | 'task', id: string) => void;
   onResize: (kind: 'step' | 'task', id: string, minutes: number) => void;
-  gridHeightPx: number;
   /** Task the command palette is pointing at — marked wherever it turns up. */
   reveal?: RevealTarget | null;
 }) {
@@ -89,13 +86,13 @@ export function DayBlocks({
   const busy: DayItem[] = allDayEvent
     ? [{
         // An all-day event, when the preference treats it as occupying the
-        // whole day, is rendered as a single busy block spanning the entire
-        // visible range — so the day reads as unavailable rather than open.
+        // whole day, is rendered as a single busy block spanning the day's
+        // full bounds — so the day reads as unavailable rather than open.
         key: `busy:${date}:allday`,
         kind: 'busy',
         title: allDayEvent.title,
-        startMin: range.startMin,
-        endMin: range.endMin,
+        startMin: DAY_START_MIN,
+        endMin: DAY_END_MIN,
         done: false,
         estimated: true,
         goalId: null,
@@ -137,8 +134,6 @@ export function DayBlocks({
             block={block}
             lane={lane}
             laneCount={laneCount}
-            range={range}
-            gridHeightPx={gridHeightPx}
             drag={drag}
             onRemove={
               isWork && !readOnly ? () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId) : undefined

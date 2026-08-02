@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import type { Interval } from '../../lib/capacity';
-import { minuteToPct } from '../../lib/grid';
+import { minuteToPx, PX_PER_MINUTE, Z_BLOCK, Z_BLOCK_REVEALED } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
 import type { PlanDragData } from './dropTarget';
 import { containerDragAttributes } from '../../lib/dragAttributes';
@@ -32,13 +31,12 @@ const MIN_BLOCK_PX = 34;
 const COMPACT_BLOCK_PX = 40;
 
 export function EventBlock({
-  block, lane, laneCount, range, onRemove, onComplete, drag, onResize, gridHeightPx,
+  block, lane, laneCount, onRemove, onComplete, drag, onResize,
   domId, revealed = false,
 }: {
   block: GridBlock;
   lane: number;
   laneCount: number;
-  range: Interval;
   onRemove?: () => void;
   /**
    * Marks the block's work done/undone in place. Without it the only route to
@@ -54,7 +52,6 @@ export function EventBlock({
   /** Present only for placed work — a busy/calendar block is never draggable. */
   drag?: PlanDragData;
   onResize?: (minutes: number) => void;
-  gridHeightPx: number;
   /** Stable DOM id so the command palette can scroll to this block. */
   domId?: string;
   /** The palette is pointing at this block — mark it. */
@@ -83,15 +80,17 @@ export function EventBlock({
   // block's geometry needs to react to it.
   const [previewMinutes, setPreviewMinutes] = useState<number | null>(null);
 
-  const top = minuteToPct(block.startMin, range);
-  const committedHeight = minuteToPct(block.endMin, range) - top;
-  const height =
-    previewMinutes != null
-      ? (minuteToPct(block.startMin + previewMinutes, range) - top)
-      : committedHeight;
+  const top = minuteToPx(block.startMin);
+  const committedMinutes = block.endMin - block.startMin;
+  const minutes = previewMinutes ?? committedMinutes;
+  // A 1.6% floor works out to ~11px, which clipped the start-time line
+  // entirely and left a hairline with text floating over the gridline.
+  // Every calendar accepts a little overlap for very short events instead.
+  const heightPx = Math.max(minutes * PX_PER_MINUTE, MIN_BLOCK_PX);
   const width = 100 / laneCount;
-  // `height` is a percentage of the grid; compare in px to decide the layout.
-  const heightPx = Math.max((height / 100) * gridHeightPx, MIN_BLOCK_PX);
+  // A property of the block's own duration now, not of the week it sits on.
+  // The old form compared a percentage of a variable grid height, so the same
+  // 30-minute block was compact on a busy week and not on a quiet one.
   const compact = heightPx < COMPACT_BLOCK_PX;
 
   return (
@@ -107,16 +106,13 @@ export function EventBlock({
         isBusy
           ? 'bg-hover border-line-2 text-muted italic'
           : `bg-panel border-line-2 border-l-[3px] border-l-accent text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? '' : 'border-dashed'} cursor-grab`
-      } ${isDragging ? 'opacity-40' : ''} ${revealed ? 'ring-2 ring-inset ring-accent z-10' : ''}`}
+      } ${isDragging ? 'opacity-40' : ''} ${revealed ? 'ring-2 ring-inset ring-accent' : ''}`}
       style={{
-        top: `${top}%`,
-        height: `${height}%`,
-        // A 1.6% floor works out to ~11px, which clipped the start-time line
-        // entirely and left a hairline with text floating over the gridline.
-        // Every calendar accepts a little overlap for very short events instead.
-        minHeight: `${MIN_BLOCK_PX}px`,
+        top: `${top}px`,
+        height: `${heightPx}px`,
         left: `calc(${lane * width}% + 2px)`,
         width: `calc(${width}% - 4px)`,
+        zIndex: revealed ? Z_BLOCK_REVEALED : Z_BLOCK,
       }}
       title={`${block.title} · ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}${block.estimated ? '' : ' · no estimate'}`}
     >
@@ -168,8 +164,8 @@ export function EventBlock({
       )}
       {onResize && !isBusy && (
         <ResizeHandle
-          startDuration={block.endMin - block.startMin}
-          pxPerMinute={gridHeightPx / (range.endMin - range.startMin)}
+          startDuration={committedMinutes}
+          pxPerMinute={PX_PER_MINUTE}
           onPreview={setPreviewMinutes}
           onResize={onResize}
         />
