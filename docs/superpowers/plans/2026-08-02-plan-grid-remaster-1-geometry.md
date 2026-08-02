@@ -15,7 +15,8 @@
 - Snap grain stays `SLOT_GRANULARITY_MIN = 5` (`src/lib/slot.ts:14`). Unchanged by this plan.
 - No literal hex colours and no arbitrary `text-[Nrem]` in `src/**/*.tsx?` — `src/lib/designScale.test.ts` fails the build on both.
 - Corner radii are restricted to `4`, `6`, `11`, `rounded-field` (9), `rounded-card` (14).
-- Run `npm test` and `npx tsc -b` before every commit.
+- Run `npm test` and `npx tsc -b` before every commit, and both must be **green**. The pixel API is therefore added alongside the percentage API in Task 1 and the old one is deleted in Task 7 with its last caller — no commit in this branch may be unbuildable.
+- Baseline is 1417 tests / 72 files, `tsc` clean. `src/views/goals/BoardCard.keyboard.test.tsx` is a known low-rate flake (one failure in eight baseline runs) in code this plan does not touch: re-run once if it fails. Any other failure is real.
 - This plan covers spec Parts 1 and 2.1 only. Colour, capacity temperature, the gutter, the all-day lane and motion tokens are plans 2 and 3.
 
 ---
@@ -28,25 +29,29 @@
 
 **Interfaces:**
 - Consumes: `MINUTES_PER_DAY`, `windowForDate` from `src/lib/availability.ts`; `Interval` from `src/lib/capacity.ts`.
-- Produces: `PX_PER_MINUTE`, `DAY_START_MIN`, `DAY_END_MIN`, `DAY_HEIGHT_PX`, `minuteToPx(minute: number): number`, `pxToMinute(px: number): number`, `hourMarks(): number[]`, `initialScrollWindow(dates: string[], windows: AvailabilityWindow[]): Interval`. `assignLanes`, `LaneSpan`, `Laid`, `MIN_VISIBLE_START`, `MIN_VISIBLE_END` are unchanged and still exported. `visibleRange`, `minuteToPct`, `pctToMinute` are **deleted**.
+- Produces: `PX_PER_MINUTE`, `DAY_START_MIN`, `DAY_END_MIN`, `DAY_HEIGHT_PX`, `minuteToPx(minute: number): number`, `pxToMinute(px: number): number`, `initialScrollWindow(dates: string[], windows: AvailabilityWindow[]): Interval`, and the `Z_*` scale.
+- **Not changed here:** `hourMarks` keeps its `Interval` parameter. `WeekGrid` is its only consumer, so its signature changes in Task 6 where that consumer is already being rewritten — changing it here would break the build for five tasks. `assignLanes`, `LaneSpan`, `Laid`, `MIN_VISIBLE_START`, `MIN_VISIBLE_END` are unchanged.
+- **Retains:** `visibleRange`, `minuteToPct`, `pctToMinute` and their existing tests, untouched. They still have call sites in Tasks 4–7 and are deleted in Task 7 Step 8, once the last one is migrated. This is what keeps every commit in the branch typechecking and bisectable — do not delete them here.
 
-- [ ] **Step 1: Replace the geometry half of `grid.test.ts`**
+- [ ] **Step 1: Append the new geometry tests to `grid.test.ts`**
 
-Replace lines 1–124 of `src/lib/grid.test.ts` (everything above `describe('assignLanes', ...)`) with the following. Leave the `assignLanes` block at the bottom of the file exactly as it is.
+Leave the existing file entirely intact — the `visibleRange`, `minute ↔ percentage`, `hourMarks` and `assignLanes` describes all stay, because the code they cover is still live until Task 7.
+
+Extend the existing import at the top of the file to add the new names:
 
 ```ts
-import { describe, it, expect } from 'vitest';
-import type { AvailabilityWindow } from '../db/types';
 import {
-  initialScrollWindow, minuteToPx, pxToMinute, hourMarks, assignLanes,
+  visibleRange, minuteToPct, pctToMinute, hourMarks, assignLanes,
+  MIN_VISIBLE_START, MIN_VISIBLE_END, type LaneSpan,
+  initialScrollWindow, minuteToPx, pxToMinute,
   PX_PER_MINUTE, DAY_START_MIN, DAY_END_MIN, DAY_HEIGHT_PX,
-  MIN_VISIBLE_START, MIN_VISIBLE_END,
   Z_RULES, Z_BLOCK, Z_BLOCK_REVEALED, Z_NOW_LINE, Z_AXIS, Z_HEADINGS, Z_CORNER,
 } from './grid';
+```
 
-const WEEK = ['2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16', '2026-07-17', '2026-07-18', '2026-07-19'];
-const NINE_TO_SIX: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1080 }));
+Then append the following describes to the end of the file. Note the existing file already declares `WEEK` and `NINE_TO_SIX` at module scope — reuse them, do not redeclare.
 
+```ts
 describe('the scale', () => {
   it('spans the whole day', () => {
     expect(DAY_START_MIN).toBe(0);
@@ -89,16 +94,6 @@ describe('minute <-> pixel', () => {
       if (Math.abs(back - m) > 1e-6) failures.push(`${m} -> ${back}`);
     }
     expect(failures).toEqual([]);
-  });
-});
-
-describe('hourMarks', () => {
-  it('labels every whole hour of the day, both ends inclusive', () => {
-    const marks = hourMarks();
-    expect(marks).toHaveLength(25);
-    expect(marks[0]).toBe(0);
-    expect(marks[24]).toBe(1440);
-    expect(marks[9]).toBe(540);
   });
 });
 
@@ -164,12 +159,13 @@ describe('initialScrollWindow', () => {
 Run: `npx vitest run src/lib/grid.test.ts`
 Expected: FAIL — `No "initialScrollWindow" export is defined on the module`.
 
-- [ ] **Step 3: Rewrite the geometry half of `grid.ts`**
+- [ ] **Step 3: Add the pixel API to `grid.ts`**
 
-In `src/lib/grid.ts`, delete `visibleRange`, `minuteToPct` and `pctToMinute` along with their doc comments, and delete the now-unused `BusyBlock` import. Keep `floorToHour`/`ceilToHour`, `MIN_VISIBLE_START`/`MIN_VISIBLE_END`, and the entire `LaneSpan`/`Laid`/`assignLanes` section untouched. Add:
+**Delete nothing in this step.** `visibleRange`, `minuteToPct`, `pctToMinute`, `hourMarks` and the `BusyBlock` import all stay exactly as they are — they still have call sites, and Task 7 Step 8 removes them once the last one is gone. Keeping both APIs alive for five tasks is what keeps every commit buildable.
+
+Extend the existing `./availability` import to `import { MINUTES_PER_DAY, windowForDate } from './availability';` and add:
 
 ```ts
-import { MINUTES_PER_DAY, windowForDate } from './availability';
 
 /**
  * The scale. One pixel per minute.
@@ -261,25 +257,30 @@ export function initialScrollWindow(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/lib/grid.test.ts`
-Expected: PASS. The `assignLanes` describe block still passes untouched.
+Expected: PASS — the new describes plus every pre-existing one, all green together.
 
-- [ ] **Step 5: Confirm the deleted exports have known callers**
+- [ ] **Step 5: Verify the build stayed green**
 
-Run: `grep -rn "visibleRange\|minuteToPct\|pctToMinute" src`
-Expected: hits in `src/views/plan/WeekGrid.tsx`, `src/views/plan/DayColumn.tsx`, `src/views/plan/EventBlock.tsx`, `src/views/plan/dropTarget.ts`, `src/views/Plan.tsx`. These are Tasks 2, 4 and 5 — the build stays red until Task 5. That is expected and is why this task does not run `tsc`.
+Run: `npx tsc -b && npm test`
+Expected: `tsc` clean, 1417 + new tests passing.
+
+If `src/views/goals/BoardCard.keyboard.test.tsx` fails, re-run once — it is a known low-rate flake (observed once in eight baseline runs) in code this plan does not touch. Any *other* failure is real.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/lib/grid.ts src/lib/grid.test.ts
-git commit -m "feat(plan): pixel geometry at a constant scale
+git commit -m "feat(plan): add pixel geometry at a constant scale
 
-Replaces minuteToPct/pctToMinute, which mapped a minute to a percentage
-of a fixed 720px, with minuteToPx/pxToMinute at a constant 1px/minute.
-visibleRange is demoted to initialScrollWindow: it no longer has to
-widen itself to keep off-range blocks on screen, because every minute of
-the day is now reachable by scrolling, so its spans and blocks
-parameters are deleted along with the reason they existed.
+minuteToPx/pxToMinute map a minute to an absolute offset at a constant
+1px/minute, rather than to a percentage of a fixed 720px whose meaning
+changed with the week's contents. initialScrollWindow replaces what
+visibleRange was for: it says where to scroll, so it does not have to
+widen itself to keep off-range blocks on screen.
+
+Added alongside the percentage API rather than replacing it. Five tasks
+still call the old functions, and deleting them here would leave four
+commits that do not typecheck. Task 7 removes them with the last caller.
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
@@ -718,10 +719,12 @@ In `src/views/plan/DayBlocks.tsx`, remove `range` and `gridHeightPx` from the pr
 
 adding `import { DAY_START_MIN, DAY_END_MIN } from '../../lib/grid';`. This path is unexercised today (`blocks` is always `[]`) and plan 3 replaces it with the all-day lane; this keeps it compiling and honest in the meantime.
 
-- [ ] **Step 7: Typecheck the two files**
+- [ ] **Step 7: Typecheck and test**
 
-Run: `npx tsc -b`
-Expected: errors remain in `WeekGrid.tsx` and `Plan.tsx` only (Tasks 6 and 7). No errors reported inside `EventBlock.tsx` or `DayBlocks.tsx`.
+Run: `npx tsc -b && npm test`
+Expected: both clean. `WeekGrid` still passes `range`/`gridHeightPx` in its JSX, which is now surplus — TypeScript accepts extra props on a call only if they are declared, so **if `tsc` reports an error in `WeekGrid.tsx`, remove those two attributes from its `<DayBlocks>` call as part of this task.** That is a one-line change and it keeps the build green; do not defer it to Task 6.
+
+A `BoardCard.keyboard.test.tsx` failure is a known flake — re-run once.
 
 - [ ] **Step 8: Commit**
 
@@ -794,15 +797,17 @@ The `Math.max(0, …)` guards are no longer needed: a window's minutes are insid
 
 The `nowMinute >= range.startMin && nowMinute <= range.endMin` guard is deleted. It existed because a clock reading outside the visible range would have rendered off-grid; every minute of the day is now on the grid, so the guard can only ever be true.
 
-- [ ] **Step 4: Typecheck**
+- [ ] **Step 4: Typecheck and test**
 
-Run: `npx tsc -b`
-Expected: errors remain only in `WeekGrid.tsx` and `Plan.tsx`.
+Run: `npx tsc -b && npm test`
+Expected: both clean. As in Task 4, if `tsc` flags the now-surplus `range` attribute on `WeekGrid`'s `<DayColumn>` call, remove it here rather than deferring it.
+
+A `BoardCard.keyboard.test.tsx` failure is a known flake — re-run once.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/views/plan/DayColumn.tsx
+git add src/views/plan/DayColumn.tsx src/views/plan/WeekGrid.tsx
 git commit -m "feat(plan): day shading and now-line in pixels
 
 Drops the range prop and two guards that only existed because the grid
@@ -823,6 +828,33 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `minuteToPx`, `hourMarks`, `DAY_HEIGHT_PX`, `Z_AXIS`, `Z_HEADINGS`, `Z_CORNER` from Task 1.
 - Produces: `WeekGrid` gains `scrollWindow: Interval`, `scrollerRef: RefObject<HTMLDivElement | null>` and `gridRef: RefObject<HTMLDivElement | null>` props, and loses `range`. `GRID_HEIGHT_PX` is **deleted**; `GRID_VIEWPORT_PX` replaces it as the scroller's own height.
+
+- [ ] **Step 0: Give `hourMarks` its day-wide signature**
+
+`WeekGrid` is its only consumer, which is why this lands here rather than in Task 1. In `src/lib/grid.ts`:
+
+```ts
+/** Every whole hour of the day, both ends inclusive. 25 marks. */
+export function hourMarks(): number[] {
+  const out: number[] = [];
+  for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 60) out.push(m);
+  return out;
+}
+```
+
+Replace the existing range-based `hourMarks` outright — after this step nothing calls the old form. Then replace its test in `src/lib/grid.test.ts`:
+
+```ts
+describe('hourMarks', () => {
+  it('labels every whole hour of the day, both ends inclusive', () => {
+    const marks = hourMarks();
+    expect(marks).toHaveLength(25);
+    expect(marks[0]).toBe(0);
+    expect(marks[24]).toBe(1440);
+    expect(marks[9]).toBe(540);
+  });
+});
+```
 
 - [ ] **Step 1: Replace the module header**
 
@@ -1310,20 +1342,31 @@ and change both calls to pass `dayWindow.startMin`. Update the effect's dependen
 
 Keep the three handler bodies and their comments exactly as they are; only `range` and `gridHeightPx` are removed.
 
-- [ ] **Step 8: Typecheck**
+- [ ] **Step 8: Delete the percentage API**
+
+This is the last caller. Now — and only now — remove from `src/lib/grid.ts`: `visibleRange` and its doc comment, `minuteToPct`, `pctToMinute`, and the `BusyBlock` import that only `visibleRange` used. `floorToHour`/`ceilToHour` stay (`initialScrollWindow` uses them); `MIN_VISIBLE_START`/`MIN_VISIBLE_END` stay; `assignLanes` and its types stay.
+
+From `src/lib/grid.test.ts`, remove the `describe('visibleRange', …)` and `describe('minute ↔ percentage', …)` blocks and the now-unused `block()` and `span()` helpers, the `BusyBlock` type import, and `visibleRange`/`minuteToPct`/`pctToMinute`/`type LaneSpan` from the import list. The `assignLanes` describe declares its own local `span` and is unaffected.
+
+Confirm nothing survived:
+
+Run: `grep -rn "visibleRange\|minuteToPct\|pctToMinute\|GRID_HEIGHT_PX\|gridHeightPx" src`
+Expected: no matches.
+
+- [ ] **Step 9: Typecheck**
 
 Run: `npx tsc -b`
 Expected: clean, no errors.
 
-- [ ] **Step 9: Run the whole suite**
+- [ ] **Step 10: Run the whole suite**
 
 Run: `npm test`
 Expected: PASS. If `views.smoke.test.ts` fails, it is rendering `Plan` without a layout — check that `scrollerRef.current` being null is handled (Step 4 returns early) rather than loosening the guard.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add src/views/Plan.tsx
+git add src/views/Plan.tsx src/lib/grid.ts src/lib/grid.test.ts
 git commit -m "feat(plan): scroll the day, and let drags scroll it
 
 Wires initialScrollWindow, which no longer depends on scheduled spans —
@@ -1335,6 +1378,9 @@ not have survived.
 Keyboard placement aims at the day's working start rather than the
 grid's: the grid now begins at 00:00, so the old expression would have
 aimed every 1-7 placement at midnight.
+
+Removes visibleRange, minuteToPct and pctToMinute with their last
+caller, so no commit in this branch is left unbuildable.
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
