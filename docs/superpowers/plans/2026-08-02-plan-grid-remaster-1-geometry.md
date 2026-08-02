@@ -215,13 +215,6 @@ export const Z_AXIS = 4;
 export const Z_HEADINGS = 5;
 export const Z_CORNER = 6;
 
-/** Every whole hour of the day, both ends inclusive. 25 marks. */
-export function hourMarks(): number[] {
-  const out: number[] = [];
-  for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 60) out.push(m);
-  return out;
-}
-
 /**
  * Where to scroll the grid on mount: the union of the week's availability
  * windows, expanded to whole hours and then to at least 08:00-20:00.
