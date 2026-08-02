@@ -16,7 +16,7 @@ export interface CanvasSpan {
   durationMin: number;
 }
 
-/** Round to the grain `resolveSlot` already snaps aims to. */
+/** Round to the grain that `resolveSlot` already snaps its aim to. */
 export function snapMinute(minute: number): number {
   return Math.round(minute / SLOT_GRANULARITY_MIN) * SLOT_GRANULARITY_MIN;
 }
@@ -51,10 +51,20 @@ export function canvasSpan(anchorContentY: number, currentContentY: number): Can
 
   const a = clampMinute(snapMinute(pxToMinute(anchorContentY)));
   const b = clampMinute(snapMinute(pxToMinute(currentContentY)));
-  const startMin = Math.min(a, b);
-  const endMin = Math.max(a, b);
+  /*
+   * Pull the start back far enough that the grain floor below cannot push the
+   * block past midnight — the same pull-back the click branch uses, for the
+   * same reason.
+   *
+   * Without it, a drag entirely beyond the day clamps BOTH edges to
+   * DAY_END_MIN, the floor then widens a zero-length block to 5 minutes, and
+   * the result ends at 00:05 the next day. Clamping the edges is not enough on
+   * its own: the floor runs after the clamp and only ever extends the end
+   * forward, so it can reintroduce the overflow the clamp just removed.
+   */
+  const startMin = Math.min(Math.min(a, b), DAY_END_MIN - SLOT_GRANULARITY_MIN);
   return {
     startMin,
-    durationMin: Math.max(SLOT_GRANULARITY_MIN, endMin - startMin),
+    durationMin: Math.max(SLOT_GRANULARITY_MIN, Math.max(a, b) - startMin),
   };
 }
