@@ -15,7 +15,8 @@ import {
 import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates } from '../lib/dates';
 import { weekOf, plannedLeaves } from '../lib/plan';
-import { visibleRange, type LaneSpan } from '../lib/grid';
+import { initialScrollWindow } from '../lib/grid';
+import { windowForDate } from '../lib/availability';
 import { scheduledByDate } from '../lib/scheduled';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { unestimatedCommitments } from '../lib/unestimated';
@@ -34,7 +35,7 @@ import { AvailabilitySettings } from './plan/AvailabilitySettings';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { Stats } from './plan/sidebar/Stats';
-import { aimMinuteInRange, type PlanDragData } from './plan/dropTarget';
+import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
 import type { BacklogItem } from '../lib/backlog';
 
 /**
@@ -106,13 +107,9 @@ export function Plan() {
     () => scheduledByDate(goals, tasks, days),
     [goals, tasks, days],
   );
-  const scheduledSpans: LaneSpan[] = useMemo(
-    () => [...scheduledByDay.values()].flat(),
-    [scheduledByDay],
-  );
-  const range = useMemo(
-    () => visibleRange(days, availability, [], scheduledSpans),
-    [days, availability, scheduledSpans],
+  const scrollWindow = useMemo(
+    () => initialScrollWindow(days, availability),
+    [days, availability],
   );
   const isPast = weekStart < weekOf(today);
 
@@ -239,9 +236,8 @@ export function Plan() {
   // Scoped to the rail so the placement handler can focus the successor row
   // without querying the whole document.
   const railRef = useRef<HTMLDivElement>(null);
-  // Owned here rather than inside WeekGrid: Plan needs both live to resolve a
-  // drop (scrollerRef for the current scroll offset, gridRef for its
-  // offsetTop) — see the props' doc comments on WeekGrid.
+  // Owned here because `handleDragEnd` needs both live at drop time — see the
+  // coordinate-space note in dropTarget.ts.
   const scrollerRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
@@ -249,9 +245,9 @@ export function Plan() {
     useSensor(KeyboardSensor),
   );
 
-  // Keyboard placement. The aim is the start of the visible range, so the
-  // store snaps to that day's earliest fitting gap — the same semantic the
-  // data migration uses. Refusals surface the store's own toast.
+  // Keyboard placement. The aim is the day's working start, so the store
+  // snaps to that day's earliest fitting gap — the same semantic the data
+  // migration uses. Refusals surface the store's own toast.
   //
   // Registered on the capture phase: App.tsx's own `keydown` listener is also
   // on `window`, and `stopPropagation` on a bubble-phase listener would not
@@ -296,10 +292,24 @@ export function Plan() {
         return;
       }
       const date = weekDates(weekStart)[command.dow];
+      /*
+       * Aim at the day's working start, not the grid's.
+       *
+       * This was `range.startMin`, which under the old stretching grid was
+       * roughly 08:00. The grid now begins at 00:00, so the same expression
+       * would aim every keyboard placement at midnight and let `resolveSlot`
+       * walk forward from there. A day with no window has nothing to aim at and
+       * refuses, matching the disabled droppable on that column.
+       */
+      const dayWindow = windowForDate(date, availability);
+      if (!dayWindow) {
+        actions.showToast('No working hours on that day.');
+        return;
+      }
       const placed = focusedItem.kind === 'task'
-        ? actions.scheduleTask(focusedItem.id, date, range.startMin)
+        ? actions.scheduleTask(focusedItem.id, date, dayWindow.startMin)
         : focusedItem.goalId
-          ? actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, range.startMin)
+          ? actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, dayWindow.startMin)
           : false;
 
       /*
@@ -326,7 +336,7 @@ export function Plan() {
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [focusedItem, weekStart, range.startMin, isPast]);
+  }, [focusedItem, weekStart, availability, isPast]);
 
   function handleDragStart(e: DragStartEvent) {
     setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
@@ -343,28 +353,26 @@ export function Plan() {
     if (!data || !e.over || !overId?.startsWith('day:')) return;
     const date = overId.slice('day:'.length);
 
-    // e.over.rect is measured at drag START, and dnd-kit's e.delta is already
-    // scroll-adjusted (translate + any scroll since drag start) to pair with
-    // that same start-of-drag measurement. Re-reading the column's rect live
-    // from the DOM here would apply any scroll offset a second time and drift
-    // the aim by roughly a minute per pixel scrolled mid-drag. Do not "fix"
-    // this by swapping in a live rect. (Auto-scroll is disabled on the
-    // DndContext below for the mirror-image reason.)
-    const rect = e.over.rect;
-
-    // The top edge of the thing being dragged — not the pointer — is the aim
-    // basis, so a block grabbed by its middle still lands where its ghost is
-    // shown, not offset by half its own height. This basis is well-defined
-    // for both sensors: `active.rect.current.initial` is measured at drag
-    // start, exactly like `e.over.rect`, and `e.delta` is dnd-kit's
-    // scroll-adjusted translate, which `KeyboardSensor` populates via its
-    // coordinate getter just as `PointerSensor` does via pointer movement.
-    // Neither reads `clientY`/pointer coordinates, so there is no keyboard
-    // special case here — that's handled instead by falling back to
-    // `rectIntersection` in `collisionDetection` above.
-    const initialTop = e.active.rect.current.initial?.top ?? rect.top;
-    const draggedTop = initialTop + e.delta.y;
-    const aim = aimMinuteInRange(draggedTop, rect.top, rect.height, range);
+    /*
+     * `active.rect.current.initial.top + delta.y` is the dragged element's
+     * CURRENT viewport top: dnd-kit keeps `delta` scroll-adjusted for exactly
+     * this. Pairing it with a live scroller rect and a live `scrollTop` is
+     * consistent because all three describe the same instant.
+     *
+     * This replaces an arithmetic that paired the dragged top with
+     * `e.over.rect`, measured at drag START. That was correct only while the
+     * grid could not scroll. It cannot survive auto-scroll, which is why the
+     * comment that used to sit here forbade re-enabling it.
+     */
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const initialTop = e.active.rect.current.initial?.top ?? 0;
+    const aim = aimMinuteFor({
+      draggedTopViewport: initialTop + e.delta.y,
+      scrollerTopViewport: scroller.getBoundingClientRect().top,
+      scrollTop: scroller.scrollTop,
+      gridOffsetPx: gridRef.current?.offsetTop ?? 0,
+    });
 
     if (data.kind === 'task') actions.scheduleTask(data.id, date, aim);
     else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim);
@@ -377,20 +385,14 @@ export function Plan() {
   return (
     <DndContext
       sensors={sensors}
-      // Auto-scroll OFF, and it must stay off. `handleDragEnd` pairs
-      // `e.over.rect` (measured at drag start) with `e.delta` (scroll-adjusted
-      // over the DRAGGABLE's scrollable ancestors). The backlog rail is now a
-      // scroller, so an auto-scroll of the rail mid-drag adds its offset to
-      // `delta.y` while the day column's start-of-drag `rect.top` stays put —
-      // the aim minute drifts by that many pixels' worth of grid and the block
-      // lands away from its ghost. The week grid is now a real scroller too
-      // (WeekGrid), but this call site still aims against `range`/`rect.top`
-      // the old way — re-enabling auto-scroll means re-deriving the aim
-      // arithmetic against a live rect first. That replacement arithmetic
-      // already exists as `aimMinuteFor` in `plan/dropTarget.ts` — it is not
-      // wired in here yet; Task 7 switches this call site over and re-enables
-      // auto-scroll together.
-      autoScroll={false}
+      /*
+       * On, and it needs to be: the grid is a full day tall, so dragging from
+       * 09:00 to 18:00 requires the view to follow. The arithmetic this used to
+       * be unsafe for is gone — `handleDragEnd` now resolves the aim in the
+       * scroller's own content coordinates, which are invariant under scroll.
+       * See dropTarget.ts.
+       */
+      autoScroll
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -481,7 +483,7 @@ export function Plan() {
             today={today}
             nowMinute={nowMinute}
             windows={availability}
-            scrollWindow={range}
+            scrollWindow={scrollWindow}
             readOnly={isPast}
             dayCapacity={capacity.days}
             scrollerRef={scrollerRef}
