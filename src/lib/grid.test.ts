@@ -3,6 +3,9 @@ import type { AvailabilityWindow, BusyBlock } from '../db/types';
 import {
   visibleRange, minuteToPct, pctToMinute, hourMarks, assignLanes,
   MIN_VISIBLE_START, MIN_VISIBLE_END, type LaneSpan,
+  initialScrollWindow, minuteToPx, pxToMinute,
+  PX_PER_MINUTE, DAY_START_MIN, DAY_END_MIN, DAY_HEIGHT_PX,
+  Z_RULES, Z_BLOCK, Z_BLOCK_REVEALED, Z_NOW_LINE, Z_AXIS, Z_HEADINGS, Z_CORNER,
 } from './grid';
 
 const WEEK = ['2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16', '2026-07-17', '2026-07-18', '2026-07-19'];
@@ -180,5 +183,106 @@ describe('assignLanes', () => {
     const laid = assignLanes([span('a', 540, 600), span('b', 600, 660), span('c', 610, 700)]);
     expect(laid.map((l) => [l.item.id, l.lane, l.laneCount]))
       .toEqual([['a', 0, 1], ['b', 0, 2], ['c', 1, 2]]);
+  });
+});
+
+describe('the scale', () => {
+  it('spans the whole day', () => {
+    expect(DAY_START_MIN).toBe(0);
+    expect(DAY_END_MIN).toBe(1440);
+  });
+
+  // The density guard. 720px for a 480-1200 range — the old default — is
+  // exactly 1px per minute, so holding PX_PER_MINUTE at 1 is what keeps the
+  // remaster from silently restyling a locked visual identity.
+  it('renders at the same density the stretching grid used by default', () => {
+    expect(PX_PER_MINUTE).toBe(1);
+    expect(minuteToPx(1200) - minuteToPx(480)).toBe(720);
+  });
+
+  it('is as tall as the day is long', () => {
+    expect(DAY_HEIGHT_PX).toBe(1440 * PX_PER_MINUTE);
+  });
+});
+
+describe('minute <-> pixel', () => {
+  it('puts midnight at the top', () => {
+    expect(minuteToPx(DAY_START_MIN)).toBe(0);
+  });
+
+  it('puts the end of the day at the full height', () => {
+    expect(minuteToPx(DAY_END_MIN)).toBe(DAY_HEIGHT_PX);
+  });
+
+  it('is linear rather than range-relative', () => {
+    // The old minuteToPct answered differently for the same minute depending
+    // on which blocks happened to be on the week. This must not.
+    expect(minuteToPx(600)).toBe(600 * PX_PER_MINUTE);
+    expect(minuteToPx(1300)).toBe(1300 * PX_PER_MINUTE);
+  });
+
+  it('round-trips every minute of the day', () => {
+    const failures: string[] = [];
+    for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 1) {
+      const back = pxToMinute(minuteToPx(m));
+      if (Math.abs(back - m) > 1e-6) failures.push(`${m} -> ${back}`);
+    }
+    expect(failures).toEqual([]);
+  });
+});
+
+describe('the stacking order', () => {
+  // A guard, not a tautology: the layers have a required ORDER, and the one
+  // that actually regressed before was a revealed block sitting above the
+  // sticky headings. Asserting the relation catches a reorder that asserting
+  // the numbers individually would not.
+  it('puts every layer above the one it must cover', () => {
+    expect(Z_RULES).toBeLessThan(Z_BLOCK);
+    expect(Z_BLOCK).toBeLessThan(Z_BLOCK_REVEALED);
+    expect(Z_BLOCK_REVEALED).toBeLessThan(Z_NOW_LINE);
+    expect(Z_NOW_LINE).toBeLessThan(Z_AXIS);
+    expect(Z_AXIS).toBeLessThan(Z_HEADINGS);
+    expect(Z_HEADINGS).toBeLessThan(Z_CORNER);
+  });
+});
+
+describe('initialScrollWindow', () => {
+  it('never returns less than the 08:00-20:00 floor', () => {
+    expect(initialScrollWindow(WEEK, NINE_TO_SIX))
+      .toEqual({ startMin: MIN_VISIBLE_START, endMin: MIN_VISIBLE_END });
+  });
+
+  it('grows to cover an early availability window, floored to the hour', () => {
+    const early: AvailabilityWindow[] = [{ dow: 2, startMin: 415, endMin: 1080 }]; // 06:55
+    expect(initialScrollWindow(WEEK, early).startMin).toBe(360); // 06:00
+  });
+
+  it('grows to cover a late availability window, ceiled to the hour', () => {
+    const late: AvailabilityWindow[] = [{ dow: 2, startMin: 540, endMin: 1330 }]; // 22:10
+    expect(initialScrollWindow(WEEK, late).endMin).toBe(1380); // 23:00
+  });
+
+  it('ignores windows for days not in the week', () => {
+    const SIX = WEEK.slice(0, 6);
+    expect(initialScrollWindow(SIX, [{ dow: 6, startMin: 60, endMin: 120 }]))
+      .toEqual({ startMin: MIN_VISIBLE_START, endMin: MIN_VISIBLE_END });
+  });
+
+  it('stays inside the day even for an absurd window', () => {
+    const w = initialScrollWindow(WEEK, [{ dow: 2, startMin: 0, endMin: 1440 }]);
+    expect(w.startMin).toBeGreaterThanOrEqual(DAY_START_MIN);
+    expect(w.endMin).toBeLessThanOrEqual(DAY_END_MIN);
+  });
+
+  it('always returns a positive-width window', () => {
+    const cases: Array<[string, string[], AvailabilityWindow[]]> = [
+      ['empty week', WEEK, []],
+      ['a narrow midday window', WEEK, [{ dow: 2, startMin: 700, endMin: 720 }]],
+      ['a genuinely empty dates array', [], []],
+    ];
+    for (const [label, dates, windows] of cases) {
+      const w = initialScrollWindow(dates, windows);
+      expect(w.endMin, label).toBeGreaterThan(w.startMin);
+    }
   });
 });
