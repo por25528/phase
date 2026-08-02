@@ -4,7 +4,11 @@ import type { Interval } from './capacity';
 
 const MINUTES_PER_HOUR = 60;
 
-/** The grid always shows at least 08:00–20:00, so it never collapses to a sliver. */
+/**
+ * The grid shows all 24 hours regardless. These only floor the INITIAL
+ * scroll window (see `initialScrollWindow`) at 08:00–20:00, so a week with
+ * no availability set doesn't open scrolled to a sliver of empty morning.
+ */
 export const MIN_VISIBLE_START = 480;
 export const MIN_VISIBLE_END = 1200;
 

@@ -185,6 +185,11 @@ export function WeekGrid({
   return (
     <div
       ref={scrollerRef}
+      // `relative` makes this the `offsetParent` for `gridRef` below, which is
+      // load-bearing: Plan.tsx reads `gridRef.current.offsetTop` as that
+      // element's offset within THIS scroller. Drop `relative` and `offsetTop`
+      // is measured against a different ancestor instead — silently, since
+      // jsdom returns 0 for `offsetTop` regardless and no test would catch it.
       className="overflow-auto relative"
       style={{ height: `${GRID_VIEWPORT_PX}px` }}
     >

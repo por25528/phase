@@ -93,11 +93,10 @@ export function Plan() {
    * Everything derived from the week's data is memoised on the data, NOT
    * recomputed per render — because the now-line ticks every 60 seconds and
    * re-renders this whole subtree for a single CSS `top`. Before this, each of
-   * those ticks re-walked every goal's leaf tree fourteen times: seven for
-   * `scheduledSpans` here, and seven more inside the `DayBlocks` children,
-   * which each called `scheduledOn` again for their own day. `scheduledByDate`
-   * makes it one pass, and the memo makes it one pass per edit rather than per
-   * render.
+   * those ticks re-walked every goal's leaf tree seven times over, once inside
+   * each `DayBlocks` child, which each called `scheduledOn` again for their
+   * own day. `scheduledByDate` makes it one pass, and the memo makes it one
+   * pass per edit rather than per render.
    *
    * `days` is memoised for a second reason: `weekDates` returns a fresh array
    * every call, and two effects downstream key off its identity.
@@ -354,21 +353,32 @@ export function Plan() {
     const date = overId.slice('day:'.length);
 
     /*
-     * `active.rect.current.initial.top + delta.y` is the dragged element's
-     * CURRENT viewport top: dnd-kit keeps `delta` scroll-adjusted for exactly
-     * this. Pairing it with a live scroller rect and a live `scrollTop` is
+     * `active.rect.current.translated` is the dragged element's LIVE viewport
+     * rect. dnd-kit sets it to the very `collisionRect` its collision
+     * detection just used to pick this day column, and with a `DragOverlay` —
+     * which this view uses — that is exactly where the ghost is drawn.
+     * Pairing it with a live scroller rect and a live `scrollTop` is
      * consistent because all three describe the same instant.
      *
-     * This replaces an arithmetic that paired the dragged top with
-     * `e.over.rect`, measured at drag START. That was correct only while the
-     * grid could not scroll. It cannot survive auto-scroll, which is why the
-     * comment that used to sit here forbade re-enabling it.
+     * NOT `initial.top + delta.y`. `delta` is dnd-kit's
+     * `scrollAdjustedTranslate`: `modifiedTranslate` PLUS the scroll delta of
+     * the over-node's scrollable ancestors. The overlay is drawn at the
+     * unadjusted `modifiedTranslate`, so that sum is the ghost's position with
+     * the scroll counted once already — and adding the live `scrollTop` counts
+     * it twice. Two consequences, both silent: dragging from the rail onto a
+     * grid sitting at its 08:00 mount scroll aimed eight hours late, and every
+     * auto-scrolled pixel drifted the aim by a further minute.
+     *
+     * `gridOffsetPx` is `offsetTop`, which is measured against the nearest
+     * positioned ancestor. That is the scroller only because `WeekGrid` gives
+     * it `relative` — see the note there. It is scroll-independent, which is
+     * why it can be read at drop time.
      */
     const scroller = scrollerRef.current;
-    if (!scroller) return;
-    const initialTop = e.active.rect.current.initial?.top ?? 0;
+    const translated = e.active.rect.current.translated;
+    if (!scroller || !translated) return;
     const aim = aimMinuteFor({
-      draggedTopViewport: initialTop + e.delta.y,
+      draggedTopViewport: translated.top,
       scrollerTopViewport: scroller.getBoundingClientRect().top,
       scrollTop: scroller.scrollTop,
       gridOffsetPx: gridRef.current?.offsetTop ?? 0,
