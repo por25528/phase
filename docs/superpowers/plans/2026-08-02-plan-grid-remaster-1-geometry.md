@@ -1239,7 +1239,9 @@ Beside the existing `railRef`:
 
 - [ ] **Step 4: Rewrite the drop handler's aim**
 
-Replace the `rect`/`initialTop`/`draggedTop`/`aim` block in `handleDragEnd` (lines 341–362) with:
+Change the import at the top of the file from `aimMinuteInRange` to `aimMinuteFor` — Step 8 deletes the former, so leaving the import is a build break, not a style point.
+
+Then replace the `rect`/`initialTop`/`draggedTop`/`aim` block in `handleDragEnd` (lines 341–362) with:
 
 ```ts
     /*
@@ -1266,7 +1268,7 @@ Replace the `rect`/`initialTop`/`draggedTop`/`aim` block in `handleDragEnd` (lin
 
 - [ ] **Step 5: Turn auto-scroll on**
 
-Replace the `autoScroll={false}` prop and its entire comment block (lines 374–385) with:
+Replace the `autoScroll={false}` prop **and the whole comment block above it** — everything from `Auto-scroll OFF, and it must stay off.` down to and including the pointer lines mentioning `aimMinuteFor` and Task 7. Do not go by line number; that block was lengthened after this plan was written. Nothing referring to `aimMinuteInRange` or to re-deriving the aim arithmetic may survive this step. Replace it all with:
 
 ```tsx
       /*
