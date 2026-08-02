@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement } from 'react';
+import { createElement, createRef } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { WeekGrid } from './WeekGrid';
@@ -49,18 +49,22 @@ function makeScrollable(el: HTMLElement, { scrollWidth, clientWidth }: { scrollW
 }
 
 function mount(week = DAYS) {
-  const { container, rerender } = render(
+  const scrollerRef = createRef<HTMLDivElement>();
+  const gridRef = createRef<HTMLDivElement>();
+  const { rerender } = render(
     createElement(WeekGrid, {
       days: week,
       today: TODAY,
       nowMinute: 600,
       windows: [],
-      range: RANGE,
+      scrollWindow: RANGE,
+      scrollerRef,
+      gridRef,
       children: () => null,
     }),
   );
-  const scroller = container.querySelector('.overflow-x-auto') as HTMLElement;
-  return { scroller, rerender };
+  const scroller = scrollerRef.current as HTMLElement;
+  return { scroller, rerender, scrollerRef, gridRef };
 }
 
 const resize = () => act(() => { observers.forEach((cb) => cb()); });
@@ -135,7 +139,7 @@ describe('respecting a manual scroll', () => {
 
 describe('changing week', () => {
   it('re-arms centring, so a manual scroll does not leak into the next week', () => {
-    const { scroller, rerender } = mount();
+    const { scroller, rerender, scrollerRef, gridRef } = mount();
     makeScrollable(scroller, { scrollWidth: 780, clientWidth: 420 });
     scroller.scrollLeft = 700;
     act(() => { scroller.dispatchEvent(new Event('scroll')); });
@@ -151,7 +155,9 @@ describe('changing week', () => {
           today: TODAY,
           nowMinute: 601,
           windows: [],
-          range: RANGE,
+          scrollWindow: RANGE,
+          scrollerRef,
+          gridRef,
           children: () => null,
         }),
       );
@@ -160,5 +166,27 @@ describe('changing week', () => {
     // original every-render bug.
     resize();
     expect(scroller.scrollLeft).toBe(700);
+  });
+});
+
+describe('vertical restoration', () => {
+  it('scrolls to the start of the working window rather than to midnight', () => {
+    const scrollerRef = createRef<HTMLDivElement>();
+    const gridRef = createRef<HTMLDivElement>();
+    render(
+      <WeekGrid
+        days={DAYS}
+        today={DAYS[3]}
+        nowMinute={null}
+        windows={[]}
+        scrollWindow={{ startMin: 540, endMin: 1080 }}
+        scrollerRef={scrollerRef}
+        gridRef={gridRef}
+      >
+        {() => null}
+      </WeekGrid>,
+    );
+    // 09:00 at 1px/minute.
+    expect(scrollerRef.current?.scrollTop).toBe(540);
   });
 });

@@ -1,22 +1,25 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
 import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
 import { windowForDate } from '../../lib/availability';
-import { minuteToPct, hourMarks } from '../../lib/grid';
+import { minuteToPx, hourMarks, DAY_HEIGHT_PX, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
 import { DayColumn } from './DayColumn';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/**
- * Pixel height of the hour grid. The pure geometry in lib/grid.ts works in
- * percentages; this is the one place a percentage becomes a pixel, and the
- * divisor Task 13 uses to turn a drop offset back into a minute.
- */
-export const GRID_HEIGHT_PX = 720;
-
 import { clockLabel } from '../../lib/clock';
+
+/**
+ * How tall the scroller itself is — the window onto the day, not the day.
+ *
+ * 720px is the height the old fixed grid occupied, kept so the page layout and
+ * the sidebar bounded against it are unchanged. The sticky day headings live
+ * inside this box and eat into it, exactly as they do in every calendar; the
+ * content behind them is `DAY_HEIGHT_PX` and reachable by scrolling.
+ */
+export const GRID_VIEWPORT_PX = 720;
 
 const AXIS_WIDTH_PX = 46;
 
@@ -26,19 +29,20 @@ const AXIS_WIDTH_PX = 46;
  * blocks itself; `children` is handed the date for each column so the caller
  * can render whatever belongs there.
  *
- * `range` is computed once by the caller (Plan.tsx) via `visibleRange` and
- * passed down — Task 12 needs the identical range to position blocks, and
- * two independent computations could drift.
+ * The grid is a full day tall (`DAY_HEIGHT_PX`) inside a `GRID_VIEWPORT_PX`
+ * scroller — every minute is reachable by scrolling, not just the window
+ * `scrollWindow` opens on.
  */
 export function WeekGrid({
-  days, today, nowMinute, windows, range, readOnly, dayCapacity, children,
+  days, today, nowMinute, windows, scrollWindow, readOnly, dayCapacity,
+  scrollerRef, gridRef, children,
 }: {
   days: string[];
   today: string;
   nowMinute: number | null;
   windows: AvailabilityWindow[];
-  range: Interval;
-  /** True when the whole week is past — forwarded to every DayColumn. */
+  /** Where to scroll on mount. Nothing positions against it — see initialScrollWindow. */
+  scrollWindow: Interval;
   readOnly?: boolean;
   /**
    * Per-day free/planned, in `days` order. `weekCapacity` has always produced
@@ -46,98 +50,108 @@ export function WeekGrid({
    * week total — which cannot tell you that Tuesday is full.
    */
   dayCapacity?: DayCapacity[];
+  /** Owned by Plan, which needs it live to resolve a drop. */
+  scrollerRef: RefObject<HTMLDivElement | null>;
+  /** The hour grid inside the scroller. Plan reads its offsetTop as gridOffsetPx. */
+  gridRef: RefObject<HTMLDivElement | null>;
   children: (date: string) => ReactNode;
 }) {
-  const marks = hourMarks(range);
-  const scrollerRef = useRef<HTMLDivElement>(null);
-
   /*
-   * Bring today's column into view on mount and whenever the WEEK changes —
-   * and at no other time.
+   * Two axes, restored independently.
    *
-   * The dependency was `[days, today]`, but `days` is `weekDates(weekStart)`,
-   * rebuilt into a new array on every render of Plan. So the identity always
-   * changed and this ran on every render: the 60-second now-line tick, a drag
-   * starting, a backlog row taking focus, a group expanding. Wherever the grid
-   * actually overflows — routine below ~830px, i.e. a laptop in split screen —
-   * that silently threw away the user's manual horizontal scroll, at worst
-   * within a minute and at best instantly. Scrolling right to Friday was not
-   * possible.
+   * Horizontal: bring today into view once per week. Vertical: put the working
+   * day at the top once per week. Each stops the moment the user moves THAT
+   * axis themselves — separate flags, because scrolling sideways to reach
+   * Friday should not forfeit the scroll-to-working-hours, and vice versa.
    *
-   * `days[0]` is the week's Monday: a string, stable across renders, and
-   * changing exactly when the effect should re-run. Plan.tsx documents this
-   * same `weekDates` identity hazard for its keydown listener and fixes it the
-   * same way.
+   * `weekKey` rather than `days`: `weekDates` returns a fresh array every
+   * render, so keying on it re-ran this on the 60-second now-line tick and
+   * threw away the user's scroll. See the note Plan.tsx carries for the same
+   * hazard on its keydown listener.
    */
   const weekKey = days[0];
-
-  /*
-   * Two facts about this week, kept in refs because changing them must never
-   * itself cause a render:
-   *
-   * `centredFor` — the week already centred. Centring is a once-per-week
-   * courtesy, not an ongoing behaviour.
-   *
-   * `userScrolled` — whether the person moved the grid themselves. Once they
-   * have, this stops touching it for that week: a view that re-centres under
-   * your hands is worse than one that never centres at all.
-   */
-  const centredFor = useRef<string | null>(null);
-  const userScrolled = useRef(false);
-  const programmatic = useRef(false);
+  const doneFor = useRef<string | null>(null);
+  const userScrolledX = useRef(false);
+  const userScrolledY = useRef(false);
+  const programmaticX = useRef(false);
+  const programmaticY = useRef(false);
+  const lastLeft = useRef(0);
+  const lastTop = useRef(0);
 
   useEffect(() => {
-    centredFor.current = null;
-    userScrolled.current = false;
+    doneFor.current = null;
+    userScrolledX.current = false;
+    userScrolledY.current = false;
   }, [weekKey]);
 
-  useEffect(() => {
+  /*
+   * Layout effect, not effect: the scroller's content starts at 00:00, so a
+   * post-paint scroll shows the user midnight for one frame before jumping to
+   * their working day. This runs before the browser paints.
+   */
+  useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
 
-    function centre(): void {
+    function restore(): void {
+      const node = scrollerRef.current;
+      if (!node || doneFor.current === weekKey) return;
+
+      if (!userScrolledY.current) {
+        const targetTop = minuteToPx(scrollWindow.startMin);
+        if (Math.abs(node.scrollTop - targetTop) >= 1) {
+          programmaticY.current = true;
+          node.scrollTop = targetTop;
+          lastTop.current = targetTop;
+        }
+      }
+
+      // Horizontal centring only applies once the grid actually overflows.
+      // Returning WITHOUT marking the week done is the point of watching for
+      // resizes: the grid is min-w-[780px], so a window dragged narrower makes
+      // it scrollable long after mount.
+      if (node.scrollWidth <= node.clientWidth) return;
+      if (!userScrolledX.current) {
+        const index = days.indexOf(today);
+        if (index >= 0) {
+          const colWidth = (node.scrollWidth - AXIS_WIDTH_PX) / days.length;
+          const targetLeft = Math.max(
+            0,
+            AXIS_WIDTH_PX + index * colWidth - (node.clientWidth - AXIS_WIDTH_PX - colWidth) / 2,
+          );
+          if (Math.abs(node.scrollLeft - targetLeft) >= 1) {
+            programmaticX.current = true;
+            node.scrollLeft = targetLeft;
+            lastLeft.current = targetLeft;
+          }
+        }
+      }
+      doneFor.current = weekKey;
+    }
+
+    /*
+     * One scroll event serves both axes, so which flag to set is decided by
+     * which offset actually moved. Without the comparison, a programmatic
+     * vertical scroll would consume the flag guarding the horizontal one.
+     */
+    function onScroll(): void {
       const node = scrollerRef.current;
       if (!node) return;
-      if (centredFor.current === weekKey || userScrolled.current) return;
-      // Not scrollable YET. Returning without marking the week done is the
-      // whole point of watching for resizes: the grid is `min-w-[780px]` inside
-      // an `overflow-x-auto`, so a window dragged narrower makes it scrollable
-      // long after mount, and it would otherwise sit pinned at Monday with
-      // today off-screen until the week or the date changed.
-      if (node.scrollWidth <= node.clientWidth) return;
-      const index = days.indexOf(today);
-      if (index < 0) {
-        centredFor.current = weekKey; // today isn't in this week; nothing to do
-        return;
+      if (node.scrollLeft !== lastLeft.current) {
+        if (programmaticX.current) programmaticX.current = false;
+        else userScrolledX.current = true;
+        lastLeft.current = node.scrollLeft;
       }
-      const colWidth = (node.scrollWidth - AXIS_WIDTH_PX) / days.length;
-      const target = Math.max(
-        0,
-        AXIS_WIDTH_PX + index * colWidth - (node.clientWidth - AXIS_WIDTH_PX - colWidth) / 2,
-      );
-      centredFor.current = weekKey;
-      // Assigning the value it already holds fires no scroll event, which would
-      // strand the flag and make this swallow the user's NEXT scroll instead.
-      if (Math.abs(node.scrollLeft - target) < 1) return;
-      programmatic.current = true;
-      node.scrollLeft = target;
+      if (node.scrollTop !== lastTop.current) {
+        if (programmaticY.current) programmaticY.current = false;
+        else userScrolledY.current = true;
+        lastTop.current = node.scrollTop;
+      }
     }
 
-    function onScroll(): void {
-      // Scroll events are dispatched in the rendering steps before animation
-      // frames, so the write above is always the first one seen here.
-      if (programmatic.current) {
-        programmatic.current = false;
-        return;
-      }
-      userScrolled.current = true;
-    }
-
-    centre();
+    restore();
     el.addEventListener('scroll', onScroll, { passive: true });
-    // Guarded: jsdom and other non-browser hosts have no ResizeObserver, and
-    // the initial `centre()` above already covers the common case.
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => centre());
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => restore());
     observer?.observe(el);
     return () => {
       el.removeEventListener('scroll', onScroll);
@@ -145,20 +159,28 @@ export function WeekGrid({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `days` is derived
     // from `weekKey`; depending on the array re-runs this every render.
-  }, [weekKey, today]);
+  }, [weekKey, today, scrollWindow.startMin]);
+
+  const marks = hourMarks();
 
   return (
-    <div ref={scrollerRef} className="overflow-x-auto">
+    <div
+      ref={scrollerRef}
+      className="overflow-auto relative"
+      style={{ height: `${GRID_VIEWPORT_PX}px` }}
+    >
       {/* 7 columns cannot be legible on a phone, so the grid scrolls rather
-          than squeezing — and it starts on today, which was otherwise cut in
-          half at the right edge. 780px keeps a day column ~105px. */}
+          than squeezing — and it starts on today. 780px keeps a day column
+          ~105px. */}
       <div className="min-w-[780px]">
-        {/* day headings */}
+        {/* day headings — sticky so they survive VERTICAL scrolling, over an
+            opaque background so blocks pass behind rather than through */}
         <div
-          className="grid gap-0 mb-[4px]"
-          style={{ gridTemplateColumns: `${AXIS_WIDTH_PX}px repeat(7, minmax(0, 1fr))` }}
+          className="grid gap-0 mb-[4px] sticky top-0 bg-bg"
+          style={{ gridTemplateColumns: `${AXIS_WIDTH_PX}px repeat(7, minmax(0, 1fr))`, zIndex: Z_HEADINGS }}
         >
-          <span />
+          {/* the corner sits above both rulers, or the axis slides over it */}
+          <span className="sticky left-0 bg-bg" style={{ zIndex: Z_CORNER }} />
           {days.map((iso, i) => {
             const cap = dayCapacity?.[i];
             const load = cap ? dayLoadLabel(cap) : null;
@@ -171,9 +193,9 @@ export function WeekGrid({
                 <div className={`text-body tabular-nums ${iso === today ? 'text-ink font-semibold' : 'text-ink-soft'}`}>
                   {parseD(iso).getDate()}
                 </div>
-                {/* A fixed-height slot whether or not the day has a figure, so
-                    one busy day cannot shove the whole header row down by a
-                    line relative to its neighbours. */}
+                {/* Fixed-height slot whether or not the day has a figure, so one
+                    busy day cannot shove the header row down relative to its
+                    neighbours. */}
                 <div className="h-[12px] leading-[12px]">
                   {load && (
                     <span
@@ -189,31 +211,30 @@ export function WeekGrid({
           })}
         </div>
 
-        {/* the hour grid */}
+        {/* the hour grid — a full day tall */}
         <div
+          ref={gridRef}
           className="grid relative border-t border-line"
           style={{
             gridTemplateColumns: `${AXIS_WIDTH_PX}px repeat(7, minmax(0, 1fr))`,
-            height: `${GRID_HEIGHT_PX}px`,
+            height: `${DAY_HEIGHT_PX}px`,
           }}
         >
-          {/* hour rules, drawn once across the full width behind everything */}
           {marks.map((m) => (
             <div
               key={m}
               className="absolute left-0 right-0 border-t border-line-soft pointer-events-none"
-              style={{ top: `${minuteToPct(m, range)}%` }}
+              style={{ top: `${minuteToPx(m)}px` }}
               aria-hidden="true"
             />
           ))}
 
-          {/* time axis — sticky so it survives horizontal scrolling */}
-          <div className="relative sticky left-0 z-[3] bg-bg">
+          <div className="relative sticky left-0 bg-bg" style={{ zIndex: Z_AXIS }}>
             {marks.map((m) => (
               <span
                 key={m}
                 className="absolute right-[6px] -translate-y-1/2 font-mono text-tiny text-muted tabular-nums"
-                style={{ top: `${minuteToPct(m, range)}%` }}
+                style={{ top: `${minuteToPx(m)}px` }}
               >
                 {clockLabel(m)}
               </span>

@@ -239,6 +239,11 @@ export function Plan() {
   // Scoped to the rail so the placement handler can focus the successor row
   // without querying the whole document.
   const railRef = useRef<HTMLDivElement>(null);
+  // Owned here rather than inside WeekGrid: Plan needs both live to resolve a
+  // drop (scrollerRef for the current scroll offset, gridRef for its
+  // offsetTop) — see the props' doc comments on WeekGrid.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
@@ -378,13 +383,13 @@ export function Plan() {
       // scroller, so an auto-scroll of the rail mid-drag adds its offset to
       // `delta.y` while the day column's start-of-drag `rect.top` stays put —
       // the aim minute drifts by that many pixels' worth of grid and the block
-      // lands away from its ghost. Nothing here needs auto-scroll: the grid is
-      // a fixed GRID_HEIGHT_PX and the sidebar is bounded to it, so there is
-      // no scrolling a drag has to do. Re-enabling this means re-deriving the
-      // aim arithmetic against a live rect first. That replacement arithmetic
+      // lands away from its ghost. The week grid is now a real scroller too
+      // (WeekGrid), but this call site still aims against `range`/`rect.top`
+      // the old way — re-enabling auto-scroll means re-deriving the aim
+      // arithmetic against a live rect first. That replacement arithmetic
       // already exists as `aimMinuteFor` in `plan/dropTarget.ts` — it is not
-      // wired in here yet because this grid isn't a real scroller yet; Task 7
-      // switches this call site over and re-enables auto-scroll together.
+      // wired in here yet; Task 7 switches this call site over and re-enables
+      // auto-scroll together.
       autoScroll={false}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
@@ -476,9 +481,11 @@ export function Plan() {
             today={today}
             nowMinute={nowMinute}
             windows={availability}
-            range={range}
+            scrollWindow={range}
             readOnly={isPast}
             dayCapacity={capacity.days}
+            scrollerRef={scrollerRef}
+            gridRef={gridRef}
           >
             {(date) => (
               <DayBlocks

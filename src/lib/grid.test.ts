@@ -121,8 +121,12 @@ describe('minute ↔ percentage', () => {
 });
 
 describe('hourMarks', () => {
-  it('lists every whole hour from the range start to its end', () => {
-    expect(hourMarks({ startMin: 480, endMin: 720 })).toEqual([480, 540, 600, 660, 720]);
+  it('labels every whole hour of the day, both ends inclusive', () => {
+    const marks = hourMarks();
+    expect(marks).toHaveLength(25);
+    expect(marks[0]).toBe(0);
+    expect(marks[24]).toBe(1440);
+    expect(marks[9]).toBe(540);
   });
 });
 

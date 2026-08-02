@@ -93,18 +93,10 @@ export function pctToMinute(pct: number, range: Interval): number {
   return range.startMin + (pct / 100) * (range.endMin - range.startMin);
 }
 
-/**
- * Every whole hour the axis should label, inclusive of both ends.
- *
- * Precondition: `range.startMin` must be hour-aligned. This function starts
- * its walk at `ceilToHour(range.startMin)`, so on an unaligned range the
- * first mark would not equal the range start. The precondition holds for
- * every range `visibleRange` returns, since it always floors `startMin` (and
- * ceils `endMin`) to the hour before returning.
- */
-export function hourMarks(range: Interval): number[] {
+/** Every whole hour of the day, both ends inclusive. 25 marks. */
+export function hourMarks(): number[] {
   const out: number[] = [];
-  for (let m = ceilToHour(range.startMin); m <= range.endMin; m += MINUTES_PER_HOUR) out.push(m);
+  for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 60) out.push(m);
   return out;
 }
 
