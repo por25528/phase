@@ -944,7 +944,19 @@ Delete the local `scrollerRef` (`WeekGrid.tsx:52`) — it is a prop now — and 
   const lastLeft = useRef(0);
   const lastTop = useRef(0);
 
-  useEffect(() => {
+  /*
+   * A LAYOUT effect, and it must be declared ABOVE the restore effect below.
+   *
+   * React flushes every layout effect during commit, before any passive
+   * effect. If this stayed a `useEffect` while `restore` became a
+   * `useLayoutEffect`, the ordering the original code relied on would invert:
+   * on a week change `restore` would read the PREVIOUS week's `userScrolled`
+   * flags, skip both axes because the user had scrolled last week, and only
+   * then would this clear them — with nothing left to call `restore`. The
+   * grid would neither centre on today nor scroll to the working day until an
+   * unrelated resize happened to fire.
+   */
+  useLayoutEffect(() => {
     doneFor.current = null;
     userScrolledX.current = false;
     userScrolledY.current = false;
@@ -968,7 +980,12 @@ Delete the local `scrollerRef` (`WeekGrid.tsx:52`) — it is a prop now — and 
         if (Math.abs(node.scrollTop - targetTop) >= 1) {
           programmaticY.current = true;
           node.scrollTop = targetTop;
-          lastTop.current = targetTop;
+          // Deliberately NOT updating `lastTop` here. The scroll event this
+          // write provokes is the only thing that clears `programmaticY`, and
+          // it only looks at the axis when the offset differs from `lastTop`.
+          // Recording the new value up front makes them equal, the branch is
+          // skipped, the flag stays latched — and it is then spent swallowing
+          // the user's next real scroll instead.
         }
       }
 
@@ -988,7 +1005,8 @@ Delete the local `scrollerRef` (`WeekGrid.tsx:52`) — it is a prop now — and 
           if (Math.abs(node.scrollLeft - targetLeft) >= 1) {
             programmaticX.current = true;
             node.scrollLeft = targetLeft;
-            lastLeft.current = targetLeft;
+            // See the note on the vertical write: `lastLeft` is updated by the
+            // scroll handler, never here.
           }
         }
       }
