@@ -191,10 +191,24 @@ drifts by roughly a minute per pixel scrolled. The fix is a coordinate-space
 change — `aimMinuteFor` takes **scroller-relative** Y:
 
 ```
-draggedTopInScroller = draggedTopViewport - scrollerRect.top + scroller.scrollTop
+contentY = draggedTopViewport - scrollerRect.top + scroller.scrollTop - gridOffsetPx
 ```
 
-which is invariant under scroll. `aimMinuteFor` loses its `range` parameter and
+`gridOffsetPx` is the hour grid's offset inside the scroller's content — the
+sticky day headings and the all-day lane sit above it. The formula originally
+written here omitted that term and would have aimed every drop high by the
+height of the header band.
+
+**Two things implementation established that this section did not anticipate.**
+`draggedTopViewport` must be `active.rect.current.translated.top`, *not*
+`initial.top + delta.y`: dnd-kit's `delta` is `scrollAdjustedTranslate`, so it
+already carries the scroll, and adding `scrollTop` to it counts the scroll
+twice. And because `getBoundingClientRect` is not clipped by ancestor overflow,
+a day column's droppable rect now extends well beyond the visible grid, so the
+drop handler must also reject a release outside the scroller's own rect — see
+§2.1's "drop on empty space does nothing", which is otherwise violated.
+
+The result is invariant under scroll. `aimMinuteFor` loses its `range` parameter and
 its clamp becomes `[DAY_START_MIN, DAY_END_MIN]`.
 
 The existing warning comment at `Plan.tsx:341–347` about not swapping in a live
@@ -215,10 +229,17 @@ rather than aiming at midnight.
 
 ### 1.8 What is unaffected
 
-`assignLanes`, the horizontal centring logic and its test
-(`WeekGrid.centring.test.tsx`), and `PlanSidebar` — which bounds itself by
-absolute positioning with no measurement (`PlanSidebar.tsx:53–67`), so a grid of
-any height still sizes the row correctly.
+`assignLanes`, and `PlanSidebar` — which bounds itself by absolute positioning
+with no measurement (`PlanSidebar.tsx:53–67`), so a grid of any height still
+sizes the row correctly.
+
+**Corrected after implementation:** this section originally also claimed the
+horizontal centring logic and `WeekGrid.centring.test.tsx` were unaffected. They
+were not. Adding a second axis meant `centredFor` became `doneFor`, the single
+`userScrolled` flag split in two, `lastLeft`/`lastTop` were added to attribute a
+shared scroll event to the right axis, and the test file gained refs and a
+vertical case. The horizontal *behaviour* is unchanged, which is what the test
+guards; the code implementing it is not.
 
 ---
 
