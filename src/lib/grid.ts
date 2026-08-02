@@ -96,7 +96,7 @@ export function pctToMinute(pct: number, range: Interval): number {
 /** Every whole hour of the day, both ends inclusive. 25 marks. */
 export function hourMarks(): number[] {
   const out: number[] = [];
-  for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 60) out.push(m);
+  for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += MINUTES_PER_HOUR) out.push(m);
   return out;
 }
 

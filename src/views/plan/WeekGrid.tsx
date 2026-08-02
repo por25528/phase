@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
 import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
@@ -43,6 +43,7 @@ export function WeekGrid({
   windows: AvailabilityWindow[];
   /** Where to scroll on mount. Nothing positions against it — see initialScrollWindow. */
   scrollWindow: Interval;
+  /** True when the whole week is past — forwarded to every DayColumn. */
   readOnly?: boolean;
   /**
    * Per-day free/planned, in `days` order. `weekCapacity` has always produced
@@ -78,7 +79,19 @@ export function WeekGrid({
   const lastLeft = useRef(0);
   const lastTop = useRef(0);
 
-  useEffect(() => {
+  /*
+   * A LAYOUT effect, and it must be declared ABOVE the restore effect below.
+   *
+   * React flushes every layout effect during commit, before any passive
+   * effect. If this stayed a `useEffect` while `restore` became a
+   * `useLayoutEffect`, the ordering the original code relied on would invert:
+   * on a week change `restore` would read the PREVIOUS week's `userScrolled`
+   * flags, skip both axes because the user had scrolled last week, and only
+   * then would this clear them — with nothing left to call `restore`. The
+   * grid would neither centre on today nor scroll to the working day until an
+   * unrelated resize happened to fire.
+   */
+  useLayoutEffect(() => {
     doneFor.current = null;
     userScrolledX.current = false;
     userScrolledY.current = false;
@@ -102,7 +115,12 @@ export function WeekGrid({
         if (Math.abs(node.scrollTop - targetTop) >= 1) {
           programmaticY.current = true;
           node.scrollTop = targetTop;
-          lastTop.current = targetTop;
+          // Deliberately NOT updating `lastTop` here. The scroll event this
+          // write provokes is the only thing that clears `programmaticY`, and
+          // it only looks at the axis when the offset differs from `lastTop`.
+          // Recording the new value up front makes them equal, the branch is
+          // skipped, the flag stays latched — and it is then spent swallowing
+          // the user's next real scroll instead.
         }
       }
 
@@ -122,7 +140,8 @@ export function WeekGrid({
           if (Math.abs(node.scrollLeft - targetLeft) >= 1) {
             programmaticX.current = true;
             node.scrollLeft = targetLeft;
-            lastLeft.current = targetLeft;
+            // See the note on the vertical write: `lastLeft` is updated by the
+            // scroll handler, never here.
           }
         }
       }
@@ -179,7 +198,11 @@ export function WeekGrid({
           className="grid gap-0 mb-[4px] sticky top-0 bg-bg"
           style={{ gridTemplateColumns: `${AXIS_WIDTH_PX}px repeat(7, minmax(0, 1fr))`, zIndex: Z_HEADINGS }}
         >
-          {/* the corner sits above both rulers, or the axis slides over it */}
+          {/* The heading row is `sticky` with `zIndex: Z_HEADINGS`, which creates
+              a stacking context the corner's `Z_CORNER` is scoped inside — it
+              isn't compared against `Z_AXIS` at all. What actually keeps the
+              corner above the axis is `Z_HEADINGS` (5) > `Z_AXIS` (4) on the
+              parent row. */}
           <span className="sticky left-0 bg-bg" style={{ zIndex: Z_CORNER }} />
           {days.map((iso, i) => {
             const cap = dayCapacity?.[i];
@@ -229,7 +252,7 @@ export function WeekGrid({
             />
           ))}
 
-          <div className="relative sticky left-0 bg-bg" style={{ zIndex: Z_AXIS }}>
+          <div className="sticky left-0 bg-bg" style={{ zIndex: Z_AXIS }}>
             {marks.map((m) => (
               <span
                 key={m}

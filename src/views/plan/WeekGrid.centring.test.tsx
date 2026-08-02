@@ -167,6 +167,64 @@ describe('changing week', () => {
     resize();
     expect(scroller.scrollLeft).toBe(700);
   });
+
+  /**
+   * Pins the reset-then-restore ordering. Both effects are layout effects, so
+   * React flushes them in declaration order on the SAME commit — reset must
+   * run before restore, or restore reads the previous week's `userScrolledY`
+   * (still true) and skips the vertical axis. Because the grid is stubbed
+   * scrollable here, `restore()` still reaches `doneFor.current = weekKey` at
+   * the end (the horizontal branch does not early-return), latching the week
+   * done with the vertical axis never restored — and reset clearing the flag
+   * afterwards no longer helps, since nothing calls `restore()` again until
+   * an unrelated resize fires.
+   *
+   * A rerender with the SAME weekKey (as in the sibling test above) can't
+   * catch this — the effect never re-runs at all. This uses a genuinely
+   * different `days[0]`, and stubs the grid scrollable so `doneFor` actually
+   * latches, the way it would while the grid is on screen.
+   */
+  it('restores the vertical position on a genuine week change, even after a user scroll', () => {
+    const { scroller, rerender, scrollerRef, gridRef } = mount();
+    makeScrollable(scroller, { scrollWidth: 780, clientWidth: 420 });
+    resize(); // initial restore, so `doneFor` latches for the first week
+
+    // jsdom does not dispatch a scroll event for a programmatic `scrollTop`
+    // write, so the mount-time restore's `programmaticY` flag is still
+    // latched. Consume it exactly as the browser would, the same way the
+    // 'does not mistake its OWN scroll for the user's' test above does —
+    // otherwise the NEXT scroll event (the real user gesture) is the one
+    // that gets swallowed as if it were programmatic, and this test would
+    // fail to arm `userScrolledY` for reasons unrelated to Important 1.
+    act(() => { scroller.dispatchEvent(new Event('scroll')); });
+
+    // Now a real user scroll away from the restore target (540, per
+    // RANGE.startMin).
+    scroller.scrollTop = 900;
+    act(() => { scroller.dispatchEvent(new Event('scroll')); });
+    expect(scroller.scrollTop).toBe(900); // userScrolledY latched, this week left alone
+
+    const nextWeek = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09'];
+    act(() => {
+      rerender(
+        createElement(WeekGrid, {
+          days: nextWeek,
+          today: TODAY,
+          nowMinute: 601,
+          windows: [],
+          scrollWindow: RANGE,
+          scrollerRef,
+          gridRef,
+          children: () => null,
+        }),
+      );
+    });
+    makeScrollable(scroller, { scrollWidth: 780, clientWidth: 420 });
+
+    // A genuine weekKey change must re-arm and restore to the new week's
+    // target, not leave the previous week's scroll position in place.
+    expect(scroller.scrollTop).toBe(RANGE.startMin);
+  });
 });
 
 describe('vertical restoration', () => {
