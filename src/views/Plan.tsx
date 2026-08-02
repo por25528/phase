@@ -34,7 +34,7 @@ import { AvailabilitySettings } from './plan/AvailabilitySettings';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { Stats } from './plan/sidebar/Stats';
-import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
+import { aimMinuteInRange, type PlanDragData } from './plan/dropTarget';
 import type { BacklogItem } from '../lib/backlog';
 
 /**
@@ -359,19 +359,7 @@ export function Plan() {
     // `rectIntersection` in `collisionDetection` above.
     const initialTop = e.active.rect.current.initial?.top ?? rect.top;
     const draggedTop = initialTop + e.delta.y;
-    // aimMinuteFor now works in absolute day-minute (0-1440) content space at
-    // 1px/minute, not range-relative percentage space. This grid is still the
-    // old fixed-height, non-scrolling one (that's a later task), so there is
-    // no real scroller yet: scrollTop is 0, and rect.top already lines up
-    // with range.startMin at the same 1px/minute scale (GRID_HEIGHT_PX === 720
-    // === range span for the default 08:00-20:00 window), so gridOffsetPx of
-    // -range.startMin shifts that rect-relative pixel into day-minute space.
-    const aim = aimMinuteFor({
-      draggedTopViewport: draggedTop,
-      scrollerTopViewport: rect.top,
-      scrollTop: 0,
-      gridOffsetPx: -range.startMin,
-    });
+    const aim = aimMinuteInRange(draggedTop, rect.top, rect.height, range);
 
     if (data.kind === 'task') actions.scheduleTask(data.id, date, aim);
     else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim);
@@ -393,7 +381,10 @@ export function Plan() {
       // lands away from its ghost. Nothing here needs auto-scroll: the grid is
       // a fixed GRID_HEIGHT_PX and the sidebar is bounded to it, so there is
       // no scrolling a drag has to do. Re-enabling this means re-deriving the
-      // aim arithmetic against a live rect first.
+      // aim arithmetic against a live rect first. That replacement arithmetic
+      // already exists as `aimMinuteFor` in `plan/dropTarget.ts` — it is not
+      // wired in here yet because this grid isn't a real scroller yet; Task 7
+      // switches this call site over and re-enables auto-scroll together.
       autoScroll={false}
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}

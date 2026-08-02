@@ -1,5 +1,39 @@
 import { describe, it, expect } from 'vitest';
-import { aimMinuteFor } from './dropTarget';
+import { aimMinuteFor, aimMinuteInRange } from './dropTarget';
+import { minuteToPx } from '../../lib/grid';
+
+const RANGE = { startMin: 480, endMin: 1200 }; // 08:00–20:00
+
+// `draggedTop` here stands in for `active.rect.current.initial.top + delta.y`
+// — the top edge of the dragged block/ghost, not the pointer's clientY. The
+// call basis changed (Finding 4) but the pure mapping is identical: a Y
+// position relative to the column's rect, clamped into the visible range.
+describe('aimMinuteInRange', () => {
+  it('maps the dragged top at the column top to the range start', () => {
+    expect(aimMinuteInRange(100, 100, 720, RANGE)).toBe(480);
+  });
+  it('maps the dragged top at the column bottom to the range end', () => {
+    expect(aimMinuteInRange(820, 100, 720, RANGE)).toBe(1200);
+  });
+  it('maps the dragged top at the column midpoint to the middle of the range', () => {
+    expect(aimMinuteInRange(460, 100, 720, RANGE)).toBe(840);
+  });
+  it('maps a dragged top a quarter down the column to a quarter through the range', () => {
+    // Asymmetric fraction (25%, not 50%) so an inverted mapping (using
+    // 1 - pct instead of pct) or a swapped start/end would fail this case
+    // even though it happens to agree with the midpoint case above.
+    expect(aimMinuteInRange(280, 100, 720, RANGE)).toBe(660); // 480 + 0.25 * 720
+  });
+  it('clamps a dragged top above the column to the range start', () => {
+    expect(aimMinuteInRange(0, 100, 720, RANGE)).toBe(480);
+  });
+  it('clamps a dragged top below the column to the range end', () => {
+    expect(aimMinuteInRange(9999, 100, 720, RANGE)).toBe(1200);
+  });
+  it('returns the range start for a zero-height rect rather than dividing by zero', () => {
+    expect(aimMinuteInRange(100, 100, 0, RANGE)).toBe(480);
+  });
+});
 
 /**
  * The grid is a scroller. Its content box starts `gridOffsetPx` below the
@@ -63,7 +97,31 @@ describe('aimMinuteFor', () => {
     expect(aim(SCROLLER_TOP + HEADER + 100, 1_000_000)).toBe(DAY_END);
   });
 
-  it('rounds to a whole minute', () => {
-    expect(Number.isInteger(aim(SCROLLER_TOP + HEADER + 540.7))).toBe(true);
+  it('clamps at the low end via the scroll term, not just a far-above-scroller position', () => {
+    // The dragged position itself is well inside the grid; it's a negative
+    // scrollTop that pushes contentY below DAY_START_MIN. This exercises the
+    // clamp through the scroll term rather than only through
+    // draggedTopViewport, which is the other way contentY can go negative.
+    expect(aim(SCROLLER_TOP + HEADER + 100, -1000)).toBe(DAY_START);
+  });
+
+  it('rounds a fractional minute up at .7', () => {
+    expect(aim(SCROLLER_TOP + HEADER + 540.7)).toBe(541);
+  });
+
+  it('rounds half a minute up — pins round-half-up, not round-half-to-even', () => {
+    expect(aim(SCROLLER_TOP + HEADER + 540.5)).toBe(541);
+  });
+
+  it('includes the exact last minute of the day, not just up to it', () => {
+    expect(aim(SCROLLER_TOP + HEADER + 1440)).toBe(1440);
+  });
+
+  it('includes the minute just before the end of the day', () => {
+    expect(aim(SCROLLER_TOP + HEADER + 1439)).toBe(1439);
+  });
+
+  it('agrees with minuteToPx — pixels and minutes are the same number only because PX_PER_MINUTE is 1', () => {
+    expect(aim(SCROLLER_TOP + HEADER + minuteToPx(540))).toBe(540);
   });
 });
