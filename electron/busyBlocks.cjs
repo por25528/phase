@@ -38,9 +38,11 @@ function addDays(date, n) {
 /**
  * An RFC3339 instant read as wall-clock in `timeZone`.
  *
- * `hourCycle: 'h23'` is load-bearing: without it V8 formats local midnight as
- * hour "24", which would place a midnight event at minute 1440 of the previous
- * day instead of minute 0 of the correct one.
+ * An explicit hour cycle is load-bearing: `en-US` defaults to `h12`, so omitting
+ * the hour option formats local midnight as hour "12" (minute 720). `h23`
+ * additionally pins away from `h24`, which would format midnight as hour "24"
+ * (minute 1440 of the wrong day). On Node 26 / ICU 78, `hour12: false` already
+ * resolves to `h23`, so only omitting the option reproduces the failure locally.
  */
 function zonedParts(iso, timeZone) {
   const at = new Date(iso);

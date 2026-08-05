@@ -135,6 +135,15 @@ describe('expandToLocalDays', () => {
       .toEqual([{ date: '2026-03-08', startMin: 60, endMin: 240, title: 'early', allDay: false }]);
   });
 
+  // The mirror of spring-forward: 2026-11-01 is the US fall-back day, so this
+  // event runs five real hours but only four wall-clock ones. Wall clock is
+  // what a calendar grid draws, so 60..300 is right — and pinning both
+  // directions is what stops a refactor to instant-based arithmetic passing.
+  it('uses wall-clock minutes across a DST fall-back', () => {
+    expect(expandToLocalDays(timed('long', '2026-11-01T01:00:00-04:00', '2026-11-01T05:00:00-05:00'), NY))
+      .toEqual([{ date: '2026-11-01', startMin: 60, endMin: 300, title: 'long', allDay: false }]);
+  });
+
   it('falls back to a generic title when Google omits the summary', () => {
     const [block] = expandToLocalDays({
       status: 'confirmed',

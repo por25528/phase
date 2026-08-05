@@ -382,6 +382,15 @@ describe('expandToLocalDays', () => {
       .toEqual([{ date: '2026-03-08', startMin: 60, endMin: 240, title: 'early', allDay: false }]);
   });
 
+  // The mirror of spring-forward: 2026-11-01 is the US fall-back day, so this
+  // event runs five real hours but only four wall-clock ones. Wall clock is
+  // what a calendar grid draws, so 60..300 is right — and pinning both
+  // directions is what stops a refactor to instant-based arithmetic passing.
+  it('uses wall-clock minutes across a DST fall-back', () => {
+    expect(expandToLocalDays(timed('long', '2026-11-01T01:00:00-04:00', '2026-11-01T05:00:00-05:00'), NY))
+      .toEqual([{ date: '2026-11-01', startMin: 60, endMin: 300, title: 'long', allDay: false }]);
+  });
+
   it('falls back to a generic title when Google omits the summary', () => {
     const [block] = expandToLocalDays({
       status: 'confirmed',
@@ -416,6 +425,9 @@ Append to `electron/busyBlocks.d.cts`:
  *
  * Not clipped to any range and not merged with other events — `normalizeEvents`
  * does both. Returns `[]` for an event missing either end.
+ * Throws `RangeError` on a malformed `dateTime` or an unrecognised `timeZone`;
+ * this is deliberate so callers fail loudly rather than treating unparseable
+ * data as free time.
  *
  * All-day events use Google's convention that `end.date` is EXCLUSIVE.
  */
@@ -445,9 +457,11 @@ function addDays(date, n) {
 /**
  * An RFC3339 instant read as wall-clock in `timeZone`.
  *
- * `hourCycle: 'h23'` is load-bearing: without it V8 formats local midnight as
- * hour "24", which would place a midnight event at minute 1440 of the previous
- * day instead of minute 0 of the correct one.
+ * An explicit hour cycle is load-bearing: `en-US` defaults to `h12`, so omitting
+ * the hour option formats local midnight as hour "12" (minute 720). `h23`
+ * additionally pins away from `h24`, which would format midnight as hour "24"
+ * (minute 1440 of the wrong day). On Node 26 / ICU 78, `hour12: false` already
+ * resolves to `h23`, so only omitting the option reproduces the failure locally.
  */
 function zonedParts(iso, timeZone) {
   const at = new Date(iso);
@@ -503,13 +517,13 @@ Add `expandToLocalDays` to the `module.exports` object.
 npx vitest run --config vitest.config.ts electron/busyBlocks.test.ts
 ```
 
-Expected: PASS, 19 tests.
+Expected: PASS, 20 tests.
 
 - [ ] **Step 6: Prove the midnight guard is load-bearing**
 
-Temporarily change `hourCycle: 'h23'` to `hour12: false` and re-run. The test *"puts a midnight start at minute 0"* must FAIL with `1440` where `0` was expected. Restore `hourCycle: 'h23'` and confirm the suite passes again.
+Temporarily omit the hour option entirely and re-run. The test *"puts a midnight start at minute 0"* must FAIL with `720` where `0` was expected. On Node 26 / ICU 78, replacing `hourCycle: 'h23'` with `hour12: false` already resolves to `h23`, so that substitution is not expected to fail locally. Restore `hourCycle: 'h23'` and confirm the suite passes again.
 
-If that test does NOT fail, the environment already normalizes hour 24 and the guard is unproven on this machine — say so in your report rather than deleting the comment; it is still required on other ICU builds.
+If omitting the hour option does NOT fail, the environment does not reproduce the default `h12` behavior — say so in your report rather than deleting the comment; the explicit hour-cycle guard is still required.
 
 - [ ] **Step 7: Run the whole suite and typecheck**
 
@@ -517,7 +531,7 @@ If that test does NOT fail, the environment already normalizes hour 24 and the g
 npm test && npx tsc -b
 ```
 
-Expected: 1455 tests / 74 files (1444 + 11). `tsc -b` exit 0.
+Expected: 1456 tests / 74 files (1444 + 12). `tsc -b` exit 0.
 
 - [ ] **Step 8: Commit**
 

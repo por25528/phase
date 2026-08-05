@@ -58,6 +58,9 @@ export declare function shouldSkipEvent(event: GoogleEvent): boolean;
  *
  * Not clipped to any range and not merged with other events — `normalizeEvents`
  * does both. Returns `[]` for an event missing either end.
+ * Throws `RangeError` on a malformed `dateTime` or an unrecognised `timeZone`;
+ * this is deliberate so callers fail loudly rather than treating unparseable
+ * data as free time.
  *
  * All-day events use Google's convention that `end.date` is EXCLUSIVE.
  */
