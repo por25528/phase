@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { dayBusySpans } from './busyLayout';
-import { DAY_START_MIN, DAY_END_MIN } from './grid';
+import { assignLanes, DAY_START_MIN, DAY_END_MIN } from './grid';
 import type { BusyBlock } from '../db/types';
 
 const DAY = '2026-08-04';
@@ -15,6 +15,11 @@ function allDay(title: string, date = DAY): BusyBlock {
 describe('dayBusySpans', () => {
   it('ignores blocks belonging to other days', () => {
     const spans = dayBusySpans(DAY, [timed('here', 540, 600), timed('elsewhere', 540, 600, '2026-08-05')], true);
+    expect(spans.map((s) => s.title)).toEqual(['here']);
+  });
+
+  it('ignores all-day blocks belonging to other days', () => {
+    const spans = dayBusySpans(DAY, [timed('here', 540, 600), allDay('elsewhere', '2026-08-05')], true);
     expect(spans.map((s) => s.title)).toEqual(['here']);
   });
 
@@ -48,9 +53,20 @@ describe('dayBusySpans', () => {
     expect(span.endMin).toBe(DAY_END_MIN);
   });
 
-  it('puts the all-day span first, so it lands in lane 0', () => {
+  it('emits the all-day span before timed spans', () => {
     const spans = dayBusySpans(DAY, [timed('standup', 540, 600), allDay('Holiday')], true);
     expect(spans[0].title).toBe('Holiday');
+  });
+
+  it('composes day spans with lane assignment for a minute-zero continuation', () => {
+    const spans = dayBusySpans(DAY, [allDay('Holiday'), timed('Tuesday continuation', 0, 600)], true);
+    const laid = assignLanes(spans);
+
+    // The continuation sorts ahead because it shares startMin 0 but ends before the all-day span.
+    expect(laid.map(({ item, lane, laneCount }) => [item.title, lane, laneCount])).toEqual([
+      ['Tuesday continuation', 0, 2],
+      ['Holiday', 1, 2],
+    ]);
   });
 
   // Matches capacity.ts, which filters `(allDayBlocks || !b.allDay)`. With the

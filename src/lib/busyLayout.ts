@@ -25,12 +25,12 @@ export interface BusySpan {
  *    dropping the rest. Joining mirrors how overlapping blocks join titles in
  *    `electron/busyBlocks.cjs`.
  *
- * The all-day span comes first so `assignLanes` — which sorts by start, then
- * end — puts it in lane 0 with the timed events beside it.
+ * The all-day span comes first so it wins `assignLanes`' tie among blocks with
+ * identical bounds and usually draws in lane 0. A minute-zero block with an
+ * earlier end (a multi-day timed event's continuation day) sorts ahead and
+ * takes lane 0 instead; this is cosmetic — timed-event geometry is unchanged.
  *
- * A full-height span is 1440px on the remastered grid, which is a lot of
- * column. The all-day LANE in the grid remaster's plan 3 is where these
- * belong; this function is what that plan will re-point rather than rewrite.
+ * Plan 3 will re-point this full-height 1440px span into the all-day LANE.
  */
 export function dayBusySpans(date: string, blocks: BusyBlock[], allDayBlocks: boolean): BusySpan[] {
   const forDay = blocks.filter((b) => b.date === date);

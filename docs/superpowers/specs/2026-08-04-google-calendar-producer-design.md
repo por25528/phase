@@ -386,7 +386,10 @@ testable without a `DndContext`:
   `electron/busyBlocks.cjs`. `normalizeEvents` already guarantees at most one
   all-day block per date, but `dayBusySpans` does not rely on that.
 
-The all-day span is emitted first so `assignLanes` places it in lane 0.
+- The all-day span is emitted first so it wins `assignLanes`' tie among blocks
+  with identical bounds and usually draws in lane 0. A minute-zero block with an
+  earlier end (a multi-day timed event's continuation day) sorts ahead and takes
+  lane 0 instead; this is cosmetic, and timed-event geometry is unchanged.
 
 ### 9.3 A dependency to name, not solve
 
