@@ -52,3 +52,13 @@ export interface BusyBlock {
  * time in `src/lib/capacity.ts`, so toggling it never requires a refetch.
  */
 export declare function shouldSkipEvent(event: GoogleEvent): boolean;
+
+/**
+ * One block per local day the event touches, in chronological order.
+ *
+ * Not clipped to any range and not merged with other events — `normalizeEvents`
+ * does both. Returns `[]` for an event missing either end.
+ *
+ * All-day events use Google's convention that `end.date` is EXCLUSIVE.
+ */
+export declare function expandToLocalDays(event: GoogleEvent, timeZone: string): BusyBlock[];
