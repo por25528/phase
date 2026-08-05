@@ -65,3 +65,23 @@ export declare function shouldSkipEvent(event: GoogleEvent): boolean;
  * All-day events use Google's convention that `end.date` is EXCLUSIVE.
  */
 export declare function expandToLocalDays(event: GoogleEvent, timeZone: string): BusyBlock[];
+
+export interface NormalizeOptions {
+  rangeStart: string; // 'YYYY-MM-DD' inclusive
+  rangeEnd: string;   // 'YYYY-MM-DD' EXCLUSIVE
+  timeZone: string;   // IANA zone the blocks are flattened against
+}
+
+/**
+ * Disjoint, day-clipped, merged blocks, sorted by date then start.
+ *
+ * Overlaps merge to their UNION and join their titles, so `blocked by:` stays
+ * truthful after a merge and a day never reports less free time than it has.
+ * Back-to-back events are a touch, not an overlap, and stay separate.
+ *
+ * Timed and all-day blocks are merged in separate groups — they are
+ * distinguished by `allDay` and filtered separately downstream, so merging
+ * across the two would destroy that distinction. A consequence worth relying
+ * on: there is AT MOST ONE all-day block per date.
+ */
+export declare function normalizeEvents(events: GoogleEvent[], options: NormalizeOptions): BusyBlock[];

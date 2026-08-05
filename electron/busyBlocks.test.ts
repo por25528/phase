@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expandToLocalDays, shouldSkipEvent, type GoogleEvent } from './busyBlocks.cjs';
+import { expandToLocalDays, normalizeEvents, shouldSkipEvent, type GoogleEvent } from './busyBlocks.cjs';
 
 const TIMED: GoogleEvent = {
   status: 'confirmed',
@@ -62,6 +62,8 @@ describe('shouldSkipEvent', () => {
 });
 
 const NY = 'America/New_York';
+
+const RANGE = { rangeStart: '2026-08-03', rangeEnd: '2026-08-10', timeZone: NY };
 
 function timed(summary: string, startIso: string, endIso: string): GoogleEvent {
   return { status: 'confirmed', summary, start: { dateTime: startIso }, end: { dateTime: endIso } };
@@ -156,5 +158,119 @@ describe('expandToLocalDays', () => {
   it('returns nothing for an event missing either end', () => {
     expect(expandToLocalDays({ status: 'confirmed', summary: 'broken', start: {}, end: {} }, NY)).toEqual([]);
     expect(expandToLocalDays({ status: 'confirmed', summary: 'broken' }, NY)).toEqual([]);
+  });
+});
+
+describe('normalizeEvents', () => {
+  it('drops events the skip rules reject', () => {
+    expect(normalizeEvents([
+      { ...timed('standup', '2026-08-04T09:00:00-04:00', '2026-08-04T09:15:00-04:00'), status: 'cancelled' },
+      { ...timed('lunch', '2026-08-04T12:00:00-04:00', '2026-08-04T13:00:00-04:00'), transparency: 'transparent' },
+    ], RANGE)).toEqual([]);
+  });
+
+  // THE critical case. Sum would be 120 minutes; the union is 90.
+  it('merges two overlapping meetings into their union, not their sum', () => {
+    const out = normalizeEvents([
+      timed('standup', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00'),
+      timed('1:1', '2026-08-04T09:30:00-04:00', '2026-08-04T10:30:00-04:00'),
+    ], RANGE);
+    expect(out).toEqual([
+      { date: '2026-08-04', startMin: 540, endMin: 630, title: 'standup, 1:1', allDay: false },
+    ]);
+    expect(out[0].endMin - out[0].startMin).toBe(90);
+  });
+
+  it('merges a meeting wholly contained in another without shrinking it', () => {
+    expect(normalizeEvents([
+      timed('offsite', '2026-08-04T09:00:00-04:00', '2026-08-04T17:00:00-04:00'),
+      timed('demo', '2026-08-04T11:00:00-04:00', '2026-08-04T11:30:00-04:00'),
+    ], RANGE)).toEqual([
+      { date: '2026-08-04', startMin: 540, endMin: 1020, title: 'offsite, demo', allDay: false },
+    ]);
+  });
+
+  // Back-to-back is a touch, not an overlap. Capacity is identical either
+  // way, so keeping them separate loses nothing and shows the user two
+  // meetings instead of one invented three-hour block.
+  it('keeps back-to-back meetings separate', () => {
+    expect(normalizeEvents([
+      timed('standup', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00'),
+      timed('1:1', '2026-08-04T10:00:00-04:00', '2026-08-04T11:00:00-04:00'),
+    ], RANGE)).toEqual([
+      { date: '2026-08-04', startMin: 540, endMin: 600, title: 'standup', allDay: false },
+      { date: '2026-08-04', startMin: 600, endMin: 660, title: '1:1', allDay: false },
+    ]);
+  });
+
+  it('never merges an all-day event into a timed one', () => {
+    const out = normalizeEvents([
+      { status: 'confirmed', summary: 'Holiday', start: { date: '2026-08-04' }, end: { date: '2026-08-05' } },
+      timed('standup', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00'),
+    ], RANGE);
+    expect(out.filter((b) => b.allDay)).toHaveLength(1);
+    expect(out.filter((b) => !b.allDay)).toEqual([
+      { date: '2026-08-04', startMin: 540, endMin: 600, title: 'standup', allDay: false },
+    ]);
+  });
+
+  it('collapses several all-day events on one date into a single block', () => {
+    const out = normalizeEvents([
+      { status: 'confirmed', summary: 'Holiday', start: { date: '2026-08-04' }, end: { date: '2026-08-05' } },
+      { status: 'confirmed', summary: 'Conference', start: { date: '2026-08-04' }, end: { date: '2026-08-05' } },
+    ], RANGE);
+    expect(out).toEqual([
+      { date: '2026-08-04', startMin: 0, endMin: 1440, title: 'Holiday, Conference', allDay: true },
+    ]);
+  });
+
+  it('merges across days independently', () => {
+    const out = normalizeEvents([
+      timed('a', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00'),
+      timed('b', '2026-08-05T09:00:00-04:00', '2026-08-05T10:00:00-04:00'),
+    ], RANGE);
+    expect(out.map((b) => b.date)).toEqual(['2026-08-04', '2026-08-05']);
+    expect(out.map((b) => b.title)).toEqual(['a', 'b']);
+  });
+
+  it('drops a day before the range and keeps the first day of it', () => {
+    const out = normalizeEvents([
+      timed('before', '2026-08-02T09:00:00-04:00', '2026-08-02T10:00:00-04:00'),
+      timed('first', '2026-08-03T09:00:00-04:00', '2026-08-03T10:00:00-04:00'),
+    ], RANGE);
+    expect(out.map((b) => b.title)).toEqual(['first']);
+  });
+
+  // rangeEnd is EXCLUSIVE, matching CalendarCache's documented contract.
+  it('excludes the range end date and keeps the day before it', () => {
+    const out = normalizeEvents([
+      timed('last', '2026-08-09T09:00:00-04:00', '2026-08-09T10:00:00-04:00'),
+      timed('after', '2026-08-10T09:00:00-04:00', '2026-08-10T10:00:00-04:00'),
+    ], RANGE);
+    expect(out.map((b) => b.title)).toEqual(['last']);
+  });
+
+  it('keeps only the in-range days of an event that straddles the range edge', () => {
+    const out = normalizeEvents([
+      timed('long', '2026-08-02T22:00:00-04:00', '2026-08-03T02:00:00-04:00'),
+    ], RANGE);
+    expect(out).toEqual([
+      { date: '2026-08-03', startMin: 0, endMin: 120, title: 'long', allDay: false },
+    ]);
+  });
+
+  it('returns blocks sorted by date then start', () => {
+    const out = normalizeEvents([
+      timed('later', '2026-08-05T14:00:00-04:00', '2026-08-05T15:00:00-04:00'),
+      timed('earlier', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00'),
+      timed('midday', '2026-08-04T12:00:00-04:00', '2026-08-04T13:00:00-04:00'),
+    ], RANGE);
+    expect(out.map((b) => b.title)).toEqual(['earlier', 'midday', 'later']);
+  });
+
+  it('returns an empty array for no events, and still normalizes real input', () => {
+    expect(normalizeEvents([], RANGE)).toEqual([]);
+    expect(normalizeEvents([timed('one', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00')], RANGE))
+      .toEqual([{ date: '2026-08-04', startMin: 540, endMin: 600, title: 'one', allDay: false }]);
   });
 });

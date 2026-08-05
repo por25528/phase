@@ -89,4 +89,49 @@ function expandToLocalDays(event, timeZone) {
   return out;
 }
 
-module.exports = { shouldSkipEvent, expandToLocalDays };
+/**
+ * Fold a date-and-allDay group into disjoint blocks.
+ *
+ * Strictly `<`, not `<=`: back-to-back meetings touch but do not overlap, and
+ * fusing them would invent a single block the user never scheduled while
+ * changing no capacity figure.
+ */
+function mergeGroup(blocks) {
+  const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+  const out = [];
+  for (const block of sorted) {
+    const last = out[out.length - 1];
+    if (last && block.startMin < last.endMin) {
+      last.endMin = Math.max(last.endMin, block.endMin);
+      last.title = `${last.title}, ${block.title}`;
+    } else {
+      out.push({ ...block });
+    }
+  }
+  return out;
+}
+
+function normalizeEvents(events, options) {
+  const { rangeStart, rangeEnd, timeZone } = options;
+  const groups = new Map();
+
+  for (const event of events) {
+    if (shouldSkipEvent(event)) continue;
+    for (const block of expandToLocalDays(event, timeZone)) {
+      // ISO dates compare correctly as strings. rangeEnd is EXCLUSIVE.
+      if (block.date < rangeStart || block.date >= rangeEnd) continue;
+      const key = `${block.date}:${block.allDay}`;
+      const list = groups.get(key);
+      if (list) list.push(block);
+      else groups.set(key, [block]);
+    }
+  }
+
+  const out = [];
+  for (const group of groups.values()) out.push(...mergeGroup(group));
+  return out.sort(
+    (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.startMin - b.startMin),
+  );
+}
+
+module.exports = { shouldSkipEvent, expandToLocalDays, normalizeEvents };
