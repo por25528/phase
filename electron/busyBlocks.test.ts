@@ -190,6 +190,20 @@ describe('normalizeEvents', () => {
     ]);
   });
 
+  // The transitive case no other fixture reaches: `c` does not overlap `a` at
+  // all — it merges only because `b` already widened the accumulator's end. If
+  // mergeGroup were ever rewritten to compare against the original block
+  // instead of the running accumulator, this is the only test that would fail.
+  it('chains a merge through an already-extended end', () => {
+    expect(normalizeEvents([
+      timed('a', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00'),
+      timed('b', '2026-08-04T09:30:00-04:00', '2026-08-04T11:00:00-04:00'),
+      timed('c', '2026-08-04T10:30:00-04:00', '2026-08-04T12:00:00-04:00'),
+    ], RANGE)).toEqual([
+      { date: '2026-08-04', startMin: 540, endMin: 720, title: 'a, b, c', allDay: false },
+    ]);
+  });
+
   // Back-to-back is a touch, not an overlap. Capacity is identical either
   // way, so keeping them separate loses nothing and shows the user two
   // meetings instead of one invented three-hour block.

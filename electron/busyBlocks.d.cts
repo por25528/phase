@@ -83,5 +83,8 @@ export interface NormalizeOptions {
  * distinguished by `allDay` and filtered separately downstream, so merging
  * across the two would destroy that distinction. A consequence worth relying
  * on: there is AT MOST ONE all-day block per date.
+ * A malformed event propagates `RangeError` from `expandToLocalDays` and
+ * aborts the whole batch; this is deliberate because incomplete calendar data
+ * must never be presented as free time.
  */
 export declare function normalizeEvents(events: GoogleEvent[], options: NormalizeOptions): BusyBlock[];
