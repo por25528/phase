@@ -38,7 +38,7 @@ export interface GoogleEvent {
 /** A busy slice, already flattened onto one local day. */
 export interface BusyBlock {
   date: string;     // 'YYYY-MM-DD' local
-  startMin: number; // minutes from local midnight, 0..1440
+  startMin: number; // clipped to that local day, 0..1440
   endMin: number;   // exclusive, > startMin
   title: string;
   allDay: boolean;
