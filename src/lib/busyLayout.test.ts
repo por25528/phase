@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { dayBusySpans } from './busyLayout';
 import { assignLanes, DAY_START_MIN, DAY_END_MIN } from './grid';
-import type { BusyBlock } from '../db/types';
+import { weekCapacity } from './capacity';
+import type { AvailabilityWindow, BusyBlock } from '../db/types';
 
 const DAY = '2026-08-04';
 
@@ -74,6 +75,29 @@ describe('dayBusySpans', () => {
   it('drops all-day events when the preference is off, keeping timed ones', () => {
     const spans = dayBusySpans(DAY, [allDay('Conference'), timed('standup', 540, 600)], false);
     expect(spans.map((s) => s.title)).toEqual(['standup']);
+  });
+
+  it('matches capacity blockedBy for both all-day preference values', () => {
+    const blocks = [allDay('Conference'), timed('standup', 540, 600)];
+    const windows: AvailabilityWindow[] = Array.from({ length: 7 }, (_, dow) => ({
+      dow, startMin: 0, endMin: 1440,
+    }));
+
+    for (const allDayBlocks of [false, true]) {
+      const layoutTitles = dayBusySpans(DAY, blocks, allDayBlocks).map((span) => span.title);
+      const capacityTitles = weekCapacity({
+        week: '2026-08-03',
+        windows,
+        blocks,
+        leaves: [],
+        tasks: [],
+        now: { date: '2026-08-03', minute: 0 },
+        allDayBlocks,
+        hasData: true,
+      }).days.find((day) => day.date === DAY)?.blockedBy;
+
+      expect(layoutTitles).toEqual(capacityTitles);
+    }
   });
 
   it('gives every span a distinct key', () => {

@@ -1,6 +1,3 @@
-import type { CalendarCache } from './types';
-import { db, CALENDAR_CACHE_KEY } from './db';
-
 /**
  * The ONLY module that touches the `calendarCache` table.
  *
@@ -12,6 +9,9 @@ import { db, CALENDAR_CACHE_KEY } from './db';
  * — a tab that does not hold the Web Lock never writes at all. Refreshing is
  * gated on ownership too, not merely the write.
  */
+import type { CalendarCache } from './types';
+import { db, CALENDAR_CACHE_KEY } from './db';
+
 export async function loadCalendarCache(): Promise<CalendarCache | undefined> {
   const row = await db.calendarCache.get(CALENDAR_CACHE_KEY);
   if (!row) return undefined;
@@ -19,7 +19,7 @@ export async function loadCalendarCache(): Promise<CalendarCache | undefined> {
   return cache;
 }
 
-/** Clear-then-put in one transaction, so there is never a moment with two rows. */
+/** Clear stray-key rows first; the fixed-key put already replaces the current row. */
 export async function saveCalendarCache(cache: CalendarCache): Promise<void> {
   await db.transaction('rw', db.calendarCache, async () => {
     await db.calendarCache.clear();

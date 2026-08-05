@@ -261,7 +261,8 @@ describe('importStateFromFile', () => {
   // meeting titles in a file the user might share. exportState itself is
   // untestable here — it drives DOM download APIs absent under
   // environment: 'node' — so the export side is guaranteed by construction:
-  // exportState builds an explicit literal that has no calendarCache key.
+  // exportState spreads its AppState argument, but store.ts passes a narrowed
+  // four-key literal and AppState itself has no calendarCache field.
   it('leaves the calendar cache untouched across an import', async () => {
     await saveCalendarCache({
       rangeStart: '2026-07-27', rangeEnd: '2026-09-28', blocks: [],

@@ -160,6 +160,8 @@ export interface AvailabilityWindow {
 
 // A busy slice, already flattened onto one local day by the main process.
 // Always empty in slice 1; populated from Google in slice 2.
+// MUST stay identical to electron/busyBlocks.d.cts: the process seam prevents
+// importing this declaration across it, so any change must be made to both.
 export interface BusyBlock {
   date: string;     // 'YYYY-MM-DD' local
   startMin: number; // clipped to that local day, 0..1440
@@ -181,6 +183,7 @@ export interface BusyBlock {
  * untouched because it is derived device state, not user data.
  */
 export interface CalendarCache {
+  // Half-open bounds, matching DateRange and NormalizeOptions.
   rangeStart: string;    // 'YYYY-MM-DD' inclusive
   rangeEnd: string;      // 'YYYY-MM-DD' EXCLUSIVE
   blocks: BusyBlock[];

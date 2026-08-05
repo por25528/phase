@@ -22,6 +22,7 @@ function shouldSkipEvent(event) {
 
 const MINUTES_PER_DAY = 1440;
 const DEFAULT_TITLE = 'Busy';
+const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -59,15 +60,26 @@ function zonedParts(iso, timeZone) {
   };
 }
 
-function expandToLocalDays(event, timeZone) {
+function expandToLocalDays(event, timeZone, bounds) {
   const start = event.start || {};
   const end = event.end || {};
   const title = event.summary || DEFAULT_TITLE;
 
   if (start.date && end.date) {
     // Google's all-day end.date is EXCLUSIVE.
+    if (!LOCAL_DATE_RE.test(start.date)) {
+      throw new RangeError(`Invalid all-day start.date: ${start.date}`);
+    }
+    if (!LOCAL_DATE_RE.test(end.date)) {
+      throw new RangeError(`Invalid all-day end.date: ${end.date}`);
+    }
+    if (end.date < start.date) {
+      throw new RangeError(`All-day end.date precedes start.date: ${end.date}`);
+    }
+    const firstDate = bounds && bounds.rangeStart > start.date ? bounds.rangeStart : start.date;
+    const endDate = bounds && bounds.rangeEnd < end.date ? bounds.rangeEnd : end.date;
     const out = [];
-    for (let d = start.date; d < end.date; d = addDays(d, 1)) {
+    for (let d = firstDate; d < endDate; d = addDays(d, 1)) {
       out.push({ date: d, startMin: 0, endMin: MINUTES_PER_DAY, title, allDay: true });
     }
     return out;
@@ -77,8 +89,15 @@ function expandToLocalDays(event, timeZone) {
 
   const from = zonedParts(start.dateTime, timeZone);
   const to = zonedParts(end.dateTime, timeZone);
+  const firstDate = bounds && bounds.rangeStart > from.date ? bounds.rangeStart : from.date;
+  // Compare against the inclusive local end date before adding one day: an
+  // event ending on 9999-12-31 would otherwise produce year 10000, which is
+  // outside the fixed-width ISO date ordering used by the range bounds.
+  const endDate = bounds
+    ? (bounds.rangeEnd <= to.date ? bounds.rangeEnd : addDays(to.date, 1))
+    : to.date;
   const out = [];
-  for (let d = from.date; d <= to.date; d = addDays(d, 1)) {
+  for (let d = firstDate; bounds ? d < endDate : d <= endDate; d = addDays(d, 1)) {
     const startMin = d === from.date ? from.minute : 0;
     const endMin = d === to.date ? to.minute : MINUTES_PER_DAY;
     // An event ending exactly at midnight lands here with 0..0 on the day
@@ -117,7 +136,9 @@ function normalizeEvents(events, options) {
 
   for (const event of events) {
     if (shouldSkipEvent(event)) continue;
-    for (const block of expandToLocalDays(event, timeZone)) {
+    // Expansion is already bounded to avoid allocating out-of-range days;
+    // retain this cheap guard as a defense if that implementation ever drifts.
+    for (const block of expandToLocalDays(event, timeZone, { rangeStart, rangeEnd })) {
       // ISO dates compare correctly as strings. rangeEnd is EXCLUSIVE.
       if (block.date < rangeStart || block.date >= rangeEnd) continue;
       const key = `${block.date}:${block.allDay}`;

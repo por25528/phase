@@ -34,13 +34,21 @@ describe('fetchRange', () => {
     expect(fetchRange(M, M, wide).rangeEnd).toBe(wide);
   });
 
-  it('caps the end at 26 weeks past the current Monday', () => {
-    const out = fetchRange(M, addDays(M, 300));
-    expect(out.rangeEnd).toBe(addDays(M, MAX_FORWARD_DAYS));
+  it('does not extend for a visited week beyond the 26-week cap', () => {
+    const out = fetchRange(M, addDays(M, 180), addDays(M, BASE_FORWARD_DAYS));
+    expect(out.rangeEnd).toBe(addDays(M, BASE_FORWARD_DAYS));
+    expect(coversWeek(out, addDays(M, 180))).toBe(false);
   });
 
   it('caps an already-wide previous end too', () => {
     expect(fetchRange(M, M, addDays(M, 400)).rangeEnd).toBe(addDays(M, MAX_FORWARD_DAYS));
+  });
+
+  it('extends for a visited week beyond the base window but inside the cap', () => {
+    const visited = addDays(M, 100);
+    const out = fetchRange(M, visited, addDays(M, BASE_FORWARD_DAYS));
+    expect(out.rangeEnd).toBe(addDays(visited, 7));
+    expect(coversWeek(out, visited)).toBe(true);
   });
 
   it('never extends backward for a week before the range', () => {

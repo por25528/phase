@@ -35,6 +35,11 @@ export interface GoogleEvent {
   end?: GoogleDateTime;
 }
 
+export interface ExpansionBounds {
+  rangeStart: string; // 'YYYY-MM-DD' inclusive
+  rangeEnd: string;   // 'YYYY-MM-DD' EXCLUSIVE
+}
+
 /** A busy slice, already flattened onto one local day. */
 export interface BusyBlock {
   date: string;     // 'YYYY-MM-DD' local
@@ -56,16 +61,31 @@ export declare function shouldSkipEvent(event: GoogleEvent): boolean;
 /**
  * One block per local day the event touches, in chronological order.
  *
- * Not clipped to any range and not merged with other events — `normalizeEvents`
- * does both. Returns `[]` for an event missing either end.
- * Throws `RangeError` on a malformed `dateTime` or an unrecognised `timeZone`;
- * this is deliberate so callers fail loudly rather than treating unparseable
- * data as free time.
+ * When `bounds` is omitted, expansion is unbounded and not clipped to any
+ * range. When supplied, the day loops are bounded to this half-open local-date
+ * window; `normalizeEvents` always supplies its own range bounds. Expansion is
+ * not merged with other events. Returns `[]` for an event missing either end.
+ * Throws `RangeError` on a malformed `dateTime`, malformed all-day `date`, an
+ * all-day end before its start, or an unrecognised `timeZone`; this is
+ * deliberate so callers fail loudly rather than treating unparseable data as
+ * free time.
  *
  * All-day events use Google's convention that `end.date` is EXCLUSIVE.
  */
-export declare function expandToLocalDays(event: GoogleEvent, timeZone: string): BusyBlock[];
+export declare function expandToLocalDays(
+  event: GoogleEvent,
+  timeZone: string,
+  bounds?: ExpansionBounds,
+): BusyBlock[];
 
+/**
+ * Date bounds are local dates in `timeZone`, with the same half-open convention
+ * as `DateRange` and `CalendarCache`. A caller translating them into Google's
+ * `timeMin`/`timeMax` must use local midnight in that zone, not UTC midnight;
+ * UTC would make Google drop boundary-day events before normalization. That
+ * partial fetch can evade the all-or-nothing cache rule because every page
+ * succeeded.
+ */
 export interface NormalizeOptions {
   rangeStart: string; // 'YYYY-MM-DD' inclusive
   rangeEnd: string;   // 'YYYY-MM-DD' EXCLUSIVE

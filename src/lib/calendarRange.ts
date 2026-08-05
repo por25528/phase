@@ -1,6 +1,6 @@
 import { addDays } from './dates';
 
-/** Half-open: `rangeEnd` is EXCLUSIVE, matching CalendarCache. */
+/** Half-open: `rangeEnd` is EXCLUSIVE, matching CalendarCache and NormalizeOptions. */
 export interface DateRange {
   rangeStart: string;
   rangeEnd: string;
@@ -10,7 +10,7 @@ export interface DateRange {
 export const BASE_BACK_DAYS = 7;
 /** Eight weeks forward covers ordinary planning without a refetch. */
 export const BASE_FORWARD_DAYS = 56;
-/** 26 weeks. Beyond this Phase declines to extend; see spec §7.2. */
+/** 26 weeks; beyond it a visited week does not extend, while prior range grounds still clamp here. */
 export const MAX_FORWARD_DAYS = 182;
 
 /**
@@ -36,14 +36,15 @@ export function fetchRange(
 ): DateRange {
   const rangeStart = addDays(mondayOfCurrentWeek, -BASE_BACK_DAYS);
   const cap = addDays(mondayOfCurrentWeek, MAX_FORWARD_DAYS);
+  const baseEnd = addDays(mondayOfCurrentWeek, BASE_FORWARD_DAYS);
+  const previousWanted = previousEnd && previousEnd > baseEnd ? previousEnd : baseEnd;
 
   // The visited week must be covered COMPLETELY — +7, not +0, or Tue..Sun of
   // the week you navigated to would read as unknown.
-  const wanted = [
-    addDays(mondayOfCurrentWeek, BASE_FORWARD_DAYS),
-    addDays(visitedMonday, 7),
-    previousEnd ?? '',
-  ].reduce((a, b) => (b > a ? b : a));
+  const visitedEnd = addDays(visitedMonday, 7);
+  const wanted = visitedEnd <= cap && visitedEnd > previousWanted
+    ? visitedEnd
+    : previousWanted;
 
   return { rangeStart, rangeEnd: wanted > cap ? cap : wanted };
 }

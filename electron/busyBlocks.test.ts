@@ -64,6 +64,7 @@ describe('shouldSkipEvent', () => {
 const NY = 'America/New_York';
 
 const RANGE = { rangeStart: '2026-08-03', rangeEnd: '2026-08-10', timeZone: NY };
+const NINE_WEEK_BOUNDS = { rangeStart: '2026-07-27', rangeEnd: '2026-09-28' };
 
 function timed(summary: string, startIso: string, endIso: string): GoogleEvent {
   return { status: 'confirmed', summary, start: { dateTime: startIso }, end: { dateTime: endIso } };
@@ -130,6 +131,88 @@ describe('expandToLocalDays', () => {
     }, NY).map((b) => b.date)).toEqual(['2026-08-04', '2026-08-05', '2026-08-06']);
   });
 
+  it('bounds an all-day event ending in 9999 during expansion', () => {
+    const started = performance.now();
+    const blocks = expandToLocalDays({
+      status: 'confirmed', summary: 'millennium',
+      start: { date: '2026-08-04' }, end: { date: '9999-12-31' },
+    }, NY, NINE_WEEK_BOUNDS);
+
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(blocks).toHaveLength(55);
+    expect(blocks[0].date).toBe('2026-08-04');
+    expect(blocks.at(-1)?.date).toBe('2026-09-27');
+  });
+
+  // The elapsed assertion is intentional: checking only the output would also
+  // pass if the implementation allocated every day and filtered afterward.
+  it('starts an all-day expansion at the range start when the event straddles both bounds', () => {
+    const started = performance.now();
+    const blocks = expandToLocalDays({
+      status: 'confirmed', summary: 'long leave',
+      start: { date: '1900-01-01' }, end: { date: '9999-12-31' },
+    }, NY, NINE_WEEK_BOUNDS);
+
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(blocks.map((b) => b.date)).toEqual([
+      '2026-07-27', '2026-07-28', '2026-07-29', '2026-07-30', '2026-07-31',
+      '2026-08-01', '2026-08-02', '2026-08-03', '2026-08-04', '2026-08-05',
+      '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09', '2026-08-10',
+      '2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14', '2026-08-15',
+      '2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20',
+      '2026-08-21', '2026-08-22', '2026-08-23', '2026-08-24', '2026-08-25',
+      '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29', '2026-08-30',
+      '2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04',
+      '2026-09-05', '2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09',
+      '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13', '2026-09-14',
+      '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18', '2026-09-19',
+      '2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24',
+      '2026-09-25', '2026-09-26', '2026-09-27',
+    ]);
+  });
+
+  it('bounds a timed event that spans far beyond the range', () => {
+    const started = performance.now();
+    const blocks = expandToLocalDays(timed(
+      'long project', '1900-01-01T00:00:00-05:00', '9999-12-31T00:00:00-05:00',
+    ), NY, NINE_WEEK_BOUNDS);
+
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(blocks).toHaveLength(63);
+    expect(blocks[0]).toEqual({
+      date: '2026-07-27', startMin: 0, endMin: 1440, title: 'long project', allDay: false,
+    });
+    expect(blocks.at(-1)).toEqual({
+      date: '2026-09-27', startMin: 0, endMin: 1440, title: 'long project', allDay: false,
+    });
+  });
+
+  it('throws RangeError for a malformed timed dateTime', () => {
+    expect(() => expandToLocalDays(
+      timed('broken', 'garbage', '2026-08-04T10:00:00-04:00'), NY,
+    )).toThrowError(RangeError);
+  });
+
+  it('throws RangeError naming malformed all-day dates', () => {
+    for (const [startDate, endDate, offending] of [
+      ['2026-8-4', '2026-08-06', '2026-8-4'],
+      ['2026-08-04', '2026-8-6', '2026-8-6'],
+      ['2026-08-04', 'garbage', 'garbage'],
+    ]) {
+      expect(() => expandToLocalDays({
+        status: 'confirmed', summary: 'broken',
+        start: { date: startDate }, end: { date: endDate },
+      }, NY)).toThrowError(new RegExp(offending));
+    }
+  });
+
+  it('throws RangeError when an all-day end date precedes its start date', () => {
+    expect(() => expandToLocalDays({
+      status: 'confirmed', summary: 'backwards',
+      start: { date: '2026-08-06' }, end: { date: '2026-08-05' },
+    }, NY)).toThrowError(/2026-08-05/);
+  });
+
   // Wall-clock is the right model for a calendar grid: on spring-forward the
   // local day is 23 real hours, but 01:00-04:00 still reads as 60..240.
   it('uses wall-clock minutes across a DST spring-forward', () => {
@@ -162,6 +245,17 @@ describe('expandToLocalDays', () => {
 });
 
 describe('normalizeEvents', () => {
+  it('keeps the normal clipped output for a far all-day event', () => {
+    const out = normalizeEvents([{
+      status: 'confirmed', summary: 'millennium',
+      start: { date: '2026-08-04' }, end: { date: '9999-12-31' },
+    }], { ...NINE_WEEK_BOUNDS, timeZone: NY });
+
+    expect(out).toHaveLength(55);
+    expect(out[0].date).toBe('2026-08-04');
+    expect(out.at(-1)?.date).toBe('2026-09-27');
+  });
+
   it('drops events the skip rules reject', () => {
     expect(normalizeEvents([
       { ...timed('standup', '2026-08-04T09:00:00-04:00', '2026-08-04T09:15:00-04:00'), status: 'cancelled' },
