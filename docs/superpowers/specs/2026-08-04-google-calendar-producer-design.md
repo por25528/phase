@@ -375,6 +375,19 @@ of lighting it up:
    at `DayBlocks.tsx:85` — a day with "Conference" *and* "Holiday" shows one
    and silently drops the other.
 
+**Resolution (decided during implementation).** Both are fixed in
+`src/lib/busyLayout.ts`, extracted from `DayBlocks` so the rules are pure and
+testable without a `DndContext`:
+
+- Timed events always render, including on a day that carries an all-day
+  event, so the column agrees with `blockedBy`.
+- All all-day events on a date collapse into **one** full-height span with
+  joined titles, mirroring how overlapping blocks join titles in
+  `electron/busyBlocks.cjs`. `normalizeEvents` already guarantees at most one
+  all-day block per date, but `dayBusySpans` does not rely on that.
+
+The all-day span is emitted first so `assignLanes` places it in lane 0.
+
 ### 9.3 A dependency to name, not solve
 
 An all-day event renders as a busy block spanning `DAY_START_MIN`→

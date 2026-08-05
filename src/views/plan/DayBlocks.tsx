@@ -1,5 +1,6 @@
 import type { BusyBlock } from '../../db/types';
-import { assignLanes, DAY_END_MIN, DAY_START_MIN, type LaneSpan } from '../../lib/grid';
+import { dayBusySpans } from '../../lib/busyLayout';
+import { assignLanes, type LaneSpan } from '../../lib/grid';
 import type { ScheduledItem } from '../../lib/scheduled';
 import { EventBlock, type GridBlock } from './EventBlock';
 import type { PlanDragData } from './dropTarget';
@@ -29,9 +30,10 @@ interface DayItem extends LaneSpan {
  * calendar after it was scheduled — laying them out together is what keeps
  * that case legible instead of stacking one on top of the other.
  *
- * `blocks` is always `[]` in this slice (Plan.tsx has no real calendar feed
- * yet — that arrives in a later task), so the busy/all-day path below is
- * currently unexercised. It still has to be correct when it lights up.
+ * `blocks` is still `[]` from Plan.tsx until the renderer wiring lands, but
+ * the layout rules are no longer inline and unexercised: they live in
+ * `src/lib/busyLayout.ts` with a sibling test that pins the two defects this
+ * path used to carry.
  */
 export function DayBlocks({
   date, items, blocks, allDayBlocks, readOnly, onRemove, onComplete, onResize,
@@ -80,36 +82,17 @@ export function DayBlocks({
     id: item.id,
   }));
 
-  const dayBlocks = blocks.filter((b) => b.date === date);
-  const timedBlocks = dayBlocks.filter((b) => !b.allDay);
-  const allDayEvent = allDayBlocks ? dayBlocks.find((b) => b.allDay) : undefined;
-
-  const busy: DayItem[] = allDayEvent
-    ? [{
-        // An all-day event, when the preference treats it as occupying the
-        // whole day, is rendered as a single busy block spanning the day's
-        // full bounds — so the day reads as unavailable rather than open.
-        key: `busy:${date}:allday`,
-        kind: 'busy',
-        title: allDayEvent.title,
-        startMin: DAY_START_MIN,
-        endMin: DAY_END_MIN,
-        done: false,
-        estimated: true,
-        goalId: null,
-        id: null,
-      }]
-    : timedBlocks.map((b, i) => ({
-        key: `busy:${date}:${i}`,
-        kind: 'busy' as const,
-        title: b.title,
-        startMin: b.startMin,
-        endMin: b.endMin,
-        done: false,
-        estimated: true,
-        goalId: null,
-        id: null,
-      }));
+  const busy: DayItem[] = dayBusySpans(date, blocks, allDayBlocks).map((span) => ({
+    key: span.key,
+    kind: 'busy' as const,
+    title: span.title,
+    startMin: span.startMin,
+    endMin: span.endMin,
+    done: false,
+    estimated: true,
+    goalId: null,
+    id: null,
+  }));
 
   const laid = assignLanes([...work, ...busy]);
 
