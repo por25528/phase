@@ -11,6 +11,7 @@ import {
 } from './db';
 import type { AppState, Asset, Goal } from './types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
+import { loadCalendarCache, saveCalendarCache } from './calendarCache';
 
 function goal(id: string): Goal {
   return { id, title: id, start: '2026-01-01', deadline: '2026-12-31', nodes: [], column: 0 };
@@ -22,7 +23,7 @@ const stateB: AppState = { goals: [goal('c')], habits: [], tasks: [], sessions: 
 beforeEach(async () => {
   await Promise.all([
     db.goals.clear(), db.habits.clear(), db.tasks.clear(), db.sessions.clear(), db.settings.clear(),
-    db.planReview.clear(), db.assets.clear(),
+    db.planReview.clear(), db.assets.clear(), db.calendarCache.clear(),
   ]);
 });
 
@@ -255,6 +256,23 @@ describe('importStateFromFile', () => {
     expect(await loadAllDayBlocks()).toBe(false);
   });
 
+  // Spec §7.6: the cache is device-local derived data, not user data. An
+  // import must not resurrect a stale calendar, and export must not put
+  // meeting titles in a file the user might share. exportState itself is
+  // untestable here — it drives DOM download APIs absent under
+  // environment: 'node' — so the export side is guaranteed by construction:
+  // exportState builds an explicit literal that has no calendarCache key.
+  it('leaves the calendar cache untouched across an import', async () => {
+    await saveCalendarCache({
+      rangeStart: '2026-07-27', rangeEnd: '2026-09-28', blocks: [],
+      fetchedAt: '2026-08-04T13:41:00.000Z', accountId: 'me@example.com',
+      calendarIds: ['primary'], timeZone: 'America/New_York',
+    });
+    const backup = { goals: [goal('g1')], habits: [], tasks: [], sessions: [], pxPerDay: 40 };
+    await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect((await loadCalendarCache())?.accountId).toBe('me@example.com');
+  });
+
   it('leaves existing availability/allDayBlocks alone for an old backup that predates them', async () => {
     // Seed non-default settings first, so we can tell "left the existing
     // settings alone" apart from "fell back to the default" — an absent key
@@ -365,7 +383,7 @@ describe('loadState', () => {
       goalId: null,
     };
 
-    expect(db.verno).toBe(5);
+    expect(db.verno).toBe(6);
     await db.goals.put(legacyGoal);
     await db.tasks.put(legacyTask);
 

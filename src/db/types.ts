@@ -167,3 +167,31 @@ export interface BusyBlock {
   title: string;
   allDay: boolean;
 }
+
+/**
+ * The device-local calendar snapshot.
+ *
+ * Lives OUTSIDE AppState and outside persist() for the same reason `assets`
+ * does: persist() is a full clear + bulkPut of four tables, so folding this in
+ * would rewrite every cached event on every checkbox tick. Writes are surgical
+ * and go through src/db/calendarCache.ts.
+ *
+ * Excluded from backup export and import — meeting titles must not land in a
+ * phase-goals-*.json the user might share, and on import the cache is left
+ * untouched because it is derived device state, not user data.
+ */
+export interface CalendarCache {
+  rangeStart: string;    // 'YYYY-MM-DD' inclusive
+  rangeEnd: string;      // 'YYYY-MM-DD' EXCLUSIVE
+  blocks: BusyBlock[];
+  fetchedAt: string;     // ISO instant, for the staleness label
+  // Provenance: any mismatch invalidates the cache. Without it, an account
+  // switch, a changed calendar selection or a machine timezone change leaves
+  // stale blocks rendering as current fact.
+  accountId: string;
+  calendarIds: string[]; // sorted
+  timeZone: string;      // IANA zone the blocks were flattened against
+  // `allDayBlocks` is deliberately NOT provenance: all-day blocks are always
+  // cached and the preference is applied at read time in capacity.ts, so
+  // toggling it never requires a refetch.
+}

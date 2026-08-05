@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow, Asset } from './types';
+import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow, Asset, CalendarCache } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
@@ -7,6 +7,13 @@ import { parseAvailability, serializeAvailability } from '../lib/availability';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { decodeAssets, encodeAssets } from '../lib/backupAssets';
+
+/**
+ * Single-row table. The fixed key is what makes "at most one cache" a schema
+ * property rather than a convention every writer has to remember.
+ */
+export type CalendarCacheRow = CalendarCache & { key: string };
+export const CALENDAR_CACHE_KEY = 'current';
 
 class PhaseDB extends Dexie {
   goals!: Table<Goal, string>;
@@ -16,6 +23,7 @@ class PhaseDB extends Dexie {
   settings!: Table<{ key: string; value: string }, string>;
   planReview!: Table<PlanReview, string>;
   assets!: Table<Asset, string>;
+  calendarCache!: Table<CalendarCacheRow, string>;
 
   constructor() {
     super('phase');
@@ -54,6 +62,16 @@ class PhaseDB extends Dexie {
       planReview: 'week',
       assets: 'id',
     });
+    this.version(6).stores({
+      goals: 'id',
+      habits: 'id',
+      tasks: 'id',
+      settings: 'key',
+      sessions: 'id',
+      planReview: 'week',
+      assets: 'id',
+      calendarCache: 'key',
+    });
   }
 }
 
@@ -74,6 +92,8 @@ export async function persist(state: AppState): Promise<void> {
   // is a full clear + bulkPut of the four app-data tables, so putting image
   // bytes in a goal would rewrite every screenshot on every ordinary edit.
   // Asset writes are surgical: one row at paste time, through db/assets.ts.
+  // calendarCache is excluded for the same reason, and additionally because it
+  // is derived device state that a backup restore must not resurrect.
   // One rw transaction: either every table reflects `state`, or none does.
   // (The previous Promise.all of independent clear→bulkPut chains could leave
   // the DB partially wiped if one chain failed mid-flight.)
