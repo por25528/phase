@@ -10,6 +10,6 @@ export default defineConfig({
     // the store, and they run far faster without a DOM. A component test opts
     // in per file with `// @vitest-environment jsdom`.
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'electron/**/*.test.ts'],
   },
 })
