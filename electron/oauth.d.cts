@@ -23,6 +23,11 @@ export interface OAuthDeps {
   openExternal(url: string): Promise<void>;
   /** Injected clock — the module never reads the real one. */
   now(): number;
+  /**
+   * Injected so the consent timeout is testable without fake timers.
+   * Returns a cancel function.
+   */
+  setTimer(fn: () => void, ms: number): () => void;
 }
 
 export interface Tokens {
@@ -34,11 +39,31 @@ export interface Tokens {
 
 export interface OAuth {
   exchangeCode(input: { code: string; verifier: string; redirectUri: string }): Promise<Tokens>;
+  /**
+   * Start the one-shot loopback listener and resolve with the authorization
+   * code.
+   *
+   * `onReady` is called once the port is bound, with the redirect URI the
+   * caller must put in the consent URL — the port is chosen by the OS, so it
+   * cannot be known before listening.
+   *
+   * The socket is closed on EVERY outcome: success, state mismatch, denial,
+   * malformed callback, timeout, and an `onReady` that throws. A leaked
+   * listening socket is a security defect.
+   */
+  listenForCode(input: {
+    state: string;
+    timeoutMs?: number;
+    onReady(redirectUri: string): void | Promise<void>;
+  }): Promise<string>;
 }
 
 export declare const AUTH_ENDPOINT: string;
 export declare const TOKEN_ENDPOINT: string;
 export declare const REVOKE_ENDPOINT: string;
+/** The only path the listener accepts. Everything else 404s. */
+export declare const CALLBACK_PATH: string;
+export declare const DEFAULT_TIMEOUT_MS: number;
 /**
  * Exactly two read-only scopes. `events.readonly` alone does NOT authorize
  * `calendarList.list`, and the broader `calendar.readonly` grants more than

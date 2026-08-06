@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  authUrl, createOAuth, AUTH_ENDPOINT, TOKEN_ENDPOINT, SCOPES,
+  authUrl, createOAuth, AUTH_ENDPOINT, TOKEN_ENDPOINT, SCOPES, CALLBACK_PATH, DEFAULT_TIMEOUT_MS,
   type OAuthDeps,
 } from './oauth.cjs';
 
@@ -21,7 +21,7 @@ function fakeSecrets(seed: Record<string, unknown> = { client: CLIENT }) {
 
 function deps(over: Partial<OAuthDeps> = {}): OAuthDeps & { _posts: Array<{ url: string; body: URLSearchParams }> } {
   const posts: Array<{ url: string; body: URLSearchParams }> = [];
-  const base = {
+  const base: OAuthDeps = {
     secrets: fakeSecrets(),
     httpPost: async (url: string, body: URLSearchParams) => {
       posts.push({ url, body });
@@ -30,9 +30,10 @@ function deps(over: Partial<OAuthDeps> = {}): OAuthDeps & { _posts: Array<{ url:
     createServer: () => { throw new Error('not used in this task'); },
     openExternal: async () => {},
     now: () => 1_000_000,
-    ...over,
-  } satisfies OAuthDeps;
-  return Object.assign(base, { _posts: posts });
+    setTimer: () => () => {},
+  };
+  const d: OAuthDeps = { ...base, ...over };
+  return Object.assign(d, { _posts: posts });
 }
 
 describe('authUrl', () => {
@@ -153,5 +154,185 @@ describe('exchangeCode', () => {
     const rejection = createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
     await expect(rejection).rejects.toThrow(expected);
     await expect(rejection).rejects.not.toThrow(CLIENT.clientSecret);
+  });
+});
+
+/**
+ * A fake loopback server. `hit(path)` plays the role of the browser
+ * arriving on the redirect; `closed` and `listening` let a test assert the
+ * socket's lifecycle, which is the security property this task exists for.
+ */
+type FakeServerHandler = (url: string, respond: (status: number, body: string) => void) => void;
+type FakeServer = {
+  port: number;
+  listening: boolean;
+  closed: boolean;
+  handler: null | FakeServerHandler;
+  responses: Array<{ status: number; body: string }>;
+  listen: () => Promise<number>;
+  close: () => void;
+  onRequest: (h: FakeServer['handler']) => void;
+  hit: (url: string) => void;
+};
+
+function fakeServer(port = 51234): FakeServer {
+  const s: FakeServer = {
+    port,
+    listening: false,
+    closed: false,
+    handler: null as null | ((url: string, respond: (status: number, body: string) => void) => void),
+    responses: [] as Array<{ status: number; body: string }>,
+    listen: async () => { s.listening = true; return port; },
+    close: () => { s.listening = false; s.closed = true; },
+    onRequest: (h: typeof s.handler) => { s.handler = h; },
+    hit(url: string) {
+      s.handler!(url, (status, body) => s.responses.push({ status, body }));
+    },
+  };
+  return s;
+}
+
+function loopbackDeps(server: ReturnType<typeof fakeServer>, over: Partial<OAuthDeps> = {}) {
+  const timers: Array<{ fn: () => void; ms: number; cancelled: boolean }> = [];
+  const d = deps({
+    createServer: () => server,
+    setTimer: (fn: () => void, ms: number) => {
+      const entry = { fn, ms, cancelled: false };
+      timers.push(entry);
+      return () => { entry.cancelled = true; };
+    },
+    ...over,
+  });
+  return Object.assign(d, { _timers: timers });
+}
+
+describe('listenForCode', () => {
+  it('reports the redirect URI with the bound port before opening the browser', async () => {
+    const server = fakeServer(51999);
+    const d = loopbackDeps(server);
+    const seen: string[] = [];
+    const pending = createOAuth(d).listenForCode({
+      state: 'S', onReady: (uri) => { seen.push(uri); server.hit(`${CALLBACK_PATH}?code=C&state=S`); },
+    });
+    await expect(pending).resolves.toBe('C');
+    expect(seen).toEqual([`http://127.0.0.1:51999${CALLBACK_PATH}`]);
+  });
+
+  it('resolves with the code and closes the socket', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({
+      state: 'S', onReady: () => server.hit(`${CALLBACK_PATH}?code=CODE&state=S`),
+    })).resolves.toBe('CODE');
+    expect(server.closed).toBe(true);
+    expect(server.listening).toBe(false);
+  });
+
+  it('shows the user something readable in the browser on success', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await createOAuth(d).listenForCode({
+      state: 'S', onReady: () => server.hit(`${CALLBACK_PATH}?code=C&state=S`),
+    });
+    expect(server.responses[0].status).toBe(200);
+    expect(server.responses[0].body).toMatch(/Phase/i);
+  });
+
+  // The CSRF guard. Accepting a mismatched state would let any page that can
+  // reach the loopback port inject an authorization code.
+  it('rejects a state mismatch and still closes the socket', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({
+      state: 'EXPECTED', onReady: () => server.hit(`${CALLBACK_PATH}?code=C&state=ATTACKER`),
+    })).rejects.toThrow(/state/i);
+    expect(server.closed).toBe(true);
+    expect(server.responses[0].status).toBe(400);
+  });
+
+  it('404s any other path and keeps waiting for the real one', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    const pending = createOAuth(d).listenForCode({
+      state: 'S',
+      onReady: () => {
+        server.hit('/');
+        server.hit('/favicon.ico');
+        server.hit(`${CALLBACK_PATH}/extra?code=C&state=S`);
+        server.hit(`${CALLBACK_PATH}?code=REAL&state=S`);
+      },
+    });
+    await expect(pending).resolves.toBe('REAL');
+    expect(server.responses.slice(0, 3).map((r) => r.status)).toEqual([404, 404, 404]);
+  });
+
+  it('rejects when the user denies consent', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({
+      state: 'S', onReady: () => server.hit(`${CALLBACK_PATH}?error=access_denied&state=S`),
+    })).rejects.toThrow(/access_denied/);
+    expect(server.closed).toBe(true);
+  });
+
+  it('rejects when the callback carries neither a code nor an error', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({
+      state: 'S', onReady: () => server.hit(`${CALLBACK_PATH}?state=S`),
+    })).rejects.toThrow(/no authorization code/i);
+    expect(server.closed).toBe(true);
+  });
+
+  // Without this the socket stays open forever when the user closes the
+  // consent tab and walks away.
+  it('times out and closes the socket', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    const pending = createOAuth(d).listenForCode({ state: 'S', timeoutMs: 5000, onReady: () => {} });
+    expect(d._timers[0].ms).toBe(5000);
+    d._timers[0].fn();
+    await expect(pending).rejects.toThrow(/timed out/i);
+    expect(server.closed).toBe(true);
+  });
+
+  it('defaults the timeout rather than waiting forever', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    const pending = createOAuth(d).listenForCode({ state: 'S', onReady: () => {} });
+    expect(d._timers[0].ms).toBe(DEFAULT_TIMEOUT_MS);
+    d._timers[0].fn();
+    await expect(pending).rejects.toThrow(/timed out/i);
+  });
+
+  it('cancels the timeout once the code arrives', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await createOAuth(d).listenForCode({
+      state: 'S', onReady: () => server.hit(`${CALLBACK_PATH}?code=C&state=S`),
+    });
+    expect(d._timers[0].cancelled).toBe(true);
+  });
+
+  it('closes the socket when onReady itself throws', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({
+      state: 'S', onReady: () => { throw new Error('browser would not open'); },
+    })).rejects.toThrow(/browser would not open/);
+    expect(server.closed).toBe(true);
+  });
+
+  it('ignores a second callback after the first has settled', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    const pending = createOAuth(d).listenForCode({
+      state: 'S',
+      onReady: () => {
+        server.hit(`${CALLBACK_PATH}?code=FIRST&state=S`);
+        server.hit(`${CALLBACK_PATH}?code=SECOND&state=S`);
+      },
+    });
+    await expect(pending).resolves.toBe('FIRST');
   });
 });

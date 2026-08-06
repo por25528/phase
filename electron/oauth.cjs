@@ -7,6 +7,11 @@
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
+const CALLBACK_PATH = '/callback';
+const DEFAULT_TIMEOUT_MS = 120_000;
+
+const SUCCESS_PAGE = '<!doctype html><meta charset="utf-8"><title>Phase</title>'
+  + '<body style="font:16px system-ui;padding:3rem"><p>Phase is connected. You can close this tab.</p>';
 
 // `events.readonly` alone does not authorize calendarList.list, and the
 // broader `calendar.readonly` grants more than this feature requires.
@@ -41,7 +46,7 @@ function tokenErrorDetail(res) {
 }
 
 function createOAuth(deps) {
-  const { secrets, httpPost, now } = deps;
+  const { secrets, httpPost, now, createServer, setTimer } = deps;
 
   function client() {
     const stored = secrets.get('client');
@@ -88,7 +93,74 @@ function createOAuth(deps) {
     };
   }
 
-  return { exchangeCode };
+  function listenForCode({ state, timeoutMs = DEFAULT_TIMEOUT_MS, onReady }) {
+    const server = createServer();
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let cancelTimer = () => {};
+
+      // Every exit runs through here, so there is exactly one place that can
+      // forget to close the socket — and it does not.
+      function settle(fn, value) {
+        if (settled) return;
+        settled = true;
+        cancelTimer();
+        server.close();
+        fn(value);
+      }
+
+      server.onRequest((url, respond) => {
+        // `url` is path + query. Only the exact path is accepted; a prefix
+        // match would let /callback/anything through.
+        const parsed = new URL(url, 'http://127.0.0.1');
+        if (parsed.pathname !== CALLBACK_PATH) {
+          respond(404, 'Not found');
+          return;
+        }
+        const error = parsed.searchParams.get('error');
+        if (error) {
+          respond(400, 'Authorization failed. You can close this tab.');
+          settle(reject, new Error(`Google authorization failed: ${error}`));
+          return;
+        }
+        // Compared before the code is used at all: a mismatched state means
+        // this response is not the one we asked for.
+        if (parsed.searchParams.get('state') !== state) {
+          respond(400, 'Authorization failed. You can close this tab.');
+          settle(reject, new Error('Authorization state did not match; aborting'));
+          return;
+        }
+        const code = parsed.searchParams.get('code');
+        if (!code) {
+          respond(400, 'Authorization failed. You can close this tab.');
+          settle(reject, new Error('Callback carried no authorization code'));
+          return;
+        }
+        respond(200, SUCCESS_PAGE);
+        settle(resolve, code);
+      });
+
+      cancelTimer = setTimer(() => {
+        settle(reject, new Error('Authorization timed out; no response from the browser'));
+      }, timeoutMs);
+
+      Promise.resolve()
+        .then(() => server.listen())
+        .then((port) => onReady(`http://127.0.0.1:${port}${CALLBACK_PATH}`))
+        .catch((err) => settle(reject, err));
+    });
+  }
+
+  return { exchangeCode, listenForCode };
 }
 
-module.exports = { AUTH_ENDPOINT, TOKEN_ENDPOINT, REVOKE_ENDPOINT, SCOPES, authUrl, createOAuth };
+module.exports = {
+  AUTH_ENDPOINT,
+  TOKEN_ENDPOINT,
+  REVOKE_ENDPOINT,
+  SCOPES,
+  CALLBACK_PATH,
+  DEFAULT_TIMEOUT_MS,
+  authUrl,
+  createOAuth,
+};
