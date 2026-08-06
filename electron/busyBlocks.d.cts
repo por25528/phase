@@ -27,6 +27,7 @@ export interface GoogleAttendee {
 
 /** Only the fields this module reads. `events.list` returns far more. */
 export interface GoogleEvent {
+  id?: string;
   status?: string;
   transparency?: string;
   summary?: string;
@@ -48,6 +49,15 @@ export interface BusyBlock {
   title: string;
   allDay: boolean;
 }
+
+/**
+ * 'YYYY-MM-DD' plus n days, without touching the machine timezone.
+ *
+ * Exported because `googleClient.cjs` needs the same date arithmetic to widen
+ * its query window, and a second implementation would be a second thing to
+ * get wrong.
+ */
+export declare function addDays(date: string, n: number): string;
 
 /**
  * True when an event must not consume any time.

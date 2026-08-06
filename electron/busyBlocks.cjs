@@ -155,4 +155,4 @@ function normalizeEvents(events, options) {
   );
 }
 
-module.exports = { shouldSkipEvent, expandToLocalDays, normalizeEvents };
+module.exports = { addDays, shouldSkipEvent, expandToLocalDays, normalizeEvents };

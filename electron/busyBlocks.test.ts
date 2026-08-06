@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expandToLocalDays, normalizeEvents, shouldSkipEvent, type GoogleEvent } from './busyBlocks.cjs';
+import { addDays, expandToLocalDays, normalizeEvents, shouldSkipEvent, type GoogleEvent } from './busyBlocks.cjs';
 
 const TIMED: GoogleEvent = {
   status: 'confirmed',
@@ -380,5 +380,39 @@ describe('normalizeEvents', () => {
     expect(normalizeEvents([], RANGE)).toEqual([]);
     expect(normalizeEvents([timed('one', '2026-08-04T09:00:00-04:00', '2026-08-04T10:00:00-04:00')], RANGE))
       .toEqual([{ date: '2026-08-04', startMin: 540, endMin: 600, title: 'one', allDay: false }]);
+  });
+});
+
+describe('addDays', () => {
+  it('moves forward and backward', () => {
+    expect(addDays('2026-08-04', 1)).toBe('2026-08-05');
+    expect(addDays('2026-08-04', -1)).toBe('2026-08-03');
+    expect(addDays('2026-08-04', 0)).toBe('2026-08-04');
+  });
+
+  it('crosses month and year boundaries', () => {
+    expect(addDays('2026-08-31', 1)).toBe('2026-09-01');
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDays('2026-01-01', -1)).toBe('2025-12-31');
+  });
+
+  // Leap-year handling comes free from Date.UTC, but a hand-rolled version
+  // would get this wrong, so it is pinned.
+  it('handles a leap day', () => {
+    expect(addDays('2028-02-28', 1)).toBe('2028-02-29');
+    expect(addDays('2028-02-29', 1)).toBe('2028-03-01');
+    expect(addDays('2026-02-28', 1)).toBe('2026-03-01');
+  });
+
+  // The whole point of routing through Date.UTC rather than local getters:
+  // the answer must not depend on the machine's timezone or DST.
+  it('is unaffected by a DST transition in the machine zone', () => {
+    expect(addDays('2026-03-07', 1)).toBe('2026-03-08');
+    expect(addDays('2026-11-01', 1)).toBe('2026-11-02');
+  });
+
+  it('always zero-pads, so results still compare correctly as strings', () => {
+    expect(addDays('2026-09-09', 1)).toBe('2026-09-10');
+    expect(addDays('2026-08-31', 1) > '2026-08-31').toBe(true);
   });
 });
