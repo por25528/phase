@@ -66,8 +66,26 @@ actually protects the authorization-code flow.
 
 ## Paste the credentials into Phase
 
-Open Phase's Google Calendar settings and paste the OAuth client's **client
-ID** and **client secret** into the configuration fields. Save the configuration,
-then choose **Connect** and complete Google's consent flow. Phase stores the
-credentials and tokens in the operating system's encrypted user-data store;
-they do not cross the renderer bridge.
+Phase has no Google Calendar settings panel yet. Until it does, the credentials
+go in through the devtools console of the desktop app:
+
+```bash
+npm run dev &
+npm run app:dev
+```
+
+```js
+await window.phaseCalendar.configure({ clientId: '...', clientSecret: '...' })
+await window.phaseCalendar.connect()
+```
+
+`connect()` opens your browser for Google's consent flow. Click through the
+unverified-app screen via **Advanced → Go to Phase**; the browser then lands on
+a page confirming Phase is connected.
+
+Phase stores the credentials and tokens in the operating system's encrypted
+user-data store; they do not cross the renderer bridge.
+
+[google-calendar-verification.md](google-calendar-verification.md) walks the
+rest of the connection — listing your calendars, fetching a week, and
+confirming the connection survives a restart.
