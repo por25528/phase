@@ -483,6 +483,7 @@ describe('registerCalendarIpc', () => {
  */
 describe('preload channel names', () => {
   const preload = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('./main.cjs', import.meta.url), 'utf8');
 
   it('uses the same prefix the handlers register under', () => {
     expect(preload).toContain(CHANNEL_PREFIX);
@@ -501,5 +502,9 @@ describe('preload channel names', () => {
 
   it('exposes the bridge under the name the renderer looks for', () => {
     expect(preload).toContain('phaseCalendar');
+  });
+
+  it('keeps the Electron window wired to the sandboxed preload', () => {
+    expect(main).toContain("preload: path.join(__dirname, 'preload.cjs')");
   });
 });

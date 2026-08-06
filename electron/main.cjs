@@ -1,10 +1,9 @@
 // Electron main process for Phase.
 // Wraps the built Vite app (dist/) in a native macOS window.
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, shell, safeStorage, ipcMain } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const http = require('node:http')
-const { safeStorage, ipcMain } = require('electron')
 const { createSecretStore } = require('./secrets.cjs')
 const { createPkce } = require('./pkce.cjs')
 const { createOAuth } = require('./oauth.cjs')
@@ -37,13 +36,20 @@ function createLoopbackServer() {
       // Port 0 asks the OS for any free port, and 127.0.0.1 keeps the socket
       // off every other interface.
       server.once('error', reject)
-      server.listen(0, '127.0.0.1', () => resolve(server.address().port))
+      server.listen(0, '127.0.0.1', () => {
+        server.removeListener('error', reject)
+        resolve(server.address().port)
+      })
     }),
     close: () => {
-      try { server.close() } catch { /* already closed */ }
-      // server.close() waits on existing keep-alive sockets; force them closed
-      // so the OAuth loopback port is gone on every outcome.
-      server.closeAllConnections()
+      try {
+        server.close()
+        // Deferred: the success page is written in the same tick as the close,
+        // and closeAllConnections() destroys the socket carrying it. close()
+        // alone would leave the port bound while keep-alive sockets linger,
+        // which is the leak this exists to prevent.
+        setTimeout(() => server.closeAllConnections(), 0)
+      } catch { /* already closed */ }
     },
     onRequest: (fn) => { handler = fn },
   }
@@ -52,15 +58,26 @@ function createLoopbackServer() {
 async function httpJson(url, init) {
   const res = await fetch(url, init)
   let json = {}
-  try { json = await res.json() } catch { /* an error body need not be JSON */ }
-  return { ok: res.ok, status: res.status, json }
+  let parsed = true
+  try { json = await res.json() } catch { parsed = false }
+  // A parse failure on an ERROR body is fine — Google's 4xx/5xx are not always
+  // JSON. On a SUCCESS body it is not: treating it as an empty result would
+  // report zero events, and a day with no events renders as free. A captive
+  // portal answering 200 with an HTML login page is the realistic case.
+  return { ok: res.ok && parsed, status: res.status, json }
 }
 
 function buildCalendar() {
   const secrets = createSecretStore({
     readFile: () => (fs.existsSync(secretsPath()) ? fs.readFileSync(secretsPath()) : null),
     writeFile: (bytes) => fs.writeFileSync(secretsPath(), bytes, { mode: 0o600 }),
-    removeFile: () => { try { fs.unlinkSync(secretsPath()) } catch { /* already gone */ } },
+    removeFile: () => {
+      try {
+        fs.unlinkSync(secretsPath())
+      } catch (err) {
+        if (err?.code !== 'ENOENT') throw err
+      }
+    },
     encrypt: (plain) => safeStorage.encryptString(plain),
     decrypt: (bytes) => safeStorage.decryptString(bytes),
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
@@ -137,7 +154,14 @@ function createWindow() {
 app.whenReady().then(() => {
   // Before createWindow: a fast first paint must not reach a channel that
   // does not exist yet.
-  registerCalendarIpc(ipcMain, buildCalendar())
+  try {
+    registerCalendarIpc(ipcMain, buildCalendar())
+  } catch (err) {
+    // The planner must open even if the calendar wiring cannot. The renderer
+    // sees phaseCalendar reject, which the UI can show; a dead dock icon it
+    // cannot.
+    console.error('[phase-calendar] IPC registration failed', err)
+  }
   createWindow()
 
   // macOS: re-create a window when the dock icon is clicked and none are open.

@@ -35,8 +35,9 @@ needs. Phase never writes to Google Calendar.
 
 ### Set Publishing status to "In production"
 
-On the OAuth consent screen, set **Publishing status** to **In production**.
-The choice affects whether Google's refresh token persists:
+In the OAuth consent screen's **Audience** page, click **Publish app**, then
+set **Publishing status** to **In production**. The choice affects whether
+Google's refresh token persists:
 
 | Posture | Refresh token | Notes |
 |---|---|---|
@@ -54,6 +55,10 @@ consent; use **Advanced → Go to Phase** to continue.
 2. Click **Create credentials → OAuth client ID**.
 3. Choose **Desktop app** as the application type.
 4. Create the client and copy its client ID and client secret.
+
+Phase uses `http://127.0.0.1:<port>/callback` as its loopback redirect URI. A
+**Desktop app** OAuth client needs no redirect URI configuration; Google
+auto-allows loopback redirects.
 
 A desktop OAuth client's "secret" is not confidential. Desktop applications
 cannot keep a shipped secret, which is why Phase ships none. PKCE is what
