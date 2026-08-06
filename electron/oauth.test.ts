@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  authUrl, createOAuth, AUTH_ENDPOINT, TOKEN_ENDPOINT, SCOPES, CALLBACK_PATH, DEFAULT_TIMEOUT_MS,
+  authUrl, createOAuth, AUTH_ENDPOINT, TOKEN_ENDPOINT, REVOKE_ENDPOINT, SCOPES, CALLBACK_PATH, DEFAULT_TIMEOUT_MS,
+  NotConnectedError, ReauthRequiredError, REFRESH_SKEW_MS,
   type OAuthDeps,
 } from './oauth.cjs';
 
@@ -23,16 +24,19 @@ function deps(over: Partial<OAuthDeps> = {}): OAuthDeps & { _posts: Array<{ url:
   const posts: Array<{ url: string; body: URLSearchParams }> = [];
   const base: OAuthDeps = {
     secrets: fakeSecrets(),
-    httpPost: async (url: string, body: URLSearchParams) => {
-      posts.push({ url, body });
-      return { ok: true, status: 200, json: { refresh_token: 'REFRESH', access_token: 'ACCESS', expires_in: 3599 } };
-    },
+    httpPost: async () => ({ ok: true, status: 200, json: { refresh_token: 'REFRESH', access_token: 'ACCESS', expires_in: 3599 } }),
     createServer: () => { throw new Error('not used in this task'); },
     openExternal: async () => {},
+    createPkce: () => ({ verifier: 'V', challenge: 'CH', state: 'ST' }),
     now: () => 1_000_000,
     setTimer: () => { throw new Error('setTimer not stubbed'); },
   };
   const d: OAuthDeps = { ...base, ...over };
+  const configuredHttpPost = d.httpPost;
+  d.httpPost = async (url: string, body: URLSearchParams) => {
+    posts.push({ url, body });
+    return configuredHttpPost(url, body);
+  };
   return Object.assign(d, { _posts: posts });
 }
 
@@ -402,5 +406,157 @@ describe('listenForCode', () => {
     expect(server.closeCount).toBe(1);
     expect(server.responses.map((r) => r.status)).toEqual([200, 200]);
     expect(server.responses[1].body).toMatch(/Phase/i);
+  });
+});
+
+const TOKEN = { refreshToken: 'R', accessToken: 'A', expiresAt: 2_000_000 };
+
+describe('getAccessToken', () => {
+  it('reuses a token that is still comfortably valid', async () => {
+    const d = deps({ secrets: fakeSecrets({ client: CLIENT, token: TOKEN }), now: () => 1_000_000 });
+    expect(await createOAuth(d).getAccessToken()).toBe('A');
+    expect(d._posts).toHaveLength(0);
+  });
+
+  it('refreshes once the token has expired', async () => {
+    const d = deps({
+      secrets: fakeSecrets({ client: CLIENT, token: TOKEN }),
+      now: () => 3_000_000,
+      httpPost: async () => ({ ok: true, status: 200, json: { access_token: 'FRESH', expires_in: 3599 } }),
+    });
+    expect(await createOAuth(d).getAccessToken()).toBe('FRESH');
+    expect(d._posts[0].body.get('grant_type')).toBe('refresh_token');
+    expect(d._posts[0].body.get('refresh_token')).toBe('R');
+  });
+
+  // Without the skew, a token that expires mid-flight produces a 401 on a
+  // request that had a valid token when it was chosen.
+  it('refreshes early, inside the skew window', async () => {
+    const d = deps({
+      secrets: fakeSecrets({ client: CLIENT, token: TOKEN }),
+      now: () => TOKEN.expiresAt - REFRESH_SKEW_MS + 1,
+      httpPost: async () => ({ ok: true, status: 200, json: { access_token: 'FRESH', expires_in: 3599 } }),
+    });
+    expect(await createOAuth(d).getAccessToken()).toBe('FRESH');
+  });
+
+  // Google does not return the refresh token again on a refresh. Overwriting
+  // the stored record wholesale would drop it and silently disconnect.
+  it('keeps the refresh token across a refresh', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: TOKEN });
+    const d = deps({
+      secrets, now: () => 3_000_000,
+      httpPost: async () => ({ ok: true, status: 200, json: { access_token: 'FRESH', expires_in: 3599 } }),
+    });
+    await createOAuth(d).getAccessToken();
+    expect((secrets._bag.token as typeof TOKEN).refreshToken).toBe('R');
+    expect((secrets._bag.token as typeof TOKEN).accessToken).toBe('FRESH');
+    expect((secrets._bag.token as typeof TOKEN).expiresAt).toBe(3_000_000 + 3599 * 1000);
+  });
+
+  it('throws NotConnectedError when there is no stored token', async () => {
+    const d = deps({ secrets: fakeSecrets({ client: CLIENT }) });
+    await expect(createOAuth(d).getAccessToken()).rejects.toThrow(NotConnectedError);
+  });
+
+  // Distinct from NotConnectedError because spec §10 renders them
+  // differently: one offers "Connect", the other keeps the cached blocks and
+  // prompts to re-connect.
+  it('throws ReauthRequiredError when the refresh token has been revoked', async () => {
+    const d = deps({
+      secrets: fakeSecrets({ client: CLIENT, token: TOKEN }), now: () => 3_000_000,
+      httpPost: async () => ({ ok: false, status: 400, json: { error: 'invalid_grant' } }),
+    });
+    await expect(createOAuth(d).getAccessToken()).rejects.toThrow(ReauthRequiredError);
+  });
+
+  it('does not turn an ordinary network failure into a reauth prompt', async () => {
+    const d = deps({
+      secrets: fakeSecrets({ client: CLIENT, token: TOKEN }), now: () => 3_000_000,
+      httpPost: async () => ({ ok: false, status: 503, json: { error: 'backendError' } }),
+    });
+    const err = await createOAuth(d).getAccessToken().catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ReauthRequiredError);
+  });
+});
+
+describe('isConnected', () => {
+  it('is false with no token and true with one', () => {
+    expect(createOAuth(deps({ secrets: fakeSecrets({ client: CLIENT }) })).isConnected()).toBe(false);
+    expect(createOAuth(deps({ secrets: fakeSecrets({ client: CLIENT, token: TOKEN }) })).isConnected()).toBe(true);
+  });
+});
+
+describe('disconnect', () => {
+  it('revokes the refresh token with Google and forgets it', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: TOKEN });
+    const d = deps({ secrets });
+    await createOAuth(d).disconnect();
+    expect(d._posts[0].url).toBe(REVOKE_ENDPOINT);
+    expect(d._posts[0].body.get('token')).toBe('R');
+    expect(secrets._bag.token).toBeUndefined();
+  });
+
+  // Otherwise you can never disconnect while offline, and the credential
+  // stays on disk exactly when the user is trying to remove it.
+  it('forgets the token even when the revoke call fails', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: TOKEN });
+    const d = deps({ secrets, httpPost: async () => { throw new Error('offline'); } });
+    await expect(createOAuth(d).disconnect()).resolves.toBeUndefined();
+    expect(secrets._bag.token).toBeUndefined();
+  });
+
+  it('is harmless when nothing is connected', async () => {
+    const d = deps({ secrets: fakeSecrets({ client: CLIENT }) });
+    await expect(createOAuth(d).disconnect()).resolves.toBeUndefined();
+    expect(d._posts).toHaveLength(0);
+  });
+});
+
+describe('connect', () => {
+  function connectDeps() {
+    const server = fakeServer(51500);
+    const secrets = fakeSecrets({ client: CLIENT });
+    const opened: string[] = [];
+    const d = loopbackDeps(server, {
+      secrets,
+      createPkce: () => ({ verifier: 'V', challenge: 'CH', state: 'ST' }),
+      openExternal: async (url: string) => {
+        opened.push(url);
+        server.hit(`${CALLBACK_PATH}?code=CODE&state=ST`);
+      },
+    });
+    return { d, server, secrets, opened };
+  }
+
+  it('opens the consent URL built from the PKCE challenge and the bound port', async () => {
+    const { d, opened } = connectDeps();
+    await createOAuth(d).connect();
+    const url = new URL(opened[0]);
+    expect(url.searchParams.get('code_challenge')).toBe('CH');
+    expect(url.searchParams.get('state')).toBe('ST');
+    expect(url.searchParams.get('redirect_uri')).toBe(`http://127.0.0.1:51500${CALLBACK_PATH}`);
+  });
+
+  it('exchanges the code with the verifier and stores the token', async () => {
+    const { d, secrets } = connectDeps();
+    await createOAuth(d).connect();
+    const exchange = d._posts.find((p) => p.body.get('grant_type') === 'authorization_code')!;
+    expect(exchange.body.get('code_verifier')).toBe('V');
+    expect((secrets._bag.token as typeof TOKEN).refreshToken).toBe('REFRESH');
+  });
+
+  it('stores nothing when the exchange fails', async () => {
+    const { d, secrets } = connectDeps();
+    d.httpPost = async () => ({ ok: false, status: 400, json: { error: 'invalid_grant' } });
+    await expect(createOAuth(d).connect()).rejects.toThrow(/invalid_grant/);
+    expect(secrets._bag.token).toBeUndefined();
+  });
+
+  it('refuses before the client credentials are configured', async () => {
+    const { d } = connectDeps();
+    d.secrets = fakeSecrets({});
+    await expect(createOAuth(d).connect()).rejects.toThrow(/not configured/i);
   });
 });

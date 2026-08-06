@@ -10,6 +10,15 @@ const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
 const CALLBACK_PATH = '/callback';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+class NotConnectedError extends Error {
+  constructor() { super('Google Calendar is not connected'); this.name = 'NotConnectedError'; }
+}
+class ReauthRequiredError extends Error {
+  constructor() { super('Google rejected the stored credential; reconnect required'); this.name = 'ReauthRequiredError'; }
+}
+
+const REFRESH_SKEW_MS = 60_000;
+
 const SUCCESS_PAGE = '<!doctype html><meta charset="utf-8"><title>Phase</title>'
   + '<body style="font:16px system-ui;padding:3rem"><p>Phase is connected. You can close this tab.</p>';
 
@@ -46,7 +55,7 @@ function tokenErrorDetail(res) {
 }
 
 function createOAuth(deps) {
-  const { secrets, httpPost, now, createServer, setTimer } = deps;
+  const { secrets, httpPost, now, createServer, setTimer, openExternal, createPkce } = deps;
 
   function client() {
     const stored = secrets.get('client');
@@ -92,6 +101,79 @@ function createOAuth(deps) {
       expiresAt: now() + Number(json.expires_in) * 1000,
     };
   }
+
+  function storedToken() {
+    const token = secrets.get('token');
+    return token && token.refreshToken ? token : null;
+  }
+
+  async function getAccessToken() {
+    const token = storedToken();
+    if (!token) throw new NotConnectedError();
+    // Refresh a minute early: a token that expires mid-flight produces a 401
+    // on a request that held a valid token when it was chosen.
+    if (token.accessToken && now() < token.expiresAt - REFRESH_SKEW_MS) return token.accessToken;
+
+    const { clientId, clientSecret } = client();
+    const res = await httpPost(TOKEN_ENDPOINT, new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: token.refreshToken,
+      grant_type: 'refresh_token',
+    }));
+    if (!res.ok) {
+      // invalid_grant means revoked or expired — a DIFFERENT user-facing
+      // state from "never connected", per spec §10. Anything else (503,
+      // offline) is transient and must not prompt for reauth.
+      if (res.json?.error === 'invalid_grant') throw new ReauthRequiredError();
+      throw new Error(`Google token refresh failed: ${tokenErrorDetail(res)}`);
+    }
+    // Google does not return the refresh token again. Spreading the previous
+    // record forward is what stops a refresh from silently disconnecting.
+    const next = {
+      refreshToken: token.refreshToken,
+      accessToken: res.json.access_token,
+      expiresAt: now() + Number(res.json.expires_in) * 1000,
+    };
+    secrets.set('token', next);
+    return next.accessToken;
+  }
+
+  async function connect() {
+    client(); // fail before opening a browser if unconfigured
+    const pkce = createPkce();
+    let redirectUri;
+    const code = await listenForCode({
+      state: pkce.state,
+      onReady: (boundRedirectUri) => {
+        redirectUri = boundRedirectUri;
+        return openExternal(authUrl({
+          clientId: client().clientId,
+          redirectUri: boundRedirectUri,
+          challenge: pkce.challenge,
+          state: pkce.state,
+        }));
+      },
+    });
+    // The redirect URI must match the one the code was issued against.
+    const tokens = await exchangeCode({ code, verifier: pkce.verifier, redirectUri });
+    secrets.set('token', tokens);
+  }
+
+  async function disconnect() {
+    const token = storedToken();
+    if (!token) return;
+    try {
+      await httpPost(REVOKE_ENDPOINT, new URLSearchParams({ token: token.refreshToken }));
+    } catch {
+      // Deliberately swallowed: otherwise you could never disconnect while
+      // offline, and the credential would stay on disk at exactly the moment
+      // the user is asking to remove it. Local removal is what matters.
+    }
+    secrets.remove('token');
+  }
+
+  function isConnected() { return storedToken() !== null; }
 
   function listenForCode({ state, timeoutMs = DEFAULT_TIMEOUT_MS, onReady }) {
     return new Promise((resolve, reject) => {
@@ -165,7 +247,7 @@ function createOAuth(deps) {
     });
   }
 
-  return { exchangeCode, listenForCode };
+  return { exchangeCode, listenForCode, connect, disconnect, getAccessToken, isConnected };
 }
 
 module.exports = {
@@ -177,4 +259,7 @@ module.exports = {
   DEFAULT_TIMEOUT_MS,
   authUrl,
   createOAuth,
+  NotConnectedError,
+  ReauthRequiredError,
+  REFRESH_SKEW_MS,
 };

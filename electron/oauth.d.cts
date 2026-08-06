@@ -21,6 +21,8 @@ export interface OAuthDeps {
   httpPost(url: string, body: URLSearchParams): Promise<HttpResponse>;
   createServer(): LoopbackServer;
   openExternal(url: string): Promise<void>;
+  /** Injected so `connect` is deterministic under test. */
+  createPkce(): { verifier: string; challenge: string; state: string };
   /** Injected clock — the module never reads the real one. */
   now(): number;
   /**
@@ -39,6 +41,13 @@ export interface Tokens {
 
 export interface OAuth {
   exchangeCode(input: { code: string; verifier: string; redirectUri: string }): Promise<Tokens>;
+  /** Full flow: PKCE, loopback, consent, exchange, store. */
+  connect(): Promise<void>;
+  /** Revoke with Google, then forget the token locally. */
+  disconnect(): Promise<void>;
+  /** A valid access token, refreshing when stale. */
+  getAccessToken(): Promise<string>;
+  isConnected(): boolean;
   /**
    * Start the one-shot loopback listener and resolve with the authorization
    * code.
@@ -64,6 +73,12 @@ export declare const REVOKE_ENDPOINT: string;
 /** The only path the listener accepts. Everything else 404s. */
 export declare const CALLBACK_PATH: string;
 export declare const DEFAULT_TIMEOUT_MS: number;
+/** No token stored at all — offer "Connect". */
+export declare class NotConnectedError extends Error {}
+/** The refresh token was rejected — keep cached blocks, prompt to re-connect. */
+export declare class ReauthRequiredError extends Error {}
+/** Refresh this far before nominal expiry, so a request cannot expire mid-flight. */
+export declare const REFRESH_SKEW_MS: number;
 /**
  * Exactly two read-only scopes. `events.readonly` alone does NOT authorize
  * `calendarList.list`, and the broader `calendar.readonly` grants more than
