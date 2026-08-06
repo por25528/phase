@@ -1,0 +1,21 @@
+// The renderer's only door to the calendar producer.
+//
+// Preload scripts are sandboxed (Electron 20+), so this file cannot require
+// calendarIpc.cjs for CHANNEL_PREFIX — only `electron` is available here. The
+// channel names are therefore written out by hand, and a test in
+// calendarIpc.test.ts reads this file to stop the two lists drifting.
+//
+// Nothing but these seven invocations is exposed. No token, no client secret,
+// and no ability to name a URL ever crosses.
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('phaseCalendar', {
+  status: () => ipcRenderer.invoke('phase-calendar:status'),
+  configure: (input) => ipcRenderer.invoke('phase-calendar:configure', input),
+  connect: () => ipcRenderer.invoke('phase-calendar:connect'),
+  disconnect: () => ipcRenderer.invoke('phase-calendar:disconnect'),
+  listCalendars: () => ipcRenderer.invoke('phase-calendar:listCalendars'),
+  reset: () => ipcRenderer.invoke('phase-calendar:reset'),
+  fetch: (input) => ipcRenderer.invoke('phase-calendar:fetch', input),
+});

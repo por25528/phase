@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it, expect, vi } from 'vitest';
 import type { HandlerDeps } from './calendarIpc.cjs';
@@ -471,5 +472,34 @@ describe('registerCalendarIpc', () => {
     // A handler that forwarded the event object would treat it as the input.
     const out = await impls[`${CHANNEL_PREFIX}:fetch`]({ sender: 'ipc-event' }, RANGE);
     expect(out).toMatchObject({ ok: true });
+  });
+});
+
+/**
+ * A sandboxed preload cannot `require` a local module, so preload.cjs writes
+ * the channel names out by hand. This is the only thing stopping the two
+ * lists drifting apart — and drift would be a silent "function is not a
+ * function" in the renderer, not a build error.
+ */
+describe('preload channel names', () => {
+  const preload = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
+
+  it('uses the same prefix the handlers register under', () => {
+    expect(preload).toContain(CHANNEL_PREFIX);
+  });
+
+  it('exposes every registered channel and no others', () => {
+    const registered: string[] = [];
+    registerCalendarIpc({ handle: (channel: string) => registered.push(channel) }, handlers());
+    const method = (channel: string) => channel.slice(CHANNEL_PREFIX.length + 1);
+    for (const channel of registered) {
+      expect(preload, channel).toContain(`${CHANNEL_PREFIX}:${method(channel)}`);
+    }
+    const invoked = [...preload.matchAll(new RegExp(`${CHANNEL_PREFIX}:(\\w+)`, 'g'))].map((m) => m[1]);
+    expect([...new Set(invoked)].sort()).toEqual(registered.map(method).sort());
+  });
+
+  it('exposes the bridge under the name the renderer looks for', () => {
+    expect(preload).toContain('phaseCalendar');
   });
 });

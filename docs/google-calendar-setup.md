@@ -1,0 +1,68 @@
+# Google Calendar setup
+
+Phase reads Google Calendar busy time locally so it can protect the time you
+have already committed. Follow these steps once to create an OAuth client for
+your own Phase installation.
+
+## Create a Google Cloud project
+
+1. Open the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create a new project, or select an existing project dedicated to your Phase
+   installation.
+
+## Enable the Google Calendar API
+
+1. In the selected project, open **APIs & Services → Library**.
+2. Search for **Google Calendar API**.
+3. Open it and click **Enable**.
+
+The API is free for this use and does not require a billing account.
+
+## Configure the OAuth consent screen as External
+
+1. Open **APIs & Services → OAuth consent screen**.
+2. Choose **External** as the user type and create the app configuration.
+3. Enter an app name and your support and developer contact details.
+4. Add the two scopes Phase requests:
+   - `https://www.googleapis.com/auth/calendar.events.readonly` for the busy
+     event data.
+   - `https://www.googleapis.com/auth/calendar.calendarlist.readonly` for the
+     calendar picker.
+
+`calendar.events.readonly` by itself does not authorize the calendar picker,
+and the broader `calendar.readonly` scope would grant more access than Phase
+needs. Phase never writes to Google Calendar.
+
+### Set Publishing status to "In production"
+
+On the OAuth consent screen, set **Publishing status** to **In production**.
+The choice affects whether Google's refresh token persists:
+
+| Posture | Refresh token | Notes |
+|---|---|---|
+| Own client, **In production**, unverified | Persists | **Recommended.** One-time "Google hasn't verified this app" screen — click *Advanced → Go to Phase*. |
+| Own client, **Testing** | **Expires in 7 days** | Development only. You will be forced to re-consent every week. |
+| Verified production app | Persists | Requires Google review; out of scope. |
+
+For a private client used only by you, an unverified app in production is the
+recommended posture. Google may show the one-time unverified-app warning during
+consent; use **Advanced → Go to Phase** to continue.
+
+## Create an OAuth client
+
+1. Open **APIs & Services → Credentials**.
+2. Click **Create credentials → OAuth client ID**.
+3. Choose **Desktop app** as the application type.
+4. Create the client and copy its client ID and client secret.
+
+A desktop OAuth client's "secret" is not confidential. Desktop applications
+cannot keep a shipped secret, which is why Phase ships none. PKCE is what
+actually protects the authorization-code flow.
+
+## Paste the credentials into Phase
+
+Open Phase's Google Calendar settings and paste the OAuth client's **client
+ID** and **client secret** into the configuration fields. Save the configuration,
+then choose **Connect** and complete Google's consent flow. Phase stores the
+credentials and tokens in the operating system's encrypted user-data store;
+they do not cross the renderer bridge.
