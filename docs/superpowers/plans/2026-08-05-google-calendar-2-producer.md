@@ -771,6 +771,14 @@ describe('exchangeCode', () => {
     });
     await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
       .rejects.toThrow(/invalid_grant/);
+    await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
+      .rejects.toThrow(/Bad code/);
+  });
+
+  it('falls back to the status code when Google explains nothing', async () => {
+    const d = deps({ httpPost: async () => ({ ok: false, status: 503, json: {} }) });
+    await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
+      .rejects.toThrow(/HTTP 503/);
   });
 });
 ```
@@ -900,7 +908,10 @@ function createOAuth(deps) {
   async function postForTokens(body) {
     const res = await httpPost(TOKEN_ENDPOINT, body);
     if (!res.ok) {
-      const detail = res.json?.error_description || res.json?.error || `HTTP ${res.status}`;
+      // Keep Google's machine-readable code and human-readable description for triage.
+      const code = res.json?.error;
+      const description = res.json?.error_description;
+      const detail = [code, description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
       throw new Error(`Google token request failed: ${detail}`);
     }
     return res.json;
@@ -941,7 +952,7 @@ module.exports = { AUTH_ENDPOINT, TOKEN_ENDPOINT, REVOKE_ENDPOINT, SCOPES, authU
 npx vitest run --config vitest.config.ts electron/oauth.test.ts
 ```
 
-Expected: PASS, 15 tests.
+Expected: PASS, 16 tests.
 
 - [ ] **Step 6: Prove the scope and refresh-token tests discriminate**
 
@@ -958,7 +969,7 @@ Report both observed failures.
 npm test && npx tsc -b
 ```
 
-Expected: 1545 tests / 80 files (1530 + 15). Report the actual numbers.
+Expected: 1546 tests / 80 files (1530 + 16). Report the actual numbers.
 
 ```bash
 git add electron/oauth.cjs electron/oauth.d.cts electron/oauth.test.ts
@@ -1602,7 +1613,10 @@ Add `openExternal` and `createPkce` to the destructured deps, and these methods 
       // state from "never connected", per spec §10. Anything else (503,
       // offline) is transient and must not prompt for reauth.
       if (res.json?.error === 'invalid_grant') throw new ReauthRequiredError();
-      const detail = res.json?.error_description || res.json?.error || `HTTP ${res.status}`;
+      // Keep Google's machine-readable code and human-readable description for triage.
+      const code = res.json?.error;
+      const description = res.json?.error_description;
+      const detail = [code, description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
       throw new Error(`Google token refresh failed: ${detail}`);
     }
     // Google does not return the refresh token again. Spreading the previous
