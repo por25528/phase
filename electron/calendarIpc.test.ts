@@ -1,10 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { createCalendarHandlers, registerCalendarIpc, CHANNEL_PREFIX, type HandlerDeps } from './calendarIpc.cjs';
-import { CorruptSecretStoreError } from './secrets.cjs';
-import { NotConnectedError, ReauthRequiredError } from './oauth.cjs';
+import { createRequire } from 'node:module';
+import { describe, it, expect, vi } from 'vitest';
+import type { HandlerDeps } from './calendarIpc.cjs';
+
+// calendarIpc.cjs loads its error classes with native require; use the same
+// loader so Vitest exercises instanceof rather than a duplicate CJS identity.
+const nativeRequire = createRequire(import.meta.url);
+const { createCalendarHandlers, registerCalendarIpc, CHANNEL_PREFIX } =
+  nativeRequire('./calendarIpc.cjs') as typeof import('./calendarIpc.cjs');
+const { CorruptSecretStoreError } = nativeRequire('./secrets.cjs') as typeof import('./secrets.cjs');
+const { NotConnectedError, ReauthRequiredError } = nativeRequire('./oauth.cjs') as typeof import('./oauth.cjs');
 
 const CLIENT = { clientId: 'cid', clientSecret: 'sec' };
 const RANGE = { rangeStart: '2026-08-03', rangeEnd: '2026-08-10', calendarIds: ['primary'] };
+const GOOGLE_ERROR = 'Google Calendar request failed: Bearer ya29.SECRET rejected';
 const EVENT = {
   status: 'confirmed', summary: 'standup',
   start: { dateTime: '2026-08-04T09:00:00-04:00' },
@@ -45,6 +53,21 @@ function handlers(over: Partial<HandlerDeps> = {}) {
     ...over,
   } as HandlerDeps;
   return Object.assign(createCalendarHandlers(deps), { _calls: calls, _secrets: secrets, _deps: deps });
+}
+
+async function rejection(promise: Promise<unknown>) {
+  const settled = await Promise.allSettled([promise]);
+  if (settled[0].status !== 'rejected') throw new Error('Expected the promise to reject');
+  return settled[0].reason as Error;
+}
+
+function serializedError(err: unknown) {
+  if (!(err instanceof Error)) return JSON.stringify(err);
+  return JSON.stringify({ name: err.name, message: err.message, stack: err.stack, cause: err.cause });
+}
+
+function silenceErrors() {
+  return vi.spyOn(console, 'error').mockImplementation(() => {});
 }
 
 describe('status', () => {
@@ -91,6 +114,31 @@ describe('configure', () => {
     expect(h._secrets._bag.client).toBeUndefined();
   });
 
+  it('rejects a missing input object at the boundary', async () => {
+    const h = handlers({ secrets: fakeSecrets({}) });
+    await expect(h.configure(null as never)).rejects.toThrow(/credentials/i);
+    await expect(h.configure(undefined as never)).rejects.toThrow(/credentials/i);
+  });
+
+  it('rejects overlong credentials', async () => {
+    const h = handlers({ secrets: fakeSecrets({}) });
+    const tooLong = 'x'.repeat(1025);
+    await expect(h.configure({ clientId: tooLong, clientSecret: 'sec' })).rejects.toThrow(/too long/i);
+    await expect(h.configure({ clientId: 'cid', clientSecret: tooLong })).rejects.toThrow(/too long/i);
+  });
+
+  it('sanitizes a Google error from the secret store and preserves it in the main-process log', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const secrets = fakeSecrets({});
+    secrets.remove = () => { throw new Error(GOOGLE_ERROR); };
+    const h = handlers({ secrets });
+    const err = await rejection(h.configure({ clientId: 'cid', clientSecret: 'sec' }));
+    expect(err.message).toBe('Unable to save Google Calendar configuration');
+    expect(serializedError(err)).not.toContain('ya29.SECRET');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('configure failed'), expect.any(Error));
+    log.mockRestore();
+  });
+
   // Reconfiguring means a different Cloud project, so the old token is
   // meaningless — and leaving it would make status() claim a connection the
   // new credentials cannot use.
@@ -105,7 +153,7 @@ describe('configure', () => {
 describe('connect', () => {
   it('runs the flow then records the primary calendar as the account', async () => {
     const h = handlers({ secrets: fakeSecrets({ client: CLIENT }) });
-    await h.connect();
+    expect(await h.connect()).toEqual({ ok: true });
     expect(h._calls).toContain('connect');
     expect(h._secrets._bag.account).toEqual({ accountId: 'me@example.com' });
   });
@@ -115,8 +163,66 @@ describe('connect', () => {
       secrets: fakeSecrets({ client: CLIENT }),
       googleClient: { listCalendars: async () => [{ id: 'x', summary: 'X', primary: false }], fetchEvents: async () => [] },
     });
-    await h.connect();
+    expect(await h.connect()).toEqual({ ok: true });
     expect(h._secrets._bag.account).toBeUndefined();
+  });
+
+  it('returns not-configured without opening consent when credentials are incomplete', async () => {
+    const h = handlers({ secrets: fakeSecrets({ client: { clientId: 'cid' } }) });
+    expect(await h.connect()).toEqual({ ok: false, reason: 'not-configured' });
+    expect(h._calls).not.toContain('connect');
+  });
+
+  it('maps a reauthentication failure to a typed result', async () => {
+    const log = silenceErrors();
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      oauth: {
+        isConnected: () => false,
+        connect: async () => { throw new ReauthRequiredError(); },
+        disconnect: async () => {},
+        getAccessToken: async () => 'A',
+      },
+    });
+    expect(await h.connect()).toEqual({ ok: false, reason: 'reauth-required' });
+    log.mockRestore();
+  });
+
+  it.each([
+    ['consent denial', 'Google authorization failed: access_denied'],
+    ['state mismatch', 'Authorization state did not match; aborting'],
+    ['timeout', 'Authorization timed out; no response from the browser'],
+  ])('maps %s to cancelled without leaking the message', async (_label, message) => {
+    const log = silenceErrors();
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      oauth: {
+        isConnected: () => false,
+        connect: async () => { throw new Error(message); },
+        disconnect: async () => {},
+        getAccessToken: async () => 'A',
+      },
+    });
+    expect(await h.connect()).toEqual({ ok: false, reason: 'cancelled' });
+    log.mockRestore();
+  });
+
+  it('returns request-failed and logs a Google error without exposing it', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      oauth: {
+        isConnected: () => false,
+        connect: async () => { throw new Error(GOOGLE_ERROR); },
+        disconnect: async () => {},
+        getAccessToken: async () => 'A',
+      },
+    });
+    const result = await h.connect();
+    expect(result).toEqual({ ok: false, reason: 'request-failed' });
+    expect(JSON.stringify(result)).not.toContain('ya29.SECRET');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('connect failed'), expect.any(Error));
+    log.mockRestore();
   });
 });
 
@@ -126,6 +232,65 @@ describe('disconnect', () => {
     await h.disconnect();
     expect(h._calls).toContain('disconnect');
     expect(h._secrets._bag.account).toBeUndefined();
+  });
+
+  it('sanitizes an underlying Google error while keeping the rejection contract', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      oauth: {
+        isConnected: () => true,
+        connect: async () => {},
+        disconnect: async () => { throw new Error(GOOGLE_ERROR); },
+        getAccessToken: async () => 'A',
+      },
+    });
+    const err = await rejection(h.disconnect());
+    expect(err.message).toBe('Unable to disconnect Google Calendar');
+    expect(serializedError(err)).not.toContain('ya29.SECRET');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('disconnect failed'), expect.any(Error));
+    log.mockRestore();
+  });
+});
+
+describe('listCalendars', () => {
+  it('returns the picker summaries from Google', async () => {
+    const calendars = [
+      { id: 'primary', summary: 'Me', primary: true },
+      { id: 'team', summary: 'Team', primary: false },
+    ];
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      googleClient: { listCalendars: async () => calendars, fetchEvents: async () => [] },
+    });
+    expect(await h.listCalendars()).toEqual(calendars);
+  });
+
+  it('sanitizes a Google error while logging the main-process detail', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      googleClient: { listCalendars: async () => { throw new Error(GOOGLE_ERROR); }, fetchEvents: async () => [] },
+    });
+    const err = await rejection(h.listCalendars());
+    expect(err.message).toBe('Unable to load Google calendars');
+    expect(serializedError(err)).not.toContain('ya29.SECRET');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('listCalendars failed'), expect.any(Error));
+    log.mockRestore();
+  });
+});
+
+describe('reset', () => {
+  it('resets the secret store without invoking another dependency', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: { refreshToken: 'R' } });
+    let resets = 0;
+    const originalReset = secrets.reset;
+    secrets.reset = () => { resets += 1; originalReset(); };
+    const h = handlers({ secrets });
+    await h.reset();
+    expect(resets).toBe(1);
+    expect(h._calls).toEqual([]);
+    expect(h._secrets._bag).toEqual({});
   });
 });
 
@@ -154,6 +319,8 @@ describe('fetch', () => {
   it.each([
     ['a non-date start', { ...RANGE, rangeStart: '2026-8-3' }],
     ['a non-date end', { ...RANGE, rangeEnd: 'tomorrow' }],
+    ['an impossible February date', { ...RANGE, rangeStart: '2026-02-31' }],
+    ['an impossible month and day', { ...RANGE, rangeStart: '2026-13-45' }],
     ['a reversed range', { ...RANGE, rangeStart: '2026-08-10', rangeEnd: '2026-08-03' }],
     ['an empty range', { ...RANGE, rangeStart: '2026-08-03', rangeEnd: '2026-08-03' }],
     ['calendarIds that is not an array', { ...RANGE, calendarIds: 'primary' as unknown as string[] }],
@@ -163,9 +330,70 @@ describe('fetch', () => {
     expect(await h.fetch(input)).toEqual({ ok: false, reason: 'invalid-range' });
   });
 
+  it('reports an empty selection as no-calendars without contacting Google', async () => {
+    let fetches = 0;
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      googleClient: {
+        listCalendars: async () => [],
+        fetchEvents: async () => { fetches += 1; return []; },
+      },
+    });
+    expect(await h.fetch({ ...RANGE, calendarIds: [] })).toEqual({ ok: false, reason: 'no-calendars' });
+    expect(fetches).toBe(0);
+  });
+
+  it('rejects an overlong calendar id before building a Google request', async () => {
+    const h = handlers({ secrets: fakeSecrets({ client: CLIENT }) });
+    expect(await h.fetch({ ...RANGE, calendarIds: ['x'.repeat(1025)] }))
+      .toEqual({ ok: false, reason: 'invalid-range' });
+  });
+
   it('reports not-configured before credentials exist', async () => {
     const h = handlers({ secrets: fakeSecrets({}) });
     expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'not-configured' });
+  });
+
+  it('uses the complete credential predicate shared with status', async () => {
+    const h = handlers({ secrets: fakeSecrets({ client: { clientId: 'cid' } }) });
+    expect((await h.status()).configured).toBe(false);
+    expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'not-configured' });
+  });
+
+  it('reports a corrupt secret store as corrupt', async () => {
+    const log = silenceErrors();
+    const secrets = fakeSecrets({});
+    secrets.get = () => { throw new CorruptSecretStoreError(new Error('decrypt failed')); };
+    const h = handlers({ secrets });
+    expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'corrupt' });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('fetch failed'), expect.any(Error));
+    log.mockRestore();
+  });
+
+  it('reports an invalid machine time zone separately from malformed calendar data', async () => {
+    const log = silenceErrors();
+    let fetches = 0;
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      timeZone: () => 'Not/AZone',
+      googleClient: {
+        listCalendars: async () => [],
+        fetchEvents: async () => { fetches += 1; return []; },
+      },
+    });
+    expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'invalid-time-zone' });
+    expect(fetches).toBe(0);
+    log.mockRestore();
+  });
+
+  it('does not let a timeZone failure escape the FetchResult boundary', async () => {
+    const log = silenceErrors();
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      timeZone: () => { throw new Error('machine zone unavailable'); },
+    });
+    expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'request-failed' });
+    log.mockRestore();
   });
 
   it('maps NotConnectedError to not-connected', async () => {
@@ -189,32 +417,39 @@ describe('fetch', () => {
   // normalizeEvents throws RangeError on unparseable calendar data, and that
   // must surface as a failure rather than an empty — i.e. free — day.
   it('maps a RangeError from the normalizer to malformed-data', async () => {
+    const log = silenceErrors();
     const h = handlers({
       secrets: fakeSecrets({ client: CLIENT }),
       normalizeEvents: () => { throw new RangeError('Invalid all-day end.date: 2026-8-6'); },
     });
     expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'malformed-data' });
+    log.mockRestore();
   });
 
   it('maps anything else to request-failed', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const h = handlers({
       secrets: fakeSecrets({ client: CLIENT }),
       googleClient: { listCalendars: async () => [], fetchEvents: async () => { throw new Error('socket hang up'); } },
     });
     expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'request-failed' });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('fetch failed'), expect.any(Error));
+    log.mockRestore();
   });
 
   it('never leaks a Google message or a stack to the renderer', async () => {
+    const log = silenceErrors();
     const h = handlers({
       secrets: fakeSecrets({ client: CLIENT }),
       googleClient: { listCalendars: async () => [], fetchEvents: async () => { throw new Error('Bearer ya29.SECRET rejected'); } },
     });
     expect(JSON.stringify(await h.fetch(RANGE))).not.toContain('ya29');
+    log.mockRestore();
   });
 });
 
 describe('registerCalendarIpc', () => {
-  it('registers exactly the six channels under one prefix', () => {
+  it('registers exactly the seven channels under one prefix', () => {
     const registered: string[] = [];
     registerCalendarIpc({ handle: (channel: string) => registered.push(channel) }, handlers());
     expect(registered.sort()).toEqual([
@@ -223,6 +458,7 @@ describe('registerCalendarIpc', () => {
       `${CHANNEL_PREFIX}:disconnect`,
       `${CHANNEL_PREFIX}:fetch`,
       `${CHANNEL_PREFIX}:listCalendars`,
+      `${CHANNEL_PREFIX}:reset`,
       `${CHANNEL_PREFIX}:status`,
     ].sort());
   });

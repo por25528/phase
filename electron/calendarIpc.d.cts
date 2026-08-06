@@ -12,11 +12,24 @@ export interface StatusResult {
   timeZone: string;
 }
 
+export type ConnectFailure =
+  | 'not-configured'
+  | 'reauth-required'
+  | 'request-failed'
+  | 'cancelled';
+
+export type ConnectResult =
+  | { ok: true }
+  | { ok: false; reason: ConnectFailure };
+
 export type FetchFailure =
   | 'not-configured'
   | 'not-connected'
   | 'reauth-required'
   | 'invalid-range'
+  | 'no-calendars'
+  | 'corrupt'
+  | 'invalid-time-zone'
   | 'malformed-data'
   | 'request-failed';
 
@@ -48,9 +61,10 @@ export interface HandlerDeps {
 export interface CalendarHandlers {
   status(): Promise<StatusResult>;
   configure(input: { clientId: string; clientSecret: string }): Promise<void>;
-  connect(): Promise<void>;
+  connect(): Promise<ConnectResult>;
   disconnect(): Promise<void>;
   listCalendars(): Promise<CalendarSummary[]>;
+  reset(): Promise<void>;
   fetch(input: FetchInput): Promise<FetchResult>;
 }
 

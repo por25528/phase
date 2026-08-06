@@ -62,7 +62,7 @@ The largest real UTC offset is ±14h < 24h, so UTC midnight of `rangeStart − 1
 | `electron/pkce.cjs` + `.d.cts` + `.test.ts` | PKCE verifier/challenge/state | 2 |
 | `electron/oauth.cjs` + `.d.cts` + `.test.ts` | consent URL, code exchange, loopback listener, refresh, revoke | 3–5 |
 | `electron/googleClient.cjs` + `.d.cts` + `.test.ts` | `calendarList.list`, `events.list` fan-out + pagination | 6 |
-| `electron/calendarIpc.cjs` + `.d.cts` + `.test.ts` | the five handlers; wires everything | 7 |
+| `electron/calendarIpc.cjs` + `.d.cts` + `.test.ts` | the seven handlers; wires everything | 7 |
 | `electron/preload.cjs` | `contextBridge` → `window.phaseCalendar` | 8 |
 | `electron/main.cjs` | supply real adapters; register handlers before load | 8 |
 | `docs/google-calendar-setup.md` | the Cloud console walkthrough | 8 |
@@ -2222,7 +2222,7 @@ EOF
 
 Where the pieces meet. Every renderer-supplied argument is validated here, every failure becomes a typed reason rather than a thrown stack, and nothing sensitive crosses.
 
-**A spec correction this task makes.** Spec §8 lists five channels, but §6.2 says the user pastes their OAuth client id and secret into a field in Phase — with no channel to save them through. This task adds a sixth, `configure`, and amends §8 to match. Do not skip the spec edit; §8 is the contract plan 3 builds its settings UI against.
+**A spec correction this task makes.** Spec §8 lists five channels, but §6.2 says the user pastes their OAuth client id and secret into a field in Phase — with no channel to save them through. This task adds a sixth, `configure`, and amends §8 to match. During review, a seventh `reset` channel was added so a secret store encrypted against a keychain that has since changed has an in-app recovery path. Do not skip the spec edit; §8 is the contract plan 3 builds its settings UI against.
 
 **Files:**
 - Create: `electron/calendarIpc.cjs`, `electron/calendarIpc.d.cts`
@@ -2237,17 +2237,22 @@ Where the pieces meet. Every renderer-supplied argument is validated here, every
   interface CalendarHandlers {
     status(): Promise<StatusResult>;
     configure(input: { clientId: string; clientSecret: string }): Promise<void>;
-    connect(): Promise<void>;
+    connect(): Promise<ConnectResult>;
     disconnect(): Promise<void>;
     listCalendars(): Promise<CalendarSummary[]>;
+    reset(): Promise<void>;
     fetch(input: FetchInput): Promise<FetchResult>;
   }
+  type ConnectResult =
+    | { ok: true }
+    | { ok: false; reason: 'not-configured' | 'reauth-required' | 'request-failed' | 'cancelled' };
   type FetchResult =
     | { ok: true; blocks: BusyBlock[]; fetchedAt: string; accountId: string; timeZone: string }
     | { ok: false; reason: FetchFailure };
   type FetchFailure =
     'not-configured' | 'not-connected' | 'reauth-required'
-    | 'invalid-range' | 'malformed-data' | 'request-failed';
+    | 'invalid-range' | 'no-calendars' | 'corrupt' | 'invalid-time-zone'
+    | 'malformed-data' | 'request-failed';
   registerCalendarIpc(ipcMain, handlers): void
   CHANNEL_PREFIX = 'phase-calendar'
   ```
@@ -2473,7 +2478,7 @@ describe('fetch', () => {
 });
 
 describe('registerCalendarIpc', () => {
-  it('registers exactly the six channels under one prefix', () => {
+  it('registers exactly the seven channels under one prefix', () => {
     const registered: string[] = [];
     registerCalendarIpc({ handle: (channel: string) => registered.push(channel) }, handlers());
     expect(registered.sort()).toEqual([
@@ -2482,6 +2487,7 @@ describe('registerCalendarIpc', () => {
       `${CHANNEL_PREFIX}:disconnect`,
       `${CHANNEL_PREFIX}:fetch`,
       `${CHANNEL_PREFIX}:listCalendars`,
+      `${CHANNEL_PREFIX}:reset`,
       `${CHANNEL_PREFIX}:status`,
     ].sort());
   });
@@ -2728,10 +2734,11 @@ Each mutation run and restored, reporting the observed failure:
 
 - [ ] **Step 7: Amend the spec**
 
-In `docs/superpowers/specs/2026-08-04-google-calendar-producer-design.md` §8, change "Five `invoke`/`handle` channels and nothing else" to six and add the row:
+In `docs/superpowers/specs/2026-08-04-google-calendar-producer-design.md` §8, change "Six `invoke`/`handle` channels and nothing else" to seven and add the row:
 
 ```markdown
 | `configure({ clientId, clientSecret })` | — |
+| `reset()` | — |
 ```
 
 Then add below the table:
@@ -2743,6 +2750,12 @@ five channels gave that field nowhere to write. Configuring also clears any
 stored token and account: different client credentials mean a different Cloud
 project, so the old token is meaningless, and leaving it would make `status()`
 claim a connection the new credentials cannot use.
+
+**`reset` was added during implementation.** A secret store encrypted against
+an OS keychain that has since changed can never be read again. Without a
+dedicated reset channel, that state would permanently brick the feature with
+no in-app recovery path; reset deletes the unreadable store so the user can
+configure and connect again.
 ```
 
 - [ ] **Step 8: Run the whole suite, typecheck, and commit**
@@ -2796,7 +2809,7 @@ That guard reads a source file, which the Global Constraints otherwise forbid. T
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–7.
-- Produces: `window.phaseCalendar` in the renderer, with the six methods from Task 7. Plan 3's `src/lib/calendarBridge.ts` is its only consumer.
+- Produces: `window.phaseCalendar` in the renderer, with the seven methods from Task 7. Plan 3's `src/lib/calendarBridge.ts` is its only consumer.
 
 - [ ] **Step 1: Write the drift guard**
 
@@ -2856,7 +2869,7 @@ Create `electron/preload.cjs`:
 // channel names are therefore written out by hand, and a test in
 // calendarIpc.test.ts reads this file to stop the two lists drifting.
 //
-// Nothing but these six invocations is exposed. No token, no client secret,
+// Nothing but these seven invocations is exposed. No token, no client secret,
 // and no ability to name a URL ever crosses.
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -2867,6 +2880,7 @@ contextBridge.exposeInMainWorld('phaseCalendar', {
   connect: () => ipcRenderer.invoke('phase-calendar:connect'),
   disconnect: () => ipcRenderer.invoke('phase-calendar:disconnect'),
   listCalendars: () => ipcRenderer.invoke('phase-calendar:listCalendars'),
+  reset: () => ipcRenderer.invoke('phase-calendar:reset'),
   fetch: (input) => ipcRenderer.invoke('phase-calendar:fetch', input),
 });
 ```

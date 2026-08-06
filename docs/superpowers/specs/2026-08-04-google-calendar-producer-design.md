@@ -310,15 +310,16 @@ boot, replaced wholesale on a successful fetch. No action ever mutates a block.
 
 ## 8. IPC contract
 
-Six `invoke`/`handle` channels and nothing else:
+Seven `invoke`/`handle` channels and nothing else:
 
 | Channel | Returns |
 |---|---|
-| `status()` | `{ configured, connected, accountId, timeZone }` |
+| `status()` | `{ configured, connected, corrupt, accountId, timeZone }` |
 | `configure({ clientId, clientSecret })` | — |
-| `connect()` | success, or a typed failure reason |
+| `connect()` | `{ ok: true }` or `{ ok: false, reason }` |
 | `disconnect()` | — |
 | `listCalendars()` | `{ id, summary, primary }[]` for the picker |
+| `reset()` | — |
 | `fetch({ rangeStart, rangeEnd, calendarIds })` | `{ ok: true, blocks, fetchedAt, accountId, timeZone }` or `{ ok: false, reason }` |
 
 **`configure` was added during implementation.** §6.2 specifies that the user
@@ -327,6 +328,12 @@ five channels gave that field nowhere to write. Configuring also clears any
 stored token and account: different client credentials mean a different Cloud
 project, so the old token is meaningless, and leaving it would make `status()`
 claim a connection the new credentials cannot use.
+
+**`reset` was added during implementation.** A secret store encrypted against
+an OS keychain that has since changed can never be read again. Without a
+dedicated reset channel, that state would permanently brick the feature with
+no in-app recovery path; reset deletes the unreadable store so the user can
+configure and connect again.
 
 Three constraints:
 
