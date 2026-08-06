@@ -25,7 +25,7 @@ export interface GoogleAttendee {
   responseStatus?: string;
 }
 
-/** Only the fields this module reads. `events.list` returns far more. */
+/** Fields used by the calendar data seam. `events.list` returns far more. */
 export interface GoogleEvent {
   id?: string;
   status?: string;

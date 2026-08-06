@@ -20,6 +20,10 @@ export interface GoogleClient {
    *
    * ALL-OR-NOTHING: any failed calendar or page rejects the whole call. A
    * partial result would render the missing calendar's meetings as free time.
+   * An empty `calendarIds` returns `[]` without contacting Google. For a
+   * non-empty call, the access token is fetched once before the walk and is
+   * not refreshed mid-walk; if it expires during fan-out, the whole fetch
+   * rejects rather than renewing it.
    */
   fetchEvents(input: {
     rangeStart: string;   // 'YYYY-MM-DD' local, inclusive

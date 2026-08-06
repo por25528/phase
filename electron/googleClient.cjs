@@ -31,8 +31,8 @@ function createGoogleClient(deps) {
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const res = await httpGet(buildUrl(pageToken), accessToken);
       if (!res.ok) throw fail(res);
-      out.push(...(res.json.items || []));
-      pageToken = res.json.nextPageToken;
+      out.push(...(res.json?.items || []));
+      pageToken = res.json?.nextPageToken;
       if (!pageToken) return out;
     }
     // A server repeating the same token would otherwise spin forever inside
@@ -47,7 +47,7 @@ function createGoogleClient(deps) {
       if (pageToken) q.set('pageToken', pageToken);
       return `${CALENDAR_LIST_ENDPOINT}?${q.toString()}`;
     }, accessToken);
-    return items.map((c) => ({ id: c.id, summary: c.summary, primary: c.primary === true }));
+    return items.map((c) => ({ id: c.id, summary: c.summary || c.id, primary: c.primary === true }));
   }
 
   async function fetchEvents({ rangeStart, rangeEnd, calendarIds }) {

@@ -31,18 +31,19 @@ describe('listCalendars', () => {
   it('returns id, summary and primary', async () => {
     const { api } = client([[CALENDAR_LIST_ENDPOINT, { json: { items: [
       { id: 'me@example.com', summary: 'Me', primary: true },
-      { id: 'team@group.calendar.google.com', summary: 'Team' },
+      { id: 'team@group.calendar.google.com' },
     ] } }]]);
     expect(await api.listCalendars()).toEqual([
       { id: 'me@example.com', summary: 'Me', primary: true },
-      { id: 'team@group.calendar.google.com', summary: 'Team', primary: false },
+      { id: 'team@group.calendar.google.com', summary: 'team@group.calendar.google.com', primary: false },
     ]);
   });
 
   it('follows pagination', async () => {
     let call = 0;
-    const { api } = client([[CALENDAR_LIST_ENDPOINT, { json: {} }]], {
-      httpGet: async () => {
+    const { api, urls } = client([[CALENDAR_LIST_ENDPOINT, { json: {} }]], {
+      httpGet: async (url) => {
+        urls.push(url);
         call += 1;
         return call === 1
           ? { ok: true, status: 200, json: { items: [{ id: 'a', summary: 'A' }], nextPageToken: 'p2' } }
@@ -50,6 +51,8 @@ describe('listCalendars', () => {
       },
     });
     expect((await api.listCalendars()).map((c) => c.id)).toEqual(['a', 'b']);
+    expect(new URL(urls[0]).searchParams.get('pageToken')).toBeNull();
+    expect(new URL(urls[1]).searchParams.get('pageToken')).toBe('p2');
   });
 
   it('sends the access token as a bearer header, never in the URL', async () => {
@@ -100,8 +103,9 @@ describe('fetchEvents', () => {
 
   it('follows pagination within one calendar', async () => {
     let call = 0;
-    const { api } = client([['/events', { json: {} }]], {
-      httpGet: async () => {
+    const { api, urls } = client([['/events', { json: {} }]], {
+      httpGet: async (url) => {
+        urls.push(url);
         call += 1;
         return call === 1
           ? { ok: true, status: 200, json: { items: [ev('a')], nextPageToken: 'p2' } }
@@ -109,6 +113,8 @@ describe('fetchEvents', () => {
       },
     });
     expect((await api.fetchEvents(RANGE)).map((e) => e.id)).toEqual(['a', 'b']);
+    expect(new URL(urls[0]).searchParams.get('pageToken')).toBeNull();
+    expect(new URL(urls[1]).searchParams.get('pageToken')).toBe('p2');
   });
 
   it('concatenates events across calendars', async () => {
