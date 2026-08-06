@@ -90,7 +90,10 @@ describe('fetchEvents', () => {
     const { api, urls } = client([['/events', { json: { items: [] } }]]);
     await api.fetchEvents({ ...RANGE, calendarIds: ['primary', 'team@group.calendar.google.com'] });
     expect(urls).toHaveLength(2);
-    expect(urls.join(' ')).toContain('primary');
+    expect(urls).toEqual(expect.arrayContaining([
+      expect.stringContaining('/calendars/primary/events'),
+      expect.stringContaining('/calendars/team%40group.calendar.google.com/events'),
+    ]));
   });
 
   // Holiday calendar ids contain '#', which truncates a URL if not encoded.

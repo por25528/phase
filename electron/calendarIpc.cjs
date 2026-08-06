@@ -3,12 +3,18 @@
 // authored rejection — a Google error message can carry a bearer token.
 
 const { CorruptSecretStoreError } = require('./secrets.cjs');
-const { NotConnectedError, ReauthRequiredError } = require('./oauth.cjs');
+const {
+  ConsentAbandonedError,
+  CredentialsNotConfiguredError,
+  NotConnectedError,
+  ReauthRequiredError,
+} = require('./oauth.cjs');
 
 const CHANNEL_PREFIX = 'phase-calendar';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_CALENDARS = 50;
 const MAX_INPUT_STRING_LENGTH = 1024;
+const MAX_RANGE_DAYS = 400;
 
 function createCalendarHandlers(deps) {
   const { secrets, oauth, googleClient, normalizeEvents, timeZone, nowIso } = deps;
@@ -52,10 +58,6 @@ function createCalendarHandlers(deps) {
     }
   }
 
-  function errorMessage(err) {
-    return err && typeof err.message === 'string' ? err.message : '';
-  }
-
   function logFailure(operation, err) {
     console.error(`[phase-calendar] ${operation} failed`, err);
   }
@@ -65,6 +67,9 @@ function createCalendarHandlers(deps) {
     const { rangeStart, rangeEnd, calendarIds } = input;
     if (!validDate(rangeStart) || !validDate(rangeEnd)) return false;
     if (!(rangeEnd > rangeStart)) return false;
+    const rangeWidthMs = new Date(`${rangeEnd}T00:00:00.000Z`).getTime()
+      - new Date(`${rangeStart}T00:00:00.000Z`).getTime();
+    if (rangeWidthMs > MAX_RANGE_DAYS * 24 * 60 * 60 * 1000) return false;
     if (!Array.isArray(calendarIds) || calendarIds.length === 0 || calendarIds.length > MAX_CALENDARS) return false;
     return calendarIds.every((id) => (
       typeof id === 'string'
@@ -74,19 +79,21 @@ function createCalendarHandlers(deps) {
   }
 
   async function status() {
+    const available = secrets.available();
     const client = safeGet('client');
     if (!client.ok) {
-      return { configured: false, connected: false, corrupt: true, accountId: null, timeZone: timeZone() };
+      return { configured: false, connected: false, corrupt: true, available, accountId: null, timeZone: timeZone() };
     }
     const account = safeGet('account');
     if (!account.ok) {
-      return { configured: false, connected: false, corrupt: true, accountId: null, timeZone: timeZone() };
+      return { configured: false, connected: false, corrupt: true, available, accountId: null, timeZone: timeZone() };
     }
     const configured = hasClientCredentials(client.value);
     return {
       configured,
       connected: configured && oauth.isConnected(),
       corrupt: false,
+      available,
       accountId: account.value ? account.value.accountId : null,
       timeZone: timeZone(),
     };
@@ -101,14 +108,25 @@ function createCalendarHandlers(deps) {
     if (!secret) throw new Error('A Google OAuth client secret is required');
     if (id.length > MAX_INPUT_STRING_LENGTH) throw new Error('The Google OAuth client id is too long');
     if (secret.length > MAX_INPUT_STRING_LENGTH) throw new Error('The Google OAuth client secret is too long');
-    // A different Cloud project means the stored token is meaningless, and
-    // leaving it would make status() claim a connection the new credentials
-    // cannot use.
     try {
-      secrets.remove('token');
+      // Reconfiguration changes the Cloud project. Revoke the old grant before
+      // replacing the client, while OAuth owns the best-effort revoke policy.
+      await oauth.disconnect();
       secrets.remove('account');
       secrets.set('client', { clientId: id, clientSecret: secret });
     } catch (err) {
+      if (err instanceof CorruptSecretStoreError) {
+        try {
+          // The store is unreadable by definition, so resetting it loses no
+          // recoverable state and lets the new configuration proceed.
+          secrets.reset();
+          secrets.set('client', { clientId: id, clientSecret: secret });
+          return;
+        } catch (recoveryErr) {
+          logFailure('configure', recoveryErr);
+          throw new Error('Unable to save Google Calendar configuration');
+        }
+      }
       logFailure('configure', err);
       throw new Error('Unable to save Google Calendar configuration');
     }
@@ -123,19 +141,23 @@ function createCalendarHandlers(deps) {
       }
       if (!hasClientCredentials(client.value)) return { ok: false, reason: 'not-configured' };
       await oauth.connect();
-      // The account id is provenance, and the primary calendar's id IS the
-      // user's address — so no extra scope is needed to learn it.
-      const primary = (await googleClient.listCalendars()).find((c) => c.primary);
-      if (primary) secrets.set('account', { accountId: primary.id });
+      try {
+        // The account id is provenance, and the primary calendar's id IS the
+        // user's address — so no extra scope is needed to learn it. This
+        // refetchable metadata must not turn a stored connection into failure.
+        const primary = (await googleClient.listCalendars()).find((c) => c.primary);
+        if (primary) secrets.set('account', { accountId: primary.id });
+      } catch (err) {
+        logFailure('connect account capture', err);
+      }
       return { ok: true };
     } catch (err) {
       logFailure('connect', err);
-      const message = errorMessage(err);
       if (err instanceof ReauthRequiredError) return { ok: false, reason: 'reauth-required' };
-      if (err instanceof NotConnectedError || /credentials are not configured/i.test(message)) {
+      if (err instanceof NotConnectedError || err instanceof CredentialsNotConfiguredError) {
         return { ok: false, reason: 'not-configured' };
       }
-      if (/Google authorization failed:\s*access_denied\b|authorization state did not match|authorization timed out/i.test(message)) {
+      if (err instanceof ConsentAbandonedError) {
         return { ok: false, reason: 'cancelled' };
       }
       return { ok: false, reason: 'request-failed' };
@@ -162,7 +184,12 @@ function createCalendarHandlers(deps) {
   }
 
   async function reset() {
-    secrets.reset();
+    try {
+      secrets.reset();
+    } catch (err) {
+      logFailure('reset', err);
+      throw new Error('Unable to reset Google Calendar configuration');
+    }
   }
 
   async function fetchBlocks(input) {

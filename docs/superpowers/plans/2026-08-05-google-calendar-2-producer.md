@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Phase able to connect to Google Calendar and fetch real `BusyBlock[]`, entirely inside the Electron main process, callable from the renderer over a five-channel IPC surface.
+**Goal:** Make Phase able to connect to Google Calendar and fetch real `BusyBlock[]`, entirely inside the Electron main process, callable from the renderer over a seven-channel IPC surface.
 
 **Architecture:** Every module that touches the network, the filesystem, the clock or the OS takes its dependencies as **injected adapters**, so the whole producer is exercised offline with no mock server and no network. `main.cjs` supplies the real adapters (`node:https` via global `fetch`, `node:http`, `node:fs`, `electron`'s `safeStorage` and `shell`). Plan 1's `busyBlocks.cjs` does all the arithmetic; nothing here computes a minute.
 
@@ -2296,7 +2296,6 @@ function handlers(over: Partial<HandlerDeps> = {}) {
       isConnected: () => true,
       connect: async () => { calls.push('connect'); },
       disconnect: async () => { calls.push('disconnect'); },
-      getAccessToken: async () => 'A',
     },
     googleClient: {
       listCalendars: async () => [{ id: 'me@example.com', summary: 'Me', primary: true }],
@@ -2524,6 +2523,8 @@ import type { CalendarSummary, GoogleClient } from './googleClient.d.cts';
 export interface StatusResult {
   configured: boolean;
   connected: boolean;
+  /** False when the OS keychain is unavailable; secret writes will fail. */
+  available: boolean;
   /** The store exists but cannot be decrypted; the UI offers a reset. */
   corrupt: boolean;
   /** Provenance only — the Google account's primary calendar id. Never a credential. */
@@ -2555,7 +2556,6 @@ export interface HandlerDeps {
     isConnected(): boolean;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
-    getAccessToken(): Promise<string>;
   };
   googleClient: GoogleClient;
   normalizeEvents(events: unknown[], options: { rangeStart: string; rangeEnd: string; timeZone: string }): BusyBlock[];

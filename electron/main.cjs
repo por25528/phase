@@ -31,6 +31,9 @@ function createLoopbackServer() {
       res.end(body)
     })
   })
+  server.on('error', (err) => {
+    console.error('[phase-calendar] loopback server error', err)
+  })
   return {
     listen: () => new Promise((resolve, reject) => {
       // Port 0 asks the OS for any free port, and 127.0.0.1 keeps the socket

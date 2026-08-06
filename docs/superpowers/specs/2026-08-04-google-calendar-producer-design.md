@@ -84,7 +84,7 @@ chosen (see §5) but nothing downstream depends on that choice.
 | Module | Responsibility | Pure? |
 |---|---|---|
 | `electron/busyBlocks.cjs` | Google JSON → `BusyBlock[]`: skip, split at local midnight, clip, merge | **yes** |
-| `electron/googleClient.cjs` | calendar fan-out, pagination, token refresh | I/O, injected adapters |
+| `electron/googleClient.cjs` | calendar fan-out, pagination; one access token per fetch, with no mid-walk renewal | I/O, injected adapters |
 | `electron/oauth.cjs` | PKCE loopback, `safeStorage`, revoke | I/O, injected adapters |
 | `electron/secrets.cjs` | encrypted key/value persistence for the user's OAuth client id + secret and refresh token | I/O |
 | `electron/calendarIpc.cjs` | register handlers; wire the four above | thin |
@@ -314,7 +314,7 @@ Seven `invoke`/`handle` channels and nothing else:
 
 | Channel | Returns |
 |---|---|
-| `status()` | `{ configured, connected, corrupt, accountId, timeZone }` |
+| `status()` | `{ configured, connected, corrupt, available, accountId, timeZone }` |
 | `configure({ clientId, clientSecret })` | — |
 | `connect()` | `{ ok: true }` or `{ ok: false, reason }` |
 | `disconnect()` | — |
@@ -470,8 +470,12 @@ outside the range, and a DST transition day. Merged blocks join their
 constituent titles so `blocked by:` stays truthful after a merge.
 
 **`electron/googleClient.test.ts`** — multi-page pagination via `nextPageToken`,
-token refresh on 401, and the critical one: **a partial failure discards the
-whole result and leaves the previous cache and its `fetchedAt` intact.**
+and the critical one: **a partial failure discards the whole result and leaves
+the previous cache and its `fetchedAt` intact.** Each fetch obtains its access
+token once before walking calendars and pages; if that token expires mid-walk,
+the call fails rather than renewing it. OAuth's proactive refresh skew covers
+the normal expiry case, while all-or-nothing failure prevents incomplete data
+from being presented as free time.
 
 **New in this slice, beyond old §8:**
 

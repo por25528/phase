@@ -77,6 +77,12 @@ export declare const DEFAULT_TIMEOUT_MS: number;
 export declare class NotConnectedError extends Error {}
 /** The refresh token was rejected — keep cached blocks, prompt to re-connect. */
 export declare class ReauthRequiredError extends Error {}
+/** Consent was denied, callback state mismatched, or the browser timed out. */
+export declare class ConsentAbandonedError extends Error {
+  constructor(message?: string);
+}
+/** OAuth client id or secret has not been configured. */
+export declare class CredentialsNotConfiguredError extends Error {}
 /** Refresh this far before nominal expiry, so a request cannot expire mid-flight. */
 export declare const REFRESH_SKEW_MS: number;
 /**

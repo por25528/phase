@@ -12,10 +12,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('phaseCalendar', {
   status: () => ipcRenderer.invoke('phase-calendar:status'),
-  configure: (input) => ipcRenderer.invoke('phase-calendar:configure', input),
+  configure: async (input) => ipcRenderer.invoke('phase-calendar:configure', input),
   connect: () => ipcRenderer.invoke('phase-calendar:connect'),
   disconnect: () => ipcRenderer.invoke('phase-calendar:disconnect'),
   listCalendars: () => ipcRenderer.invoke('phase-calendar:listCalendars'),
   reset: () => ipcRenderer.invoke('phase-calendar:reset'),
-  fetch: (input) => ipcRenderer.invoke('phase-calendar:fetch', input),
+  fetch: async (input) => ipcRenderer.invoke('phase-calendar:fetch', input),
 });

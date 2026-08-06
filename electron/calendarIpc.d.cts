@@ -5,6 +5,8 @@ import type { CalendarSummary, GoogleClient } from './googleClient.d.cts';
 export interface StatusResult {
   configured: boolean;
   connected: boolean;
+  /** False when the OS keychain is unavailable; secret writes will fail. */
+  available: boolean;
   /** The store exists but cannot be decrypted; the UI offers a reset. */
   corrupt: boolean;
   /** Provenance only — the Google account's primary calendar id. Never a credential. */
@@ -49,7 +51,6 @@ export interface HandlerDeps {
     isConnected(): boolean;
     connect(): Promise<void>;
     disconnect(): Promise<void>;
-    getAccessToken(): Promise<string>;
   };
   googleClient: GoogleClient;
   normalizeEvents(events: unknown[], options: { rangeStart: string; rangeEnd: string; timeZone: string }): BusyBlock[];

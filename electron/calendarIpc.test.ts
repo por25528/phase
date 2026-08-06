@@ -9,7 +9,12 @@ const nativeRequire = createRequire(import.meta.url);
 const { createCalendarHandlers, registerCalendarIpc, CHANNEL_PREFIX } =
   nativeRequire('./calendarIpc.cjs') as typeof import('./calendarIpc.cjs');
 const { CorruptSecretStoreError } = nativeRequire('./secrets.cjs') as typeof import('./secrets.cjs');
-const { NotConnectedError, ReauthRequiredError } = nativeRequire('./oauth.cjs') as typeof import('./oauth.cjs');
+const {
+  ConsentAbandonedError,
+  CredentialsNotConfiguredError,
+  NotConnectedError,
+  ReauthRequiredError,
+} = nativeRequire('./oauth.cjs') as typeof import('./oauth.cjs');
 
 const CLIENT = { clientId: 'cid', clientSecret: 'sec' };
 const RANGE = { rangeStart: '2026-08-03', rangeEnd: '2026-08-10', calendarIds: ['primary'] };
@@ -40,8 +45,7 @@ function handlers(over: Partial<HandlerDeps> = {}) {
     oauth: {
       isConnected: () => true,
       connect: async () => { calls.push('connect'); },
-      disconnect: async () => { calls.push('disconnect'); },
-      getAccessToken: async () => 'A',
+      disconnect: async () => { calls.push('disconnect'); secrets.remove('token'); },
     },
     googleClient: {
       listCalendars: async () => [{ id: 'me@example.com', summary: 'Me', primary: true }],
@@ -75,14 +79,21 @@ describe('status', () => {
   it('reports configured and connected with the account and zone', async () => {
     const h = handlers({ secrets: fakeSecrets({ client: CLIENT, account: { accountId: 'me@example.com' } }) });
     expect(await h.status()).toEqual({
-      configured: true, connected: true, corrupt: false,
+      configured: true, connected: true, corrupt: false, available: true,
       accountId: 'me@example.com', timeZone: 'America/New_York',
     });
   });
 
   it('reports not configured before credentials are saved', async () => {
     const h = handlers({ secrets: fakeSecrets({}) });
-    expect(await h.status()).toMatchObject({ configured: false, connected: false, accountId: null });
+    expect(await h.status()).toMatchObject({ configured: false, connected: false, available: true, accountId: null });
+  });
+
+  it('reports when the OS keychain cannot encrypt secrets', async () => {
+    const secrets = fakeSecrets({});
+    secrets.available = () => false;
+    const h = handlers({ secrets });
+    expect(await h.status()).toMatchObject({ configured: false, connected: false, available: false });
   });
 
   it('reports a corrupt store instead of throwing at boot', async () => {
@@ -149,6 +160,40 @@ describe('configure', () => {
     expect(h._secrets._bag.token).toBeUndefined();
     expect(h._secrets._bag.account).toBeUndefined();
   });
+
+  it('revokes the existing grant before replacing the client credentials', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: { refreshToken: 'R' }, account: { accountId: 'x' } });
+    let revoked = false;
+    let clientWrittenAfterRevoke = false;
+    const originalSet = secrets.set;
+    secrets.set = (key, value) => {
+      if (key === 'client') clientWrittenAfterRevoke = revoked;
+      originalSet(key, value);
+    };
+    const h = handlers({
+      secrets,
+      oauth: {
+        isConnected: () => true,
+        connect: async () => {},
+        disconnect: async () => { revoked = true; secrets.remove('token'); },
+      },
+    });
+    await h.configure({ clientId: 'new', clientSecret: 'new' });
+    expect(clientWrittenAfterRevoke).toBe(true);
+    expect(secrets._bag.token).toBeUndefined();
+  });
+
+  it('resets a corrupt store and saves new credentials', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: { refreshToken: 'R' } });
+    const originalReset = secrets.reset;
+    secrets.remove = () => { throw new CorruptSecretStoreError(new Error('bad key')); };
+    const reset = vi.fn(() => originalReset());
+    secrets.reset = reset;
+    const h = handlers({ secrets });
+    await h.configure({ clientId: 'new', clientSecret: 'new' });
+    expect(reset).toHaveBeenCalledOnce();
+    expect(secrets._bag.client).toEqual({ clientId: 'new', clientSecret: 'new' });
+  });
 });
 
 describe('connect', () => {
@@ -182,7 +227,6 @@ describe('connect', () => {
         isConnected: () => false,
         connect: async () => { throw new ReauthRequiredError(); },
         disconnect: async () => {},
-        getAccessToken: async () => 'A',
       },
     });
     expect(await h.connect()).toEqual({ ok: false, reason: 'reauth-required' });
@@ -199,12 +243,59 @@ describe('connect', () => {
       secrets: fakeSecrets({ client: CLIENT }),
       oauth: {
         isConnected: () => false,
-        connect: async () => { throw new Error(message); },
+        connect: async () => { throw new ConsentAbandonedError(message); },
         disconnect: async () => {},
-        getAccessToken: async () => 'A',
       },
     });
     expect(await h.connect()).toEqual({ ok: false, reason: 'cancelled' });
+    log.mockRestore();
+  });
+
+  it('does not classify copied OAuth prose as cancellation', async () => {
+    const log = silenceErrors();
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      oauth: {
+        isConnected: () => false,
+        connect: async () => { throw new Error('Google authorization failed: access_denied'); },
+        disconnect: async () => {},
+      },
+    });
+    expect(await h.connect()).toEqual({ ok: false, reason: 'request-failed' });
+    log.mockRestore();
+  });
+
+  it('maps the typed credentials error to not-configured', async () => {
+    const log = silenceErrors();
+    const h = handlers({
+      secrets: fakeSecrets({ client: CLIENT }),
+      oauth: {
+        isConnected: () => false,
+        connect: async () => { throw new CredentialsNotConfiguredError(); },
+        disconnect: async () => {},
+      },
+    });
+    expect(await h.connect()).toEqual({ ok: false, reason: 'not-configured' });
+    log.mockRestore();
+  });
+
+  it('keeps a stored token when account provenance lookup fails', async () => {
+    const log = silenceErrors();
+    const secrets = fakeSecrets({ client: CLIENT });
+    const h = handlers({
+      secrets,
+      oauth: {
+        isConnected: () => true,
+        connect: async () => { secrets.set('token', { refreshToken: 'R' }); },
+        disconnect: async () => {},
+      },
+      googleClient: {
+        listCalendars: async () => { throw new Error('temporary account lookup failure'); },
+        fetchEvents: async () => [],
+      },
+    });
+    expect(await h.connect()).toEqual({ ok: true });
+    expect(secrets._bag.token).toEqual({ refreshToken: 'R' });
     log.mockRestore();
   });
 
@@ -216,7 +307,6 @@ describe('connect', () => {
         isConnected: () => false,
         connect: async () => { throw new Error(GOOGLE_ERROR); },
         disconnect: async () => {},
-        getAccessToken: async () => 'A',
       },
     });
     const result = await h.connect();
@@ -243,7 +333,6 @@ describe('disconnect', () => {
         isConnected: () => true,
         connect: async () => {},
         disconnect: async () => { throw new Error(GOOGLE_ERROR); },
-        getAccessToken: async () => 'A',
       },
     });
     const err = await rejection(h.disconnect());
@@ -293,6 +382,18 @@ describe('reset', () => {
     expect(h._calls).toEqual([]);
     expect(h._secrets._bag).toEqual({});
   });
+
+  it('sanitizes a non-ENOENT reset failure', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const secrets = fakeSecrets({ client: CLIENT });
+    secrets.reset = () => { throw new Error('/Users/example/Library/Application Support/Phase/calendar-secrets.bin'); };
+    const h = handlers({ secrets });
+    const err = await rejection(h.reset());
+    expect(err.message).toBe('Unable to reset Google Calendar configuration');
+    expect(serializedError(err)).not.toContain('/Users/example');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('reset failed'), expect.any(Error));
+    log.mockRestore();
+  });
 });
 
 describe('fetch', () => {
@@ -322,6 +423,7 @@ describe('fetch', () => {
     ['a non-date end', { ...RANGE, rangeEnd: 'tomorrow' }],
     ['an impossible February date', { ...RANGE, rangeStart: '2026-02-31' }],
     ['an impossible month and day', { ...RANGE, rangeStart: '2026-13-45' }],
+    ['a range wider than the main-process bound', { ...RANGE, rangeStart: '2026-01-01', rangeEnd: '2027-02-06' }],
     ['a reversed range', { ...RANGE, rangeStart: '2026-08-10', rangeEnd: '2026-08-03' }],
     ['an empty range', { ...RANGE, rangeStart: '2026-08-03', rangeEnd: '2026-08-03' }],
     ['calendarIds that is not an array', { ...RANGE, calendarIds: 'primary' as unknown as string[] }],
@@ -506,5 +608,10 @@ describe('preload channel names', () => {
 
   it('keeps the Electron window wired to the sandboxed preload', () => {
     expect(main).toContain("preload: path.join(__dirname, 'preload.cjs')");
+  });
+
+  it('keeps a main-process error listener after the loopback server binds', () => {
+    expect(main).toMatch(/server\.on\('error',/);
+    expect(main).toContain("server.removeListener('error', reject)");
   });
 });

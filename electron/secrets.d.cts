@@ -20,7 +20,9 @@ export interface SecretStore {
   available(): boolean;
   /** `undefined` when the key is absent. Throws `CorruptSecretStoreError`. */
   get(key: string): unknown;
+  /** Throws `CorruptSecretStoreError` when reading the existing store fails. */
   set(key: string, value: unknown): void;
+  /** Throws `CorruptSecretStoreError` when reading the existing store fails. */
   remove(key: string): void;
   /** Delete the whole store. Works even when it cannot be read. */
   reset(): void;

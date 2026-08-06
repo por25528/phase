@@ -12,6 +12,11 @@ export interface Pkce {
 /** base64url per RFC 4648 §5: URL-safe alphabet, no padding. */
 export declare function base64url(bytes: Buffer): string;
 
+/** RFC 7636 verifier entropy in bytes. */
+export declare const VERIFIER_BYTES: number;
+/** CSRF state entropy in bytes. */
+export declare const STATE_BYTES: number;
+
 /**
  * A fresh PKCE triple.
  *

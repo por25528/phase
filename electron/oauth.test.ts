@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   authUrl, createOAuth, AUTH_ENDPOINT, TOKEN_ENDPOINT, REVOKE_ENDPOINT, SCOPES, CALLBACK_PATH, DEFAULT_TIMEOUT_MS,
+  ConsentAbandonedError, CredentialsNotConfiguredError,
   NotConnectedError, ReauthRequiredError, REFRESH_SKEW_MS,
   type OAuthDeps,
 } from './oauth.cjs';
@@ -119,7 +120,7 @@ describe('exchangeCode', () => {
   it('fails when the client credentials are not configured', async () => {
     const d = deps({ secrets: fakeSecrets({}) });
     await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
-      .rejects.toThrow(/not configured/i);
+      .rejects.toBeInstanceOf(CredentialsNotConfiguredError);
   });
 
   // Google returns a refresh token only when it feels like it. Treating its
@@ -253,7 +254,7 @@ describe('listenForCode', () => {
     const d = loopbackDeps(server);
     await expect(createOAuth(d).listenForCode({
       state: 'EXPECTED', onReady: () => server.hit(`${CALLBACK_PATH}?code=C&state=ATTACKER`),
-    })).rejects.toThrow(/state/i);
+    })).rejects.toBeInstanceOf(ConsentAbandonedError);
     expect(server.closed).toBe(true);
     expect(server.responses[0].status).toBe(400);
   });
@@ -308,7 +309,7 @@ describe('listenForCode', () => {
     const d = loopbackDeps(server);
     await expect(createOAuth(d).listenForCode({
       state: 'S', onReady: () => server.hit(`${CALLBACK_PATH}?error=access_denied&state=S`),
-    })).rejects.toThrow(/access_denied/);
+    })).rejects.toBeInstanceOf(ConsentAbandonedError);
     expect(server.closed).toBe(true);
   });
 
@@ -338,7 +339,7 @@ describe('listenForCode', () => {
     const pending = createOAuth(d).listenForCode({ state: 'S', timeoutMs: 5000, onReady: () => {} });
     expect(d._timers[0].ms).toBe(5000);
     d._timers[0].fn();
-    await expect(pending).rejects.toThrow(/timed out/i);
+    await expect(pending).rejects.toBeInstanceOf(ConsentAbandonedError);
     expect(server.closed).toBe(true);
   });
 
@@ -348,7 +349,7 @@ describe('listenForCode', () => {
     const pending = createOAuth(d).listenForCode({ state: 'S', onReady: () => {} });
     expect(d._timers[0].ms).toBe(DEFAULT_TIMEOUT_MS);
     d._timers[0].fn();
-    await expect(pending).rejects.toThrow(/timed out/i);
+    await expect(pending).rejects.toBeInstanceOf(ConsentAbandonedError);
   });
 
   it('cancels the timeout once the code arrives', async () => {
@@ -631,6 +632,6 @@ describe('connect', () => {
   it('refuses before the client credentials are configured', async () => {
     const { d } = connectDeps();
     d.secrets = fakeSecrets({});
-    await expect(createOAuth(d).connect()).rejects.toThrow(/not configured/i);
+    await expect(createOAuth(d).connect()).rejects.toBeInstanceOf(CredentialsNotConfiguredError);
   });
 });

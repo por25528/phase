@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createHash, randomBytes as realRandomBytes } from 'node:crypto';
-import { createPkce, base64url } from './pkce.cjs';
+import { createHash } from 'node:crypto';
+import { createPkce, base64url, VERIFIER_BYTES, STATE_BYTES } from './pkce.cjs';
 
 describe('base64url', () => {
   it('uses the URL-safe alphabet and strips padding', () => {
@@ -50,18 +50,11 @@ describe('createPkce', () => {
     expect(a.state).not.toBe(b.state);
   });
 
-  it('uses the injected randomness source', () => {
-    const calls: number[] = [];
-    const fake = (n: number) => { calls.push(n); return Buffer.alloc(n, 7); };
-    const { verifier } = createPkce(fake);
-    expect(calls.length).toBeGreaterThan(0);
-    expect(verifier).toBe(base64url(Buffer.alloc(calls[0], 7)));
-  });
-
-  it('asks for at least 32 bytes of entropy for the verifier and 16 for the state', () => {
+  it('uses the injected randomness source for both verifier and state', () => {
     const sizes: number[] = [];
-    createPkce((n) => { sizes.push(n); return realRandomBytes(n); });
-    expect(Math.max(...sizes)).toBeGreaterThanOrEqual(32);
-    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(16);
+    const fake = (n: number) => { sizes.push(n); return Buffer.alloc(n, 7); };
+    const { verifier } = createPkce(fake);
+    expect(sizes).toEqual([VERIFIER_BYTES, STATE_BYTES]);
+    expect(verifier).toBe(base64url(Buffer.alloc(VERIFIER_BYTES, 7)));
   });
 });

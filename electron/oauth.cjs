@@ -16,6 +16,18 @@ class NotConnectedError extends Error {
 class ReauthRequiredError extends Error {
   constructor() { super('Google rejected the stored credential; reconnect required'); this.name = 'ReauthRequiredError'; }
 }
+class ConsentAbandonedError extends Error {
+  constructor(message = 'Google authorization was abandoned') {
+    super(message);
+    this.name = 'ConsentAbandonedError';
+  }
+}
+class CredentialsNotConfiguredError extends Error {
+  constructor() {
+    super('Google client credentials are not configured');
+    this.name = 'CredentialsNotConfiguredError';
+  }
+}
 
 const REFRESH_SKEW_MS = 60_000;
 
@@ -60,7 +72,7 @@ function createOAuth(deps) {
   function client() {
     const stored = secrets.get('client');
     if (!stored || !stored.clientId || !stored.clientSecret) {
-      throw new Error('Google client credentials are not configured');
+      throw new CredentialsNotConfiguredError();
     }
     return stored;
   }
@@ -224,13 +236,16 @@ function createOAuth(deps) {
         // this response is not the one we asked for.
         if (parsed.searchParams.get('state') !== state) {
           respond(400, 'Authorization failed. You can close this tab.');
-          settle(reject, new Error('Authorization state did not match; aborting'));
+          settle(reject, new ConsentAbandonedError('Authorization state did not match; aborting'));
           return;
         }
         const error = parsed.searchParams.get('error');
         if (error) {
           respond(400, 'Authorization failed. You can close this tab.');
-          settle(reject, new Error(`Google authorization failed: ${error}`));
+          const failure = error === 'access_denied'
+            ? new ConsentAbandonedError(`Google authorization failed: ${error}`)
+            : new Error(`Google authorization failed: ${error}`);
+          settle(reject, failure);
           return;
         }
         const code = parsed.searchParams.get('code');
@@ -244,7 +259,7 @@ function createOAuth(deps) {
       });
 
       cancelTimer = setTimer(() => {
-        settle(reject, new Error('Authorization timed out; no response from the browser'));
+        settle(reject, new ConsentAbandonedError('Authorization timed out; no response from the browser'));
       }, timeoutMs);
 
       Promise.resolve()
@@ -268,5 +283,7 @@ module.exports = {
   createOAuth,
   NotConnectedError,
   ReauthRequiredError,
+  ConsentAbandonedError,
+  CredentialsNotConfiguredError,
   REFRESH_SKEW_MS,
 };
