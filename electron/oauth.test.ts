@@ -30,7 +30,7 @@ function deps(over: Partial<OAuthDeps> = {}): OAuthDeps & { _posts: Array<{ url:
     createServer: () => { throw new Error('not used in this task'); },
     openExternal: async () => {},
     now: () => 1_000_000,
-    setTimer: () => () => {},
+    setTimer: () => { throw new Error('setTimer not stubbed'); },
   };
   const d: OAuthDeps = { ...base, ...over };
   return Object.assign(d, { _posts: posts });
@@ -171,8 +171,9 @@ type FakeServer = {
   responses: Array<{ status: number; body: string }>;
   listen: () => Promise<number>;
   close: () => void;
-  onRequest: (h: FakeServer['handler']) => void;
+  onRequest: (h: FakeServerHandler) => void;
   hit: (url: string) => void;
+  closeCount: number;
 };
 
 function fakeServer(port = 51234): FakeServer {
@@ -180,13 +181,15 @@ function fakeServer(port = 51234): FakeServer {
     port,
     listening: false,
     closed: false,
-    handler: null as null | ((url: string, respond: (status: number, body: string) => void) => void),
-    responses: [] as Array<{ status: number; body: string }>,
+    handler: null,
+    responses: [],
+    closeCount: 0,
     listen: async () => { s.listening = true; return port; },
-    close: () => { s.listening = false; s.closed = true; },
-    onRequest: (h: typeof s.handler) => { s.handler = h; },
+    close: () => { s.listening = false; s.closed = true; s.closeCount += 1; },
+    onRequest: (h: FakeServerHandler) => { s.handler = h; },
     hit(url: string) {
-      s.handler!(url, (status, body) => s.responses.push({ status, body }));
+      if (!s.handler) throw new Error('handler not registered');
+      s.handler(url, (status, body) => s.responses.push({ status, body }));
     },
   };
   return s;
@@ -266,6 +269,35 @@ describe('listenForCode', () => {
     expect(server.responses.slice(0, 3).map((r) => r.status)).toEqual([404, 404, 404]);
   });
 
+  it('404s a malformed request target and keeps waiting for the real one', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    const pending = createOAuth(d).listenForCode({
+      state: 'S',
+      onReady: () => {
+        server.hit('//[');
+        server.hit(`${CALLBACK_PATH}?code=REAL&state=S`);
+      },
+    });
+    await expect(pending).resolves.toBe('REAL');
+    expect(server.responses.map((r) => r.status)).toEqual([404, 200]);
+  });
+
+  it('404s a callback target aimed at another authority', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    const pending = createOAuth(d).listenForCode({
+      state: 'S',
+      onReady: () => {
+        server.hit(`http://evil.com${CALLBACK_PATH}?code=EVIL&state=S`);
+        server.hit(`//evil.com${CALLBACK_PATH}?code=EVIL&state=S`);
+        server.hit(`${CALLBACK_PATH}?code=REAL&state=S`);
+      },
+    });
+    await expect(pending).resolves.toBe('REAL');
+    expect(server.responses.map((r) => r.status)).toEqual([404, 404, 200]);
+  });
+
   it('rejects when the user denies consent', async () => {
     const server = fakeServer();
     const d = loopbackDeps(server);
@@ -273,6 +305,15 @@ describe('listenForCode', () => {
       state: 'S', onReady: () => server.hit(`${CALLBACK_PATH}?error=access_denied&state=S`),
     })).rejects.toThrow(/access_denied/);
     expect(server.closed).toBe(true);
+  });
+
+  it('checks state before handling an error response', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({
+      state: 'EXPECTED', onReady: () => server.hit(`${CALLBACK_PATH}?error=access_denied`),
+    })).rejects.toThrow(/state/i);
+    expect(server.responses[0].status).toBe(400);
   });
 
   it('rejects when the callback carries neither a code nor an error', async () => {
@@ -323,6 +364,30 @@ describe('listenForCode', () => {
     expect(server.closed).toBe(true);
   });
 
+  it('closes the socket when onReady returns a rejected promise', async () => {
+    const server = fakeServer();
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({
+      state: 'S', onReady: async () => { throw new Error('browser rejected asynchronously'); },
+    })).rejects.toThrow(/browser rejected asynchronously/);
+    expect(server.closed).toBe(true);
+  });
+
+  it('rejects when the server cannot listen and closes the socket', async () => {
+    const server = fakeServer();
+    server.listen = async () => { throw new Error('EADDRINUSE'); };
+    const d = loopbackDeps(server);
+    await expect(createOAuth(d).listenForCode({ state: 'S', onReady: () => {} }))
+      .rejects.toThrow(/EADDRINUSE/);
+    expect(server.closed).toBe(true);
+  });
+
+  it('turns a synchronous createServer failure into a rejected promise', async () => {
+    const d = deps({ createServer: () => { throw new Error('create server failed'); } });
+    await expect(createOAuth(d).listenForCode({ state: 'S', onReady: () => {} }))
+      .rejects.toThrow(/create server failed/);
+  });
+
   it('ignores a second callback after the first has settled', async () => {
     const server = fakeServer();
     const d = loopbackDeps(server);
@@ -334,5 +399,8 @@ describe('listenForCode', () => {
       },
     });
     await expect(pending).resolves.toBe('FIRST');
+    expect(server.closeCount).toBe(1);
+    expect(server.responses.map((r) => r.status)).toEqual([200, 200]);
+    expect(server.responses[1].body).toMatch(/Phase/i);
   });
 });

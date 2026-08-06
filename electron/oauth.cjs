@@ -94,8 +94,8 @@ function createOAuth(deps) {
   }
 
   function listenForCode({ state, timeoutMs = DEFAULT_TIMEOUT_MS, onReady }) {
-    const server = createServer();
     return new Promise((resolve, reject) => {
+      const server = createServer();
       let settled = false;
       let cancelTimer = () => {};
 
@@ -104,23 +104,31 @@ function createOAuth(deps) {
       function settle(fn, value) {
         if (settled) return;
         settled = true;
-        cancelTimer();
+        // Close before injected cleanup: if timer cancellation is miswired and
+        // throws, the listening socket must already be gone.
         server.close();
-        fn(value);
+        try {
+          cancelTimer();
+        } finally {
+          fn(value);
+        }
       }
 
       server.onRequest((url, respond) => {
-        // `url` is path + query. Only the exact path is accepted; a prefix
-        // match would let /callback/anything through.
-        const parsed = new URL(url, 'http://127.0.0.1');
-        if (parsed.pathname !== CALLBACK_PATH) {
+        // `url` is the raw request target, usually path + query. Only the
+        // exact local path is accepted; a prefix match would let
+        // /callback/anything through.
+        let parsed;
+        try {
+          parsed = new URL(url, 'http://127.0.0.1');
+        } catch {
+          // Node delivers targets like `//[` verbatim, and an escaping throw
+          // would skip respond(), settle() and close() — leaving the socket up.
           respond(404, 'Not found');
           return;
         }
-        const error = parsed.searchParams.get('error');
-        if (error) {
-          respond(400, 'Authorization failed. You can close this tab.');
-          settle(reject, new Error(`Google authorization failed: ${error}`));
+        if (parsed.origin !== 'http://127.0.0.1' || parsed.pathname !== CALLBACK_PATH) {
+          respond(404, 'Not found');
           return;
         }
         // Compared before the code is used at all: a mismatched state means
@@ -128,6 +136,12 @@ function createOAuth(deps) {
         if (parsed.searchParams.get('state') !== state) {
           respond(400, 'Authorization failed. You can close this tab.');
           settle(reject, new Error('Authorization state did not match; aborting'));
+          return;
+        }
+        const error = parsed.searchParams.get('error');
+        if (error) {
+          respond(400, 'Authorization failed. You can close this tab.');
+          settle(reject, new Error(`Google authorization failed: ${error}`));
           return;
         }
         const code = parsed.searchParams.get('code');

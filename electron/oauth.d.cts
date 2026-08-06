@@ -12,7 +12,7 @@ export interface LoopbackServer {
   /** Resolves with the port actually bound. */
   listen(): Promise<number>;
   close(): void;
-  /** Called with the request path+query of every inbound request. */
+  /** Called with the raw request target of every inbound request. */
   onRequest(handler: (url: string, respond: (status: number, body: string) => void) => void): void;
 }
 
