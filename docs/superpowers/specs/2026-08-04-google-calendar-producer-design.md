@@ -86,7 +86,7 @@ chosen (see §5) but nothing downstream depends on that choice.
 | `electron/busyBlocks.cjs` | Google JSON → `BusyBlock[]`: skip, split at local midnight, clip, merge | **yes** |
 | `electron/googleClient.cjs` | calendar fan-out, pagination, token refresh | I/O, injected adapters |
 | `electron/oauth.cjs` | PKCE loopback, `safeStorage`, revoke | I/O, injected adapters |
-| `electron/credentials.cjs` | store/read the user's OAuth client id + secret | I/O |
+| `electron/secrets.cjs` | encrypted key/value persistence for the user's OAuth client id + secret and refresh token | I/O |
 | `electron/calendarIpc.cjs` | register handlers; wire the four above | thin |
 | `electron/preload.cjs` | `contextBridge` → `window.phaseCalendar` | — |
 | `src/lib/calendarBridge.ts` | adapter over `window.phaseCalendar`; stub when absent | boundary |
