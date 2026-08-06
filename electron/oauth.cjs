@@ -128,13 +128,20 @@ function createOAuth(deps) {
       if (res.json?.error === 'invalid_grant') throw new ReauthRequiredError();
       throw new Error(`Google token refresh failed: ${tokenErrorDetail(res)}`);
     }
-    // Google does not return the refresh token again. Spreading the previous
-    // record forward is what stops a refresh from silently disconnecting.
+    if (!res.json?.access_token || !Number.isFinite(Number(res.json?.expires_in))) {
+      throw new Error('Google returned an incomplete token response');
+    }
+    // Google normally omits the refresh token on refresh, so carry the prior
+    // one forward unless the response rotates it.
     const next = {
-      refreshToken: token.refreshToken,
+      refreshToken: res.json.refresh_token || token.refreshToken,
       accessToken: res.json.access_token,
       expiresAt: now() + Number(res.json.expires_in) * 1000,
     };
+    // A disconnect may have landed while this refresh was in flight. Writing
+    // now would restore the credential the user just asked to delete.
+    const current = storedToken();
+    if (!current || current.refreshToken !== token.refreshToken) return next.accessToken;
     secrets.set('token', next);
     return next.accessToken;
   }

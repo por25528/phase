@@ -33,6 +33,7 @@ function deps(over: Partial<OAuthDeps> = {}): OAuthDeps & { _posts: Array<{ url:
   };
   const d: OAuthDeps = { ...base, ...over };
   const configuredHttpPost = d.httpPost;
+  // Overrides must go through deps({ httpPost }) if _posts is to be asserted.
   d.httpPost = async (url: string, body: URLSearchParams) => {
     posts.push({ url, body });
     return configuredHttpPost(url, body);
@@ -440,8 +441,22 @@ describe('getAccessToken', () => {
     expect(await createOAuth(d).getAccessToken()).toBe('FRESH');
   });
 
-  // Google does not return the refresh token again on a refresh. Overwriting
-  // the stored record wholesale would drop it and silently disconnect.
+  it.each([
+    ['no access token', { expires_in: 3599 }],
+    ['no expiry', { access_token: 'FRESH' }],
+    ['non-numeric expiry', { access_token: 'FRESH', expires_in: 'not-a-number' }],
+    ['no response body', undefined],
+  ])('rejects a refresh response with %s', async (_label, json) => {
+    const d = deps({
+      secrets: fakeSecrets({ client: CLIENT, token: TOKEN }),
+      now: () => 3_000_000,
+      httpPost: async () => ({ ok: true, status: 200, json }),
+    });
+    await expect(createOAuth(d).getAccessToken()).rejects.toThrow(/incomplete token response/i);
+  });
+
+  // Google normally omits the refresh token on refresh. Overwriting the
+  // stored record wholesale would drop it and silently disconnect.
   it('keeps the refresh token across a refresh', async () => {
     const secrets = fakeSecrets({ client: CLIENT, token: TOKEN });
     const d = deps({
@@ -452,6 +467,19 @@ describe('getAccessToken', () => {
     expect((secrets._bag.token as typeof TOKEN).refreshToken).toBe('R');
     expect((secrets._bag.token as typeof TOKEN).accessToken).toBe('FRESH');
     expect((secrets._bag.token as typeof TOKEN).expiresAt).toBe(3_000_000 + 3599 * 1000);
+  });
+
+  it('stores a rotated refresh token when Google returns one', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: TOKEN });
+    const d = deps({
+      secrets, now: () => 3_000_000,
+      httpPost: async () => ({
+        ok: true, status: 200,
+        json: { refresh_token: 'ROTATED', access_token: 'FRESH', expires_in: 3599 },
+      }),
+    });
+    await createOAuth(d).getAccessToken();
+    expect((secrets._bag.token as typeof TOKEN).refreshToken).toBe('ROTATED');
   });
 
   it('throws NotConnectedError when there is no stored token', async () => {
@@ -478,6 +506,42 @@ describe('getAccessToken', () => {
     const err = await createOAuth(d).getAccessToken().catch((e) => e);
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(ReauthRequiredError);
+  });
+
+  it('propagates a raw refresh httpPost error', async () => {
+    const d = deps({
+      secrets: fakeSecrets({ client: CLIENT, token: TOKEN }),
+      now: () => 3_000_000,
+      httpPost: async () => { throw new Error('refresh transport failed'); },
+    });
+    await expect(createOAuth(d).getAccessToken()).rejects.toThrow('refresh transport failed');
+  });
+
+  it('does not resurrect a token when disconnect finishes during refresh', async () => {
+    const secrets = fakeSecrets({ client: CLIENT, token: TOKEN });
+    let refreshStarted!: () => void;
+    const refreshStartedPromise = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    let finishRefresh!: () => void;
+    const refreshFinished = new Promise<void>((resolve) => { finishRefresh = resolve; });
+    const d = deps({
+      secrets,
+      now: () => 3_000_000,
+      httpPost: async (url) => {
+        if (url === TOKEN_ENDPOINT) {
+          refreshStarted();
+          await refreshFinished;
+          return { ok: true, status: 200, json: { access_token: 'FRESH', expires_in: 3599 } };
+        }
+        return { ok: true, status: 200, json: {} };
+      },
+    });
+    const oauth = createOAuth(d);
+    const refreshing = oauth.getAccessToken();
+    await refreshStartedPromise;
+    await oauth.disconnect();
+    finishRefresh();
+    await expect(refreshing).resolves.toBe('FRESH');
+    expect(secrets._bag.token).toBeUndefined();
   });
 });
 
@@ -548,9 +612,19 @@ describe('connect', () => {
   });
 
   it('stores nothing when the exchange fails', async () => {
-    const { d, secrets } = connectDeps();
+    const { d, server, secrets } = connectDeps();
     d.httpPost = async () => ({ ok: false, status: 400, json: { error: 'invalid_grant' } });
     await expect(createOAuth(d).connect()).rejects.toThrow(/invalid_grant/);
+    expect(secrets._bag.token).toBeUndefined();
+    expect(server.closeCount).toBe(1);
+  });
+
+  it('propagates consent denial', async () => {
+    const { d, server, secrets } = connectDeps();
+    d.openExternal = async () => { server.hit(`${CALLBACK_PATH}?error=access_denied&state=ST`); };
+    const pending = createOAuth(d).connect();
+    await expect(pending).rejects.toThrow(/access_denied/);
+    expect(server.closeCount).toBe(1);
     expect(secrets._bag.token).toBeUndefined();
   });
 

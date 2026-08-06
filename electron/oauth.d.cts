@@ -43,9 +43,9 @@ export interface OAuth {
   exchangeCode(input: { code: string; verifier: string; redirectUri: string }): Promise<Tokens>;
   /** Full flow: PKCE, loopback, consent, exchange, store. */
   connect(): Promise<void>;
-  /** Revoke with Google, then forget the token locally. */
+  /** Revoke with Google and forget the token locally even when revocation fails. */
   disconnect(): Promise<void>;
-  /** A valid access token, refreshing when stale. */
+  /** Returns a valid access token, refreshing when stale, and throws `NotConnectedError` when none is stored, `ReauthRequiredError` when Google rejects the refresh token, and plain `Error` for other failures. */
   getAccessToken(): Promise<string>;
   isConnected(): boolean;
   /**
