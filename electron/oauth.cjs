@@ -10,10 +10,10 @@ const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
 
 // `events.readonly` alone does not authorize calendarList.list, and the
 // broader `calendar.readonly` grants more than this feature requires.
-const SCOPES = [
+const SCOPES = Object.freeze([
   'https://www.googleapis.com/auth/calendar.events.readonly',
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
-];
+]);
 
 function authUrl({ clientId, redirectUri, challenge, state }) {
   const params = new URLSearchParams({
@@ -33,6 +33,13 @@ function authUrl({ clientId, redirectUri, challenge, state }) {
   return `${AUTH_ENDPOINT}?${params.toString()}`;
 }
 
+/** Google's `error` is what you triage from; `error_description` is what you read. Keep both. */
+function tokenErrorDetail(res) {
+  const code = res.json?.error;
+  const description = res.json?.error_description;
+  return [code, description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
+}
+
 function createOAuth(deps) {
   const { secrets, httpPost, now } = deps;
 
@@ -47,11 +54,7 @@ function createOAuth(deps) {
   async function postForTokens(body) {
     const res = await httpPost(TOKEN_ENDPOINT, body);
     if (!res.ok) {
-      // Keep Google's machine-readable code and human-readable description for triage.
-      const code = res.json?.error;
-      const description = res.json?.error_description;
-      const detail = [code, description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
-      throw new Error(`Google token request failed: ${detail}`);
+      throw new Error(`Google token request failed: ${tokenErrorDetail(res)}`);
     }
     return res.json;
   }
@@ -71,6 +74,12 @@ function createOAuth(deps) {
     // connection that stops working within the hour with no way to renew.
     if (!json.refresh_token) {
       throw new Error('Google returned no refresh token; re-run consent with prompt=consent');
+    }
+    // A missing access token fails Task 5's truthy cache check; a NaN expiry
+    // makes its time comparison false, so either malformed record refreshes
+    // on every call instead of being reused.
+    if (!json.access_token || !Number.isFinite(Number(json.expires_in))) {
+      throw new Error('Google returned an incomplete token response');
     }
     return {
       refreshToken: json.refresh_token,

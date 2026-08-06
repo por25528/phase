@@ -31,7 +31,7 @@ function deps(over: Partial<OAuthDeps> = {}): OAuthDeps & { _posts: Array<{ url:
     openExternal: async () => {},
     now: () => 1_000_000,
     ...over,
-  } as OAuthDeps;
+  } satisfies OAuthDeps;
   return Object.assign(base, { _posts: posts });
 }
 
@@ -92,6 +92,7 @@ describe('exchangeCode', () => {
     expect(d._posts[0].body.get('code_verifier')).toBe('VERIFIER');
     expect(d._posts[0].body.get('grant_type')).toBe('authorization_code');
     expect(d._posts[0].body.get('code')).toBe('CODE');
+    expect(d._posts[0].body.get('redirect_uri')).toBe('http://127.0.0.1:1/cb');
   });
 
   it('sends the stored client credentials', async () => {
@@ -125,19 +126,32 @@ describe('exchangeCode', () => {
       .rejects.toThrow(/refresh token/i);
   });
 
-  it('surfaces Google’s error description on a non-2xx response', async () => {
+  it('fails when Google returns no access token', async () => {
     const d = deps({
-      httpPost: async () => ({ ok: false, status: 400, json: { error: 'invalid_grant', error_description: 'Bad code' } }),
+      httpPost: async () => ({ ok: true, status: 200, json: { refresh_token: 'R', expires_in: 3599 } }),
     });
     await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
-      .rejects.toThrow(/invalid_grant/);
-    await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
-      .rejects.toThrow(/Bad code/);
+      .rejects.toThrow(/incomplete token response/i);
   });
 
-  it('falls back to the status code when Google explains nothing', async () => {
-    const d = deps({ httpPost: async () => ({ ok: false, status: 503, json: {} }) });
+  it('fails when Google omits expires_in', async () => {
+    const d = deps({
+      httpPost: async () => ({ ok: true, status: 200, json: { refresh_token: 'R', access_token: 'A' } }),
+    });
     await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
-      .rejects.toThrow(/HTTP 503/);
+      .rejects.toThrow(/incomplete token response/i);
+  });
+
+  it.each([
+    ['both fields', { error: 'invalid_grant', error_description: 'Bad code' }, 'invalid_grant — Bad code'],
+    ['code only', { error: 'invalid_grant' }, 'invalid_grant'],
+    ['description only', { error_description: 'Bad code' }, 'Bad code'],
+    ['an empty code', { error: '', error_description: 'Bad code' }, 'Bad code'],
+    ['nothing at all', {}, 'HTTP 503'],
+  ])('reports %s', async (_label, json, expected) => {
+    const d = deps({ httpPost: async () => ({ ok: false, status: 503, json }) });
+    const rejection = createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
+    await expect(rejection).rejects.toThrow(expected);
+    await expect(rejection).rejects.not.toThrow(CLIENT.clientSecret);
   });
 });

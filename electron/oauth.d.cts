@@ -4,7 +4,7 @@ import type { SecretStore } from './secrets.d.cts';
 export interface HttpResponse {
   ok: boolean;
   status: number;
-  json: Record<string, unknown>;
+  json?: Record<string, unknown>;
 }
 
 /** A one-shot loopback HTTP listener. See Task 4. */
@@ -44,7 +44,7 @@ export declare const REVOKE_ENDPOINT: string;
  * `calendarList.list`, and the broader `calendar.readonly` grants more than
  * this feature needs.
  */
-export declare const SCOPES: string[];
+export declare const SCOPES: readonly string[];
 
 export declare function authUrl(input: {
   clientId: string;

@@ -671,7 +671,7 @@ function deps(over: Partial<OAuthDeps> = {}): OAuthDeps & { _posts: Array<{ url:
     openExternal: async () => {},
     now: () => 1_000_000,
     ...over,
-  } as OAuthDeps;
+  } satisfies OAuthDeps;
   return Object.assign(base, { _posts: posts });
 }
 
@@ -732,6 +732,7 @@ describe('exchangeCode', () => {
     expect(d._posts[0].body.get('code_verifier')).toBe('VERIFIER');
     expect(d._posts[0].body.get('grant_type')).toBe('authorization_code');
     expect(d._posts[0].body.get('code')).toBe('CODE');
+    expect(d._posts[0].body.get('redirect_uri')).toBe('http://127.0.0.1:1/cb');
   });
 
   it('sends the stored client credentials', async () => {
@@ -765,20 +766,33 @@ describe('exchangeCode', () => {
       .rejects.toThrow(/refresh token/i);
   });
 
-  it('surfaces Google’s error description on a non-2xx response', async () => {
+  it('fails when Google returns no access token', async () => {
     const d = deps({
-      httpPost: async () => ({ ok: false, status: 400, json: { error: 'invalid_grant', error_description: 'Bad code' } }),
+      httpPost: async () => ({ ok: true, status: 200, json: { refresh_token: 'R', expires_in: 3599 } }),
     });
     await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
-      .rejects.toThrow(/invalid_grant/);
-    await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
-      .rejects.toThrow(/Bad code/);
+      .rejects.toThrow(/incomplete token response/i);
   });
 
-  it('falls back to the status code when Google explains nothing', async () => {
-    const d = deps({ httpPost: async () => ({ ok: false, status: 503, json: {} }) });
+  it('fails when Google omits expires_in', async () => {
+    const d = deps({
+      httpPost: async () => ({ ok: true, status: 200, json: { refresh_token: 'R', access_token: 'A' } }),
+    });
     await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
-      .rejects.toThrow(/HTTP 503/);
+      .rejects.toThrow(/incomplete token response/i);
+  });
+
+  it.each([
+    ['both fields', { error: 'invalid_grant', error_description: 'Bad code' }, 'invalid_grant — Bad code'],
+    ['code only', { error: 'invalid_grant' }, 'invalid_grant'],
+    ['description only', { error_description: 'Bad code' }, 'Bad code'],
+    ['an empty code', { error: '', error_description: 'Bad code' }, 'Bad code'],
+    ['nothing at all', {}, 'HTTP 503'],
+  ])('reports %s', async (_label, json, expected) => {
+    const d = deps({ httpPost: async () => ({ ok: false, status: 503, json }) });
+    const rejection = createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
+    await expect(rejection).rejects.toThrow(expected);
+    await expect(rejection).rejects.not.toThrow(CLIENT.clientSecret);
   });
 });
 ```
@@ -802,7 +816,7 @@ import type { SecretStore } from './secrets.d.cts';
 export interface HttpResponse {
   ok: boolean;
   status: number;
-  json: Record<string, unknown>;
+  json?: Record<string, unknown>;
 }
 
 /** A one-shot loopback HTTP listener. See Task 4. */
@@ -842,7 +856,7 @@ export declare const REVOKE_ENDPOINT: string;
  * `calendarList.list`, and the broader `calendar.readonly` grants more than
  * this feature needs.
  */
-export declare const SCOPES: string[];
+export declare const SCOPES: readonly string[];
 
 export declare function authUrl(input: {
   clientId: string;
@@ -871,10 +885,10 @@ const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
 
 // `events.readonly` alone does not authorize calendarList.list, and the
 // broader `calendar.readonly` grants more than this feature requires.
-const SCOPES = [
+const SCOPES = Object.freeze([
   'https://www.googleapis.com/auth/calendar.events.readonly',
   'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
-];
+]);
 
 function authUrl({ clientId, redirectUri, challenge, state }) {
   const params = new URLSearchParams({
@@ -894,6 +908,13 @@ function authUrl({ clientId, redirectUri, challenge, state }) {
   return `${AUTH_ENDPOINT}?${params.toString()}`;
 }
 
+/** Google's `error` is what you triage from; `error_description` is what you read. Keep both. */
+function tokenErrorDetail(res) {
+  const code = res.json?.error;
+  const description = res.json?.error_description;
+  return [code, description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
+}
+
 function createOAuth(deps) {
   const { secrets, httpPost, now } = deps;
 
@@ -908,11 +929,7 @@ function createOAuth(deps) {
   async function postForTokens(body) {
     const res = await httpPost(TOKEN_ENDPOINT, body);
     if (!res.ok) {
-      // Keep Google's machine-readable code and human-readable description for triage.
-      const code = res.json?.error;
-      const description = res.json?.error_description;
-      const detail = [code, description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
-      throw new Error(`Google token request failed: ${detail}`);
+      throw new Error(`Google token request failed: ${tokenErrorDetail(res)}`);
     }
     return res.json;
   }
@@ -933,6 +950,12 @@ function createOAuth(deps) {
     if (!json.refresh_token) {
       throw new Error('Google returned no refresh token; re-run consent with prompt=consent');
     }
+    // A missing access token fails Task 5's truthy cache check; a NaN expiry
+    // makes its time comparison false, so either malformed record refreshes
+    // on every call instead of being reused.
+    if (!json.access_token || !Number.isFinite(Number(json.expires_in))) {
+      throw new Error('Google returned an incomplete token response');
+    }
     return {
       refreshToken: json.refresh_token,
       accessToken: json.access_token,
@@ -952,7 +975,7 @@ module.exports = { AUTH_ENDPOINT, TOKEN_ENDPOINT, REVOKE_ENDPOINT, SCOPES, authU
 npx vitest run --config vitest.config.ts electron/oauth.test.ts
 ```
 
-Expected: PASS, 16 tests.
+Expected: PASS, 19 tests.
 
 - [ ] **Step 6: Prove the scope and refresh-token tests discriminate**
 
@@ -969,7 +992,7 @@ Report both observed failures.
 npm test && npx tsc -b
 ```
 
-Expected: 1546 tests / 80 files (1530 + 16). Report the actual numbers.
+Expected: 1549 tests / 80 files (1530 + 19). Report the actual numbers.
 
 ```bash
 git add electron/oauth.cjs electron/oauth.d.cts electron/oauth.test.ts
@@ -1185,7 +1208,7 @@ describe('listenForCode', () => {
 npx vitest run --config vitest.config.ts electron/oauth.test.ts
 ```
 
-Expected: FAIL — `listenForCode is not a function`, 12 failures, the 15 Task 3 tests still passing.
+Expected: FAIL — `listenForCode is not a function`, 12 failures, the 19 Task 3 tests still passing.
 
 - [ ] **Step 3: Extend the contract**
 
@@ -1309,7 +1332,7 @@ Return `listenForCode` alongside `exchangeCode`, and add `CALLBACK_PATH` / `DEFA
 npx vitest run --config vitest.config.ts electron/oauth.test.ts
 ```
 
-Expected: PASS, 27 tests.
+Expected: PASS, 31 tests.
 
 - [ ] **Step 6: Prove the security tests discriminate**
 
@@ -1327,7 +1350,7 @@ Each of these is a real defect that ships silently: an accepted code from the wr
 npm test && npx tsc -b
 ```
 
-Expected: 1557 tests / 80 files (1545 + 12). Report the actual numbers.
+Expected: 1561 tests / 80 files (1549 + 12). Report the actual numbers.
 
 ```bash
 git add electron/oauth.cjs electron/oauth.d.cts electron/oauth.test.ts
@@ -1537,7 +1560,7 @@ describe('connect', () => {
 npx vitest run --config vitest.config.ts electron/oauth.test.ts
 ```
 
-Expected: FAIL — `getAccessToken is not a function` and friends; the 27 earlier tests still pass.
+Expected: FAIL — `getAccessToken is not a function` and friends; the 31 earlier tests still pass.
 
 - [ ] **Step 3: Extend the contract**
 
@@ -1613,11 +1636,7 @@ Add `openExternal` and `createPkce` to the destructured deps, and these methods 
       // state from "never connected", per spec §10. Anything else (503,
       // offline) is transient and must not prompt for reauth.
       if (res.json?.error === 'invalid_grant') throw new ReauthRequiredError();
-      // Keep Google's machine-readable code and human-readable description for triage.
-      const code = res.json?.error;
-      const description = res.json?.error_description;
-      const detail = [code, description].filter(Boolean).join(' — ') || `HTTP ${res.status}`;
-      throw new Error(`Google token refresh failed: ${detail}`);
+      throw new Error(`Google token refresh failed: ${tokenErrorDetail(res)}`);
     }
     // Google does not return the refresh token again. Spreading the previous
     // record forward is what stops a refresh from silently disconnecting.
@@ -1681,7 +1700,7 @@ Return `connect`, `disconnect`, `getAccessToken`, `isConnected` alongside the ea
 npx vitest run --config vitest.config.ts electron/oauth.test.ts
 ```
 
-Expected: PASS, 45 tests.
+Expected: PASS, 49 tests.
 
 - [ ] **Step 6: Prove three tests discriminate**
 
@@ -1697,7 +1716,7 @@ Each mutation run and restored, reporting the observed failure:
 npm test && npx tsc -b
 ```
 
-Expected: 1575 tests / 80 files (1557 + 18). Report the actual numbers.
+Expected: 1579 tests / 80 files (1561 + 18). Report the actual numbers.
 
 ```bash
 git add electron/oauth.cjs electron/oauth.d.cts electron/oauth.test.ts
