@@ -33,6 +33,8 @@ export interface SecretStore {
  * specific: the caller resets the store and asks the user to reconnect. A
  * generic parse error at boot would look like a crash.
  */
-export declare class CorruptSecretStoreError extends Error {}
+export declare class CorruptSecretStoreError extends Error {
+  constructor(cause: unknown);
+}
 
 export declare function createSecretStore(deps: SecretStoreDeps): SecretStore;

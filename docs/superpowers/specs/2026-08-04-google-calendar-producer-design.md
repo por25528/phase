@@ -310,15 +310,23 @@ boot, replaced wholesale on a successful fetch. No action ever mutates a block.
 
 ## 8. IPC contract
 
-Five `invoke`/`handle` channels and nothing else:
+Six `invoke`/`handle` channels and nothing else:
 
 | Channel | Returns |
 |---|---|
 | `status()` | `{ configured, connected, accountId, timeZone }` |
+| `configure({ clientId, clientSecret })` | — |
 | `connect()` | success, or a typed failure reason |
 | `disconnect()` | — |
 | `listCalendars()` | `{ id, summary, primary }[]` for the picker |
 | `fetch({ rangeStart, rangeEnd, calendarIds })` | `{ ok: true, blocks, fetchedAt, accountId, timeZone }` or `{ ok: false, reason }` |
+
+**`configure` was added during implementation.** §6.2 specifies that the user
+pastes their OAuth client id and secret into a field in Phase, and the original
+five channels gave that field nowhere to write. Configuring also clears any
+stored token and account: different client credentials mean a different Cloud
+project, so the old token is meaningless, and leaving it would make `status()`
+claim a connection the new credentials cannot use.
 
 Three constraints:
 
