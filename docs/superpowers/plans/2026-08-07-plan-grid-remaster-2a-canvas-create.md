@@ -719,7 +719,9 @@ git commit -m "feat(plan): name a drawn block inline"
 - Consumes: `DayColumn`'s `onCreate` (Task 2), `BlockComposer` (Task 3), `actions.createTaskAt` (Task 1).
 - Produces: nothing further — this is the top of the stack.
 
-**No unit test, deliberately.** Nothing in this repo renders `Plan.tsx`: there is no Plan test harness, no `DayBlocks` test, and `WeekGrid.centring.test.tsx` mounts `WeekGrid` alone with a stub `children` callback. Building a Plan harness is a larger piece of work than this task and would be the wrong thing to smuggle in here. The behaviour that *can* be unit-tested was pushed down into Tasks 1–3, which is why they carry the assertions. This task is verified by the typechecker, by grep, and by the manual checks in Task 5. **If a Plan harness ever lands, write the composer-open keydown test here rather than leaving this gap.**
+**No unit test for the interaction.** *(Corrected after execution: this originally claimed nothing renders `Plan.tsx`. That was wrong — `src/views/views.smoke.test.ts` renders it with `renderToStaticMarkup`. What the repo lacks is an **interactive** harness: static markup has no hydration and no event handlers, so a keydown or a pointer gesture cannot be driven through it.)*
+
+The composer-open keydown bail therefore stays manual. The behaviour that *can* be unit-tested was pushed down into Tasks 1–3, which is why they carry the assertions. This task is verified by the typechecker, by grep, and by the manual checks in Task 5.
 
 - [ ] **Step 1: Thread `onCreate` through WeekGrid**
 

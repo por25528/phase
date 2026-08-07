@@ -555,7 +555,30 @@ git commit -m "feat(plan): the month, as a grid of days"
 
 **Files:** Modify `src/views/Plan.tsx`, `src/views/plan/WeekHeader.tsx`
 
-**No unit test, deliberately.** Nothing in this repo renders `Plan.tsx` — there is no harness, which is why plans 2a and 3 pushed their testable logic down into pure modules and leaf components. The same applies here. **If a Plan harness ever lands, the mode switch and the month drop are the two things to test.**
+**Partly testable — use the smoke test.** `src/views/views.smoke.test.ts` **does** render `Plan`, via `renderToStaticMarkup` against a hydrated store. (Earlier plans in this series claim nothing renders Plan; that was wrong, and it is corrected here.)
+
+What that buys and what it does not:
+
+- **It can** assert what Plan *renders*: with `planMode: 'month'` the markup contains the month grid and not the hour axis. Add that.
+- **It cannot** test interaction. `renderToStaticMarkup` returns a string — no hydration, no event handlers, no state updates — so the mode toggle's click, the create gesture and the drop path stay manual.
+
+Add to `views.smoke.test.ts`, beside the existing Plan case:
+
+```ts
+  it('Plan draws a month when the preference says month', async () => {
+    const store = await readyStore();
+    store.actions.setPlanMode('month');
+
+    const { Plan } = await import('./Plan');
+    const html = renderToStaticMarkup(createElement(Plan));
+
+    // The month's weekday strip, and none of the week grid's hour axis.
+    expect(html).toContain('Mon');
+    expect(html).not.toContain('8am');
+  });
+```
+
+> Check `readyStore()`'s helper name and whether it exposes `actions` before writing this — the existing Plan case uses `store.getState()`. If `actions` is not reachable there, seed the mode through the db mock's `loadPlanMode` instead, which is the more honest route anyway since it exercises hydration.
 
 - [ ] **Step 1: The toggle**
 
