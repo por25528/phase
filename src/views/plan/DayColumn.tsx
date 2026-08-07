@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import type { AvailabilityWindow } from '../../db/types';
-import { minuteToPx, DAY_HEIGHT_PX, Z_NOW_LINE } from '../../lib/grid';
+import { minuteToPx, DAY_HEIGHT_PX, PX_PER_MINUTE, Z_NOW_LINE, Z_RULES } from '../../lib/grid';
+import { canvasSpan, type CanvasSpan } from '../../lib/canvasCreate';
 import { fmtD } from '../../lib/dates';
 
 /**
@@ -15,7 +16,7 @@ import { fmtD } from '../../lib/dates';
  * neighbouring component adds `window.addEventListener` calls.
  */
 export function DayColumn({
-  date, isToday, availabilityWindow, nowMinute, readOnly, children,
+  date, isToday, availabilityWindow, nowMinute, readOnly, onCreate, children,
 }: {
   date: string;
   isToday: boolean;
@@ -23,6 +24,8 @@ export function DayColumn({
   nowMinute: number | null;
   /** True when this column belongs to a past week — every drop is refused. */
   readOnly?: boolean;
+  /** Draw a block here. Absent ⇒ no canvas, so the day accepts no gesture. */
+  onCreate?: (span: CanvasSpan) => void;
   children: ReactNode;
 }) {
   // A day with no availability window, OR a day in a read-only (past) week,
@@ -57,6 +60,13 @@ export function DayColumn({
         </>
       )}
 
+      {/* Gated on exactly what the droppable is gated on: a day with no
+          window, or a week already spent, refuses a drawn block for the same
+          reason it refuses a dropped one. */}
+      {onCreate && availabilityWindow && !readOnly && (
+        <DayCanvas date={date} onCreate={onCreate} />
+      )}
+
       {children}
 
       {isToday && nowMinute !== null && (
@@ -64,6 +74,77 @@ export function DayColumn({
           className="absolute left-0 right-0 h-0 border-t border-accent pointer-events-none"
           style={{ top: `${minuteToPx(nowMinute)}px`, zIndex: Z_NOW_LINE }}
           aria-hidden="true"
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The empty-canvas gesture layer.
+ *
+ * Sits BENEATH the blocks (`Z_RULES`, and rendered before `children`) so a
+ * pointerdown on a block reaches the block, not this. "Empty canvas" is
+ * therefore a real DOM target rather than a target-vs-currentTarget test,
+ * which would have to be re-derived every time a block grows a new child.
+ *
+ * Content coordinates come from this element's own live rect. The column's
+ * border box IS the day's content box — `WeekGrid` gives the hour grid
+ * `height: DAY_HEIGHT_PX` and each column is a grid item in that row — so the
+ * rect's top is minute 0 and no scroll term is involved. `aimMinuteFor` needs
+ * one only because dnd-kit hands it a translated ghost rect instead of an
+ * element; reusing that formula here would count scroll twice.
+ *
+ * Pointer capture, as in `ResizeHandle` and `SpanBar`: it ties the remaining
+ * events to this element and to React's own handlers, so there is nothing to
+ * leak and no stray `pointerup` elsewhere can commit a phantom block.
+ */
+function DayCanvas({ date, onCreate }: { date: string; onCreate: (span: CanvasSpan) => void }) {
+  const [anchorY, setAnchorY] = useState<number | null>(null);
+  const [preview, setPreview] = useState<CanvasSpan | null>(null);
+
+  function contentY(e: ReactPointerEvent<HTMLDivElement>): number {
+    return e.clientY - e.currentTarget.getBoundingClientRect().top;
+  }
+
+  function end(): void {
+    setAnchorY(null);
+    setPreview(null);
+  }
+
+  return (
+    <div
+      data-testid={`day-canvas-${date}`}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const y = contentY(e);
+        setAnchorY(y);
+        setPreview(canvasSpan(y, y));
+      }}
+      onPointerMove={(e) => {
+        if (anchorY === null) return;
+        setPreview(canvasSpan(anchorY, contentY(e)));
+      }}
+      onPointerUp={(e) => {
+        if (anchorY === null) return;
+        const span = canvasSpan(anchorY, contentY(e));
+        end();
+        onCreate(span);
+      }}
+      onPointerCancel={end}
+      className="absolute inset-0 touch-none"
+      style={{ zIndex: Z_RULES }}
+      aria-hidden="true"
+    >
+      {preview && (
+        <div
+          data-testid="canvas-preview"
+          className="absolute left-[2px] right-[2px] rounded-[6px] border border-dashed border-accent bg-accent/10 pointer-events-none"
+          style={{
+            top: `${minuteToPx(preview.startMin)}px`,
+            height: `${preview.durationMin * PX_PER_MINUTE}px`,
+          }}
         />
       )}
     </div>
