@@ -184,6 +184,28 @@ export async function saveSidebarPanels(panels: SidebarPanel[]): Promise<void> {
   await db.settings.put({ key: SIDEBAR_PANELS_KEY, value: JSON.stringify(clean) });
 }
 
+/** Which shape the Plan view is in. A device preference, not app data. */
+export type PlanMode = 'week' | 'month';
+
+const PLAN_MODE_KEY = 'planMode';
+
+/**
+ * Total parse, like `parseSidebarPanels`: anything unrecognised yields the
+ * default rather than a half-trusted value.
+ *
+ * Week is the default because it is the only mode that places work at a TIME,
+ * which is what the view exists for — month commits to a day and leaves the
+ * hour to be chosen.
+ */
+export async function loadPlanMode(): Promise<PlanMode> {
+  const row = await db.settings.get(PLAN_MODE_KEY);
+  return row?.value === 'month' ? 'month' : 'week';
+}
+
+export async function savePlanMode(mode: PlanMode): Promise<void> {
+  await db.settings.put({ key: PLAN_MODE_KEY, value: mode });
+}
+
 // One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
 // Not a Dexie version: the migration adds optional fields to existing objects,
 // which changes no store and no index.

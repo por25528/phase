@@ -17,6 +17,8 @@ const dbMocks = vi.hoisted(() => ({
   saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
+  loadPlanMode: vi.fn(async () => 'week' as const),
+  savePlanMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),

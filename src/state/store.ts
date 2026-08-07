@@ -5,6 +5,7 @@ import {
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
   loadAllDayBlocks, saveAllDayBlocks,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
+  loadPlanMode, savePlanMode, type PlanMode,
   isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
   isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
@@ -96,6 +97,7 @@ interface UIState {
   availability: AvailabilityWindow[]; // per-weekday planning window (device preference)
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
   sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
+  planMode: PlanMode;                 // week or month shape for the Plan view (device preference)
   activeHorizon: number;              // narrow Projects-board horizon (UI only)
 }
 
@@ -127,6 +129,7 @@ let state: FullState = {
   availability: DEFAULT_AVAILABILITY,
   allDayBlocks: true,
   sidebarPanels: [],
+  planMode: 'week',
   activeHorizon: 0,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
@@ -445,8 +448,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -500,6 +503,7 @@ export async function initStore(): Promise<void> {
       availability,
       allDayBlocks,
       sidebarPanels,
+      planMode,
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -1624,6 +1628,12 @@ export const actions = {
   setSidebarPanels(panels: SidebarPanel[]): void {
     set({ sidebarPanels: panels });
     ifOwner(() => saveSidebarPanels(panels));
+  },
+
+  /** Same rule: a device preference, so set() plus its own save. */
+  setPlanMode(mode: PlanMode): void {
+    set({ planMode: mode });
+    ifOwner(() => savePlanMode(mode));
   },
 
   // Goal date editing

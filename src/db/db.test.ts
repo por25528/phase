@@ -8,6 +8,7 @@ import {
   isCheckpointMigrationDone, markCheckpointMigrationDone, saveCheckpointMigrationSnapshot,
   resetCheckpointMigration, loadCheckpointMigrationSnapshot,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
+  loadPlanMode, savePlanMode,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
@@ -556,6 +557,24 @@ describe('sidebar panels', () => {
   it('deduplicates repeated panels', async () => {
     await saveSidebarPanels(['stats', 'stats']);
     expect(await loadSidebarPanels()).toEqual(['stats']);
+  });
+
+  describe('planMode', () => {
+    it('defaults to week when unset', async () => {
+      expect(await loadPlanMode()).toBe('week');
+    });
+
+    it('round-trips month', async () => {
+      await savePlanMode('month');
+      expect(await loadPlanMode()).toBe('month');
+    });
+
+    it('falls back to week on an unrecognised value', async () => {
+      // Total parse, as parseSidebarPanels and parseAvailability do: a value
+      // we do not recognise yields the default rather than a half-trusted one.
+      await db.settings.put({ key: 'planMode', value: 'fortnight' });
+      expect(await loadPlanMode()).toBe('week');
+    });
   });
 
   it('filters and deduplicates on read, not just on write', async () => {
