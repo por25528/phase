@@ -1,5 +1,12 @@
 # Google Calendar producer — manual verification
 
+> **Shelved as of 2026-08-07.** This checklist was never worked through, and it
+> does not need to be unless the integration is revived. See
+> [google-calendar-setup.md](google-calendar-setup.md) for why it was stopped.
+> The automated half of the verification did pass — full suite, typecheck,
+> production build, and the greps confirming no secret crosses the bridge and
+> `src/` stays untouched.
+
 The automated sweep covers everything it can. This checklist covers what it
 cannot: the OAuth round-trip, the `safeStorage` persistence, and the IPC
 boundary itself all need a real Electron process and a real Google account, and

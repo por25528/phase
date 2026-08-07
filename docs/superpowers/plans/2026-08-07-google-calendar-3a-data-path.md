@@ -1,5 +1,14 @@
 # Google Calendar — the renderer data path (3a of 3)
 
+> **SHELVED 2026-08-07 — do not execute this plan.** The Google Calendar
+> integration was stopped before this slice began: the setup burden (a Google
+> Cloud project, a consent screen, pasted OAuth credentials) is too much to ask
+> of a user for what it returns. Plans 1 and 2 are built and committed; the
+> producer sits in `electron/` and nothing calls it. This document is kept
+> because the analysis in it is still true — in particular that the renderer is
+> almost entirely pre-wired, and that ten `blocks: []` literals are the whole
+> data path. If the feature is ever revived, start here.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make real Google busy time flow from the Electron producer into the renderer's capacity arithmetic and week grid, so `⌘N` and auto-placement stop dropping work on top of meetings.

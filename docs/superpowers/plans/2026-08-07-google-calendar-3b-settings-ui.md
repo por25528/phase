@@ -1,5 +1,13 @@
 # Google Calendar — the settings UI and the honest caveat (3b of 3)
 
+> **SHELVED 2026-08-07 — do not execute this plan.** See the same notice on
+> plan 3a. One piece of this document outlives the calendar feature and is worth
+> salvaging independently: Task 1 replaces `capacityNote`'s hardcoded
+> `'calendar not connected'` with a health enum. That string is currently
+> *correct* — no calendar is connected and none can be — so there is no bug
+> today, but the comment in `capacityLabel.ts` predicting its obsolescence
+> should be read alongside this notice rather than acted on.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give the calendar a way in that is not the devtools console — credentials, connect, a calendar picker, a Refresh — and replace the week header's permanently-false "calendar not connected" caveat with one that says what is actually wrong.

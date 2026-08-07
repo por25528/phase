@@ -1,5 +1,14 @@
 # Google Calendar setup
 
+> **Shelved as of 2026-08-07.** The integration is unfinished and not reachable
+> from the app. The Electron producer is built and tested but nothing in the
+> renderer calls it, so following this guide will not give you calendar data in
+> Phase. It was stopped because the setup burden below — a Google Cloud project,
+> a consent screen, and pasting OAuth credentials — is too much to ask before
+> someone can plan a week. The remaining work is written up in
+> `docs/superpowers/plans/2026-08-07-google-calendar-3a-data-path.md` and `-3b-settings-ui.md`
+> if it is ever picked back up.
+
 Phase reads Google Calendar busy time locally so it can protect the time you
 have already committed. Follow these steps once to create an OAuth client for
 your own Phase installation.
