@@ -13,11 +13,12 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { useAppStore, actions } from '../state/store';
-import { todayStr, addDays, weekDates } from '../lib/dates';
+import { todayStr, addDays, weekDates, fmtD } from '../lib/dates';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { initialScrollWindow } from '../lib/grid';
 import { windowForDate } from '../lib/availability';
 import { scheduledByDate } from '../lib/scheduled';
+import { DEFAULT_SLOT_MIN } from '../lib/slot';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
@@ -28,6 +29,8 @@ import { useReducedMotion } from '../components/useReducedMotion';
 import { WeekGrid } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { BlockComposer } from './plan/BlockComposer';
+import { MonthGrid } from './plan/MonthGrid';
+import { ymOfWeek, weekShowingMonth, shiftYm, monthGrid } from '../lib/calendar';
 import type { CanvasSpan } from '../lib/canvasCreate';
 import { WeekHeader } from './plan/WeekHeader';
 import { UnestimatedPanel } from './plan/UnestimatedPanel';
@@ -83,7 +86,7 @@ let lastViewedWeek: string | null = null;
  * The week calendar. Owns which week is shown; everything else is derived.
  */
 export function Plan() {
-  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels, revealItem } = useAppStore();
+  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels, revealItem, planMode } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
@@ -104,9 +107,25 @@ export function Plan() {
    * every call, and two effects downstream key off its identity.
    */
   const days = useMemo(() => weekDates(weekStart), [weekStart]);
+  /*
+   * The month is DERIVED from the week cursor, not stored beside it. One
+   * cursor means switching to month shows the month containing the week you
+   * were on, and switching back shows the week you left — which is only true
+   * because neither is recorded twice.
+   */
+  const ym = ymOfWeek(weekStart);
+  /*
+   * Month mode needs every day the grid draws, including the neighbouring
+   * months' edge days. Deriving this from `days` alone renders an empty month
+   * silently — the cells are there, the work simply is not.
+   */
+  const visibleDays = useMemo(
+    () => (planMode === 'month' ? monthGrid(ym).flat() : days),
+    [planMode, ym, days],
+  );
   const scheduledByDay = useMemo(
-    () => scheduledByDate(goals, tasks, days),
-    [goals, tasks, days],
+    () => scheduledByDate(goals, tasks, visibleDays),
+    [goals, tasks, visibleDays],
   );
   const scrollWindow = useMemo(
     () => initialScrollWindow(days, availability),
@@ -214,12 +233,56 @@ export function Plan() {
    * Ephemeral view state, like `lastViewedWeek` — never in the store.
    */
   const [draft, setDraft] = useState<{ date: string; span: CanvasSpan } | null>(null);
+  /*
+   * The day a month cell is composing on. Separate from `draft` because a
+   * month cell carries no span — there is no time axis to draw one against, so
+   * the hour is chosen by `resolveSlot` rather than by the gesture.
+   */
+  const [monthDraft, setMonthDraft] = useState<string | null>(null);
 
   /*
    * A draft is anchored to a date in the visible week; navigating away would
    * otherwise leave a composer mounted on a day that is no longer rendered.
    */
-  useEffect(() => { setDraft(null); }, [weekStart]);
+  useEffect(() => { setDraft(null); setMonthDraft(null); }, [weekStart]);
+
+  /**
+   * Commit a month cell's composer.
+   *
+   * Aims at the day's working start, exactly as the `1`–`7` keyboard placement
+   * does; `createTaskAt` resolves that against the day's real gaps, so this
+   * lands at the first free slot rather than on top of existing work. A month
+   * click and a month drop therefore mean the same thing.
+   */
+  function commitMonthDraft(title: string): void {
+    const date = monthDraft;
+    setMonthDraft(null);
+    if (!date) return;
+    const dayWindow = windowForDate(date, availability);
+    if (!dayWindow) {
+      actions.showToast('No working hours on that day.');
+      return;
+    }
+    actions.createTaskAt(title, date, dayWindow.startMin, DEFAULT_SLOT_MIN);
+  }
+
+  /**
+   * One step of the view's own unit — a week in week mode, a month in month
+   * mode — moving the single `weekStart` cursor either way.
+   *
+   * `weekShowingMonth` and `ymOfWeek` are exact inverses (asserted over three
+   * years in calendar.test.ts), which is what makes paging land on the month
+   * asked for. Neither is `ymOf(weekStart)`/`weekOf(1st)`: a month starting
+   * mid-week belongs to a Monday in the previous month, and paging with the
+   * naive pair sticks — February 2026 never advances.
+   */
+  function shiftCursor(delta: number): void {
+    if (planMode === 'month') {
+      setWeekStart(weekShowingMonth(shiftYm(ym, delta)));
+      return;
+    }
+    setWeekStart(addDays(weekStart, delta * 7));
+  }
   /*
    * The items behind the header's count. Derived from the SAME week sets
    * `weekCapacity` was handed, so the list and the number cannot disagree —
@@ -377,6 +440,28 @@ export function Plan() {
     const date = overId.slice('day:'.length);
 
     /*
+     * Month cells share the `day:` droppable id but have no time axis, so
+     * everything below — which resolves an aim from the scroller's content
+     * coordinates — does not apply. It would also fail silently: there is no
+     * scroller in month mode, so `scrollerRef.current` is null and the guard
+     * below swallows every drop with no error at all.
+     *
+     * Aim at the day's working start, the same aim the `1`–`7` keyboard
+     * placement uses. `resolveSlot` walks forward from there, so a busy day
+     * still takes the drop at its first free gap.
+     */
+    if (planMode === 'month') {
+      const dayWindow = windowForDate(date, availability);
+      if (!dayWindow) {
+        actions.showToast('No working hours on that day.');
+        return;
+      }
+      if (data.kind === 'task') actions.scheduleTask(data.id, date, dayWindow.startMin);
+      else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, dayWindow.startMin);
+      return;
+    }
+
+    /*
      * `active.rect.current.translated` is the dragged element's LIVE viewport
      * rect. dnd-kit sets it to the very `collisionRect` its collision
      * detection just used to pick this day column, and with a `DragOverlay` —
@@ -470,8 +555,10 @@ export function Plan() {
             weekStart={weekStart}
             isPast={isPast}
             capacity={capacity}
-            onPrev={() => setWeekStart(addDays(weekStart, -7))}
-            onNext={() => setWeekStart(addDays(weekStart, 7))}
+            mode={planMode}
+            onModeChange={actions.setPlanMode}
+            onPrev={() => shiftCursor(-1)}
+            onNext={() => shiftCursor(1)}
             onToday={() => setWeekStart(weekOf(today))}
             unestimatedOpen={showUnestimated}
             onToggleUnestimated={() => setShowUnestimated((was) => !was)}
@@ -529,6 +616,26 @@ export function Plan() {
             </div>
           )}
 
+          {planMode === 'month' && monthDraft && (
+            <BlockComposer
+              variant="bar"
+              label={fmtD(monthDraft)}
+              startMin={0}
+              durationMin={DEFAULT_SLOT_MIN}
+              onCommit={commitMonthDraft}
+              onCancel={() => setMonthDraft(null)}
+            />
+          )}
+          {planMode === 'month' ? (
+            <MonthGrid
+              ym={ym}
+              today={today}
+              itemsByDay={scheduledByDay}
+              isPastDay={(date) => date < today}
+              onCreate={setMonthDraft}
+              onOpenDay={(date) => { actions.setPlanMode('week'); setWeekStart(weekOf(date)); }}
+            />
+          ) : (
           <WeekGrid
             days={days}
             today={today}
@@ -585,6 +692,7 @@ export function Plan() {
               </>
             )}
           </WeekGrid>
+          )}
         </div>
       </div>
 

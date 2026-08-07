@@ -16,12 +16,24 @@ import { clockLabel } from '../../lib/clock';
  * had just succeeded.
  */
 export function BlockComposer({
-  startMin, durationMin, onCommit, onCancel,
+  startMin, durationMin, onCommit, onCancel, variant = 'block', label,
 }: {
   startMin: number;
   durationMin: number;
   onCommit: (title: string) => void;
   onCancel: () => void;
+  /**
+   * `block` positions itself on the hour grid from `startMin`/`durationMin`.
+   * `bar` is a static row for surfaces with no time axis — the month grid,
+   * where the hour is chosen by `resolveSlot` rather than by the gesture.
+   *
+   * One component rather than two because the commit/cancel rules are the
+   * subtle part (see `resolved` below); duplicating them for a different
+   * shell is how the two would drift.
+   */
+  variant?: 'block' | 'bar';
+  /** Shown instead of the span when there is no span to show. */
+  label?: string;
 }) {
   const fieldRef = useRef<HTMLInputElement>(null);
   const resolved = useRef(false);
@@ -36,10 +48,14 @@ export function BlockComposer({
     else onCancel();
   }
 
+  const isBar = variant === 'bar';
+
   return (
     <div
-      className="absolute left-[2px] right-[2px] rounded-[6px] border border-accent bg-panel px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2]"
-      style={{
+      className={`rounded-[6px] border border-accent bg-panel px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] ${
+        isBar ? 'mb-[6px] flex items-baseline gap-[8px]' : 'absolute left-[2px] right-[2px]'
+      }`}
+      style={isBar ? undefined : {
         top: `${minuteToPx(startMin)}px`,
         height: `${durationMin * PX_PER_MINUTE}px`,
         zIndex: Z_BLOCK_REVEALED,
@@ -61,8 +77,11 @@ export function BlockComposer({
         }}
         onBlur={() => finish(false)}
       />
-      <div data-testid="composer-span" className="truncate text-muted text-tiny tabular-nums">
-        {clockLabel(startMin)}–{clockLabel(startMin + durationMin)}
+      <div
+        data-testid="composer-span"
+        className={`truncate text-muted text-tiny tabular-nums ${isBar ? 'flex-none order-first' : ''}`}
+      >
+        {label ?? `${clockLabel(startMin)}–${clockLabel(startMin + durationMin)}`}
       </div>
     </div>
   );

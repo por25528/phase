@@ -1,4 +1,5 @@
-import { pad } from './dates';
+import { pad, addDays } from './dates';
+import { weekOf } from './plan';
 
 /**
  * Month arithmetic for the Plan view's month mode.
@@ -18,6 +19,40 @@ const FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'A
 
 export function ymOf(date: string): string {
   return date.slice(0, 7);
+}
+
+/**
+ * Which month a week belongs to: the month of its Thursday.
+ *
+ * NOT `ymOf(weekStart)`. A month whose 1st is any day but Monday has its first
+ * week starting in the PREVIOUS month — September 2026 begins on a Tuesday, so
+ * `weekOf('2026-09-01')` is Mon Aug 31 and `ymOf` of that says August. Paging
+ * to September would then draw August, and paging back would never leave it.
+ *
+ * The Thursday is the ISO week-numbering rule and the majority day: any week
+ * has at least four of its days in the month its Thursday falls in, so this
+ * round-trips under `shiftYm` in both directions.
+ */
+export function ymOfWeek(weekStart: string): string {
+  return ymOf(addDays(weekStart, 3));
+}
+
+/**
+ * The week cursor that shows `ym` — the exact inverse of `ymOfWeek`.
+ *
+ * Anchored on the 4th, not the 1st. A month starting on a Sunday (February
+ * 2026) has only ONE of its days in the week containing its 1st, so that
+ * week's Thursday — and therefore `ymOfWeek` — still points at the previous
+ * month, and paging forward would stick. The 4th is the smallest anchor whose
+ * week always belongs to the month itself, which is the same reason ISO
+ * defines week 1 as the one containing January 4th.
+ *
+ * `ymOfWeek(weekShowingMonth(ym)) === ym` for every month; its sibling test
+ * asserts that as a round trip rather than a set of examples.
+ */
+export function weekShowingMonth(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return weekOf(`${y}-${pad(m)}-04`);
 }
 
 export function shiftYm(ym: string, n: number): string {

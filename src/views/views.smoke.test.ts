@@ -30,7 +30,7 @@ const dbMocks = vi.hoisted(() => ({
   saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
-  loadPlanMode: vi.fn(async () => 'week' as const),
+  loadPlanMode: vi.fn(async (): Promise<'week' | 'month'> => 'week'),
   savePlanMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
@@ -162,6 +162,24 @@ describe('the three views render against a populated store', () => {
     expect(html).toContain('Investor deck');    // an unplanned step, in the rail
     expect(html).toContain('free');             // the capacity readout
     expect(html).toContain('Read a paper');     // the habits panel
+  });
+
+  it('Plan draws a month when the stored preference says month', async () => {
+    // Seeded through the db mock rather than by calling the action, so this
+    // exercises hydration — the path that actually decides what the user sees
+    // on launch.
+    dbMocks.loadPlanMode.mockResolvedValueOnce('month' as const);
+    const store = await readyStore();
+    expect(store.getState().planMode).toBe('month');
+
+    const { Plan } = await import('./Plan');
+    const html = renderToStaticMarkup(createElement(Plan));
+
+    // The month's weekday strip, and none of the week grid's hour axis.
+    expect(html).toContain('Sun');
+    expect(html).not.toContain('8am');
+    // Week-only figures must not sit under a month heading.
+    expect(html).not.toContain('free');
   });
 
   it('Projects draws every horizon and the cards in them', async () => {

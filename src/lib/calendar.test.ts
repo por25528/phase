@@ -1,5 +1,40 @@
 import { describe, it, expect } from 'vitest';
-import { ymOf, shiftYm, ymLabel, monthGrid } from './calendar';
+import { ymOf, ymOfWeek, weekShowingMonth, shiftYm, ymLabel, monthGrid } from './calendar';
+import { weekOf } from './plan';
+
+describe('which month a week belongs to', () => {
+  it('is the month of its Thursday, not of its Monday', () => {
+    // Sep 2026 starts on a Tuesday, so its first week starts Mon Aug 31.
+    expect(weekOf('2026-09-01')).toBe('2026-08-31');
+    expect(ymOf('2026-08-31')).toBe('2026-08');   // the wrong answer
+    expect(ymOfWeek('2026-08-31')).toBe('2026-09'); // the right one
+  });
+
+  it('leaves a week wholly inside its month alone', () => {
+    expect(ymOfWeek('2026-08-03')).toBe('2026-08');
+  });
+
+  it('weekShowingMonth is its exact inverse, for every month of three years', () => {
+    // The property paging depends on: resolve the week that shows a month, ask
+    // which month that week belongs to, and get the month back. Anchoring on
+    // the 1st instead of the 4th breaks this for any month starting on a
+    // Sunday — February 2026 — and the header then refuses to advance.
+    for (let y = 2025; y <= 2027; y += 1) {
+      for (let m = 1; m <= 12; m += 1) {
+        const ym = `${y}-${String(m).padStart(2, '0')}`;
+        expect(ymOfWeek(weekShowingMonth(ym))).toBe(ym);
+      }
+    }
+  });
+
+  it('steps a month at a time in both directions', () => {
+    let cursor = weekShowingMonth('2026-12');
+    cursor = weekShowingMonth(shiftYm(ymOfWeek(cursor), 1));
+    expect(ymOfWeek(cursor)).toBe('2027-01');
+    cursor = weekShowingMonth(shiftYm(ymOfWeek(cursor), -1));
+    expect(ymOfWeek(cursor)).toBe('2026-12');
+  });
+});
 
 describe('ym helpers', () => {
   it('ymOf strips the day', () => expect(ymOf('2026-07-02')).toBe('2026-07'));
