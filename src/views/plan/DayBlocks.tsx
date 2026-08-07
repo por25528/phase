@@ -107,6 +107,7 @@ export function DayBlocks({
           endMin: item.endMin,
           done: item.done,
           estimated: item.estimated,
+          goalId: item.goalId,
         };
         const isWork = item.kind !== 'busy' && item.id !== null;
         const drag: PlanDragData | undefined = isWork

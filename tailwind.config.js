@@ -37,6 +37,14 @@ export default {
         'chip-ink': 'rgb(var(--c-chip-ink) / <alpha-value>)',
         warn: 'rgb(var(--c-warn) / <alpha-value>)',
         'warn-tint': 'rgb(var(--c-warn-tint) / <alpha-value>)',
+        // Project identity — see index.css for the contrast rationale. No key
+        // here may collide with a fontSize key; designScale.test.ts asserts it.
+        'proj-0': 'rgb(var(--c-proj-0) / <alpha-value>)',
+        'proj-1': 'rgb(var(--c-proj-1) / <alpha-value>)',
+        'proj-2': 'rgb(var(--c-proj-2) / <alpha-value>)',
+        'proj-3': 'rgb(var(--c-proj-3) / <alpha-value>)',
+        'proj-4': 'rgb(var(--c-proj-4) / <alpha-value>)',
+        'proj-5': 'rgb(var(--c-proj-5) / <alpha-value>)',
       },
       // The type scale. Every size in src/ is one of these — pick from the menu
       // rather than inventing a value; 37 near-duplicate sizes was the loudest

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { minuteToPx, PX_PER_MINUTE, Z_BLOCK, Z_BLOCK_REVEALED } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
+import { projectBlockClass } from '../../lib/projectColour';
 import type { PlanDragData } from './dropTarget';
 import { containerDragAttributes } from '../../lib/dragAttributes';
 
@@ -20,6 +21,8 @@ export interface GridBlock {
   endMin: number;
   done: boolean;
   estimated: boolean;
+  /** Owning project, or null for a loose task. Drives the identity colour. */
+  goalId?: string | null;
 }
 
 /**
@@ -105,7 +108,7 @@ export function EventBlock({
       className={`group/blk absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] border ${
         isBusy
           ? 'bg-hover border-line-2 text-muted italic'
-          : `bg-panel border-line-2 border-l-[3px] border-l-accent text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? '' : 'border-dashed'} cursor-grab`
+          : `border-transparent border-l-[3px] ${projectBlockClass(block.goalId ?? null)} text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? 'border-solid' : 'border-dashed border-line-2'} cursor-grab`
       } ${isDragging ? 'opacity-40' : ''} ${revealed ? 'ring-2 ring-inset ring-accent' : ''}`}
       style={{
         top: `${top}px`,
@@ -128,7 +131,12 @@ export function EventBlock({
           {/* A tall block has room to wrap; `truncate` clipped a long title to
               one line and left the space below it empty. */}
           <div className="font-medium line-clamp-3">{block.title}</div>
-          <div className="truncate text-muted text-tiny tabular-nums">{clockLabel(block.startMin)}</div>
+          {/* The full span, not just the start. A calendar's job is to say how
+              long something takes; the end time was already in the aria-label
+              and the tooltip, so it was known and simply not shown. */}
+          <div className="truncate text-ink-soft text-tiny tabular-nums">
+            {clockLabel(block.startMin)} – {clockLabel(block.endMin)}
+          </div>
         </>
       )}
       {onComplete && !isBusy && (
@@ -140,7 +148,13 @@ export function EventBlock({
           // announced as "Complete" that actually reopens the work is the same
           // lie as a button naming a date it does not open.
           aria-label={`${block.done ? 'Reopen' : 'Complete'} ${block.title}`}
-          className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent text-meta leading-none ${
+          // Hover-revealed like its ✕ sibling. It used to be the one control
+          // that showed at rest, so every block carried a grey tick it did not
+          // need — noise on a surface whose whole job is to be scannable. A
+          // DONE block keeps it visible: that tick is state, not an offer.
+          className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent text-meta leading-none transition-opacity focus-visible:opacity-100 ${
+            block.done ? 'opacity-100' : 'opacity-0 group-hover/blk:opacity-100'
+          } ${
             compact ? 'top-1/2 -translate-y-1/2 right-[22px] bg-panel/90 rounded-[4px]' : 'top-0 right-[20px]'
           }`}
         >

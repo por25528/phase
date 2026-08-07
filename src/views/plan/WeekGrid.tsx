@@ -3,7 +3,7 @@ import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
 import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
 import { windowForDate } from '../../lib/availability';
-import { minuteToPx, hourMarks, DAY_HEIGHT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
+import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
 import type { CanvasSpan } from '../../lib/canvasCreate';
 import { DayColumn } from './DayColumn';
@@ -186,6 +186,7 @@ export function WeekGrid({
   }, [weekKey, today, scrollWindow.startMin]);
 
   const marks = hourMarks();
+  const halfMarks = halfHourMarks();
 
   return (
     <div
@@ -257,6 +258,15 @@ export function WeekGrid({
             <div
               key={m}
               className="absolute left-0 right-0 border-t border-line-soft pointer-events-none"
+              style={{ top: `${minuteToPx(m)}px`, zIndex: Z_RULES }}
+              aria-hidden="true"
+            />
+          ))}
+          {/* Fainter than the hour rules — a reference, not a division. */}
+          {halfMarks.map((m) => (
+            <div
+              key={`half-${m}`}
+              className="absolute left-0 right-0 border-t border-line-soft/50 pointer-events-none"
               style={{ top: `${minuteToPx(m)}px`, zIndex: Z_RULES }}
               aria-hidden="true"
             />

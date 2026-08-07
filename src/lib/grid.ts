@@ -26,6 +26,20 @@ export function hourMarks(): number[] {
   return out;
 }
 
+/**
+ * The half-hour midpoints, drawn fainter than the hour rules.
+ *
+ * Not decoration: with hour rules alone the only reference for a block's
+ * position is a line an hour away, so a 09:30 start and a 09:45 start look
+ * identical. Every calendar this is measured against rules the half hour.
+ * Excludes the final midnight, which has no midpoint after it.
+ */
+export function halfHourMarks(): number[] {
+  const out: number[] = [];
+  for (let m = DAY_START_MIN + 30; m < DAY_END_MIN; m += MINUTES_PER_HOUR) out.push(m);
+  return out;
+}
+
 export interface LaneSpan {
   startMin: number;
   endMin: number;
