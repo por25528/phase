@@ -27,6 +27,8 @@ import { revealDomId, weekForReveal, REVEAL_MS } from '../lib/reveal';
 import { useReducedMotion } from '../components/useReducedMotion';
 import { WeekGrid } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
+import { BlockComposer } from './plan/BlockComposer';
+import type { CanvasSpan } from '../lib/canvasCreate';
 import { WeekHeader } from './plan/WeekHeader';
 import { UnestimatedPanel } from './plan/UnestimatedPanel';
 import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
@@ -208,6 +210,17 @@ export function Plan() {
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
   const [showUnestimated, setShowUnestimated] = useState(false);
   /*
+   * The block being drawn: a gesture that has landed but not yet been named.
+   * Ephemeral view state, like `lastViewedWeek` — never in the store.
+   */
+  const [draft, setDraft] = useState<{ date: string; span: CanvasSpan } | null>(null);
+
+  /*
+   * A draft is anchored to a date in the visible week; navigating away would
+   * otherwise leave a composer mounted on a day that is no longer rendered.
+   */
+  useEffect(() => { setDraft(null); }, [weekStart]);
+  /*
    * The items behind the header's count. Derived from the SAME week sets
    * `weekCapacity` was handed, so the list and the number cannot disagree —
    * see unestimated.ts, which asserts that against `workloadOf` directly.
@@ -263,6 +276,17 @@ export function Plan() {
   // handler instead.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      /*
+       * The composer owns the keyboard while it is open.
+       *
+       * This listener is capture-phase on `window`, so it sees every key
+       * before the field does and a `stopPropagation` inside the field cannot
+       * hold it off. Without this bail, typing a digit into a title places a
+       * backlog row on that weekday and an arrow key navigates the week out
+       * from under the field.
+       */
+      if (draft) return;
+
       const command = resolvePlanKey(e);
       if (!command) return;
 
@@ -335,7 +359,7 @@ export function Plan() {
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [focusedItem, weekStart, availability, isPast]);
+  }, [focusedItem, weekStart, availability, isPast, draft]);
 
   function handleDragStart(e: DragStartEvent) {
     setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
@@ -513,10 +537,12 @@ export function Plan() {
             scrollWindow={scrollWindow}
             readOnly={isPast}
             dayCapacity={capacity.days}
+            onCreate={(date, span) => setDraft({ date, span })}
             scrollerRef={scrollerRef}
             gridRef={gridRef}
           >
             {(date) => (
+              <>
               <DayBlocks
                 date={date}
                 items={scheduledByDay.get(date) ?? []}
@@ -539,6 +565,24 @@ export function Plan() {
                   else actions.resizeNode(id, minutes);
                 }}
               />
+              {draft?.date === date && (
+                <BlockComposer
+                  startMin={draft.span.startMin}
+                  durationMin={draft.span.durationMin}
+                  onCommit={(title) => {
+                    /*
+                     * The draft clears either way. On refusal `createTaskAt`
+                     * has already shown a toast naming the day's longest free
+                     * stretch and created nothing, so leaving the composer
+                     * open would just re-offer a span that cannot fit.
+                     */
+                    actions.createTaskAt(title, draft.date, draft.span.startMin, draft.span.durationMin);
+                    setDraft(null);
+                  }}
+                  onCancel={() => setDraft(null)}
+                />
+              )}
+              </>
             )}
           </WeekGrid>
         </div>

@@ -5,6 +5,7 @@ import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
 import { windowForDate } from '../../lib/availability';
 import { minuteToPx, hourMarks, DAY_HEIGHT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
+import type { CanvasSpan } from '../../lib/canvasCreate';
 import { DayColumn } from './DayColumn';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -37,7 +38,7 @@ const AXIS_WIDTH_PX = 46;
  */
 export function WeekGrid({
   days, today, nowMinute, windows, scrollWindow, readOnly, dayCapacity,
-  scrollerRef, gridRef, children,
+  onCreate, scrollerRef, gridRef, children,
 }: {
   days: string[];
   today: string;
@@ -53,6 +54,8 @@ export function WeekGrid({
    * week total — which cannot tell you that Tuesday is full.
    */
   dayCapacity?: DayCapacity[];
+  /** Draw a block on a day's empty canvas. Absent ⇒ no canvas is rendered. */
+  onCreate?: (date: string, span: CanvasSpan) => void;
   /** Owned by Plan, which needs it live to resolve a drop. */
   scrollerRef: RefObject<HTMLDivElement | null>;
   /** The hour grid inside the scroller. Plan reads its offsetTop as gridOffsetPx. */
@@ -279,6 +282,7 @@ export function WeekGrid({
               availabilityWindow={windowForDate(iso, windows)}
               nowMinute={iso === today ? nowMinute : null}
               readOnly={readOnly}
+              onCreate={onCreate ? (span) => onCreate(iso, span) : undefined}
             >
               {children(iso)}
             </DayColumn>
