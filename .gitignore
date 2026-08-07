@@ -8,3 +8,6 @@ build/icon.png
 
 # Brainstorming visual companion mockups
 .superpowers/
+
+# Claude Code workspace settings — machine-local
+.claude/
