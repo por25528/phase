@@ -3237,6 +3237,53 @@ describe('moveGoalToColumn', () => {
   });
 });
 
+describe('moveGoalRank', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('reports the move it made', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('Alpha');
+    actions.addGoal('Bravo');
+    const [a, b] = getState().goals;
+
+    expect(actions.moveGoalRank(a.id, 1)).toBe(true);
+
+    expect(getState().goals.map((g) => g.id)).toEqual([b.id, a.id]);
+    expect(getState().pendingUndo?.label).toBe('Moved "Alpha" down in Now');
+  });
+
+  /**
+   * A card already against the end of its column does not move, and the store
+   * has always been silent about it — no toast, no undo, deliberately, so
+   * holding the chord down cannot spray either.
+   *
+   * But it was silent by returning `undefined` on the refusal AND on the
+   * success, so `Goals.tsx`'s `moveRank` could not tell them apart and rang the
+   * card either way: highlight, scrollIntoView, and a `requestAnimationFrame`
+   * that calls `.focus()`. Its sibling `moveToHorizon` guards against exactly
+   * this and says so — "highlighting a card that never moved announces a move
+   * that did not happen" — and this was the unfixed half.
+   *
+   * The stray focus is not cosmetic. Under load that rAF fired AFTER the next
+   * card had been focused, took focus back, and sent the next keystroke to the
+   * wrong project.
+   */
+  it('refuses at either end of a column, and says so', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('Alpha');
+    actions.addGoal('Bravo');
+    const [a, b] = getState().goals;
+
+    expect(actions.moveGoalRank(a.id, -1)).toBe(false); // already top
+    expect(actions.moveGoalRank(b.id, 1)).toBe(false);  // already bottom
+    expect(actions.moveGoalRank(a.id, 0)).toBe(false);  // not a move at all
+
+    expect(getState().pendingUndo).toBeNull();
+    expect(getState().goals.map((g) => g.id)).toEqual([a.id, b.id]);
+  });
+});
+
 describe('planNextStepFor', () => {
   it('selects the project’s most urgent unplanned step, on the calendar', async () => {
     const { actions, getState } = await freshStore();

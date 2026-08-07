@@ -205,9 +205,17 @@ export function Goals() {
    * spec level, so it is not guaranteed. Routing through the same highlight
    * path as a horizon move makes it deterministic, and announces the move the
    * same way.
+   *
+   * Only on a move that actually happened. `moveGoalRank` is deliberately
+   * silent at either end of a column, and this used to ring the card anyway —
+   * the same "announces a move that did not happen" bug `moveToHorizon` guards
+   * against, and worse here, because the highlight effect focuses through a
+   * `requestAnimationFrame`. That stray focus is not merely cosmetic: it lands
+   * a frame later, so it could take focus back from a card the user had since
+   * moved to and redirect their next keystroke to the wrong project.
    */
   function moveRank(goalId: string, delta: number) {
-    actions.moveGoalRank(goalId, delta);
+    if (!actions.moveGoalRank(goalId, delta)) return;
     setHighlight({ id: goalId, nonce: highlightNonce.current += 1 });
   }
 

@@ -1142,9 +1142,9 @@ export const actions = {
    * `weaveCompleted` restores them around whatever the live order becomes. So
    * "the neighbour" means the next LIVE project, which is the one on screen.
    */
-  moveGoalRank(goalId: string, delta: number): void {
+  moveGoalRank(goalId: string, delta: number): boolean {
     const moved = state.goals.find((g) => g.id === goalId);
-    if (!moved || moved.completedAt || delta === 0) return;
+    if (!moved || moved.completedAt || delta === 0) return false;
     const col = Math.min(Math.max(moved.column ?? 0, 0), HORIZON_COUNT - 1);
     const cols: string[][] = Array.from({ length: HORIZON_COUNT }, () => []);
     for (const g of state.goals) {
@@ -1156,7 +1156,10 @@ export const actions = {
     const to = from + delta;
     // Already against the end it is being pushed towards: silent, so holding
     // the chord down cannot spray toasts or arm undo entries for nothing.
-    if (from === -1 || to < 0 || to >= list.length) return;
+    // Reported as `false` rather than merely being quiet, because the caller
+    // rings the card — highlight, scroll, focus — and a ring for a write that
+    // never happened is the bug `moveToHorizon` guards against above.
+    if (from === -1 || to < 0 || to >= list.length) return false;
     list.splice(to, 0, ...list.splice(from, 1));
     const before = structuredClone(state.goals);
     actions.setGoalBoard(cols);
@@ -1164,6 +1167,7 @@ export const actions = {
       `Moved "${moved.title}" ${delta < 0 ? 'up' : 'down'} in ${HORIZON_LABELS[col]}`,
       () => withoutClearingUndo(() => setAndPersist({ goals: before })),
     );
+    return true;
   },
 
   renameGoal(goalId: string, title: string) {
