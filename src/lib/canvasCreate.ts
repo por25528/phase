@@ -2,10 +2,14 @@ import { DEFAULT_SLOT_MIN, SLOT_GRANULARITY_MIN } from './slot';
 import { pxToMinute, DAY_START_MIN, DAY_END_MIN } from './grid';
 
 /**
- * No production caller yet. Built ahead of the direct-manipulation gestures
- * (spec §2 — click/drag-to-create, resize-from-start) that consume it,
- * which land in the grid remaster's plan 2. Pure and testable in isolation,
- * so landing it here made that plan's first component task smaller.
+ * Consumed by `DayCanvas` in `views/plan/DayColumn.tsx`, which turns a pointer
+ * gesture on empty grid space into the block a `BlockComposer` then names.
+ *
+ * Built one slice ahead of that caller (spec §2 — click/drag-to-create) because
+ * it is pure and testable without a DOM, which kept the geometry out of the
+ * component that renders it. `resize-from-start` — the other gesture §2
+ * describes — does NOT use this module: it reuses `clampResize`, which already
+ * validates whatever start it is given.
  */
 
 /**
