@@ -1775,6 +1775,66 @@ export const actions = {
   },
 
   /**
+   * Create a loose task directly on the grid, from a canvas gesture.
+   *
+   * ONE write, deliberately. Composing addTask → scheduleTask →
+   * setTaskEstimate arms three undo entries, and each write's sweep discards
+   * the ones before it, so the toast would offer to undo only the estimate —
+   * the same failure CLAUDE.md documents for bulk edits. It would also strand
+   * an undated task in the backlog whenever `scheduleTask` refused, after a
+   * gesture the user watched fail.
+   *
+   * The slot is resolved BEFORE anything is written, so a refusal creates
+   * nothing at all and the caller can drop its draft.
+   */
+  createTaskAt(title: string, date: string, startMin: number, durationMin: number): boolean {
+    const trimmed = title.trim();
+    if (!trimmed || !isValidLocalDate(date)) return false;
+
+    const minutes = normalizeEstimate(durationMin);
+    if (minutes === undefined) return false;
+
+    /*
+     * A brand-new block IS a new booking, so the wall clock applies — unlike
+     * `scheduleNode`/`scheduleTask`, which pass `NO_PAST_LIMIT` when moving
+     * something already on the grid because that is an adjustment. Drawing a
+     * block across a morning that has already happened should refuse, exactly
+     * as dragging a fresh item from the rail onto it does.
+     */
+    const now = nowMoment();
+    const placed = spansOn(state.goals, state.tasks, date);
+    const resolved = resolveSlot({
+      date,
+      aimMin: startMin,
+      durationMin: minutes,
+      windows: state.availability,
+      blocks: [],
+      placed,
+      now,
+      allDayBlocks: state.allDayBlocks,
+    });
+    if (resolved === null) {
+      // Same `now` as the search above, or the refusal describes gaps the
+      // search was never allowed to use.
+      const gaps = freeIntervals(date, state.availability, [], placed, now, state.allDayBlocks);
+      actions.showToast(describeNoRoom(minutes, gaps));
+      return false;
+    }
+
+    const task: Task = {
+      id: uid(),
+      title: trimmed,
+      date,
+      startMin: resolved,
+      done: false,
+      goalId: null,
+      estimateMin: minutes,
+    };
+    withUndo(`Created "${trimmed}"`, 'tasks', [...state.tasks, task]);
+    return true;
+  },
+
+  /**
    * The weekly recap's "Replan": put a carried-over step on the next day that
    * can actually take it.
    *

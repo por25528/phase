@@ -1098,6 +1098,74 @@ describe('store actions', () => {
     });
   });
 
+  describe('createTaskAt', () => {
+    // '2026-07-15' is a Wednesday; the module default availability
+    // (Mon-Fri 09:00-18:00) covers it, so resolveSlot has somewhere to place it.
+    it('creates a placed task in one undoable write', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+
+      expect(actions.createTaskAt('Read the Raft paper', '2026-07-15', 600, 90)).toBe(true);
+
+      const task = getState().tasks[0];
+      expect(task.title).toBe('Read the Raft paper');
+      expect(task.date).toBe('2026-07-15');
+      expect(task.startMin).toBe(600);
+      expect(task.estimateMin).toBe(90);
+      expect(task.goalId).toBeNull();
+      expect(task.done).toBe(false);
+      // ONE entry, and it is the creation — not an estimate change left behind
+      // by a three-write composition.
+      expect(getState().pendingUndo?.label).toBe('Created "Read the Raft paper"');
+    });
+
+    it('undo removes the task it created', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+
+      actions.createTaskAt('Read the Raft paper', '2026-07-15', 600, 90);
+      expect(getState().tasks).toHaveLength(1);
+
+      actions.undoLastDelete();
+      expect(getState().tasks).toEqual([]);
+    });
+
+    it('creates nothing and returns false when the day has no room', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+
+      // 600 minutes is longer than the whole 09:00-18:00 window.
+      expect(actions.createTaskAt('Too big', '2026-07-15', 600, 600)).toBe(false);
+
+      expect(getState().tasks).toEqual([]);
+      expect(getState().toast).toBe('No 10h gap left that day — longest free stretch is 9h');
+      expect(getState().pendingUndo).toBeNull();
+    });
+
+    it('refuses a blank title without touching the day', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+
+      expect(actions.createTaskAt('   ', '2026-07-15', 600, 60)).toBe(false);
+      expect(getState().tasks).toEqual([]);
+      expect(getState().pendingUndo).toBeNull();
+    });
+
+    it("honours the day's real gaps rather than the minute it was handed", async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+
+      actions.createTaskAt('First', '2026-07-15', 540, 120);  // 09:00-11:00
+      // Aims into the middle of what is now occupied. The only gap left that
+      // day is 11:00-18:00, so this must land on its near edge rather than at
+      // the minute the gesture asked for.
+      actions.createTaskAt('Second', '2026-07-15', 600, 60);
+
+      const second = getState().tasks.find((t) => t.title === 'Second')!;
+      expect(second.startMin).toBe(660);
+    });
+  });
+
   describe('scheduleTask', () => {
     // Mirrors the scheduleNode regression guard above: without excludeId in
     // scheduleTask's own `placed` lookup, a task already sitting at 600..660
