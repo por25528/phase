@@ -25,6 +25,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -2102,7 +2104,6 @@ describe('openProject node focus (T8)', () => {
   });
 
   it.each([
-    ['timeline', 'timeline'],
     ['plan', 'plan'],
     ['goals', 'goals'],
   ] as const)('closeProject returns to the %s view and clears project state', async (sourceView, expectedView) => {
@@ -2121,13 +2122,13 @@ describe('openProject node focus (T8)', () => {
   it('keeps the original return view when opening another project from the project page', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([nested, { ...nested, id: 'gb', title: 'Project B' }]);
-    actions.setView('timeline');
+    actions.setView('plan');
 
     actions.openProject('gp');
     actions.openProject('gb');
     actions.closeProject();
 
-    expect(getState().view).toBe('timeline');
+    expect(getState().view).toBe('plan');
   });
 
   it('preserves the active horizon across a project round-trip', async () => {
@@ -3079,16 +3080,19 @@ describe('a tab that does not own the lock', () => {
     vi.mocked(db.saveAllDayBlocks).mockClear();
     vi.mocked(db.saveSidebarPanels).mockClear();
     vi.mocked(db.savePlanReview).mockClear();
+    vi.mocked(db.saveGoalsMode).mockClear();
 
     store.actions.setAvailability([{ dow: 0, startMin: 540, endMin: 600 }]);
     store.actions.setAllDayBlocks(false);
     store.actions.setSidebarPanels(['habits']);
+    store.actions.setGoalsMode('timeline');
     await new Promise((r) => setTimeout(r, 0));
 
     expect(vi.mocked(db.saveAvailability)).not.toHaveBeenCalled();
     expect(vi.mocked(db.saveAllDayBlocks)).not.toHaveBeenCalled();
     expect(vi.mocked(db.saveSidebarPanels)).not.toHaveBeenCalled();
     expect(vi.mocked(db.savePlanReview)).not.toHaveBeenCalled();
+    expect(vi.mocked(db.saveGoalsMode)).not.toHaveBeenCalled();
   });
 
   it('refuses an import rather than letting it write all four tables', async () => {
@@ -4043,5 +4047,37 @@ describe('undo durability', () => {
     expect(s.openGoalId).toBeNull();
     expect(s.focusNodeId).toBeNull();
     expect(s.openStepId).toBeNull();
+  });
+});
+
+/**
+ * Board or Timeline is a device preference, exactly like `planMode` — which
+ * representation of the same goals this machine last looked at. It is not app
+ * data, so it never goes through `setAndPersist`, and importing a backup from
+ * another machine must not change what this one is showing.
+ */
+describe('the Goals representation', () => {
+  it('defaults to the board and remembers a switch to the timeline', async () => {
+    const db = await import('../db/db');
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().goalsMode).toBe('board');
+
+    vi.mocked(db.saveGoalsMode).mockClear();
+    vi.mocked(db.persist).mockClear();
+    store.actions.setGoalsMode('timeline');
+
+    expect(store.getState().goalsMode).toBe('timeline');
+    expect(vi.mocked(db.saveGoalsMode)).toHaveBeenCalledWith('timeline');
+    // Not app data: no table was rewritten to record a change of view.
+    expect(vi.mocked(db.persist)).not.toHaveBeenCalled();
+  });
+
+  it('takes the stored mode on hydration', async () => {
+    const db = await import('../db/db');
+    vi.mocked(db.loadGoalsMode).mockResolvedValueOnce('timeline');
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().goalsMode).toBe('timeline');
   });
 });

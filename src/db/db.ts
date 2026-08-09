@@ -207,6 +207,29 @@ export async function savePlanMode(mode: PlanMode): Promise<void> {
   await db.settings.put({ key: PLAN_MODE_KEY, value: mode });
 }
 
+/**
+ * Which representation the Goals page is in. A device preference, like
+ * `PlanMode` — list, board and timeline are ways of looking at the same
+ * portfolio, not different data, so this never rides in `AppState`.
+ */
+export type GoalsMode = 'board' | 'timeline';
+
+const GOALS_MODE_KEY = 'goalsMode';
+
+/**
+ * Total parse, like `parsePlanMode`. Board is the default because it is the
+ * mode you can act in: a card can be dragged between horizons and opened.
+ * Timeline answers "when does all of this land", which is a weekly question.
+ */
+export async function loadGoalsMode(): Promise<GoalsMode> {
+  const row = await db.settings.get(GOALS_MODE_KEY);
+  return row?.value === 'timeline' ? 'timeline' : 'board';
+}
+
+export async function saveGoalsMode(mode: GoalsMode): Promise<void> {
+  await db.settings.put({ key: GOALS_MODE_KEY, value: mode });
+}
+
 // One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
 // Not a Dexie version: the migration adds optional fields to existing objects,
 // which changes no store and no index.

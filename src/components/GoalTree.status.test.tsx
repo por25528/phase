@@ -14,6 +14,8 @@ const dbMocks = vi.hoisted(() => ({
   loadSidebarPanels: vi.fn(async () => []),
   loadPlanMode: vi.fn(async () => 'week' as const),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
   saveAvailability: vi.fn(async () => {}),

@@ -32,6 +32,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async (): Promise<'week' | 'month'> => 'week'),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -200,6 +202,22 @@ describe('the three views render against a populated store', () => {
     const html = renderToStaticMarkup(createElement(Timeline));
 
     expect(html).toContain('6.1200 Problem Sets');
+  });
+
+  // Timeline stopped being a destination and became a representation of the
+  // same page, so the switch has to be part of Goals' own render — not a route
+  // App picks between.
+  it('Goals draws the timeline instead of the board when that is the stored mode', async () => {
+    dbMocks.loadGoalsMode.mockResolvedValueOnce('timeline' as const);
+    const store = await readyStore();
+    expect(store.getState().goalsMode).toBe('timeline');
+
+    const { Goals } = await import('./Goals');
+    const html = renderToStaticMarkup(createElement(Goals));
+
+    expect(html).toContain('6.1200 Problem Sets');
+    expect(html).toContain('Timeline scope');   // the timeline's own control
+    expect(html).not.toContain('Drop a goal here'); // …and none of the board
   });
 
   /**

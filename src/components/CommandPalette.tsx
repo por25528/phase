@@ -4,6 +4,7 @@ import { IconSearch } from './Icons';
 import { buildSearchIndex, searchEntries, type SearchEntry, type SearchHit, type SearchKind } from '../lib/search';
 import type { Goal, Habit, Task } from '../db/types';
 import type { ProjectTab, ViewName } from '../state/store';
+import type { GoalsMode } from '../db/db';
 
 // One input that both finds and acts (the Linear ⌘K pattern). Navigation verbs
 // share the list with search results, so nothing needs a separate surface.
@@ -11,13 +12,18 @@ interface NavCommand {
   id: string;
   label: string;
   view: ViewName;
-  key: string;
+  /** Set only where the destination is a representation of Goals, not a view. */
+  goalsMode?: GoalsMode;
+  key?: string;
 }
 
+// Timeline keeps a row here even though it lost its nav tab and its number key:
+// a mode one level in is harder to find than a tab was, and the palette is
+// where the product is supposed to make that up.
 const NAV_COMMANDS: NavCommand[] = [
   { id: 'nav-plan', label: 'Go to Plan', view: 'plan', key: '1' },
   { id: 'nav-goals', label: 'Go to Goals', view: 'goals', key: '2' },
-  { id: 'nav-timeline', label: 'Go to Timeline', view: 'timeline', key: '3' },
+  { id: 'nav-timeline', label: 'Go to Timeline', view: 'goals', goalsMode: 'timeline' },
 ];
 
 const KIND_LABEL: Record<SearchKind, string> = {
@@ -62,6 +68,7 @@ export function CommandPalette({
   onOpenGoal,
   onSetProjectTab,
   onSetView,
+  onSetGoalsMode,
   onReveal,
 }: {
   open: boolean;
@@ -72,6 +79,7 @@ export function CommandPalette({
   onOpenGoal: (goalId: string, nodeId?: string) => void;
   onSetProjectTab: (tab: ProjectTab) => void;
   onSetView: (view: ViewName) => void;
+  onSetGoalsMode: (mode: GoalsMode) => void;
   /** Take the user to a task/habit on the Plan view and highlight it. */
   onReveal: (kind: 'task' | 'habit', id: string) => void;
 }) {
@@ -135,6 +143,7 @@ export function CommandPalette({
 
   function run(row: Row) {
     if (row.type === 'nav') {
+      if (row.command.goalsMode) onSetGoalsMode(row.command.goalsMode);
       onSetView(row.command.view);
       onClose();
       return;
@@ -265,9 +274,11 @@ export function CommandPalette({
                     <span className="flex-1 min-w-0 truncate text-lead text-ink-soft">
                       {row.command.label}
                     </span>
-                    <kbd className="font-mono text-kbd text-muted border border-line-2 rounded-[4px] px-[4px] py-[1px]">
-                      {row.command.key}
-                    </kbd>
+                    {row.command.key && (
+                      <kbd className="font-mono text-kbd text-muted border border-line-2 rounded-[4px] px-[4px] py-[1px]">
+                        {row.command.key}
+                      </kbd>
+                    )}
                   </button>
                 );
               }

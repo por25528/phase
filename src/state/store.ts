@@ -6,6 +6,7 @@ import {
   loadAllDayBlocks, saveAllDayBlocks,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   loadPlanMode, savePlanMode, type PlanMode,
+  loadGoalsMode, saveGoalsMode, type GoalsMode,
   isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
   isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
@@ -69,12 +70,11 @@ function writeStatus(n: GoalNode, next: StepStatus, today: string, blockedOn?: s
   }
 }
 
-export type ViewName = 'plan' | 'goals' | 'timeline' | 'project';
+export type ViewName = 'plan' | 'goals' | 'project';
 
 export const VIEW_LABELS = {
   plan: 'Plan',
   goals: 'Goals',
-  timeline: 'Timeline',
 } as const;
 
 /** Which tab the project page is showing. */
@@ -114,6 +114,7 @@ interface UIState {
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
   sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
   planMode: PlanMode;                 // week or month shape for the Plan view (device preference)
+  goalsMode: GoalsMode;               // board or timeline shape for the Goals view (device preference)
   activeHorizon: number;              // narrow Projects-board horizon (UI only)
 }
 
@@ -146,6 +147,7 @@ let state: FullState = {
   allDayBlocks: true,
   sidebarPanels: [],
   planMode: 'week',
+  goalsMode: 'board',
   activeHorizon: 0,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
@@ -464,8 +466,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -520,6 +522,7 @@ export async function initStore(): Promise<void> {
       allDayBlocks,
       sidebarPanels,
       planMode,
+      goalsMode,
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -1725,6 +1728,16 @@ export const actions = {
   setPlanMode(mode: PlanMode): void {
     set({ planMode: mode });
     ifOwner(() => savePlanMode(mode));
+  },
+
+  /**
+   * Same again. Timeline used to be a global destination competing with Plan
+   * and Goals for a presentation people opened weekly; it is a way of looking
+   * at the portfolio, so it changes the representation and nothing else.
+   */
+  setGoalsMode(mode: GoalsMode): void {
+    set({ goalsMode: mode });
+    ifOwner(() => saveGoalsMode(mode));
   },
 
   // Goal date editing

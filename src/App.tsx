@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore, initStore, VIEW_LABELS } from './state/store';
 import { Goals } from './views/Goals';
-import { Timeline } from './views/Timeline';
 import { Plan } from './views/Plan';
 import { Project } from './views/Project';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
@@ -42,14 +41,16 @@ import {
 
 // Header toggle cycles System → Light → Dark → System.
 const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' };
-const THEME_LABEL: Record<Theme, string> = { system: 'SYSTEM', light: 'LIGHT', dark: 'DARK' };
+const THEME_LABEL: Record<Theme, string> = { system: 'System', light: 'Light', dark: 'Dark' };
 
-// The nav, in the order the number keys 1–3 select them (see lib/appKeyboard).
-// The board is labelled "Projects" because every string on it says project.
+// The nav, in the order the number keys select them (see lib/appKeyboard).
+//
+// Two destinations, not three. Timeline was a full global destination for a
+// presentation of goal dates people opened weekly, sitting at the same weight
+// as the surfaces they work in daily; it is a view mode inside Goals now.
 const NAV_TABS = [
   ['plan', VIEW_LABELS.plan],
   ['goals', VIEW_LABELS.goals],
-  ['timeline', VIEW_LABELS.timeline],
 ] as const;
 
 export function App() {
@@ -159,7 +160,6 @@ export function App() {
       if (modalRegistry.hasOpenModal()) return;
       if (command === 'view-plan') actions.setView('plan');
       if (command === 'view-goals') actions.setView('goals');
-      if (command === 'view-timeline') actions.setView('timeline');
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -234,32 +234,6 @@ export function App() {
           <span className="hidden sm:inline">Task</span>
           <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
         </button>
-
-        {/* Utilities: inline on wide screens, folded into ⋯ below lg. */}
-        <div className="hidden lg:flex items-center gap-[16px] font-mono text-meta tracking-[.06em] text-muted flex-none">
-          <button
-            type="button"
-            onClick={() => setShowShortcuts(true)}
-            aria-label="Keyboard shortcuts (?)"
-            title="Keyboard shortcuts (?)"
-            className="w-[24px] h-[24px] grid place-items-center rounded-full border border-line-2 text-compact hover:text-ink hover:border-muted"
-          >
-            ?
-          </button>
-          <button
-            onClick={() => actions.setTheme(NEXT_THEME[theme])}
-            aria-label={`Theme: ${THEME_LABEL[theme]}${theme === 'system' ? ` (${effectiveTheme})` : ''} — switch to ${THEME_LABEL[NEXT_THEME[theme]]}`}
-            title={`Theme: ${THEME_LABEL[theme]}`}
-            className="flex items-center gap-[6px] min-h-[24px] px-[2px] rounded-[6px] hover:text-ink"
-          >
-            {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
-            <span>{THEME_LABEL[theme]}</span>
-          </button>
-          <button onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'} className="inline-flex items-center gap-[6px] min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none"><IconArrowDown />EXPORT</button>
-          {/* No icon, as before: this row's glyphs were replaced, not added to. */}
-          <button onClick={reclaimSpace} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">RECLAIM SPACE</button>
-          <button onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'} className="inline-flex items-center gap-[6px] min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none"><IconArrowUp />IMPORT</button>
-        </div>
 
         <HeaderMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <HeaderMenuItem onClick={() => actions.setTheme(NEXT_THEME[theme])}>
@@ -367,16 +341,15 @@ export function App() {
           <div className="w-full px-[16px] sm:px-[36px] py-[24px]">
             <Plan />
           </div>
-        ) : view === 'timeline' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[32px]">
-            <Timeline />
-          </div>
         ) : view === 'project' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[28px] pb-[90px]">
             <Project />
           </div>
         ) : (
-          <div className="max-w-[1280px] mx-auto px-[16px] sm:px-[36px] py-[42px] pb-[90px]">
+          // Full-bleed on purpose: Goals owns its own measure, because the
+          // timeline it now contains needs the whole viewport to scroll a
+          // semester across, and the board does not.
+          <div className="w-full px-[16px] sm:px-[36px] py-[42px] pb-[90px]">
             <Goals />
           </div>
         )}
@@ -436,6 +409,7 @@ export function App() {
         onOpenGoal={actions.openProject}
         onSetProjectTab={actions.setProjectTab}
         onSetView={actions.setView}
+        onSetGoalsMode={actions.setGoalsMode}
         onReveal={actions.revealInPlan}
       />
 

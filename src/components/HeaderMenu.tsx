@@ -2,10 +2,15 @@ import { useEffect, useRef } from 'react';
 import { IconDots } from './Icons';
 
 /**
- * The header's `⋯` overflow menu. Below `lg` the utility cluster (shortcuts,
- * theme, export, import) does not fit beside the nav, and letting it push the
- * document wider is what made every view side-scroll on a phone — so it
- * collapses in here instead.
+ * The header's `⋯` utility menu — the single home for everything the app can
+ * do that is not navigating, searching or capturing.
+ *
+ * It used to be an overflow that only existed below `lg`, with theme, export,
+ * reclaim space and import spelled out inline above that width. Frequency does
+ * not determine visual priority there: those are operations a person runs a
+ * handful of times a year, and advertising them on every screen made the
+ * header read as an inventory of what was implemented. They live in here at
+ * every width now.
  *
  * Closes on outside pointerdown, Escape, and after any item runs.
  */
@@ -40,10 +45,10 @@ export function HeaderMenu({
   }, [open, onOpenChange]);
 
   return (
-    <div ref={wrapRef} className="relative lg:hidden">
+    <div ref={wrapRef} className="relative flex-none">
       <button
         type="button"
-        aria-label="More actions"
+        aria-label="Settings and data"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}

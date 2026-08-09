@@ -19,6 +19,7 @@ import { focusSummary } from '../lib/plan';
 import { fmtD } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { Timeline } from './Timeline';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
@@ -26,6 +27,7 @@ import { FocusSummary, type FocusFilter } from './goals/FocusSummary';
 import { Column } from './goals/Column';
 import { HORIZON_LABELS } from './goals/styles';
 import type { Goal } from '../db/types';
+import type { GoalsMode } from '../db/db';
 import { needsDateConfirmation, confirmableDateGoalIds } from '../lib/schedule';
 
 // Commitment horizons, left → right = Now … Someday. Column order IS the model:
@@ -36,7 +38,7 @@ const COL_COUNT = COLUMNS.length;
 // ── Goals view ────────────────────────────────────────────────────────────────
 
 export function Goals() {
-  const { goals, dateReviewDismissed, activeHorizon, actions } = useAppStore();
+  const { goals, dateReviewDismissed, activeHorizon, goalsMode, actions } = useAppStore();
   const [modal, setModal] = useState<null | 'new' | 'import'>(null);
   const [filter, setFilter] = useState<FocusFilter | null>(null);
   // The card the date-review banner (or a horizon move) is pointing at, plus a
@@ -297,17 +299,25 @@ export function Goals() {
     });
   }
 
+  const timeline = goalsMode === 'timeline';
+
   return (
-    <div>
+    /* Timeline scrolls a semester sideways and wants the whole viewport; the
+       board is a four-column read and stops being legible past ~1280px. The
+       measure belongs to the mode, so it is set here rather than in App. */
+    <div className={timeline ? undefined : 'max-w-[1280px] mx-auto'}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-[10px] sm:gap-[16px] mb-[6px]">
         <div className="min-w-0">
           <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em]">Goals</h1>
           <p className="text-ui text-muted mt-[3px]">
-            Drag a goal between horizons to recommit it — Now is what you're actively pushing on, and {summary.slots.limit} at a time is the target that keeps focus honest.
+            {timeline
+              ? 'Every goal with a start and a deadline, laid out against the calendar.'
+              : `Drag a goal between horizons to recommit it — Now is what you're actively pushing on, and ${summary.slots.limit} at a time is the target that keeps focus honest.`}
           </p>
         </div>
         <div className="flex-none flex items-center gap-[8px] self-start">
+          <ViewModeSwitch mode={goalsMode} onChange={actions.setGoalsMode} />
           <button
             className="text-body font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
             onClick={() => setModal('import')}
@@ -323,6 +333,12 @@ export function Goals() {
         </div>
       </div>
 
+      {timeline ? (
+        <div className="mt-[14px]">
+          <Timeline />
+        </div>
+      ) : (
+       <>
       {/* Empty state */}
       {isEmpty && (
         <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
@@ -484,6 +500,9 @@ export function Goals() {
       {/* Completed projects */}
       {completed.length > 0 && <CompletedSection goals={completed} onReopen={actions.reopenGoal} />}
 
+       </>
+      )}
+
       <NewGoalModal
         open={modal === 'new'}
         onClose={() => setModal(null)}
@@ -503,6 +522,46 @@ export function Goals() {
           setModal(null);
         }}
       />
+    </div>
+  );
+}
+
+// ── View mode ─────────────────────────────────────────────────────────────────
+/**
+ * Board or Timeline. A segmented control, not two nav destinations: both show
+ * the same goals, and switching between them changes the representation and
+ * nothing about the data — which is exactly the distinction the old top-level
+ * Timeline tab destroyed by sitting beside Plan and Goals as a peer.
+ */
+const MODES = [
+  ['board', 'Board'],
+  ['timeline', 'Timeline'],
+] as const;
+
+function ViewModeSwitch({
+  mode,
+  onChange,
+}: {
+  mode: GoalsMode;
+  onChange: (mode: GoalsMode) => void;
+}) {
+  return (
+    <div role="group" aria-label="Goals view" className="flex gap-[2px] p-[3px] bg-hover rounded-[11px]">
+      {MODES.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={mode === key}
+          onClick={() => onChange(key)}
+          className={`text-ui px-[10px] py-[5px] rounded-field transition-colors ${
+            mode === key
+              ? 'bg-panel text-ink font-semibold shadow-card'
+              : 'text-muted font-medium hover:text-ink'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

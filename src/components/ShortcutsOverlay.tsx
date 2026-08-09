@@ -6,12 +6,11 @@ import { IconX } from './Icons';
 // click both dismiss it, wired from App's global key handler and onClose here.
 
 // Listed in nav order, which is also the order the number keys select.
-// "Projects", not "Goals" — that is what the nav, the board and the command
-// palette all call it; this list was the last survivor of the old name.
+// Timeline is absent because it is not a destination any more — it is a mode
+// inside Goals, reachable from the command palette.
 const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['1'], label: 'Plan' },
   { keys: ['2'], label: 'Goals' },
-  { keys: ['3'], label: 'Timeline' },
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
   { keys: ['⌘', 'K'], label: 'Search everything' },
@@ -25,10 +24,10 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
 // them separately rather than implying they work everywhere. `1`-`7` also
 // require a focused backlog row; `[`, `]` and `t` work regardless of focus.
 //
-// `1`-`3` deliberately appear in both lists: with a backlog row focused they
-// place work, because Plan's capture-phase listener consumes them before the
-// view switcher above ever sees them. With nothing focused they fall through
-// and switch view.
+// `1` and `2` deliberately appear in both lists: with a backlog row focused
+// they place work, because Plan's capture-phase listener consumes them before
+// the view switcher above ever sees them. With nothing focused they fall
+// through and switch view.
 const PLANNER_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['1–7'], label: 'Put the focused task on that weekday' },
   { keys: ['['], label: 'Previous week' },
@@ -36,7 +35,7 @@ const PLANNER_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['t'], label: 'Back to this week' },
 ];
 
-// Board keys — on a focused project card. Alt rather than Cmd because ⌘← is
+// Board keys — on a focused goal card. Alt rather than Cmd because ⌘← is
 // Back in a browser and the board is a normal document.
 const BOARD_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['↵'], label: 'Open the goal' },
