@@ -119,6 +119,23 @@ async function preparePanel(goal: Goal, sessions: Session[] = []): Promise<Store
   return store;
 }
 
+/**
+ * Open one property's popover.
+ *
+ * The panel states four short facts and keeps their editors one click behind
+ * the value each edits, so a test that wants an editor has to ask for it the
+ * way a person does. The trigger's accessible name is `<Property>: <value>`.
+ */
+function openProperty(name: string): void {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}: `) }));
+}
+
+/** Open the status popover and choose one of its four options. */
+function pickStatus(word: string): void {
+  openProperty('Status');
+  fireEvent.click(screen.getByRole('menuitemradio', { name: word }));
+}
+
 async function mountPanel(goal: Goal, sessions: Session[] = []): Promise<Store> {
   const store = await preparePanel(goal, sessions);
   const { StepPanel } = await import('./StepPanel');
@@ -310,8 +327,22 @@ describe('StepPanel', () => {
     await mountPanel(leafWithDates);
 
     expect(screen.getByRole('heading', { level: 2, name: 'Wire up auth' })).toBeTruthy();
+    // Both ends of the span are still here — one click behind the date the row
+    // states, because Phase stores a span and a task is read for its end.
+    openProperty('Dates');
     expect(screen.getByLabelText('Span start')).toBeTruthy();
     expect(screen.getByLabelText('Span end')).toBeTruthy();
+  });
+
+  it('states the deadline on the row, and names the property when there is none', async () => {
+    await mountPanel(leafWithDates);
+    expect(screen.getByRole('button', { name: /^Dates: /})).toBeTruthy();
+
+    cleanup();
+    await mountPanel(unplannedLeaf);
+    // Never a zero or an empty field: the placeholder says which property is
+    // unset, which is also how you set it.
+    expect(screen.getByRole('button', { name: 'Dates: No dates' })).toBeTruthy();
   });
 
   it('shows where a planned task sits, and offers to clear it', async () => {
@@ -341,7 +372,10 @@ describe('StepPanel', () => {
     const store = await mountPanel(unplannedLeaf);
 
     expect(screen.queryByText(/use the Plan view/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+    // One trigger, then the verb — the same `ScheduleMenu` the tree row's WHEN
+    // cell opens, so the two surfaces cannot drift about what scheduling offers.
+    openProperty('Schedule');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Today' }));
 
     const node = store.getState().goals[0].nodes[0];
     expect(node.blocks?.[0].date).toBe('2026-07-27');
@@ -362,38 +396,65 @@ describe('StepPanel', () => {
     expect(screen.getByRole('button', { name: 'Log time on "Wire up auth"' })).toBeTruthy();
   });
 
-  it('shows only progress for a container', async () => {
+  it('lists a container\'s tasks with a count, and no leaf-only controls', async () => {
     await mountPanel(containerNode);
 
-    expect(screen.getByText('50%')).toBeTruthy();
+    // The count replaces the bare `50%`: one done of two direct children, with
+    // both numbers on screen. `nodePct` rolls up the whole subtree, so its
+    // percentage had a denominator that appeared nowhere.
+    expect(screen.getByText('1 / 2')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Configure provider' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Wire up callback' })).toBeTruthy();
+
     expect(screen.queryByRole('button', { name: /estimate for|Set estimate/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /log time/i })).toBeNull();
+  });
+
+  it('selects a child from the container\'s task list', async () => {
+    const store = await mountPanel(containerNode);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wire up callback' }));
+
+    expect(store.getState().openStepId).toBe('n3');
+  });
+
+  it('offers to open a container as a workspace, and never a leaf', async () => {
+    const store = await mountPanel(containerNode);
+    fireEvent.click(screen.getByRole('button', { name: 'Open "Auth work" as a workspace' }));
+    expect(store.getState().openAreaId).toBe('n1');
+
+    cleanup();
+    // A leaf's whole content is this panel, so ↗ there would promise a page
+    // that would have to be this one again.
+    await mountPanel(leafWithDates);
+    expect(screen.queryByRole('button', { name: /as a workspace$/ })).toBeNull();
   });
 
   it('offers the milestone toggle on a leaf and updates its label when enabled', async () => {
     const store = await mountPanel(leafWithDates);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Make "Wire up auth" a milestone' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Make "Wire up auth" a milestone' }));
 
     expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
-    expect(screen.getByRole('button', { name: 'Stop treating "Wire up auth" as a milestone' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Stop treating "Wire up auth" as a milestone' })).toBeTruthy();
   });
 
   it('offers and activates the milestone toggle on a leaf with empty children', async () => {
     const store = await mountPanel(emptyChildrenLeaf);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Make "Wire up auth" a milestone' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Make "Wire up auth" a milestone' }));
 
     expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
   });
 
   it('shows the remove label for a milestone and omits the toggle on a container', async () => {
     await mountPanel(checkpointLeaf);
-    expect(screen.getByRole('button', { name: 'Stop treating "Wire up auth" as a milestone' })).toBeTruthy();
+    const toggle = screen.getByRole('switch', { name: 'Stop treating "Wire up auth" as a milestone' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
 
     cleanup();
     await mountPanel(containerNode);
-    expect(screen.queryByRole('button', { name: /checkpoint/i })).toBeNull();
+    expect(screen.queryByRole('switch')).toBeNull();
   });
 
   it('closes with the close button', async () => {
@@ -406,6 +467,7 @@ describe('StepPanel', () => {
 
   it('routes a cleared span date through clearNodeDates', async () => {
     const store = await mountPanel(leafWithDates);
+    openProperty('Dates');
     const start = screen.getByLabelText('Span start');
 
     fireEvent.focus(start);
@@ -418,23 +480,26 @@ describe('StepPanel', () => {
   });
 
   describe('status', () => {
-    it('shows a radio group for a leaf with "to do" checked by default', async () => {
+    it('states the status on the row and offers all four behind it', async () => {
       await mountPanel(unplannedLeaf);
 
-      const group = screen.getByRole('radiogroup', { name: 'Status' });
-      const radios = within(group).getAllByRole('radio');
-      expect(radios.map((r) => r.textContent)).toEqual(['to do', 'in progress', 'blocked', 'done']);
-      expect(within(group).getByRole('radio', { name: 'to do' }).getAttribute('aria-checked')).toBe('true');
+      // The value IS the label — no eyebrow reading "Status" above a word.
+      expect(screen.getByRole('button', { name: 'Status: to do' })).toBeTruthy();
+
+      openProperty('Status');
+      const menu = screen.getByRole('menu');
+      const options = within(menu).getAllByRole('menuitemradio');
+      expect(options.map((r) => r.textContent)).toEqual(['to do', 'in progress', 'blocked', 'done']);
+      expect(within(menu).getByRole('menuitemradio', { name: 'to do' }).getAttribute('aria-checked')).toBe('true');
     });
 
-    it('sets a leaf to in progress on click', async () => {
+    it('sets a leaf to in progress', async () => {
       const store = await mountPanel(unplannedLeaf);
 
-      fireEvent.click(screen.getByRole('radio', { name: 'in progress' }));
+      pickStatus('in progress');
 
       expect(store.getState().goals[0].nodes[0].status).toBe('doing');
-      expect(screen.getByRole('radio', { name: 'in progress' }).getAttribute('aria-checked')).toBe('true');
-      expect(screen.getByRole('radio', { name: 'to do' }).getAttribute('aria-checked')).toBe('false');
+      expect(screen.getByRole('button', { name: 'Status: in progress' })).toBeTruthy();
     });
 
     it('shows a blockedOn field only while blocked, and commits it on blur', async () => {
@@ -442,9 +507,12 @@ describe('StepPanel', () => {
 
       expect(screen.queryByLabelText('Blocked on')).toBeNull();
 
-      fireEvent.click(screen.getByRole('radio', { name: 'blocked' }));
+      pickStatus('blocked');
       expect(store.getState().goals[0].nodes[0].status).toBe('blocked');
 
+      // The reason stays OUT of the popover: it is what makes a blocked task
+      // actionable, and hiding it behind the control that set the status would
+      // let the panel say "blocked" without ever saying what by.
       const reason = screen.getByLabelText('Blocked on');
       fireEvent.change(reason, { target: { value: 'the grader' } });
       fireEvent.blur(reason);
@@ -455,19 +523,19 @@ describe('StepPanel', () => {
     it('hides the blockedOn field again once no longer blocked', async () => {
       const store = await mountPanel(unplannedLeaf);
 
-      fireEvent.click(screen.getByRole('radio', { name: 'blocked' }));
+      pickStatus('blocked');
       expect(screen.getByLabelText('Blocked on')).toBeTruthy();
 
-      fireEvent.click(screen.getByRole('radio', { name: 'to do' }));
+      pickStatus('to do');
 
       expect(store.getState().goals[0].nodes[0].status).toBeUndefined();
       expect(screen.queryByLabelText('Blocked on')).toBeNull();
     });
 
-    it('shows read-only derived status text for a container, with no radio group', async () => {
+    it('shows read-only derived status for a container, with nothing to press', async () => {
       await mountPanel(containerNode);
 
-      expect(screen.queryByRole('radiogroup', { name: 'Status' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Status: / })).toBeNull();
       // containerNode: one done leaf, one open leaf with no status → 'todo'.
       expect(screen.getByText('to do')).toBeTruthy();
     });
@@ -478,7 +546,7 @@ describe('StepPanel', () => {
     it('completing from the panel arms the same undo as the tree checkbox, and restores "to do"', async () => {
       const store = await mountPanel(unplannedLeaf);
 
-      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+      pickStatus('done');
 
       expect(store.getState().goals[0].nodes[0].status).toBe('done');
       expect(store.getState().pendingUndo?.label).toBe('Completed "Wire up auth"');
@@ -491,13 +559,13 @@ describe('StepPanel', () => {
     it('restores blockedOn when undoing a completion from blocked', async () => {
       const store = await mountPanel(unplannedLeaf);
 
-      fireEvent.click(screen.getByRole('radio', { name: 'blocked' }));
+      pickStatus('blocked');
       const reason = screen.getByLabelText('Blocked on');
       fireEvent.change(reason, { target: { value: 'the grader' } });
       fireEvent.blur(reason);
       expect(store.getState().goals[0].nodes[0].blockedOn).toBe('the grader');
 
-      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+      pickStatus('done');
       expect(store.getState().goals[0].nodes[0].status).toBe('done');
       expect(store.getState().goals[0].nodes[0].blockedOn).toBeUndefined();
 
@@ -507,14 +575,14 @@ describe('StepPanel', () => {
       expect(store.getState().goals[0].nodes[0].blockedOn).toBe('the grader');
     });
 
-    it('does not un-complete an already-done step when "done" is clicked again', async () => {
+    it('does not un-complete an already-done step when "done" is chosen again', async () => {
       const store = await mountPanel(unplannedLeaf);
 
-      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+      pickStatus('done');
       expect(store.getState().goals[0].nodes[0].status).toBe('done');
       const doneAt = store.getState().goals[0].nodes[0].doneAt;
 
-      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+      pickStatus('done');
 
       expect(store.getState().goals[0].nodes[0].status).toBe('done');
       expect(store.getState().goals[0].nodes[0].doneAt).toBe(doneAt);

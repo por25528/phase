@@ -73,7 +73,7 @@ export function StepsTab({
           {openNode && (
             <div
               className={wide
-                ? 'w-[300px] flex-none border-l border-line'
+                ? 'w-[340px] flex-none border-l border-line'
                 : 'w-full border-t border-line'}
             >
               <StepPanel goal={g} node={openNode} actions={actions} />
