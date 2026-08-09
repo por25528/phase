@@ -26,7 +26,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
       remaining effort, small progress. The full-width bar, `Clear dates`,
       `Confirm`, pace prose and calibration move into a popover. Work above the
       fold on a 13-inch laptop.
-- [ ] **S4 Conventional task rows (change 2).** Checkbox completes, chevron
+- [x] **S4 Conventional task rows (change 2).** Checkbox completes, chevron
       expands, row click selects and opens the inspector, Enter/double-click
       edits the title. Aligned status / estimate / schedule columns.
 - [ ] **S5 Quick add (change 5).** One line, unscheduled by default, visible
