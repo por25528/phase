@@ -22,7 +22,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
       Search, Quick add and one utility trigger. Export / Reclaim space / Import
       / theme text leave the persistent chrome. Timeline stops being a global
       destination and becomes a view mode inside Goals.
-- [ ] **S3 Compact goal header (change 1).** 56–72px: title, deadline, health,
+- [x] **S3 Compact goal header (change 1).** 56–72px: title, deadline, health,
       remaining effort, small progress. The full-width bar, `Clear dates`,
       `Confirm`, pace prose and calibration move into a popover. Work above the
       fold on a 13-inch laptop.
@@ -38,8 +38,9 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
       complete, schedule, set status, move, open settings, export.
 - [ ] **S7 Goal tabs (change 6).** Work / Board / Calendar / Notes over one task
       store, never duplicated arrays.
-- [ ] **S8 Remaining effort and health (change 9).** `12h 30m remaining · 8 of 14
-      tasks · On track`, with the estimate-coverage qualifier stated.
+- [x] **S8 Remaining effort and health (change 9).** `12h 30m remaining · 8 of 14
+      tasks · On track`, with the estimate-coverage qualifier stated. Landed
+      with S3, which could not state a compact header without them.
 
 ## M3 — execution and planning
 
