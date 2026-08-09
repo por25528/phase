@@ -232,6 +232,17 @@ function Card({ card, onOpen }: { card: BoardCard; onOpen: (nodeId: string) => v
       style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 1 } : undefined}
       {...attributes}
       {...listeners}
+      onKeyDown={(event) => {
+        // A card is still an opening button. dnd-kit's KeyboardSensor claims
+        // both Enter and Space by default, so preserve Enter for opening while
+        // delegating Space and the drag-navigation keys to the sensor.
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          onOpen(card.node.id);
+          return;
+        }
+        listeners?.onKeyDown?.(event);
+      }}
       onClick={() => onOpen(card.node.id)}
       className={`group relative w-full text-left px-[9px] py-[8px] bg-panel border border-line rounded-[6px] cursor-grab active:cursor-grabbing hover:bg-hover ${
         isDragging ? 'opacity-40' : ''
