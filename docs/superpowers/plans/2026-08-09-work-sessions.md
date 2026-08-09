@@ -6,27 +6,27 @@ since been built, and the notes below turned out to be the shape it took —
 kept as the record of why, with the two places reality differed marked
 inline.
 
-## What is missing
+## What was missing
 
-A leaf carries `plannedWeek`, `plannedDay`, `plannedStartMin` — **one** block.
-So a four-hour task cannot be two two-hour sittings. Today the only ways to
-express that are to split the task in two, which duplicates it in every count
-and roll-up, or to schedule it once and lie about the duration.
+A leaf carried `plannedWeek`, `plannedDay`, `plannedStartMin` — **one** block.
+So a four-hour task could not be two two-hour sittings. The only ways to express
+that were to split the task in two, which duplicates it in every count and
+roll-up, or to schedule it once and lie about the duration.
 
 The spec's requirement is precise and worth quoting:
 
 > Scheduling a 4-hour task as two 2-hour sessions must not duplicate the task or
 > mark it done after the first block.
 
-## Why it is not a small change
+## Why it was not a small change
 
-`plannedDay`/`plannedStartMin` are read in **37 production files** and asserted
-in **703 tests across 19 files**. They are load-bearing for the capacity engine,
+`plannedDay`/`plannedStartMin` were read in **37 production files** and asserted
+in **703 tests across 19 files**. They were load-bearing for the capacity engine,
 the slot resolver, the backlog rail's planned/committed partition, the week
 recap, the carry-over count, the replan proposal and the migration that put them
 there in the first place (`migrateSlots.ts`).
 
-## The shape it should take
+## The shape it took
 
 A `WorkBlock` list, not more fields on the node. Two representations of "when
 this happens" is the failure the Board slice was careful to avoid, so the
@@ -59,21 +59,32 @@ itself on a Tuesday. Blocks live inside the node or task.
 
 ## The order it has to happen in
 
-1. **`WorkBlock` + a versioned migration.** Every leaf with a `plannedDay` AND a
-   `plannedStartMin` becomes exactly one block of `durationOf(estimateMin)`;
-   `plannedWeek` stays on the node, because week-commitment is not a block and
-   the rail's planned/committed partition depends on the difference. Snapshot
-   before, mark done only after a successful persist — the pattern
-   `migrateSlots` already establishes.
+1. **`WorkBlock` + a migration.** Every leaf with a `plannedDay` AND a
+   `plannedStartMin` becomes exactly one block of `durationOf(estimateMin)` —
+   the height it was already being drawn at; `plannedWeek` stays on the node,
+   because week-commitment is not a block and the rail's planned/committed
+   partition depends on the difference.
+
+   **No snapshot and no done-flag — decided differently.** The plan assumed
+   `migrateSlots`' pattern. `migrateWorkBlocks` computes nothing and is
+   idempotent by construction (a row with `blocks` is left alone), so it runs
+   read-time on every launch exactly like `migrateNodeStatus`, and there is
+   nothing to roll back to. It must run AFTER `migrateSlots`, which repairs old
+   data by writing the very pair it consumes.
 2. **Readers, one at a time, each green before the next.** `scheduled.ts` first
    (everything visual goes through it), then `capacity.ts`, then `slot.ts`'s
    callers, then `backlog.ts`, `dailyWork.ts`, `replan.ts`, `rowSchedule.ts`.
 3. **Store actions.** `scheduleNode` gains a block rather than overwriting one;
    `unscheduleNode` needs to mean "remove which block?"; `resizeNode` writes
    `minutes` and stops warning about the estimate.
-4. **UI last.** Option-drag to duplicate a block, the discrepancy indicator, and
-   "Mark session done, keep task open" — which is the point of the whole slice
-   and cannot be built before the model holds it.
+4. **UI last.** The task inspector lists every sitting, each removable on its
+   own, with `planVsEstimate` stating the discrepancy beneath them and a "Sit
+   again today" that adds one. A calendar bar's remove and resize act on the
+   sitting they are drawn for.
+
+   Option-drag to duplicate a sitting is the one item here NOT built: the
+   `mode: 'add'` intent exists and is tested, but no pointer gesture is bound to
+   it yet — the inspector button is the route.
 
 ## The Calendar tab depended on this
 
