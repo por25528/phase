@@ -53,7 +53,16 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
       Nothing moves silently.
 - [x] **S11 Plan rail and drag capacity (change 13).** Availability to Settings,
       stats to headers, capacity fit shown before the drop.
-- [ ] **S12 Multiple work sessions per task (change 11).**
+- [ ] **S12 Multiple work sessions per task (change 11).** NOT BUILT, and
+      deliberately so — see `2026-08-09-work-sessions.md`. It is a migration of
+      the scheduling model: `plannedDay`/`plannedStartMin` are read in 37
+      production files and asserted 703 times, and the failure mode in a
+      local-first app is a real calendar quietly rearranging itself. The plan
+      beside this one has the shape, the order and the trap to avoid. The goal
+      workspace's Calendar tab waits on it for the same reason: a calendar built
+      against the single-block model would be rebuilt, and two calendars
+      rendering the same week from two code paths is how they start disagreeing
+      about a Tuesday.
 
 ## M4 — creation, markers, AI, polish
 
