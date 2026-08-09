@@ -306,11 +306,17 @@ export function Goals() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-[10px] sm:gap-[16px] mb-[6px]">
         <div className="min-w-0">
           <h1 className="text-h1 font-semibold tracking-[-0.015em]">Goals</h1>
-          <p className="text-ui text-muted mt-[3px]">
-            {timeline
-              ? 'Every goal with a start and a deadline, laid out against the calendar.'
-              : `Drag a goal between horizons to recommit it — Now is what you're actively pushing on, and ${summary.slots.limit} at a time is the target that keeps focus honest.`}
-          </p>
+          {/* First use only. Explaining the horizons on EVERY visit is a
+              paragraph of chrome above the object people came for, and after
+              the second goal it is a sentence nobody reads — the column hints
+              on Later and Someday carry the same rule where it applies. */}
+          {(timeline || goals.length <= 1) && (
+            <p className="text-ui text-muted mt-[3px]">
+              {timeline
+                ? 'Every goal with a start and a deadline, laid out against the calendar.'
+                : `Drag a goal between horizons to recommit it — Now is what you're actively pushing on, and ${summary.slots.limit} at a time is the target that keeps focus honest.`}
+            </p>
+          )}
         </div>
         <div className="flex-none flex items-center gap-[8px] self-start">
           <ViewModeSwitch mode={goalsMode} onChange={actions.setGoalsMode} />
@@ -337,7 +343,7 @@ export function Goals() {
        <>
       {/* Empty state */}
       {isEmpty && (
-        <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
+        <div className="mt-[18px] grid place-items-center py-[44px] px-[20px] text-center">
           <p className="text-ink-soft text-lead max-w-[440px] mb-[16px] leading-[1.6]">
             No goals yet. A goal is one outcome you can finish — a pset, a paper, a
             launch — split into a few tasks you check off. Start one, or drop in the example

@@ -602,7 +602,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             the question they still have.
           */}
           {planHint && (
-            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-dashed border-line-2 bg-panel text-body text-ink-soft">
+            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
               Drag anything from <span className="font-semibold text-ink">To plan</span> onto a day
               to schedule it — or click a row and press{' '}
               <kbd className="font-mono text-kbd border border-line-2 rounded-[4px] px-[4px] py-[1px] text-muted">1</kbd>

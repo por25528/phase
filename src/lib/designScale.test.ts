@@ -237,3 +237,21 @@ describe('type roles', () => {
     ]);
   });
 });
+
+/**
+ * A dashed border is the app's DROP-TARGET signal — what a day column draws
+ * while something is in the air. Spending it on ordinary empty states, in four
+ * board columns at once, is how it stops meaning anything.
+ *
+ * The two survivors are semantic: the drop preview itself, and a calendar block
+ * whose height is a guessed hour rather than an estimate somebody typed.
+ */
+describe('dashed borders', () => {
+  it('are reserved for drop targets and guessed durations', () => {
+    const files = offenders(/border-dashed/g).map((h) => h.split(':')[0]);
+    expect([...new Set(files)].sort()).toEqual([
+      'views/plan/DayColumn.tsx',
+      'views/plan/EventBlock.tsx',
+    ]);
+  });
+});

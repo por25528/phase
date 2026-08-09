@@ -20,7 +20,7 @@ const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
   'warn-strong': 'text-accent-contrast bg-warn',
   accent: 'text-accent-deep bg-accent-tint',
   plan: 'text-accent-deep border border-accent-soft',
-  step: 'text-muted border border-dashed border-line-2',
+  step: 'text-muted border border-line-2',
 };
 
 /** Roughly the menu's own height — enough to decide which way it fits. */
