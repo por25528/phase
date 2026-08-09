@@ -15,7 +15,9 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
   { keys: ['⌘', 'K'], label: 'Search everything, and run commands' },
-  { keys: ['⌘', 'N'], label: 'Add a task' },
+  // What it creates follows the surface — a goal on Goals, a task in a goal,
+  // a task on Plan and Today. See lib/addAction.ts.
+  { keys: ['⌘', 'N'], label: 'Add — a goal or a task, matching where you are' },
   { keys: ['⌘', '↵'], label: 'Add it and keep the composer open' },
   { keys: ['⌘', 'Z'], label: 'Undo the last change' },
   { keys: ['?'], label: 'This cheat sheet' },
@@ -61,6 +63,12 @@ const TREE_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['⌫'], label: 'Delete the selection' },
   { keys: ['→', '←'], label: 'Expand or collapse a task' },
   { keys: ['S'], label: 'Cycle a task: to do → in progress → blocked' },
+  // ⇧S, not plain S. S has cycled status on this row for a long time and is
+  // one of four documented routes to in-progress/blocked; rebinding the
+  // commonest keystroke here would change what it means without warning.
+  { keys: ['⇧', 'S'], label: 'Schedule the focused task' },
+  { keys: ['E'], label: 'Estimate the focused task' },
+  { keys: ['O'], label: 'Open a milestone as its own workspace' },
   { keys: ['⌘', '↵'], label: 'Add a task below this one' },
   { keys: ['⌘', ']'], label: 'Indent — make it a subtask' },
   { keys: ['⌘', '['], label: 'Outdent' },

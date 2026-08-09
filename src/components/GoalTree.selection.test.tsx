@@ -168,15 +168,18 @@ describe('building a selection', () => {
   });
 
   it('selects when the click lands on a hover control, rather than firing it', async () => {
-    const { store, user } = await mountTree();
-    const { findInAll } = await import('../lib/tree');
+    const { user } = await mountTree();
 
+    // The `⋯` menu IS the row's hover control now — rename, add-subtask and
+    // delete all moved inside it. A modifier-click on it must still be caught
+    // in the capture phase and read as "select this row", exactly as it was
+    // when the same click could have deleted the row outright.
     await user.keyboard('{Meta>}');
-    await user.click(within(row('Pset 7')).getByRole('button', { name: /^Delete/ }));
+    await user.click(within(row('Pset 7')).getByRole('button', { name: 'Actions for "Pset 7"' }));
     await user.keyboard('{/Meta}');
 
     expect(selectedIds()).toEqual(['b']);
-    expect(findInAll(store.getState().goals, 'b')).not.toBeNull(); // not deleted
+    expect(screen.queryByRole('menu')).toBeNull(); // and the menu never opened
   });
 
   it('selects an on-screen run on Shift-click, including nested rows', async () => {

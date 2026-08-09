@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useId } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { GoalNode, Session } from '../db/types';
+import type { GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
 import { nodePct } from '../lib/pct';
-import { IconChevronRight, IconDiamond, IconGrip, IconPencil, IconX } from './Icons';
+import { IconChevronRight, IconDiamond, IconGrip } from './Icons';
 import {
   DndContext,
   PointerSensor,
@@ -22,8 +22,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { InlineEdit } from './InlineEdit';
 import { EstimateControl } from './EstimateControl';
-import { LogTimeControl } from './LogTimeControl';
-import { loggedForNode } from '../lib/actuals';
+import { Popover } from './Popover';
+import { RowActions } from './RowActions';
+import { ScheduleMenu } from './SchedulePopover';
 import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
 import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
 import { scheduleCell } from '../lib/rowSchedule';
@@ -154,9 +155,14 @@ interface SharedProps {
   onSelect: (id: string, mode: SelectMode) => void;
   /** Runs the selection's bulk action from a row's keyboard handler. */
   onBulk: (action: 'complete' | 'delete') => void;
-  /** The whole ledger; each leaf sums its own. Small enough that filtering per
-   *  row is cheaper than building a map on every store notification. */
-  sessions: Session[];
+  /**
+   * The goal every row in this tree belongs to.
+   *
+   * Threaded rather than read per row: the milestone workspace renders this
+   * same component over a SUBTREE of the open goal, so "which goal" is a fact
+   * about the tree, not something a row can derive from its own node.
+   */
+  goalId: string;
 }
 
 /**
@@ -271,7 +277,7 @@ function SelectionBar({
 // ── GoalTree (public export, owns DndContext) ─────────────────────────────────
 
 export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: number }) {
-  const { expanded, actions, newNodeId, sessions } = useAppStore();
+  const { expanded, actions, newNodeId, openGoalId } = useAppStore();
   const reducedMotion = usePrefersReducedMotion();
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -386,7 +392,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
           selected={selected}
           onSelect={onSelect}
           onBulk={onBulk}
-          sessions={sessions}
+          goalId={openGoalId ?? ''}
         />
       </div>
     </DndContext>
@@ -398,8 +404,11 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
 function GoalSiblingList({ nodes, ...shared }: { nodes: GoalNode[] } & SharedProps) {
   return (
     <SortableContext items={nodes.map((n) => n.id)} strategy={verticalListSortingStrategy}>
-      {nodes.map((n) => (
-        <GoalTreeNode key={n.id} n={n} {...shared} />
+      {nodes.map((n, i) => (
+        // `isFirstSibling` only answers "is there a sibling above to nest
+        // under" — the one thing `indentNode` refuses on, and the one reason
+        // the ⋯ menu would otherwise offer a verb that does nothing.
+        <GoalTreeNode key={n.id} n={n} isFirstSibling={i === 0} {...shared} />
       ))}
     </SortableContext>
   );
@@ -409,6 +418,7 @@ function GoalSiblingList({ nodes, ...shared }: { nodes: GoalNode[] } & SharedPro
 
 function GoalTreeNode({
   n,
+  isFirstSibling,
   depth,
   expanded,
   actions,
@@ -417,8 +427,8 @@ function GoalTreeNode({
   selected,
   onSelect,
   onBulk,
-  sessions,
-}: { n: GoalNode } & SharedProps) {
+  goalId,
+}: { n: GoalNode; isFirstSibling: boolean } & SharedProps) {
   // A row created by Enter mounts straight into its editor, so the sequence is
   // "Enter, type, Enter" rather than "Enter, hunt for the row, double-click,
   // type". The initialiser runs once per mount and the flag is cleared below,
@@ -428,6 +438,11 @@ function GoalTreeNode({
   const groupId = useId();
   const isNew = n.id === newNodeId;
   const [editing, setEditing] = useState(isNew);
+  // Counters, not booleans: the host is asking for an EVENT ("open the
+  // estimate now"), and a boolean would need clearing afterwards or the second
+  // `E` in a row would do nothing.
+  const [estimateOpen, setEstimateOpen] = useState(0);
+  const scheduleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (isNew) actions.clearNewNode();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot, on mount
@@ -630,6 +645,19 @@ function GoalTreeNode({
       else if (!hasKids) actions.toggleLeaf(n.id);
       return;
     }
+    // ⇧S opens the schedule popover on the WHEN cell.
+    //
+    // Not plain `S`, which has cycled status here for a long time and is one of
+    // four documented routes to `doing`/`blocked`. Rebinding it to scheduling
+    // would have made the commonest keystroke on this row mean something new
+    // without warning, so the new verb takes the modifier and the old one keeps
+    // its key. Checked BEFORE the plain-S branch, which requires no modifiers.
+    if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      if (hasKids) return; // a group is scheduled through its tasks
+      scheduleRef.current?.click();
+      return;
+    }
     // S cycles a leaf's status: todo → doing → blocked → todo. `done` is
     // deliberately unreachable from here — the checkbox is the only route to
     // it, so ticking it remains the one action that moves the pct roll-up.
@@ -637,6 +665,25 @@ function GoalTreeNode({
       e.preventDefault();
       if (hasKids) return; // a container's status is derived, never set
       actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
+      return;
+    }
+    // E opens the estimate editor — the row's own control, not a second one.
+    if (plain && (e.key === 'e' || e.key === 'E')) {
+      e.preventDefault();
+      if (hasKids) return; // `setNodeEstimate` refuses containers for the same reason
+      setEstimateOpen((c) => c + 1);
+      return;
+    }
+    // O opens a container as its own workspace — the keyboard half of the
+    // inspector's ↗ and the row's double-click.
+    //
+    // `O`, not `Enter`. Enter renames here and has for as long as the tree has
+    // existed; making it mean "open" on a container and "rename" on a leaf
+    // would put back exactly the row-type-dependent primary action that was
+    // deliberately removed from the row click.
+    if (plain && (e.key === 'o' || e.key === 'O') && !editing) {
+      e.preventDefault();
+      if (hasKids) actions.openArea(n.id);
       return;
     }
     // ⌘Enter → a new task directly below this one, opened ready to type.
@@ -688,6 +735,12 @@ function GoalTreeNode({
         onKeyDown={handleKeyDown}
         onClickCapture={handleRowClickCapture}
         onClick={handleRowClick}
+        // Double-click OPENS a container as its own workspace — the pointer
+        // half of `O` and the inspector's ↗. On a leaf it does nothing here:
+        // the title has owned double-click-to-rename for as long as the tree
+        // has existed, and it stops propagation, so a double-click on a leaf's
+        // title never reaches this.
+        onDoubleClick={hasKids ? () => actions.openArea(n.id) : undefined}
       >
         {/* Drag handle — {listeners} here, NOT on the whole row, to avoid
             colliding with row-level Space/Arrow handlers. tabIndex={-1} keeps
@@ -804,13 +857,38 @@ function GoalTreeNode({
             separate cells would be four columns of mostly-empty metadata, so
             `scheduleCell` picks the most specific one. The placeholder keeps
             the estimate beside it aligned across rows that have no date. */}
-        <span
-          className={`hidden sm:block w-[92px] flex-none text-right text-meta tabular-nums truncate ${
-            when?.tone === 'warn' ? 'text-warn' : 'text-muted'
-          }`}
-          title={when?.hint}
-        >
-          {when?.text ?? ''}
+        {/* The cell states the answer AND sets it. Scheduling used to be
+            reachable from the inspector and from a drag onto the Plan grid and
+            from nowhere on the row, so the commonest thing to do to a task you
+            are looking at cost a panel or a trip to another surface.
+
+            Containers get the readout without the control, matching the store:
+            a group is scheduled through its tasks. */}
+        <span className="hidden sm:flex w-[92px] flex-none justify-end" onClick={(e) => e.stopPropagation()}>
+          {hasKids ? (
+            <span
+              className={`text-meta tabular-nums truncate px-[5px] py-[3px] ${
+                when?.tone === 'warn' ? 'text-warn' : 'text-muted'
+              }`}
+              title={when?.hint}
+            >
+              {when?.text ?? ''}
+            </span>
+          ) : (
+            <Popover
+              label={when?.text ? `Scheduled ${when.text}. Change it` : `Schedule "${n.title}"`}
+              role="menu"
+              align="end"
+              panelWidth={188}
+              triggerRef={scheduleRef}
+              triggerClassName={`text-meta tabular-nums truncate rounded-[4px] px-[5px] py-[3px] min-h-[24px] inline-flex items-center hover:bg-hover hover:text-ink ${
+                when?.tone === 'warn' ? 'text-warn' : when?.text ? 'text-muted' : 'text-faint quiet-control'
+              }`}
+              trigger={when?.text ?? 'plan'}
+            >
+              {(close) => <ScheduleMenu goalId={goalId} node={n} close={close} />}
+            </Popover>
+          )}
         </span>
 
         {/* Estimate — LEAVES only, matching `setNodeEstimate`'s own guard: a
@@ -828,59 +906,20 @@ function GoalTreeNode({
             <EstimateControl
               minutes={n.estimateMin}
               label={n.title}
+              openRequest={estimateOpen}
               onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
             />
           )}
         </span>
 
-        {/* Actual time, beside the estimate that predicted it — the other half
-            of the loop. Explicit only: nothing infers minutes from a scheduled
-            block, because a block is what you set aside, not what you spent. */}
-        {!hasKids && (
-          <LogTimeControl
-            loggedMin={loggedForNode(sessions, n.id)}
-            estimateMin={n.estimateMin}
-            label={n.title}
-            onLog={(minutes) => actions.logSession('step', n.id, minutes)}
-            onClear={() => actions.clearSessionsFor('step', n.id)}
-          />
-        )}
-
-        {/* Rename. Double-clicking the title still works, but it was the ONLY
-            route — an invisible affordance on the single most common edit, and
-            the one place a hover control was missing while drag, + sub and
-            delete all had one. The Habits rail already uses this pencil. */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Rename "${n.title}"`}
-          title="Rename"
-          className="quiet-control text-faint flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditing(true);
-          }}
-        >
-          <IconPencil size={13} />
-        </button>
-
-        {/* + sub — consistent on every row (leaf: converts to container; container: adds child) */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Add sub-item to "${n.title}"`}
-          title="+ sub"
-          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            actions.addChild(n.id);
-          }}
-        >
-          + sub
-        </button>
-
         {/* Cycle status — leaves only, same rule as `S`: a container's status
-            is derived and never stored. */}
+            is derived and never stored.
+
+            This one control stayed on the row while rename, add-subtask and
+            delete moved into the `⋯` beside it, because it is the only one of
+            the four that is also a READOUT: `LeafStatusBox` shows done or not
+            done, and nothing else on the row distinguishes a task in progress
+            from one nobody has touched. */}
         {!hasKids && (
           <button
             type="button"
@@ -896,19 +935,21 @@ function GoalTreeNode({
           </button>
         )}
 
-        {/* Delete */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Delete ${n.title}`}
-          className="quiet-control text-faint flex-shrink-0 rounded-[4px] hover:text-warn hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            actions.removeNode(n.id);
-          }}
-        >
-          <IconX size={13} />
-        </button>
+        {/* Everything below daily frequency, in one menu.
+            The row used to carry rename, add-subtask, cycle-status and delete
+            as four separate hover controls, on top of six that never left —
+            ten targets to manipulate one task, and sixty small glyphs to read
+            past on a list of twenty. */}
+        <span onClick={(e) => e.stopPropagation()} className="flex-none">
+          <RowActions
+            node={n}
+            isFirstSibling={isFirstSibling}
+            depth={depth}
+            onRename={() => setEditing(true)}
+            onEstimate={() => setEstimateOpen((c) => c + 1)}
+            onSchedule={() => scheduleRef.current?.click()}
+          />
+        </span>
       </div>
 
       {/* ── children (fade in on expand; unmount on collapse for clean DOM) ── */}
@@ -941,7 +982,7 @@ function GoalTreeNode({
               selected={selected}
               onSelect={onSelect}
               onBulk={onBulk}
-              sessions={sessions}
+              goalId={goalId}
             />
             <AddChildInput
               indent={(depth + 1) * 22}
