@@ -1,13 +1,24 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore, VIEW_LABELS, type ProjectTab } from '../state/store';
 import { ProjectHeader } from './project/ProjectHeader';
+import { OverviewTab } from './project/OverviewTab';
 import { StepsTab } from './project/StepsTab';
 import { BoardTab } from './project/BoardTab';
 import { CalendarTab } from './project/CalendarTab';
 import { NotesTab } from './project/NotesTab';
+import { AreaPage } from './project/AreaPage';
+import { findNode } from '../lib/tree';
 
+/**
+ * Five views over one task store.
+ *
+ * `steps` keeps its stored key and is labelled Tasks — the noun the rest of the
+ * product uses for a leaf. Renaming the key as well would be a migration for a
+ * caption.
+ */
 const TABS: ReadonlyArray<readonly [ProjectTab, string]> = [
-  ['steps', 'Work'],
+  ['overview', 'Overview'],
+  ['steps', 'Tasks'],
   ['board', 'Board'],
   ['calendar', 'Calendar'],
   ['notes', 'Notes'],
@@ -21,9 +32,15 @@ const TABS: ReadonlyArray<readonly [ProjectTab, string]> = [
  * modal. A page needs none of them, so none of them are here.
  */
 export function Project() {
-  const { goals, openGoalId, projectReturnView, projectTab, focusNodeId, openStepId, actions } = useAppStore();
-  const tabRefs = useRef<Record<ProjectTab, HTMLButtonElement | null>>({ steps: null, board: null, calendar: null, notes: null });
+  const { goals, openGoalId, openAreaId, projectReturnView, projectTab, focusNodeId, openStepId, actions } = useAppStore();
+  const tabRefs = useRef<Record<ProjectTab, HTMLButtonElement | null>>({
+    overview: null, steps: null, board: null, calendar: null, notes: null,
+  });
   const goal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
+  // The milestone workspace, when one is open. Resolved here rather than
+  // inside it so a container deleted underneath falls back to the goal page
+  // instead of rendering an empty shell.
+  const area = goal && openAreaId ? findNode(goal.nodes, openAreaId) : null;
   const returnView = projectReturnView === 'project' ? 'goals' : projectReturnView;
   const returnLabel = VIEW_LABELS[returnView];
 
@@ -61,7 +78,21 @@ export function Project() {
     return () => clearTimeout(t);
   }, [focusNodeId, projectTab, actions]);
 
+  // A container that stopped being one — deleted, or emptied by an undo —
+  // cannot host a workspace. Fall back to the goal rather than to nothing.
+  useEffect(() => {
+    if (openAreaId && !area) actions.closeArea();
+  }, [openAreaId, area, actions]);
+
   if (!goal) return null;
+
+  if (area) {
+    return (
+      <div className="max-w-[1100px] mx-auto">
+        <AreaPage goal={goal} node={area} />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1100px] mx-auto">
@@ -119,7 +150,9 @@ export function Project() {
         aria-labelledby={`project-tab-${projectTab}`}
         className="pt-[14px] pb-[60px]"
       >
-        {projectTab === 'steps' ? (
+        {projectTab === 'overview' ? (
+          <OverviewTab goal={goal} />
+        ) : projectTab === 'steps' ? (
           <StepsTab
             goal={goal}
             actions={actions}

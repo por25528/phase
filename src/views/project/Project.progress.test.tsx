@@ -107,7 +107,7 @@ describe('Project page', () => {
 
   it('opens on the steps tab and lists the steps', async () => {
     await mountPage();
-    expect(screen.getByRole('tab', { name: 'Work' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Tasks' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('Define the topics')).toBeTruthy();
   });
 
@@ -171,7 +171,7 @@ describe('Project page', () => {
     expect(screen.queryByText('Define the topics')).toBeNull();
     expect(screen.getByLabelText('Goal notes')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Work' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Tasks' }));
     expect(screen.getByText('Define the topics')).toBeTruthy();
   });
 
@@ -201,7 +201,7 @@ describe('Project page', () => {
 
   it('associates the active tab with the project panel', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Work' });
+    const steps = screen.getByRole('tab', { name: 'Tasks' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
     const panel = screen.getByRole('tabpanel');
 
@@ -218,7 +218,7 @@ describe('Project page', () => {
 
   it('roves the tab stop with the selected tab', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Work' });
+    const steps = screen.getByRole('tab', { name: 'Tasks' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
     expect(steps.getAttribute('tabindex')).toBe('0');
@@ -232,7 +232,8 @@ describe('Project page', () => {
 
   it('moves right between tabs and wraps', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Work' });
+    const overview = screen.getByRole('tab', { name: 'Overview' });
+    const steps = screen.getByRole('tab', { name: 'Tasks' });
     const board = screen.getByRole('tab', { name: 'Board' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
@@ -247,25 +248,42 @@ describe('Project page', () => {
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Calendar' }), { key: 'ArrowRight' });
     expect(store.getState().projectTab).toBe('notes');
 
+    // Wraps to Overview, which leads the strip now.
     fireEvent.keyDown(notes, { key: 'ArrowRight' });
-    expect(store.getState().projectTab).toBe('steps');
-    expect(document.activeElement).toBe(steps);
+    expect(store.getState().projectTab).toBe('overview');
+    expect(document.activeElement).toBe(overview);
   });
 
   it('moves left from the first tab to the last tab', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Work' });
+    const overview = screen.getByRole('tab', { name: 'Overview' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
-    steps.focus();
-    fireEvent.keyDown(steps, { key: 'ArrowLeft' });
+    // Selection, not focus, is what the strip navigates from — the roving
+    // tabindex pattern moves the two together, so the test has to as well.
+    fireEvent.click(overview);
+    expect(store.getState().projectTab).toBe('overview');
+
+    fireEvent.keyDown(overview, { key: 'ArrowLeft' });
     expect(store.getState().projectTab).toBe('notes');
     expect(document.activeElement).toBe(notes);
   });
 
+  it('moves left from Tasks to Overview', async () => {
+    const store = await mountPage();
+    const overview = screen.getByRole('tab', { name: 'Overview' });
+    const steps = screen.getByRole('tab', { name: 'Tasks' });
+
+    steps.focus();
+    fireEvent.keyDown(steps, { key: 'ArrowLeft' });
+    expect(store.getState().projectTab).toBe('overview');
+    expect(document.activeElement).toBe(overview);
+  });
+
   it('selects the first and last tabs with Home and End', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Work' });
+    const overview = screen.getByRole('tab', { name: 'Overview' });
+    const steps = screen.getByRole('tab', { name: 'Tasks' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
     steps.focus();
@@ -274,8 +292,8 @@ describe('Project page', () => {
     expect(document.activeElement).toBe(notes);
 
     fireEvent.keyDown(notes, { key: 'Home' });
-    expect(store.getState().projectTab).toBe('steps');
-    expect(document.activeElement).toBe(steps);
+    expect(store.getState().projectTab).toBe('overview');
+    expect(document.activeElement).toBe(overview);
   });
 
   it('the breadcrumb returns to the board', async () => {
@@ -287,7 +305,7 @@ describe('Project page', () => {
 
   it('renders nothing once the project is closed', async () => {
     const store = await mountPage();
-    expect(screen.queryByRole('tab', { name: 'Work' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Tasks' })).toBeTruthy();
     store.actions.closeProject();
     cleanup();
     const { Project } = await import('../Project');

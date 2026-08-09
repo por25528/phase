@@ -2157,7 +2157,7 @@ describe('openProject node focus (T8)', () => {
     expect(s.openStepId).toBeNull();
   });
 
-  it('always opens on the steps tab, even after the notes tab was last used', async () => {
+  it('reopens a goal on the tab it was last left on', async () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([nested]);
     actions.openProject('gp');
@@ -2165,6 +2165,38 @@ describe('openProject node focus (T8)', () => {
     expect(getState().projectTab).toBe('notes');
     actions.closeProject();
     actions.openProject('gp');
+    expect(getState().projectTab).toBe('notes');
+  });
+
+  it('opens a goal that has never been visited on the steps tab', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+    expect(getState().projectTab).toBe('steps');
+  });
+
+  it("does not carry one goal's tab over to another", async () => {
+    // This is why the rule used to be "always steps": against a single global
+    // last-tab, a goal you had never once opened on Notes still opened there.
+    // Keyed by goal, the surprise cannot happen.
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested, { ...nested, id: 'gp2', title: 'Other' }]);
+    actions.openProject('gp');
+    actions.setProjectTab('notes');
+    actions.closeProject();
+    actions.openProject('gp2');
+    expect(getState().projectTab).toBe('steps');
+  });
+
+  it('forces the steps tab when opening pointed at a node', async () => {
+    // ⌘K on a task means "put me on that row", and the tree is the only tab
+    // that has one.
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+    actions.setProjectTab('notes');
+    actions.closeProject();
+    actions.openProject('gp', 'leaf');
     expect(getState().projectTab).toBe('steps');
   });
 
@@ -2182,6 +2214,83 @@ describe('openProject node focus (T8)', () => {
     expect(s.openGoalId).toBeNull();
     expect(s.focusNodeId).toBeNull();
     expect(s.openStepId).toBeNull();
+  });
+
+  it('opens a container as its own workspace without leaving the goal', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+
+    actions.openArea('mid');
+
+    const s = getState();
+    expect(s.openAreaId).toBe('mid');
+    // The goal stays open behind it. That is what makes the breadcrumb real
+    // navigation rather than a rendered string, and Back one step.
+    expect(s.openGoalId).toBe('gp');
+    expect(s.view).toBe('project');
+    expect(s.areaTab).toBe('steps');
+  });
+
+  it('refuses to open a leaf as a workspace', async () => {
+    // A task's whole content is its inspector, so a page for one would be the
+    // inspector again with more chrome around it.
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+
+    actions.openArea('leaf');
+
+    expect(getState().openAreaId).toBeNull();
+  });
+
+  it('refuses to open an unknown node', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+
+    actions.openArea('ghost');
+
+    expect(getState().openAreaId).toBeNull();
+  });
+
+  it('closing a workspace reselects the milestone it was', async () => {
+    // Leaving nothing selected would drop the user at the top of a tree with
+    // no trace of where they had been.
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+    actions.openArea('mid');
+
+    actions.closeArea();
+
+    const s = getState();
+    expect(s.openAreaId).toBeNull();
+    expect(s.openGoalId).toBe('gp');
+    expect(s.openStepId).toBe('mid');
+    expect(s.focusNodeId).toBe('mid');
+  });
+
+  it('leaves a workspace when the goal itself is reopened', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+    actions.openArea('mid');
+
+    actions.openProject('gp');
+
+    expect(getState().openAreaId).toBeNull();
+  });
+
+  it('leaves a workspace when the project page is closed', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoals([nested]);
+    actions.openProject('gp');
+    actions.openArea('mid');
+
+    actions.closeProject();
+
+    expect(getState().openAreaId).toBeNull();
   });
 
   it('keeps the original return view when opening another project from the project page', async () => {

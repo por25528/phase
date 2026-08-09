@@ -94,15 +94,45 @@ export type GoalModal = 'new' | 'import' | null;
  * Which tab the goal workspace is showing.
  *
  * `'steps'` keeps its stored name so no persisted or in-flight value has to be
- * migrated for a rename; it is labelled Work.
+ * migrated for a rename; it is labelled Tasks.
  */
-export type ProjectTab = 'steps' | 'board' | 'calendar' | 'notes';
+export type ProjectTab = 'overview' | 'steps' | 'board' | 'calendar' | 'notes';
+
+/**
+ * A milestone's own tabs.
+ *
+ * Three, not the goal's five. A Board over one container's descendants is a
+ * board with one column's worth of work in it, and a Calendar over them is the
+ * goal's calendar filtered to a subset nobody asked to filter — both would be
+ * tabs that exist only because the parent has them.
+ */
+export type AreaTab = 'overview' | 'steps' | 'notes';
 
 interface UIState {
   view: ViewName;
   projectReturnView: ViewName;
   selDate: string;
   openGoalId: string | null;
+  /**
+   * The container being shown as its own workspace, INSIDE the open goal.
+   *
+   * A second id rather than a second view: a milestone is not a destination of
+   * its own, it is a lens on the goal already open, so `openGoalId` stays set
+   * and the breadcrumb above it stays true. Clearing this returns to the goal
+   * without touching anything else, which is what "Back preserves context"
+   * means here.
+   */
+  openAreaId: string | null;
+  areaTab: AreaTab;
+  /**
+   * The tab each goal was last left on.
+   *
+   * Keyed by goal because the answer is per goal: a study goal is read on
+   * Overview and a build is worked on Tasks, and one global "last tab" makes
+   * every second goal open on the wrong one. Ephemeral — it is a convenience
+   * within a session, not a preference worth a row in the database.
+   */
+  projectTabByGoal: Record<string, ProjectTab>;
   // Node the project page should scroll to + pulse. One-shot: it is a pointer
   // to a MOMENT, and the page clears it once the pulse has run.
   focusNodeId: string | null;
@@ -151,6 +181,9 @@ let state: FullState = {
   focusNodeId: null,
   openStepId: null,
   projectTab: 'steps',
+  openAreaId: null,
+  areaTab: 'steps',
+  projectTabByGoal: {},
   goalModal: null,
   revealItem: null,
   newNodeId: null,
@@ -1065,14 +1098,24 @@ export const actions = {
     if (state.newNodeId !== null) set({ newNodeId: null });
   },
 
+  /**
+   * A task at the end of a goal's root list.
+   *
+   * An EMPTY title is the "open it ready to type" case — the header's `+ Add`
+   * on a goal page, which has no field of its own to type into. It arms
+   * `newNodeId` so the row mounts straight into its editor, exactly as ⌘Enter
+   * does through `insertSiblingAfter`. A titled call is the tab's own add
+   * field, which has already collected the words and wants no editor.
+   */
   addRootNode(goalId: string, title: string) {
     if (!isActiveGoal(goalId)) return; // frozen on a completed project
+    const id = uid();
     const goals = state.goals.map((g) =>
       g.id === goalId
-        ? { ...g, nodes: [...g.nodes, { id: uid(), title }] }
+        ? { ...g, nodes: [...g.nodes, { id, title }] }
         : g
     );
-    setAndPersist({ goals });
+    setAndPersist({ goals }, title === '' ? { newNodeId: id } : undefined);
   },
 
   /**
@@ -2401,9 +2444,17 @@ export const actions = {
    * It also sets `openStepId`, so arriving from ⌘K on a step lands you IN that
    * step rather than merely beside a highlighted row.
    *
-   * Always opens on the steps tab. The tab is a property of the visit, not of
-   * the project — landing on notes because that is where you were last time is
-   * a surprise, and steps are what the page is for.
+   * Returns to the tab THIS goal was last left on, defaulting to steps.
+   *
+   * The rule used to be "always steps", against a single global `projectTab`.
+   * That was the right call for a global one — landing on Notes because some
+   * OTHER goal was last read there is a surprise — but the cure also threw away
+   * the case where the memory is correct: a study goal read on Overview every
+   * morning reopened on Tasks every morning. Keyed by goal, the surprise cannot
+   * happen, because the only tab a goal restores is one it was left on.
+   *
+   * A node focus still forces steps. Arriving from ⌘K on a task means being
+   * pointed at a row, and the tree is the only tab that has one.
    */
   openProject(goalId: string, nodeId?: string) {
     const returnView = state.view === 'project' ? state.projectReturnView : state.view;
@@ -2412,26 +2463,69 @@ export const actions = {
       view: 'project' as const,
       projectReturnView,
       openGoalId: goalId,
-      projectTab: 'steps' as const,
+      // Opening a goal always leaves whatever milestone workspace was open:
+      // the two are different places, and one of them is the parent.
+      openAreaId: null,
     };
     if (!nodeId) {
-      set({ ...base, focusNodeId: null, openStepId: null });
+      set({
+        ...base,
+        projectTab: state.projectTabByGoal[goalId] ?? 'steps',
+        focusNodeId: null,
+        openStepId: null,
+      });
       return;
     }
     const path = findNodePath(state.goals, nodeId);
     if (!path) {
-      set({ ...base, focusNodeId: null, openStepId: null });
+      set({ ...base, projectTab: 'steps', focusNodeId: null, openStepId: null });
       return;
     }
     const expanded = new Set(state.expanded);
     for (const id of path.slice(0, -1)) expanded.add(id); // ancestor containers
-    set({ ...base, focusNodeId: nodeId, openStepId: nodeId, expanded });
+    set({ ...base, projectTab: 'steps', focusNodeId: nodeId, openStepId: nodeId, expanded });
   },
 
   /** Leave the project page for the view it was opened from. */
   closeProject() {
     const view = state.projectReturnView === 'project' ? 'goals' : state.projectReturnView;
-    set({ view, openGoalId: null, focusNodeId: null, openStepId: null });
+    set({
+      view,
+      openGoalId: null,
+      openAreaId: null,
+      focusNodeId: null,
+      openStepId: null,
+    });
+  },
+
+  /**
+   * Show one container as its own workspace, without leaving the goal.
+   *
+   * The second half of the two-level model the tree could not express: a click
+   * selects a milestone and inspects it, and this OPENS it. `openGoalId` is
+   * deliberately untouched — the breadcrumb, the goal's own header and the
+   * return view all stay valid, so Back is one step and lands exactly where the
+   * user was.
+   *
+   * Refuses a leaf. A task's whole content is its inspector, so a page for one
+   * would be the inspector again with more chrome around it.
+   */
+  openArea(nodeId: string) {
+    const node = findInAll(state.goals, nodeId);
+    if (!node || !node.children || node.children.length === 0) return;
+    set({ openAreaId: nodeId, areaTab: 'steps', openStepId: null });
+  },
+
+  /** Back out of a milestone workspace to the goal that contains it. */
+  closeArea() {
+    if (state.openAreaId === null) return;
+    // Reselect the milestone that was open. Leaving nothing selected would
+    // drop the user at the top of a tree with no trace of where they had been.
+    set({ openAreaId: null, openStepId: state.openAreaId, focusNodeId: state.openAreaId });
+  },
+
+  setAreaTab(tab: AreaTab) {
+    set({ areaTab: tab });
   },
 
   /**
@@ -2449,8 +2543,22 @@ export const actions = {
     set({ goalModal: kind, view: 'goals', openGoalId: null, openStepId: null });
   },
 
+  /**
+   * Switch tabs, and remember the choice for THIS goal.
+   *
+   * The memory is written here rather than on leaving, because leaving has
+   * several routes — Back, ⌘K to another goal, deleting the goal — and only
+   * this one is guaranteed to see the tab the user actually chose.
+   */
   setProjectTab(tab: ProjectTab) {
-    set({ projectTab: tab });
+    if (!state.openGoalId) {
+      set({ projectTab: tab });
+      return;
+    }
+    set({
+      projectTab: tab,
+      projectTabByGoal: { ...state.projectTabByGoal, [state.openGoalId]: tab },
+    });
   },
 
   /**
