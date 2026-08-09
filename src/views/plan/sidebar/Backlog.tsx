@@ -9,17 +9,25 @@ import { durationOf } from '../../../lib/slot';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
-import { IconCheck, IconX } from '../../../components/Icons';
+import { IconCheck, IconGrip, IconX } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 
 /**
  * One draggable row.
  *
  * No border, no fill, no radius at rest — the rail holds dozens of these and
- * every border is a decision the eye has to process for nothing. The hover
- * tint and `cursor-grab` are the whole affordance; a permanent grip glyph on
- * every row would advertise what the cursor already says, and Task 10's
- * `1`-`7` keys give a non-drag route regardless.
+ * every border is a decision the eye has to process for nothing.
+ *
+ * It DOES carry a grip, reversing the earlier call here that "the hover tint
+ * and `cursor-grab` are the whole affordance; a permanent grip glyph would
+ * advertise what the cursor already says". `cursor-grab` only says it once the
+ * pointer is already on the row, which cannot help someone who has not worked
+ * out that the rail and the calendar are connected — and the evidence that
+ * they do not is that the Plan view needs a hint above the grid explaining the
+ * connection in a sentence. A 12px mark on each row states it where the
+ * question is asked. Faint rather than hover-revealed for the same reason: an
+ * affordance that appears on hover is an affordance for people who already
+ * suspected it was there.
  *
  * The complete/delete controls follow the same rule: text at rest, revealed on
  * hover or keyboard focus (the pattern `Habits.tsx` already uses in this rail).
@@ -78,6 +86,18 @@ function BacklogRow({
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       } ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
     >
+      {/*
+        Decorative, not a handle: `listeners` stay on the ROW, which is what has
+        been draggable all along — moving them here would shrink a full-width
+        target to 12px. This only says the row can be dragged.
+
+        `aria-hidden` because the row's own label already reads "drag onto a
+        day, or press 1–7"; a second announcement of the same fact is noise on
+        the surface that can least afford it.
+      */}
+      <span aria-hidden="true" className="flex-none text-faint-2">
+        <IconGrip size={12} />
+      </span>
       <span className="flex-1 min-w-0 truncate">{item.title}</span>
       {/* Only inside the next week, and always for anything overdue. Printing a
           date on every row would make the urgent ones harder to find, not
