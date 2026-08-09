@@ -7,6 +7,9 @@ import { QuickAdd } from './components/QuickAdd';
 import { ConfirmImportModal } from './components/ConfirmImportModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { useLocalDate } from './hooks/useLocalDate';
+import { addDays, todayStr } from './lib/dates';
+import type { SearchEntry } from './lib/search';
+import type { ObjectActionId } from './lib/commands';
 import { CommandPalette } from './components/CommandPalette';
 import { HeaderMenu, HeaderMenuItem } from './components/HeaderMenu';
 import {
@@ -164,6 +167,67 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [actions, hydration, openStepId, showShortcuts, view]);
+
+
+  /**
+   * The palette's verbs, resolved against the app shell.
+   *
+   * They live here rather than in the palette because most of them are things
+   * only App can do — open the file picker, raise the cheat sheet, cycle the
+   * theme — and because the registry that names them (`lib/commands.ts`) has to
+   * stay free of the store to be testable.
+   */
+  function runPaletteCommand(id: string): void {
+    switch (id) {
+      case 'add-task': openTaskCapture(); return;
+      case 'new-goal': actions.setGoalModal('new'); return;
+      case 'import-goal': actions.setGoalModal('import'); return;
+      case 'nav-plan': actions.setView('plan'); return;
+      case 'nav-goals': actions.setGoalsMode('board'); actions.setView('goals'); return;
+      case 'nav-timeline': actions.setGoalsMode('timeline'); actions.setView('goals'); return;
+      case 'theme': actions.setTheme(NEXT_THEME[theme]); return;
+      case 'shortcuts': setShowShortcuts(true); return;
+      case 'export': void actions.exportBackup(); return;
+      case 'import': fileInputRef.current?.click(); return;
+      case 'reclaim': reclaimSpace(); return;
+    }
+  }
+
+  /**
+   * A verb applied to something the palette found.
+   *
+   * Search used to be navigation-only: every result opened a location and left
+   * the user to find the control. `aimMin: 0` on the two scheduling verbs means
+   * "the earliest gap that fits", the same rule `replanNode` uses — the palette
+   * is not the place to choose an hour, and the store refuses with a toast when
+   * the day has no room.
+   */
+  function runObjectAction(entry: SearchEntry, action: ObjectActionId): void {
+    const isNode = entry.kind === 'step' && entry.goalId !== null && entry.nodeId !== undefined;
+    const day = action === 'schedule-tomorrow' ? addDays(todayStr(), 1) : todayStr();
+
+    switch (action) {
+      case 'open':
+        if (entry.kind === 'project' && entry.goalId) actions.openProject(entry.goalId);
+        else if (isNode) actions.openProject(entry.goalId!, entry.nodeId);
+        else actions.revealInPlan(entry.kind === 'habit' ? 'habit' : 'task', entry.id);
+        return;
+      case 'complete':
+      case 'reopen':
+        if (isNode) actions.toggleLeaf(entry.nodeId!);
+        else if (entry.kind === 'task') actions.toggleTask(entry.id);
+        return;
+      case 'schedule-today':
+      case 'schedule-tomorrow':
+        if (isNode) actions.scheduleNode(entry.goalId!, entry.nodeId!, day, 0);
+        else if (entry.kind === 'task') actions.scheduleTask(entry.id, day, 0);
+        return;
+      case 'unschedule':
+        if (isNode) actions.unscheduleNode(entry.goalId!, entry.nodeId!);
+        else if (entry.kind === 'task') actions.unscheduleTask(entry.id);
+        return;
+    }
+  }
 
   return (
     <>
@@ -406,11 +470,8 @@ export function App() {
         goals={goals}
         tasks={tasks}
         habits={habits}
-        onOpenGoal={actions.openProject}
-        onSetProjectTab={actions.setProjectTab}
-        onSetView={actions.setView}
-        onSetGoalsMode={actions.setGoalsMode}
-        onReveal={actions.revealInPlan}
+        onCommand={runPaletteCommand}
+        onObjectAction={runObjectAction}
       />
 
       {/* Undo toast */}

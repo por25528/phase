@@ -38,8 +38,11 @@ const COL_COUNT = COLUMNS.length;
 // ── Goals view ────────────────────────────────────────────────────────────────
 
 export function Goals() {
-  const { goals, dateReviewDismissed, activeHorizon, goalsMode, actions } = useAppStore();
-  const [modal, setModal] = useState<null | 'new' | 'import'>(null);
+  const { goals, dateReviewDismissed, activeHorizon, goalsMode, goalModal, actions } = useAppStore();
+  // Which composer is up lives in the store: ⌘K can ask for one from anywhere,
+  // and a modal only its own page can open is one the palette has to lie about.
+  const modal = goalModal;
+  const setModal = actions.setGoalModal;
   const [filter, setFilter] = useState<FocusFilter | null>(null);
   // The card the date-review banner (or a horizon move) is pointing at, plus a
   // nonce so pointing at the SAME card twice is still two distinct events.

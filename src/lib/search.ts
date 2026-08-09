@@ -19,6 +19,12 @@ export interface SearchEntry {
   goalId: string | null;
   /** Set on step entries so the drawer can scroll to and highlight the node. */
   nodeId?: string;
+  /**
+   * A node with children. The palette's verbs read this: a container has no
+   * status and no estimate, so "Mark as done" and "Schedule today" are not
+   * things that can be done to it.
+   */
+  container?: boolean;
   done?: boolean;
   archived?: boolean;
 }
@@ -57,6 +63,7 @@ function flattenNodes(
       ...(node.notes === undefined ? {} : { body: stripAssetRefs(node.notes) }),
       goalId: goal.id,
       nodeId: node.id,
+      container: Boolean(node.children && node.children.length > 0),
       done: isDone(node),
       archived,
     });

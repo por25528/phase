@@ -1,31 +1,28 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { modalRegistry } from '../lib/modalRegistry';
-import { IconSearch } from './Icons';
+import { IconChevronRight, IconSearch } from './Icons';
 import { buildSearchIndex, searchEntries, type SearchEntry, type SearchHit, type SearchKind } from '../lib/search';
+import {
+  actionsFor,
+  commandModeQuery,
+  matchCommands,
+  type Command,
+  type ObjectAction,
+  type ObjectActionId,
+} from '../lib/commands';
 import type { Goal, Habit, Task } from '../db/types';
-import type { ProjectTab, ViewName } from '../state/store';
-import type { GoalsMode } from '../db/db';
 
-// One input that both finds and acts (the Linear ⌘K pattern). Navigation verbs
-// share the list with search results, so nothing needs a separate surface.
-interface NavCommand {
-  id: string;
-  label: string;
-  view: ViewName;
-  /** Set only where the destination is a representation of Goals, not a view. */
-  goalsMode?: GoalsMode;
-  key?: string;
-}
-
-// Timeline keeps a row here even though it lost its nav tab and its number key:
-// a mode one level in is harder to find than a tab was, and the palette is
-// where the product is supposed to make that up.
-const NAV_COMMANDS: NavCommand[] = [
-  { id: 'nav-plan', label: 'Go to Plan', view: 'plan', key: '1' },
-  { id: 'nav-goals', label: 'Go to Goals', view: 'goals', key: '2' },
-  { id: 'nav-timeline', label: 'Go to Timeline', view: 'goals', goalsMode: 'timeline' },
-];
-
+/**
+ * One input that finds AND acts.
+ *
+ * The old version called itself a command palette and held three navigation
+ * rows. Everything else it returned was an object that opened a location, so a
+ * person who typed "complete" or "schedule" learned that the keyboard route did
+ * not exist — which is worse than having no palette, because they stop looking.
+ *
+ * Three things are in the list now: commands (`>` shows only those), objects,
+ * and — one level in, on a chosen object — the verbs for it. The footer says so.
+ */
 const KIND_LABEL: Record<SearchKind, string> = {
   project: 'GOAL',
   step: 'TASK',
@@ -34,8 +31,9 @@ const KIND_LABEL: Record<SearchKind, string> = {
 };
 
 type Row =
-  | { type: 'nav'; command: NavCommand }
-  | { type: 'hit'; hit: SearchHit };
+  | { type: 'command'; command: Command }
+  | { type: 'hit'; hit: SearchHit }
+  | { type: 'action'; action: ObjectAction };
 
 // Bold the characters the query actually matched, so a fuzzy hit explains itself.
 function Highlighted({ title, matches }: { title: string; matches: number[] }) {
@@ -65,31 +63,25 @@ export function CommandPalette({
   goals,
   tasks,
   habits,
-  onOpenGoal,
-  onSetProjectTab,
-  onSetView,
-  onSetGoalsMode,
-  onReveal,
+  onCommand,
+  onObjectAction,
 }: {
   open: boolean;
   onClose: () => void;
   goals: Goal[];
   tasks: Task[];
   habits: Habit[];
-  onOpenGoal: (goalId: string, nodeId?: string) => void;
-  onSetProjectTab: (tab: ProjectTab) => void;
-  onSetView: (view: ViewName) => void;
-  onSetGoalsMode: (mode: GoalsMode) => void;
-  /** Take the user to a task/habit on the Plan view and highlight it. */
-  onReveal: (kind: 'task' | 'habit', id: string) => void;
+  /** Runs a registry command by id. The handlers need the store, so they live in App. */
+  onCommand: (id: string) => void;
+  onObjectAction: (entry: SearchEntry, action: ObjectActionId) => void;
 }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  /** The object whose verbs are showing. Null is the ordinary find-and-go list. */
+  const [subject, setSubject] = useState<SearchEntry | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const modalId = useId();
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
 
   // Rebuilding the index per render is fine at this scale (one pass over the
   // in-memory store) and keeps results correct after any edit.
@@ -99,24 +91,30 @@ export function CommandPalette({
   );
 
   const rows: Row[] = useMemo(() => {
+    if (subject) {
+      return actionsFor(subject).map((action) => ({ type: 'action' as const, action }));
+    }
+    const commandOnly = commandModeQuery(query);
+    if (commandOnly !== null) {
+      return matchCommands(commandOnly).map((command) => ({ type: 'command' as const, command }));
+    }
     const trimmed = query.trim();
-    if (!trimmed) return NAV_COMMANDS.map((command) => ({ type: 'nav' as const, command }));
-
+    const commands = matchCommands(trimmed).map((command) => ({ type: 'command' as const, command }));
+    if (!trimmed) return commands;
+    // Objects first: with something typed, the thing you named is more likely
+    // to be what you meant than a verb that happens to share its letters.
     const hits = searchEntries(index, trimmed).map((hit) => ({ type: 'hit' as const, hit }));
-    const lower = trimmed.toLowerCase();
-    const navs = NAV_COMMANDS
-      .filter((c) => c.label.toLowerCase().includes(lower) || c.view.startsWith(lower))
-      .map((command) => ({ type: 'nav' as const, command }));
-    return [...hits, ...navs];
-  }, [query, index]);
+    return [...hits, ...commands];
+  }, [query, index, subject]);
 
   // Any change to the result set invalidates the cursor.
-  useEffect(() => setActive(0), [query]);
+  useEffect(() => setActive(0), [query, subject]);
 
   useEffect(() => {
     if (!open) return;
     setQuery('');
     setActive(0);
+    setSubject(null);
     const unregister = modalRegistry.register(modalId);
     const opener = document.activeElement as HTMLElement | null;
     const prevOverflow = document.body.style.overflow;
@@ -142,28 +140,27 @@ export function CommandPalette({
   if (!open) return null;
 
   function run(row: Row) {
-    if (row.type === 'nav') {
-      if (row.command.goalsMode) onSetGoalsMode(row.command.goalsMode);
-      onSetView(row.command.view);
+    if (row.type === 'command') {
+      onCommand(row.command.id);
       onClose();
       return;
     }
-    const entry: SearchEntry = row.hit.entry;
-    if (entry.kind === 'project') {
-      onOpenGoal(entry.goalId!);
-      if (row.hit.snippet !== undefined) onSetProjectTab('notes');
-    } else if (entry.kind === 'step') {
-      onOpenGoal(entry.goalId!, entry.nodeId);
-    } else {
-      // Tasks and habits have no drawer of their own; the calendar is where
-      // they are scheduled and completed. Switching view is not enough on its
-      // own — a task scheduled three weeks out, or one sitting behind the
-      // backlog's "+N more" cap, is nowhere on the week that happens to be
-      // showing, so landing on Plan looked exactly like Enter doing nothing.
-      // `onReveal` moves the week, opens whatever is hiding the row, and marks
-      // it.
-      onReveal(entry.kind === 'habit' ? 'habit' : 'task', entry.id);
+    if (row.type === 'action') {
+      if (subject) onObjectAction(subject, row.action.id);
+      onClose();
+      return;
     }
+    /*
+     * Enter on an object runs its DEFAULT verb — open — rather than dropping
+     * into the submenu.
+     *
+     * Finding a thing and going to it is the overwhelming majority of what this
+     * input is used for, and making that two keypresses to expose five verbs
+     * would tax the common case to advertise the rare one. `→` opens the verbs
+     * instead, and the footer says so, which is the same trade a file manager
+     * makes with Enter and the context menu.
+     */
+    onObjectAction(row.hit.entry, 'open');
     onClose();
   }
 
@@ -171,7 +168,9 @@ export function CommandPalette({
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      onClose();
+      // Escape closes in layers: the verb list first, the palette second.
+      if (subject) setSubject(null);
+      else onClose();
       return;
     }
     if (e.key === 'ArrowDown' || (e.key === 'n' && e.ctrlKey)) {
@@ -182,6 +181,18 @@ export function CommandPalette({
     if (e.key === 'ArrowUp' || (e.key === 'p' && e.ctrlKey)) {
       e.preventDefault();
       setActive((i) => (rows.length === 0 ? 0 : (i - 1 + rows.length) % rows.length));
+      return;
+    }
+    if (e.key === 'ArrowRight' && !subject) {
+      const row = rows[active];
+      if (row?.type !== 'hit') return;
+      e.preventDefault();
+      setSubject(row.hit.entry);
+      return;
+    }
+    if (e.key === 'ArrowLeft' && subject) {
+      e.preventDefault();
+      setSubject(null);
       return;
     }
     if (e.key === 'Enter') {
@@ -195,13 +206,16 @@ export function CommandPalette({
      * and driven by `aria-activedescendant`, so there is nothing else inside to
      * Tab to. Without this, one Tab left the dialog entirely and landed on the
      * header buttons behind the scrim — and from there Escape was resolved by
-     * App's global handler as 'close-drawer', closing the Project page while
-     * the palette stayed open. Swallowing Tab is the whole trap this needs;
-     * `Modal` cycles because it holds several controls; the Project page is not
-     * a dialog, so it has no comparable trap.
+     * App's global handler as 'close-drawer', closing the goal page while the
+     * palette stayed open.
      */
     if (e.key === 'Tab') e.preventDefault();
   }
+
+  const rowCls = (isActive: boolean) =>
+    `w-full text-left px-[16px] py-[9px] flex items-center gap-[10px] ${
+      isActive ? 'bg-hover-deep' : 'hover:bg-hover'
+    }`;
 
   return (
     <div
@@ -218,13 +232,25 @@ export function CommandPalette({
       >
         <div className="flex items-center gap-[10px] px-[16px] py-[13px] border-b border-line">
           <span className="text-faint inline-flex"><IconSearch size={16} /></span>
+          {/* The chosen object stays on screen as a chip while its verbs show,
+              so the list of verbs is never floating free of what it acts on. */}
+          {subject && (
+            <span className="flex-none max-w-[220px] truncate px-[8px] py-[3px] rounded-field bg-hover-deep text-ui text-ink-soft">
+              {subject.title}
+            </span>
+          )}
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search goals, tasks and habits…"
-            aria-label="Search goals, tasks and habits"
+            // readOnly, NOT disabled. A disabled input takes no keydown and
+            // holds no focus, so opening the verb list would leave the arrows,
+            // Enter and Escape with nowhere to land — the list would be
+            // unreachable by the keyboard that opened it.
+            readOnly={subject !== null}
+            placeholder={subject ? 'Pick an action…' : 'Search, or type > for commands…'}
+            aria-label="Search goals, tasks and habits, or run a command"
             // `combobox` is what makes the rest of this mean anything: without
             // it the listbox below is never announced, and `aria-activedescendant`
             // has no widget to move a virtual cursor within.
@@ -234,7 +260,7 @@ export function CommandPalette({
             aria-autocomplete="list"
             aria-controls={`${modalId}-results`}
             aria-activedescendant={rows[active] ? `${modalId}-row-${active}` : undefined}
-            className="flex-1 min-w-0 bg-transparent text-title text-ink placeholder:text-faint outline-none"
+            className="flex-1 min-w-0 bg-transparent text-title text-ink placeholder:text-faint outline-none read-only:cursor-default"
           />
           <kbd className="font-mono text-kbd tracking-[.04em] text-muted border border-line-2 rounded-[4px] px-[4px] py-[1px]">
             ESC
@@ -245,56 +271,55 @@ export function CommandPalette({
           ref={listRef}
           id={`${modalId}-results`}
           role="listbox"
-          aria-label="Results"
+          aria-label={subject ? 'Actions' : 'Results'}
           className="max-h-[46vh] overflow-y-auto py-[6px]"
         >
           {rows.length === 0 ? (
             <p className="px-[16px] py-[18px] text-body text-muted">
-              Nothing matches “{query.trim()}”.
+              Nothing matches “{query.replace(/^>/, '').trim()}”.
             </p>
           ) : (
             rows.map((row, i) => {
               const isActive = i === active;
-              const rowCls = `w-full text-left px-[16px] py-[9px] flex items-center gap-[10px] ${
-                isActive ? 'bg-hover-deep' : 'hover:bg-hover'
-              }`;
-              if (row.type === 'nav') {
+              const common = {
+                id: `${modalId}-row-${i}`,
+                role: 'option' as const,
+                'aria-selected': isActive,
+                'data-active': isActive,
+                tabIndex: -1,
+                className: rowCls(isActive),
+                onMouseMove: () => setActive(i),
+                onClick: () => run(row),
+              };
+
+              if (row.type === 'command') {
                 return (
-                  <button
-                    key={row.command.id}
-                    id={`${modalId}-row-${i}`}
-                    role="option"
-                    aria-selected={isActive}
-                    data-active={isActive}
-                    tabIndex={-1}
-                    className={rowCls}
-                    onMouseMove={() => setActive(i)}
-                    onClick={() => run(row)}
-                  >
+                  <button key={`c-${row.command.id}`} type="button" {...common}>
                     <span className="flex-1 min-w-0 truncate text-lead text-ink-soft">
                       {row.command.label}
                     </span>
-                    {row.command.key && (
+                    {row.command.hint && (
                       <kbd className="font-mono text-kbd text-muted border border-line-2 rounded-[4px] px-[4px] py-[1px]">
-                        {row.command.key}
+                        {row.command.hint}
                       </kbd>
                     )}
                   </button>
                 );
               }
+
+              if (row.type === 'action') {
+                return (
+                  <button key={`a-${row.action.id}`} type="button" {...common}>
+                    <span className="flex-1 min-w-0 truncate text-lead text-ink-soft">
+                      {row.action.label}
+                    </span>
+                  </button>
+                );
+              }
+
               const { entry, titleMatches, snippet } = row.hit;
               return (
-                <button
-                  key={`${entry.kind}-${entry.id}`}
-                  id={`${modalId}-row-${i}`}
-                  role="option"
-                  aria-selected={isActive}
-                  data-active={isActive}
-                  tabIndex={-1}
-                  className={rowCls}
-                  onMouseMove={() => setActive(i)}
-                  onClick={() => run(row)}
-                >
+                <button key={`${entry.kind}-${entry.id}`} type="button" {...common}>
                   <span className="flex-1 min-w-0">
                     <span
                       className={`block truncate text-lead ${
@@ -318,6 +343,9 @@ export function CommandPalette({
                   <span className="flex-none font-mono text-tiny tracking-[.1em] text-muted">
                     {KIND_LABEL[entry.kind]}
                   </span>
+                  <span className="flex-none text-faint inline-flex" aria-hidden="true">
+                    <IconChevronRight size={12} />
+                  </span>
                 </button>
               );
             })
@@ -326,8 +354,18 @@ export function CommandPalette({
 
         <div className="flex items-center gap-[14px] px-[16px] py-[8px] border-t border-line font-mono text-tiny tracking-[.08em] text-muted">
           <span>↑↓ MOVE</span>
-          <span>↵ OPEN</span>
-          <span>ESC CLOSE</span>
+          {subject ? (
+            <>
+              <span>↵ RUN</span>
+              <span>← BACK</span>
+            </>
+          ) : (
+            <>
+              <span>↵ OPEN</span>
+              <span>→ ACTIONS</span>
+              <span>&gt; COMMANDS</span>
+            </>
+          )}
         </div>
       </div>
     </div>

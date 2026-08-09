@@ -77,6 +77,15 @@ export const VIEW_LABELS = {
   goals: 'Goals',
 } as const;
 
+/**
+ * Which goal composer is up, if any.
+ *
+ * It lives in the store rather than in `Goals.tsx` local state because the
+ * command palette can now ask for one from anywhere in the app — and a modal
+ * that only its own page can open is a modal the palette has to lie about.
+ */
+export type GoalModal = 'new' | 'import' | null;
+
 /** Which tab the project page is showing. */
 export type ProjectTab = 'steps' | 'notes';
 
@@ -92,6 +101,7 @@ interface UIState {
   // lived: this one persists until the panel is closed. Read from plan 2 on.
   openStepId: string | null;
   projectTab: ProjectTab;
+  goalModal: GoalModal;
   // Task/habit the Plan view should scroll to + highlight — the same idea as
   // `focusNodeId`, for the two kinds that have no page of their own.
   revealItem: RevealTarget | null;
@@ -132,6 +142,7 @@ let state: FullState = {
   focusNodeId: null,
   openStepId: null,
   projectTab: 'steps',
+  goalModal: null,
   revealItem: null,
   newNodeId: null,
   expanded: new Set(),
@@ -2211,6 +2222,21 @@ export const actions = {
   closeProject() {
     const view = state.projectReturnView === 'project' ? 'goals' : state.projectReturnView;
     set({ view, openGoalId: null, focusNodeId: null, openStepId: null });
+  },
+
+  /**
+   * Open (or dismiss) a goal composer, switching to Goals on the way.
+   *
+   * The view change is part of the action: opening the New goal dialog over the
+   * Plan calendar would leave the user somewhere the thing they just created
+   * does not appear.
+   */
+  setGoalModal(kind: GoalModal) {
+    if (kind === null) {
+      set({ goalModal: null });
+      return;
+    }
+    set({ goalModal: kind, view: 'goals', openGoalId: null, openStepId: null });
   },
 
   setProjectTab(tab: ProjectTab) {

@@ -13,7 +13,7 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['2'], label: 'Goals' },
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
-  { keys: ['⌘', 'K'], label: 'Search everything' },
+  { keys: ['⌘', 'K'], label: 'Search everything, and run commands' },
   { keys: ['⌘', 'N'], label: 'Add a task' },
   { keys: ['⌘', '↵'], label: 'Add it and keep the composer open' },
   { keys: ['⌘', 'Z'], label: 'Undo the last change' },

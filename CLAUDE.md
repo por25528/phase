@@ -22,6 +22,7 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - `src/lib/*` — pure, side-effect-free helpers; new logic here ships with a sibling `*.test.ts`. `src/lib/status.ts` is the single vocabulary for a leaf's `status` — `stepStatus`, `isDone`, `containerStatus`, `cycleStatus`, `applyStatus`, `STATUS_WORD` — readers go through it and never touch the field directly. `src/lib/effort.ts` and `src/lib/health.ts` are the goal header's two answers — remaining minutes, and a `Health` verdict that always carries a sentence. `goalHealth` takes the availability WINDOWS, not a pre-summed capacity, so it can tell "the deadline is tomorrow" apart from "nobody ever set working hours"; the second is `no-forecast`, never `at-risk`.
 - `src/state/store.ts` — the single global store (`useSyncExternalStore`). All mutations go through `actions`, which call `setAndPersist`. Views never call `db` directly.
 - `src/views/<View>.tsx` orchestrates a top-level view; its components live in a per-view subfolder (`plan/`, `timeline/`, `goals/`, `project/`).
+- `src/lib/commands.ts` describes the command palette's verbs — ids, labels and the words people actually type — and nothing else. The handlers live in `App.tsx` because they need the store; keeping them apart is what lets the matching be tested without mounting anything.
 - `src/components/` — shared visual primitives.
 - `electron/main.cjs` — desktop shell (BrowserWindow, dev-server/dist URL switch).
 
