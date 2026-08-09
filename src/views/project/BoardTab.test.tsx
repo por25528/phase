@@ -120,11 +120,15 @@ describe('the goal board', () => {
     expect(screen.getByRole('heading', { name: /In progress/ })).toBeTruthy();
   });
 
-  it('opens the inspector when a card is clicked', async () => {
+  it('uses the whole card surface for both dragging and opening', async () => {
     const { store } = await mount(BIG);
+    const card = screen.getByText('Auth').closest('button')!;
 
-    fireEvent.click(screen.getByText('Auth').closest('button')!);
+    expect(card.getAttribute('aria-roledescription')).toBe('draggable');
+    expect(card.tabIndex).toBe(0);
+    expect(screen.queryByRole('button', { name: 'Drag "Auth"' })).toBeNull();
 
+    fireEvent.click(card);
     expect(store.getState().openStepId).toBe('Auth');
   });
 
@@ -160,7 +164,10 @@ describe('the goal board', () => {
       nodes: Array.from({ length: 4 }, (_, i) => leaf(`n${i}`, { status: 'doing' })),
     });
 
-    expect(within(column('In progress')).getByText(/over 3/)).toBeTruthy();
-    expect(within(column('In progress')).getAllByRole('button', { name: /^Drag/ })).toHaveLength(4);
+    const inProgress = within(column('In progress'));
+    expect(inProgress.getByText(/over 3/)).toBeTruthy();
+    const cards = inProgress.getAllByRole('button');
+    expect(cards).toHaveLength(4);
+    expect(cards.every((card) => card.getAttribute('aria-roledescription') === 'draggable')).toBe(true);
   });
 });
