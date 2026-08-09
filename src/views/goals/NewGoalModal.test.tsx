@@ -81,8 +81,19 @@ describe('creating a goal', () => {
     const { onAdd, user } = mount();
 
     await user.type(title(), 'Physics Final');
-    // The field commits on Enter or blur, then the composer's own Enter submits.
-    await user.type(screen.getByLabelText('Deadline'), '2099-08-24{Enter}');
+    /*
+     * `fireEvent`, not `user.type`, for the date. `DateField` only starts
+     * tracking a draft once `onFocus` has run, and typing a string ending in
+     * `{Enter}` races that under load — the Enter arrives before React has
+     * committed `editing`, and the field commits an empty draft. Driving
+     * focus → change → Enter explicitly is deterministic and is the same three
+     * events a person produces.
+     */
+    const deadline = screen.getByLabelText('Deadline');
+    fireEvent.focus(deadline);
+    fireEvent.change(deadline, { target: { value: '2099-08-24' } });
+    fireEvent.keyDown(deadline, { key: 'Enter' });
+
     await user.click(title());
     await user.keyboard('{Enter}');
 
