@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Goal } from '../../db/types';
 import { ProgressBar } from '../../components/ProgressBar';
+import { IconDots } from '../../components/Icons';
 import { goalPct } from '../../lib/pct';
 import { fmtD } from '../../lib/dates';
 import { leafCount } from '../../lib/board';
@@ -367,9 +368,9 @@ export function BoardCard({
               setMenuUp(window.innerHeight - rect.bottom < MENU_HEIGHT_PX);
               setMenuOpen((v) => !v);
             })}
-            className="text-lead text-faint px-[8px] py-[2px] rounded-field hover:bg-hover hover:text-ink"
+            className="text-faint px-[8px] py-[2px] min-h-[24px] inline-flex items-center rounded-field hover:bg-hover hover:text-ink"
           >
-            ⋯
+            <IconDots />
           </button>
           {menuOpen && (
             <div

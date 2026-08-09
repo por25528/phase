@@ -144,7 +144,10 @@ describe('Project page', () => {
       expect(store.getState().focusNodeId).toBeNull();
       expect(store.getState().openStepId).toBe('n2');
 
-      fireEvent.click(screen.getByRole('button', { name: '✦ Break a step into subtasks…' }));
+      // The leading `✦` used to be part of the accessible name — it was a bare
+      // text node, so a screen reader read the decoration out. It is now an
+      // aria-hidden icon and the name is the words alone.
+      fireEvent.click(screen.getByRole('button', { name: 'Break a step into subtasks…' }));
       expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('n2');
     } finally {
       vi.useRealTimers();

@@ -8,6 +8,7 @@ import { weekOf } from '../../../lib/plan';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
+import { IconCheck, IconX } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 
 /**
@@ -105,9 +106,9 @@ function BacklogRow({
           else actions.toggleLeaf(item.id);
         }}
         aria-label={`Complete "${item.title}"`}
-        className="quiet-control flex-none text-meta text-muted hover:text-ink rounded-[4px] hover:bg-hover"
+        className="quiet-control flex-none text-muted hover:text-ink rounded-[4px] hover:bg-hover"
       >
-        ✓
+        <IconCheck size={13} />
       </button>
       {/*
         Tasks only. A step belongs to a project's structure — it is deleted in
@@ -123,9 +124,9 @@ function BacklogRow({
             actions.removeTask(item.id);
           }}
           aria-label={`Delete "${item.title}"`}
-          className="quiet-control flex-none text-meta text-muted hover:text-warn rounded-[4px] hover:bg-hover"
+          className="quiet-control flex-none text-muted hover:text-warn rounded-[4px] hover:bg-hover"
         >
-          ✕
+          <IconX size={13} />
         </button>
       )}
     </div>

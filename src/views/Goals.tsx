@@ -13,6 +13,7 @@ import {
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
+import { IconCheck, IconChevronRight, IconX } from '../components/Icons';
 import { groupByColumn } from '../lib/board';
 import { focusSummary } from '../lib/plan';
 import { fmtD } from '../lib/dates';
@@ -383,9 +384,9 @@ export function Goals() {
             type="button"
             aria-label="Dismiss date review" 
             onClick={actions.dismissDateReview}
-            className="text-body text-muted px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-field hover:bg-hover hover:text-ink"
+            className="text-muted px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-field hover:bg-hover hover:text-ink"
           >
-            ✕
+            <IconX />
           </button>
         </div>
       )}
@@ -519,11 +520,11 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
         className="flex items-center gap-[9px] w-full text-left px-[2px] py-[4px]"
       >
         <span
-          className="text-muted text-meta transition-transform"
+          className="text-muted inline-flex transition-transform"
           style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
           aria-hidden="true"
         >
-          ▶
+          <IconChevronRight size={12} />
         </span>
         <span className="font-mono text-kbd tracking-[.11em] uppercase text-muted font-semibold">Completed</span>
         <span className="font-mono text-badge text-muted tabular-nums">{goals.length}</span>
@@ -535,7 +536,7 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
               key={g.id}
               className="flex items-center gap-[10px] px-[13px] py-[11px] border border-line rounded-card bg-panel opacity-[.86]"
             >
-              <span className="text-accent text-body" aria-hidden="true">✓</span>
+              <span className="text-accent inline-flex" aria-hidden="true"><IconCheck /></span>
               <span className="font-disp text-lead font-semibold flex-1 min-w-0 truncate">{g.title}</span>
               {g.completedAt && <span className="font-mono text-tiny text-muted whitespace-nowrap">{fmtD(g.completedAt)}</span>}
               <button

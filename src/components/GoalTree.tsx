@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { GoalNode, Session } from '../db/types';
 import { useAppStore } from '../state/store';
 import { nodePct } from '../lib/pct';
+import { IconChevronRight, IconDiamond, IconGrip, IconPencil, IconX } from './Icons';
 import {
   DndContext,
   PointerSensor,
@@ -623,9 +624,11 @@ function GoalTreeNode({
           tabIndex={-1}
           aria-label="Drag to reorder"
           onClick={(e) => e.stopPropagation()}
-          className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-tiny text-faint cursor-grab active:cursor-grabbing select-none"
+          className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-faint cursor-grab active:cursor-grabbing"
         >
-          ⠿
+          {/* The plan sidebar already drew this handle properly; the tree used
+              `⠿` — a BRAILLE PATTERN — for the same affordance. */}
+          <IconGrip size={13} />
         </button>
 
         {/* Twirl (container) or fixed-width spacer (leaf) */}
@@ -635,14 +638,14 @@ function GoalTreeNode({
             aria-expanded={isOpen}
             aria-label={isOpen ? 'Collapse' : 'Expand'}
             tabIndex={-1}
-            className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint text-micro select-none transition-transform duration-150 rounded-[4px] hover:bg-hover"
+            className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint transition-transform duration-150 rounded-[4px] hover:bg-hover"
             style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
             onClick={(e) => {
               e.stopPropagation();
               actions.toggleExpand(n.id);
             }}
           >
-            ▶
+            <IconChevronRight size={13} />
           </button>
         ) : (
           <span className="w-[14px] h-[14px] flex-shrink-0" aria-hidden="true" />
@@ -658,8 +661,8 @@ function GoalTreeNode({
         )}
 
         {n.checkpoint && (
-          <span className="text-accent text-meta leading-none flex-shrink-0" aria-hidden="true">
-            ◆
+          <span className="text-accent flex-shrink-0 inline-flex" aria-hidden="true">
+            <IconDiamond size={9} />
           </span>
         )}
 
@@ -772,13 +775,13 @@ function GoalTreeNode({
           tabIndex={-1}
           aria-label={`Rename "${n.title}"`}
           title="Rename"
-          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
+          className="quiet-control text-faint flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
           onClick={(e) => {
             e.stopPropagation();
             setEditing(true);
           }}
         >
-          ✎
+          <IconPencil size={13} />
         </button>
 
         {/* + sub — consistent on every row (leaf: converts to container; container: adds child) */}
@@ -801,13 +804,13 @@ function GoalTreeNode({
           type="button"
           tabIndex={-1}
           aria-label={`Delete ${n.title}`}
-          className="quiet-control text-faint text-ui flex-shrink-0 rounded-[4px] hover:text-warn hover:bg-hover"
+          className="quiet-control text-faint flex-shrink-0 rounded-[4px] hover:text-warn hover:bg-hover"
           onClick={(e) => {
             e.stopPropagation();
             actions.removeNode(n.id);
           }}
         >
-          ✕
+          <IconX size={13} />
         </button>
       </div>
 

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Goal } from '../../db/types';
 import { Modal } from '../../components/Modal';
+import { IconX } from '../../components/Icons';
 import { DateField } from '../../components/DateField';
 import { buildManualGoal, priorityToColumn, PRIORITY_WORDS } from '../../lib/goalImport';
 import { projectDateError } from '../../lib/schedule';
@@ -116,10 +117,10 @@ export function NewGoalModal({
                   <span className="flex-1 truncate">{s}</span>
                   <button
                     aria-label={`Remove ${s}`}
-                    className="text-muted text-ui hover:text-warn"
+                    className="text-muted hover:text-warn inline-flex items-center"
                     onClick={() => setSubgoals((arr) => arr.filter((_, j) => j !== i))}
                   >
-                    ✕
+                    <IconX size={13} />
                   </button>
                 </div>
               ))}

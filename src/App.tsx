@@ -5,10 +5,20 @@ import { Timeline } from './views/Timeline';
 import { Plan } from './views/Plan';
 import { Project } from './views/Project';
 import { TaskCaptureModal } from './components/TaskCaptureModal';
+import { ConfirmImportModal } from './components/ConfirmImportModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { useLocalDate } from './hooks/useLocalDate';
 import { CommandPalette } from './components/CommandPalette';
 import { HeaderMenu, HeaderMenuItem } from './components/HeaderMenu';
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconBackspace,
+  IconMoon,
+  IconPlus,
+  IconSearch,
+  IconSun,
+} from './components/Icons';
 import {
   resolveAppKeyCommand,
   shouldConsumePaletteShortcut,
@@ -42,22 +52,6 @@ const NAV_TABS = [
   ['timeline', VIEW_LABELS.timeline],
 ] as const;
 
-function SunIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-    </svg>
-  );
-}
-function MoonIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-    </svg>
-  );
-}
-
 export function App() {
   const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
@@ -70,6 +64,9 @@ export function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Held between "a file was picked" and "the user typed REPLACE". The File is
+  // captured here, so the input can be reset immediately and stay re-pickable.
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
 
   const reclaimSpace = () => {
     void actions.reclaimSpace()
@@ -220,7 +217,7 @@ export function App() {
           title="Search (⌘K)"
           className="flex-none flex items-center gap-[7px] rounded-field border border-line-2 text-muted text-ui px-[9px] sm:pl-[10px] sm:pr-[8px] py-[6px] hover:text-ink hover:border-muted disabled:opacity-40 disabled:pointer-events-none"
         >
-          <span aria-hidden="true">⌕</span>
+          <IconSearch />
           <span className="hidden sm:inline">Search</span>
           <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] border border-line-2 rounded-[4px] px-[4px] py-[1px]">⌘K</kbd>
         </button>
@@ -233,7 +230,7 @@ export function App() {
           title="Add a task (⌘N)"
           className="flex-none flex items-center gap-[7px] rounded-field bg-ink text-paper text-ui font-semibold px-[9px] sm:pl-[12px] sm:pr-[10px] py-[6px] hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
         >
-          <span aria-hidden="true">＋</span>
+          <IconPlus />
           <span className="hidden sm:inline">Task</span>
           <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
         </button>
@@ -255,33 +252,36 @@ export function App() {
             title={`Theme: ${THEME_LABEL[theme]}`}
             className="flex items-center gap-[6px] min-h-[24px] px-[2px] rounded-[6px] hover:text-ink"
           >
-            {effectiveTheme === 'dark' ? <MoonIcon /> : <SunIcon />}
+            {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
             <span>{THEME_LABEL[theme]}</span>
           </button>
-          <button onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↓ EXPORT</button>
+          <button onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'} className="inline-flex items-center gap-[6px] min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none"><IconArrowDown />EXPORT</button>
+          {/* No icon, as before: this row's glyphs were replaced, not added to. */}
           <button onClick={reclaimSpace} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">RECLAIM SPACE</button>
-          <button onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↑ IMPORT</button>
+          <button onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'} className="inline-flex items-center gap-[6px] min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none"><IconArrowUp />IMPORT</button>
         </div>
 
         <HeaderMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <HeaderMenuItem onClick={() => actions.setTheme(NEXT_THEME[theme])}>
-            {effectiveTheme === 'dark' ? <MoonIcon /> : <SunIcon />}
+            {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
             Theme: {THEME_LABEL[theme]}
           </HeaderMenuItem>
           <HeaderMenuItem onClick={() => setShowShortcuts(true)}>
+            {/* Stays a character: `?` is ASCII, it is in the font, and it is the
+                literal key you press. The 14px box keeps it in the icon gutter. */}
             <span aria-hidden="true" className="w-[14px] text-center">?</span>
             Keyboard shortcuts
           </HeaderMenuItem>
           <HeaderMenuItem onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'}>
-            <span aria-hidden="true" className="w-[14px] text-center">↓</span>
+            <IconArrowDown />
             Export backup
           </HeaderMenuItem>
           <HeaderMenuItem onClick={reclaimSpace} disabled={hydration !== 'ready'}>
-            <span aria-hidden="true" className="w-[14px] text-center">⌫</span>
+            <IconBackspace />
             Reclaim space
           </HeaderMenuItem>
           <HeaderMenuItem onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'}>
-            <span aria-hidden="true" className="w-[14px] text-center">↑</span>
+            <IconArrowUp />
             Import backup
           </HeaderMenuItem>
         </HeaderMenu>
@@ -293,10 +293,11 @@ export function App() {
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f && window.confirm('Importing a backup replaces everything currently in Phase. Continue?')) {
-              actions.importBackup(f);
-            }
+            // Reset unconditionally, and BEFORE the modal resolves: picking the
+            // same file twice must fire `change` again, and the File object is
+            // already captured in state by then.
             e.target.value = '';
+            if (f) setPendingImport(f);
           }}
         />
       </header>
@@ -415,6 +416,15 @@ export function App() {
         focusRequest={taskCapture.focusRequest}
         enabled={hydration === 'ready'}
         onClose={() => setTaskCapture((current) => closeTaskCapture(current))}
+      />
+      <ConfirmImportModal
+        open={pendingImport !== null}
+        fileName={pendingImport?.name ?? ''}
+        onCancel={() => setPendingImport(null)}
+        onConfirm={() => {
+          if (pendingImport) actions.importBackup(pendingImport);
+          setPendingImport(null);
+        }}
       />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <CommandPalette

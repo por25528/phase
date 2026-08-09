@@ -11,21 +11,12 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '../../../state/store';
 import { Tag } from '../../../components/Tag';
 import { TodayCheckbox } from '../../../components/TodayCheckbox';
-import { GripIcon } from './GripIcon';
+import { IconGrip, IconPencil, IconX } from '../../../components/Icons';
 import { HabitDots } from './HabitDots';
 import { useReducedMotion } from '../../../components/useReducedMotion';
 import { todayStr, addDays, weekDates, streak } from '../../../lib/dates';
 import { revealDomId, type RevealTarget } from '../../../lib/reveal';
 import type { Cadence, Habit } from '../../../db/types';
-
-function PencilIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
 
 function AddHabitForm({
   onAdd,
@@ -248,7 +239,7 @@ function SortableHabitRow({
       {...listeners}
     >
       <span className="text-faint opacity-0 group-hover:opacity-100 flex-shrink-0 transition-opacity pointer-events-none">
-        <GripIcon />
+        <IconGrip size={13} />
       </span>
       <span
         onPointerDown={(e) => e.stopPropagation()}
@@ -290,16 +281,16 @@ function SortableHabitRow({
         onClick={(e) => { e.stopPropagation(); startEdit(); }}
         aria-label={`Rename habit "${hb.title}"`}
       >
-        <PencilIcon />
+        <IconPencil size={13} />
       </button>
       <button
         type="button"
-        className="quiet-control text-faint text-ui hover:text-warn flex-none"
+        className="quiet-control text-faint hover:text-warn flex-none"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        aria-label={`Remove habit "${hb.title}"`}
+        aria-label={`Delete habit "${hb.title}"`}
       >
-        ✕
+        <IconX size={13} />
       </button>
     </div>
   );

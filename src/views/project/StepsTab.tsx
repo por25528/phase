@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import type { Goal } from '../../db/types';
 import { GoalTree } from '../../components/GoalTree';
+import { IconSparkle } from '../../components/Icons';
 import { SubtaskAiModal } from '../../components/SubtaskAiModal';
 import { leafCount } from '../../lib/board';
 import { findNode } from '../../lib/tree';
@@ -81,11 +82,12 @@ export function StepsTab({
           <button
             type="button"
             onClick={() => setSubtaskOpen(true)}
-            className="mt-[8px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[1px]"
+            className="mt-[8px] inline-flex items-center gap-[6px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[1px]"
           >
             {/* No AI runs in Phase — the modal hands you a prompt for your own.
                 "with AI" promised in-app generation the feature cannot do. */}
-            ✦ Break a step into subtasks…
+            <IconSparkle size={12} />
+            Break a step into subtasks…
           </button>
         </div>
       )}

@@ -5,6 +5,7 @@ import { defaultNodeSpan, spanOutside, dateToX, daysBetween } from '../../lib/ti
 import type { GridTick, DayBand } from '../../lib/timeline';
 import type { GoalNode } from '../../db/types';
 import { nodePct } from '../../lib/pct';
+import { IconX } from '../../components/Icons';
 import { SpanBar } from './SpanBar';
 import type { GoalWithSpan } from '../../lib/schedule';
 
@@ -108,9 +109,9 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
                 type="button"
                 aria-label={`Unschedule ${node.title}`}
                 onClick={() => actions.clearNodeDates(goal.id, node.id)}
-                className="quiet-control flex-shrink-0 text-faint hover:text-warn text-ui leading-none"
+                className="quiet-control flex-shrink-0 text-faint hover:text-warn"
               >
-                ✕
+                <IconX size={13} />
               </button>
             </div>
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { IconDots } from './Icons';
 
 /**
  * The header's `⋯` overflow menu. Below `lg` the utility cluster (shortcuts,
@@ -42,13 +43,16 @@ export function HeaderMenu({
     <div ref={wrapRef} className="relative lg:hidden">
       <button
         type="button"
-        aria-label="More options"
+        aria-label="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
         className="w-[28px] h-[28px] grid place-items-center rounded-full border border-line-2 text-ink-soft hover:text-ink hover:border-muted"
       >
-        <span aria-hidden="true" className="leading-none text-title -mt-[3px]">⋯</span>
+        {/* The glyph this replaced needed `text-title -mt-[3px]` to sit on the
+            button's optical centre, because U+22EF rides low on its baseline in
+            whichever fallback face drew it. A 16px box centres by itself. */}
+        <IconDots size={16} />
       </button>
       {open && (
         <div

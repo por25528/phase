@@ -1,6 +1,7 @@
 import type { ReactNode, Ref } from 'react';
 import type { SidebarPanel } from '../../db/db';
 import { useAppStore } from '../../state/store';
+import { IconChevronRight } from '../../components/Icons';
 
 /**
  * One collapsible sidebar panel.
@@ -36,9 +37,9 @@ export function SidebarSection({
       >
         <span
           aria-hidden="true"
-          className={`text-faint text-tiny flex-none transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
+          className={`text-faint inline-flex flex-none transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
         >
-          ▶
+          <IconChevronRight size={11} />
         </span>
         <span className="font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold flex-1">
           {title}

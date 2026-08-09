@@ -120,6 +120,71 @@ describe('design scale', () => {
   });
 
   /**
+   * `rgba()` is a colour too, and the two assertions above only match `#`.
+   *
+   * The modal scrim sat at `bg-[rgba(20,20,18,0.28)]` in BOTH `Modal` and
+   * `CommandPalette` — duplicated, and the only colour in the app that did not
+   * theme, because nothing here was looking for it. It is now `--scrim`.
+   *
+   * `rgb(var(--c-*))` stays allowed for the same reason as above: that IS the
+   * token. The guard only fires on a literal channel number.
+   */
+  it('declares no literal rgb/hsl colours — use the theme tokens', () => {
+    expect(offenders(/(?:text|bg|border|fill|stroke|ring|shadow)-\[[^\]]*(?:rgba?|hsla?)\(\s*[0-9][^\]]*\]/g))
+      .toEqual([]);
+  });
+
+  /**
+   * An icon has to be in the font, or it is not an icon — it is a lottery.
+   *
+   * Inter is self-hosted and subsetted, and `@fontsource-variable/inter`'s
+   * `unicode-range` list covers Latin, Greek, Cyrillic, Vietnamese and a short
+   * roster of named symbols. Every glyph below is outside all of them, so the
+   * browser resolved each one through per-glyph fallback: the app's close,
+   * complete, rename, drag, expand and overflow icons were drawn by whatever
+   * face the OS offered, at whatever weight it happened to have. Two of them
+   * (`⚠` U+26A0 and `✦` U+2726) have emoji presentation defaults and could
+   * resolve to a colour emoji, which ignores `currentColor` outright.
+   *
+   * It was not visible locally — macOS has a glyph for all of these and they
+   * look plausible — which is exactly why it needs a test rather than an eye.
+   * They now live in `components/Icons.tsx` as SVGs on one grid.
+   *
+   * Only unambiguous ICON characters are listed. Deliberately absent:
+   *   - `⌘ ⌥ ⇧ ⌫ ← →` in `ShortcutsOverlay` name physical keys, have no icon
+   *     equivalent, and are set in `font-mono` (SF Mono / Menlo) which covers
+   *     them in one face.
+   *   - `×` (U+00D7) is a multiplication sign in "1.5× short" and IS in Inter.
+   *   - `·`, `–`, `…` are punctuation, and are in Inter.
+   */
+  const ICON_GLYPHS = '✕✓✎▶◆◇⠿⋯✦⚠⌕＋';
+
+  it('renders no icon as a Unicode glyph — use components/Icons.tsx', () => {
+    // Comments are stripped first: `Icons.tsx` documents each character it
+    // replaced, and half a dozen components explain the control they used to
+    // draw. Over-stripping (a `//` inside a string) can only hide a violation,
+    // never invent one, so the guard stays sound in the direction that matters.
+    const stripComments = (src: string) =>
+      src
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/(^|[^:])\/\/.*$/, '$1'))
+        .join('\n');
+
+    const hits: string[] = [];
+    for (const file of files) {
+      stripComments(readFileSync(file, 'utf8'))
+        .split('\n')
+        .forEach((line, i) => {
+          for (const glyph of ICON_GLYPHS) {
+            if (line.includes(glyph)) hits.push(`${file.slice(SRC.length)}:${i + 1} ${glyph}`);
+          }
+        });
+    }
+    expect(hits).toEqual([]);
+  });
+
+  /**
    * Tailwind emits `text-<key>` for BOTH the `fontSize` and the `colors` scale,
    * into the same stylesheet, with no namespacing. A key present in both
    * therefore produces two `.text-<key>` rules and the later one silently wins

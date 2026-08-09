@@ -1,4 +1,5 @@
 import { useAppStore } from '../../state/store';
+import { IconCheck } from '../../components/Icons';
 import { weekRecap, loggedTimeForWeek, formatLoggedMinutes } from '../../lib/plan';
 import { weekEffort, type WeekEffort } from '../../lib/actuals';
 import { weekDates } from '../../lib/dates';
@@ -71,7 +72,7 @@ export function RecapPanel() {
             <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Done</h3>
             {r.nowComplete.map((e) => (
               <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-body">
-                <span className="text-accent">✓</span>
+                <span className="text-accent inline-flex" aria-hidden="true"><IconCheck size={13} /></span>
                 <span className="flex-1 min-w-0 truncate">{e.leafTitle}</span>
                 <span className="text-meta text-muted truncate">{e.goalTitle}</span>
               </div>
@@ -104,12 +105,16 @@ export function RecapPanel() {
                 >
                   Break down
                 </button>
+                {/* "Unschedule", not "Remove": this is the same action the ×
+                    on a calendar block performs, and it was the only other name
+                    for it in the app. Nothing is destroyed — the step goes back
+                    to the backlog rail. */}
                 <button
                   type="button"
                   onClick={() => actions.unscheduleNode(e.goalId, e.nodeId)}
                   className="text-meta font-semibold text-muted hover:text-ink px-[4px]"
                 >
-                  Remove
+                  Unschedule
                 </button>
               </div>
             ))}
@@ -118,7 +123,11 @@ export function RecapPanel() {
 
         {r.removed.length > 0 && (
           <section>
-            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Removed</h3>
+            {/* `weekRecap` files an entry here when its node no longer exists,
+                so this is DELETED work, not unscheduled work — and the button
+                above says "Unschedule". One panel cannot call two different
+                outcomes "removed". */}
+            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Deleted</h3>
             {r.removed.map((e) => (
               <div key={e.nodeId} className="py-[3px] text-body text-muted line-through">
                 {e.leafTitle} <span className="no-underline text-meta">· {e.goalTitle}</span>

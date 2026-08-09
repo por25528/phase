@@ -5,6 +5,7 @@ import { clockLabel } from '../../lib/clock';
 import { projectBlockClass } from '../../lib/projectColour';
 import type { PlanDragData } from './dropTarget';
 import { containerDragAttributes } from '../../lib/dragAttributes';
+import { IconCheck, IconX } from '../../components/Icons';
 
 /**
  * A block on the grid — either committed work or a calendar event.
@@ -152,13 +153,13 @@ export function EventBlock({
           // that showed at rest, so every block carried a grey tick it did not
           // need — noise on a surface whose whole job is to be scannable. A
           // DONE block keeps it visible: that tick is state, not an offer.
-          className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent text-meta leading-none transition-opacity focus-visible:opacity-100 ${
+          className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent transition-opacity focus-visible:opacity-100 ${
             block.done ? 'opacity-100' : 'opacity-0 group-hover/blk:opacity-100'
           } ${
             compact ? 'top-1/2 -translate-y-1/2 right-[22px] bg-panel/90 rounded-[4px]' : 'top-0 right-[20px]'
           }`}
         >
-          ✓
+          <IconCheck size={12} />
         </button>
       )}
       {onRemove && !isBusy && (
@@ -168,12 +169,15 @@ export function EventBlock({
           onClick={onRemove}
           aria-label={`Unschedule ${block.title}`}
           // 24x24 target on a block that can itself be only 34px tall — the
-          // glyph stays small, the hit area does not.
-          className={`absolute right-0 w-[24px] h-[24px] grid place-items-center text-faint hover:text-warn text-meta leading-none opacity-0 group-hover/blk:opacity-100 focus-visible:opacity-100 transition-opacity ${
+          // icon stays small, the hit area does not.
+          className={`absolute right-0 w-[24px] h-[24px] grid place-items-center text-faint hover:text-warn opacity-0 group-hover/blk:opacity-100 focus-visible:opacity-100 transition-opacity ${
             compact ? 'top-1/2 -translate-y-1/2 bg-panel/90 rounded-[4px]' : 'top-0'
           }`}
         >
-          ×
+          {/* Was `×` (U+00D7, the MULTIPLICATION SIGN) while every other dismiss
+              in the app was `✕` — the same affordance drawn with two different
+              characters, one of which was not even in the font. */}
+          <IconX size={12} />
         </button>
       )}
       {onResize && !isBusy && (

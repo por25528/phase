@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { modalRegistry } from '../lib/modalRegistry';
+import { IconSearch } from './Icons';
 import { buildSearchIndex, searchEntries, type SearchEntry, type SearchHit, type SearchKind } from '../lib/search';
 import type { Goal, Habit, Task } from '../db/types';
 import type { ProjectTab, ViewName } from '../state/store';
@@ -195,7 +196,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[65] bg-[rgba(20,20,18,0.28)] px-[16px] pt-[12vh] pb-[24px]"
+      className="scrim fixed inset-0 z-[65] px-[16px] pt-[12vh] pb-[24px]"
       role="presentation"
       onClick={onClose}
     >
@@ -207,7 +208,7 @@ export function CommandPalette({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-[10px] px-[16px] py-[13px] border-b border-line">
-          <span aria-hidden="true" className="text-faint text-lead">⌕</span>
+          <span className="text-faint inline-flex"><IconSearch size={16} /></span>
           <input
             ref={inputRef}
             value={query}

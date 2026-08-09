@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { IconX } from './Icons';
 
 // The `?` cheat sheet. A lightweight dialog (not a modalRegistry Modal) so it
 // never interferes with the ⌘N capture-suppression logic; Escape and a backdrop
@@ -142,9 +143,9 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
             type="button"
             onClick={onClose}
             aria-label="Close shortcuts"
-            className="text-muted hover:text-ink text-lead px-[6px] py-[2px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
+            className="text-muted hover:text-ink px-[6px] py-[2px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
           >
-            ✕
+            <IconX size={15} />
           </button>
         </div>
         <dl className="flex flex-col gap-[9px]">

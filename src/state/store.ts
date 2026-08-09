@@ -1901,7 +1901,9 @@ export const actions = {
     if (!goal || !node || !node.plannedWeek) return;
     const goals = cloneGoals(state.goals);
     clearPlannedSlot(findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!);
-    withUndo(`Removed "${node.title}" from plan`, 'goals', goals);
+    // "Unscheduled", matching the button that fires it — the × on a calendar
+    // block and the Recap panel both say Unschedule.
+    withUndo(`Unscheduled "${node.title}"`, 'goals', goals);
     // The reveal answers "where did it go?" — a question only the Plan view
     // raises, where the rail can bury an unscheduled step behind "+N more".
     // On the project page the step is still in the tree with its panel open,
@@ -1937,7 +1939,7 @@ export const actions = {
       delete cleared.date;
       return cleared;
     });
-    withUndo(`Removed "${task.title}" from plan`, 'tasks', tasks);
+    withUndo(`Unscheduled "${task.title}"`, 'tasks', tasks);
     // See unscheduleNode: an unscheduled task is undated, so it sorts to the
     // bottom of its group and the cap can hide it outright.
     actions.revealInPlan('task', taskId);

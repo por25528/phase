@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FocusEvent, type JSX } from 'react';
 import type { Goal, GoalNode } from '../../db/types';
 import { registerPendingNoteFlush, useAppStore } from '../../state/store';
 import { DateField } from '../../components/DateField';
+import { IconArrowRight, IconDiamond } from '../../components/Icons';
 import { EstimateControl } from '../../components/EstimateControl';
 import { InlineEdit } from '../../components/InlineEdit';
 import { LogTimeControl } from '../../components/LogTimeControl';
@@ -145,11 +146,13 @@ export function StepPanel({ goal, node, actions }: {
             }
             title="Checkpoint"
             onClick={() => actions.toggleCheckpoint(node.id)}
-            className={`text-meta px-[6px] py-[4px] min-h-[24px] rounded-field hover:bg-hover ${
+            className={`px-[6px] py-[4px] min-h-[24px] inline-flex items-center rounded-field hover:bg-hover ${
               node.checkpoint ? 'text-accent' : 'text-muted hover:text-accent'
             }`}
           >
-            {node.checkpoint ? '◆' : '◇'}
+            {/* Solid when it IS one, hollow when it could be — the same pair the
+                `◆`/`◇` characters carried, minus the two fallback faces. */}
+            <IconDiamond size={12} filled={!!node.checkpoint} />
           </button>
         )}
         <button
@@ -171,7 +174,7 @@ export function StepPanel({ goal, node, actions }: {
             placeholder="Start"
             onCommit={(next) => commitDates(next, draftDeadline)}
           />
-          <span className="text-ui text-muted" aria-hidden="true">→</span>
+          <span className="text-muted inline-flex" aria-hidden="true"><IconArrowRight size={13} /></span>
           <DateField
             value={draftDeadline}
             ariaLabel="Span end"

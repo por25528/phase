@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import type { Goal } from '../../db/types';
 import { DateField } from '../../components/DateField';
+import { IconArrowRight, IconCheck } from '../../components/Icons';
 import { ProgressBar } from '../../components/ProgressBar';
 import { InlineEdit } from '../../components/InlineEdit';
 import { firstOpenLeaf } from '../../lib/tree';
@@ -128,9 +129,17 @@ export function ProjectHeader({
             // Renaming the project was mouse-only — a div with an onClick, no
             // role, no tabIndex, no key handler — and there is no other route to
             // it anywhere in the app.
+            //
+            // `line-clamp-2`: the title is the one user string on the page with
+            // no bound. It cannot overflow horizontally (`w-fit` caps at the
+            // container) but it wrapped without limit, so a pasted paragraph
+            // pushed the dates, the chips and the whole tab strip off-screen.
+            // Two lines of display serif is ~100 characters; only a title that
+            // is really a note gets clipped, and clicking it opens the full
+            // text in the inline editor.
             <button
               type="button"
-              className="font-disp text-h1 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px]"
+              className="font-disp text-h1 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px] line-clamp-2"
               onClick={() => setEditingTitle(true)}
               aria-label={`Rename project "${g.title}"`}
               title="Click to rename"
@@ -148,7 +157,7 @@ export function ProjectHeader({
               placeholder="Start"
               onCommit={(next) => commitDates(next, draftDeadline)}
             />
-            <span className="text-ui text-muted">→</span>
+            <span className="text-muted inline-flex" aria-hidden="true"><IconArrowRight size={13} /></span>
             <DateField
               value={draftDeadline}
               ariaLabel="Deadline"
@@ -238,7 +247,7 @@ export function ProjectHeader({
           structural edits (store guards enforce it); metadata stays editable. */}
       {isCompleted ? (
         <div className="flex items-center gap-[10px] mt-[16px] px-[11px] py-[9px] rounded-card border border-line bg-hover">
-          <span className="text-accent text-lead" aria-hidden="true">✓</span>
+          <span className="text-accent inline-flex" aria-hidden="true"><IconCheck size={15} /></span>
           <span className="text-ui text-ink-soft flex-1">Completed {fmtD(g.completedAt!)}</span>
           <button
             onClick={() => actions.reopenGoal(g.id)}
