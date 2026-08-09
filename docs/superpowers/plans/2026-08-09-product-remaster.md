@@ -57,7 +57,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 
 ## M4 — creation, markers, AI, polish
 
-- [ ] **S13 Type-aware creation (change 14).** Two fields, then a type-specific
+- [x] **S13 Type-aware creation (change 14).** Two fields, then a type-specific
       starting point.
 - [ ] **S14 Milestones replace checkpoints.**
 - [ ] **S15 Inline AI proposal / diff (change 8).** Retires the clipboard
