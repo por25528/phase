@@ -150,18 +150,23 @@ export function StepPanel({ goal, node, actions }: {
             type="button"
             aria-label={
               node.checkpoint
-                ? `Remove checkpoint from "${node.title}"`
-                : `Mark "${node.title}" as a checkpoint`
+                ? `Stop treating "${node.title}" as a milestone`
+                : `Make "${node.title}" a milestone`
             }
-            title="Checkpoint"
+            title="A dated marker you are working toward — an exam, a submission, a demo"
             onClick={() => actions.toggleCheckpoint(node.id)}
-            className={`px-[6px] py-[4px] min-h-[24px] inline-flex items-center rounded-field hover:bg-hover ${
+            className={`px-[6px] py-[4px] min-h-[24px] inline-flex items-center gap-[5px] text-meta rounded-field hover:bg-hover ${
               node.checkpoint ? 'text-accent' : 'text-muted hover:text-accent'
             }`}
           >
             {/* Solid when it IS one, hollow when it could be — the same pair the
-                `◆`/`◇` characters carried, minus the two fallback faces. */}
+                `◆`/`◇` characters carried, minus the two fallback faces.
+
+                Labelled, not icon-only. A lone diamond is a glyph whose meaning
+                has to be guessed at, on the one control here that changes what
+                kind of thing a task is. */}
             <IconDiamond size={12} filled={!!node.checkpoint} />
+            Milestone
           </button>
         )}
         <button

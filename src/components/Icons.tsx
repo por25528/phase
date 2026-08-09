@@ -189,9 +189,11 @@ export function IconClock(p: IconProps) {
 // ── Indicators ────────────────────────────────────────────────────────────────
 
 /**
- * A checkpoint — was `◆` (U+25C6) filled and `◇` (U+25C7) hollow. A checkpoint
- * is a real node that counts in the roll-up, so it gets a solid mark; `filled`
- * false is the "could be one, isn't" state in the step panel's toggle.
+ * A milestone — was `◆` (U+25C6) filled and `◇` (U+25C7) hollow.
+ *
+ * A milestone here is a real node that counts in the roll-up, so it gets a
+ * solid mark; `filled` false is the "could be one, isn't" state in the task
+ * panel's toggle.
  */
 export function IconDiamond({ filled = true, ...p }: IconProps & { filled?: boolean }) {
   return (

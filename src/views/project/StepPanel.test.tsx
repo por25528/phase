@@ -344,26 +344,26 @@ describe('StepPanel', () => {
     expect(screen.queryByRole('button', { name: /log time/i })).toBeNull();
   });
 
-  it('offers the checkpoint toggle on a leaf and updates its label when enabled', async () => {
+  it('offers the milestone toggle on a leaf and updates its label when enabled', async () => {
     const store = await mountPanel(leafWithDates);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark "Wire up auth" as a checkpoint' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Make "Wire up auth" a milestone' }));
 
     expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
-    expect(screen.getByRole('button', { name: 'Remove checkpoint from "Wire up auth"' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Stop treating "Wire up auth" as a milestone' })).toBeTruthy();
   });
 
-  it('offers and activates the checkpoint toggle on a leaf with empty children', async () => {
+  it('offers and activates the milestone toggle on a leaf with empty children', async () => {
     const store = await mountPanel(emptyChildrenLeaf);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark "Wire up auth" as a checkpoint' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Make "Wire up auth" a milestone' }));
 
     expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
   });
 
-  it('shows the remove label for a checkpoint and omits the toggle on a container', async () => {
+  it('shows the remove label for a milestone and omits the toggle on a container', async () => {
     await mountPanel(checkpointLeaf);
-    expect(screen.getByRole('button', { name: 'Remove checkpoint from "Wire up auth"' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Stop treating "Wire up auth" as a milestone' })).toBeTruthy();
 
     cleanup();
     await mountPanel(containerNode);

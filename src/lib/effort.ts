@@ -28,13 +28,17 @@ export interface GoalEffort {
 }
 
 /**
- * A checkpoint is a dated marker — an exam, a submission, a demo. It is a real
- * leaf and it counts in the roll-up, deliberately, because a marker that never
- * moved a number was the complaint that retired `Milestone`. But it is not
- * WORK: nobody spends ninety minutes doing a deadline. So it counts in `total`
- * and `done` and contributes nothing to `remainingMin`, and — this is the part
- * that matters — it never lands in `unestimated` either, where it would have
- * read as a task somebody forgot to estimate.
+ * A milestone (`checkpoint` in storage) is a dated marker — an exam, a
+ * submission, a demo. It is a real leaf and it counts in the roll-up,
+ * deliberately: a marker that never moved a number was the exact complaint that
+ * retired the previous `Milestone` object, and the spec's proposal to bring one
+ * back would reintroduce it.
+ *
+ * But it is not WORK: nobody spends ninety minutes doing a deadline. So it
+ * counts in `total` and `done` and contributes nothing to `remainingMin`, and —
+ * this is the part that matters — it never lands in `unestimated` either, where
+ * it would have read as a task somebody forgot to estimate. That split is how
+ * both things are true at once: it moves the percentage, and it is not effort.
  */
 function countsAsEffort(n: GoalNode): boolean {
   return n.checkpoint !== true;
