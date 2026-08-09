@@ -85,7 +85,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
   if (goal.nodes.length === 0) {
     return (
       <div className="sticky left-0 w-fit pl-[28px] pr-[12px] py-[9px] text-ui text-muted italic">
-        No steps yet — add them in the project.
+        No tasks yet — add them in the goal.
       </div>
     );
   }
@@ -124,7 +124,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
                 pxPerDay={pxPerDay}
                 pct={p}
                 label={showLabel ? node.title : ''}
-                ariaLabel={`${node.title}: ${p}% complete, ${fmtD(span.start)}–${fmtD(span.deadline)}, step of ${goal.title}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
+                ariaLabel={`${node.title}: ${p}% complete, ${fmtD(span.start)}–${fmtD(span.deadline)}, task of ${goal.title}. Arrow keys move by day, Shift for weeks, Alt+arrows adjust deadline.`}
                 height={18}
                 warn={warn}
                 onCommit={(next) => actions.setNodeDates(goal.id, node.id, next.start, next.deadline)}
@@ -144,7 +144,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
         <div className="flex items-stretch min-h-[30px] border-t border-line">
           <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center bg-panel">
             <span className="font-mono text-tiny tracking-[.1em] uppercase text-muted">
-              Unscheduled steps ({unscheduled.length})
+              Unscheduled tasks ({unscheduled.length})
             </span>
           </div>
           <div className="flex-none px-[8px] py-[4px]" style={{ width: `${canvasW}px` }}>

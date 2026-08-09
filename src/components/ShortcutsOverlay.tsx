@@ -10,7 +10,7 @@ import { IconX } from './Icons';
 // palette all call it; this list was the last survivor of the old name.
 const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['1'], label: 'Plan' },
-  { keys: ['2'], label: 'Projects' },
+  { keys: ['2'], label: 'Goals' },
   { keys: ['3'], label: 'Timeline' },
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
@@ -30,7 +30,7 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
 // view switcher above ever sees them. With nothing focused they fall through
 // and switch view.
 const PLANNER_KEYS: { keys: string[]; label: string }[] = [
-  { keys: ['1–7'], label: 'Put the focused step on that weekday' },
+  { keys: ['1–7'], label: 'Put the focused task on that weekday' },
   { keys: ['['], label: 'Previous week' },
   { keys: [']'], label: 'Next week' },
   { keys: ['t'], label: 'Back to this week' },
@@ -39,7 +39,7 @@ const PLANNER_KEYS: { keys: string[]; label: string }[] = [
 // Board keys — on a focused project card. Alt rather than Cmd because ⌘← is
 // Back in a browser and the board is a normal document.
 const BOARD_KEYS: { keys: string[]; label: string }[] = [
-  { keys: ['↵'], label: 'Open the project' },
+  { keys: ['↵'], label: 'Open the goal' },
   { keys: ['⌥', '←/→'], label: 'Move to the previous / next horizon' },
   { keys: ['⌥', '↑/↓'], label: 'Move up / down within the horizon' },
 ];
@@ -49,15 +49,15 @@ const BOARD_KEYS: { keys: string[]; label: string }[] = [
 // on the way. A chord also has to be documented somewhere to exist at all,
 // which is what this block is for.
 const TREE_KEYS: { keys: string[]; label: string }[] = [
-  { keys: ['↑', '↓'], label: 'Move between steps' },
-  { keys: ['⌘', 'click'], label: 'Add a step to the selection' },
+  { keys: ['↑', '↓'], label: 'Move between tasks' },
+  { keys: ['⌘', 'click'], label: 'Add a task to the selection' },
   { keys: ['⇧', '↑/↓'], label: 'Extend the selection' },
-  { keys: ['⌘', 'A'], label: 'Select every step' },
+  { keys: ['⌘', 'A'], label: 'Select every task' },
   { keys: ['⌫'], label: 'Delete the selection' },
-  { keys: ['→', '←'], label: 'Expand or collapse a step' },
-  { keys: ['Space'], label: 'Check the focused step off' },
-  { keys: ['S'], label: 'Cycle a step: to do → in progress → blocked' },
-  { keys: ['⌘', ']'], label: 'Indent — make it a sub-step' },
+  { keys: ['→', '←'], label: 'Expand or collapse a task' },
+  { keys: ['Space'], label: 'Check the focused task off' },
+  { keys: ['S'], label: 'Cycle a task: to do → in progress → blocked' },
+  { keys: ['⌘', ']'], label: 'Indent — make it a subtask' },
   { keys: ['⌘', '['], label: 'Outdent' },
 ];
 
@@ -156,7 +156,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
         </dl>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
           <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
-            While planning a step
+            While planning a task
           </h3>
           <dl className="flex flex-col gap-[9px]">
             {PLANNER_KEYS.map((shortcut) => (
@@ -166,7 +166,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
           <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
-            On a project card
+            On a goal card
           </h3>
           <dl className="flex flex-col gap-[9px]">
             {BOARD_KEYS.map((shortcut) => (
@@ -176,7 +176,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
           <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
-            In a project's steps
+            In a goal's tasks
           </h3>
           <dl className="flex flex-col gap-[9px]">
             {TREE_KEYS.map((shortcut) => (

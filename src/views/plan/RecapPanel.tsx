@@ -107,7 +107,7 @@ export function RecapPanel() {
                 </button>
                 {/* "Unschedule", not "Remove": this is the same action the ×
                     on a calendar block performs, and it was the only other name
-                    for it in the app. Nothing is destroyed — the step goes back
+                    for it in the app. Nothing is destroyed — the task goes back
                     to the backlog rail. */}
                 <button
                   type="button"

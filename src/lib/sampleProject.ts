@@ -41,9 +41,9 @@ export function sampleProject(today: string, makeId: () => string): Goal {
     deadline: addDays(today, 12),
     datesConfirmed: true,
     notes:
-      'A seeded example so you can see how a project decomposes. Leaves (the '
-      + 'checkboxes) are the concrete actions — the % only moves when you tick one. '
-      + 'A container like "Problem 3" just groups several leaves. Delete this project '
+      'A seeded example so you can see how a goal decomposes. Leaves (the '
+      + 'checkboxes) are the concrete tasks — the % only moves when you tick one. '
+      + 'An area like "Problem 3" just groups several tasks. Delete this goal '
       + 'whenever you like.',
     nodes,
   };

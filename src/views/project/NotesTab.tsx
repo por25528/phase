@@ -96,7 +96,7 @@ function NotesSection({
           setDraft(markdown);
         }}
         placeholder="Working notes — strategy, links, blockers…"
-        ariaLabel="Project notes"
+        ariaLabel="Goal notes"
       />
     </div>
   );

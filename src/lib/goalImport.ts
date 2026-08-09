@@ -102,7 +102,7 @@ export function buildNode(spec: SubgoalSpec, issues?: string[]): GoalNode | null
     return title ? { id: uid(), title } : null;
   }
   if (!spec || typeof spec !== 'object') {
-    issues?.push('a step is neither a string nor an object');
+    issues?.push('a task is neither a string nor an object');
     return null;
   }
 
@@ -111,8 +111,8 @@ export function buildNode(spec: SubgoalSpec, issues?: string[]): GoalNode | null
     const nested = Array.isArray(spec.subgoals) ? spec.subgoals.length : 0;
     issues?.push(
       nested > 0
-        ? `a group of ${nested} step${nested === 1 ? '' : 's'} has no "title"`
-        : 'a step has no "title"',
+        ? `a group of ${nested} task${nested === 1 ? '' : 's'} has no "title"`
+        : 'a task has no "title"',
     );
     return null;
   }
@@ -365,15 +365,15 @@ export function parseGoalImport(
 
 /** Compact, human-readable schema shown inside the Import modal. */
 export const FORMAT_HINT = `{
-  "title": "Project name",              // required
+  "title": "Goal name",                 // required
   "start": "YYYY-MM-DD",                // optional; omit when unknown
   "deadline": "YYYY-MM-DD",             // optional; omit when unknown
   "priority": "now|next|later|someday", // optional → now
   "notes": "context…",                  // optional
   "subgoals": [
-    "a step",                            // string = one step
-    { "title": "a group", "subgoals": ["sub-step"] },
-    { "title": "scheduled step", "start": "YYYY-MM-DD", "deadline": "YYYY-MM-DD" }
+    "a task",                            // string = one task
+    { "title": "an area", "subgoals": ["subtask"] },
+    { "title": "scheduled task", "start": "YYYY-MM-DD", "deadline": "YYYY-MM-DD" }
   ]
 }`;
 
@@ -383,26 +383,26 @@ export function buildAiPrompt(today: string): string {
 Output ONLY valid JSON — no prose, no markdown code fences — matching this exact format:
 
 {
-  "title": "string (required) — the project name",
+  "title": "string (required) — the goal name",
   "start": "YYYY-MM-DD (optional; omit when unknown)",
   "deadline": "YYYY-MM-DD (optional; omit when unknown)",
   "priority": "now | next | later | someday (optional, default now) — the commitment horizon",
   "notes": "string (optional) — strategy, context, links",
   "subgoals": [
-    "a plain string is one concrete step",
+    "a plain string is one concrete task",
     {
-      "title": "an object with its own subgoals is a group of steps",
-      "subgoals": ["nested step 1", "nested step 2"]
+      "title": "an object with its own subgoals is an area of tasks",
+      "subgoals": ["nested task 1", "nested task 2"]
     },
-    { "title": "a step with its own schedule", "start": "YYYY-MM-DD", "deadline": "YYYY-MM-DD" }
+    { "title": "a task with its own schedule", "start": "YYYY-MM-DD", "deadline": "YYYY-MM-DD" }
   ]
 }
 
 Rules:
 - Break the project into 3–7 concrete subgoals; nest a group only when a step needs its own sub-steps.
 - Keep every leaf step small and actionable.
-- Today's date is ${today}. Make explicit dates realistic relative to today; omit project dates you cannot infer.
-- Output a single project object, or an array of project objects if I ask for several.
+- Today's date is ${today}. Make explicit dates realistic relative to today; omit goal dates you cannot infer.
+- Output a single goal object, or an array of goal objects if I ask for several.
 
 Example:
 {
@@ -416,20 +416,20 @@ Example:
 }
 
 Here's what I want to achieve:
-<describe your project here>`;
+<describe your goal here>`;
 }
 
 // ── Daily subtasks for one step ───────────────────────────────────────────────
 
 /** Prompt to break a single step into day-sized subtasks (drawer AI helper). */
 export function buildSubtaskPrompt(goalTitle: string, stepTitle: string, today: string): string {
-  return `You are helping me break one step of a project into small daily tasks.
+  return `You are helping me break one task of a goal into small daily subtasks.
 
-Project: "${goalTitle}"
-Step: "${stepTitle}"
+Goal: "${goalTitle}"
+Task: "${stepTitle}"
 Today's date is ${today}.
 
-Break this step into 2–6 subtasks, each small enough to finish in a single focused day.
+Break this task into 2–6 subtasks, each small enough to finish in a single focused day.
 Output ONLY a JSON array of short strings — no prose, no markdown code fences.
 
 Example:

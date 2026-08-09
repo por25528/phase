@@ -95,21 +95,21 @@ export function SubtaskAiModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Break a step into daily tasks">
+    <Modal open={open} onClose={onClose} title="Break a task into daily subtasks">
       <div className="flex flex-col gap-[14px]">
         {leaves.length === 0 ? (
           <p className="text-body text-muted">
-            This project has no open steps to break down — add a step first.
+            This goal has no open tasks to break down — add a task first.
           </p>
         ) : (
           <>
             <p className="text-body text-muted leading-[1.5]">
-              Pick a step, copy the prompt, and ask any AI to split it into subtasks each doable in a day.
-              Paste its reply below to add them under the step.
+              Pick a task, copy the prompt, and ask any AI to split it into subtasks each doable in a day.
+              Paste its reply below to add them under the task.
             </p>
 
             <div className="flex flex-col gap-[5px]">
-              <label className={label}>Step</label>
+              <label className={label}>Task</label>
               <select value={stepId} onChange={(e) => setStepId(e.target.value)} className={`${field} w-full`}>
                 {leaves.map((l) => (
                   <option key={l.id} value={l.id}>

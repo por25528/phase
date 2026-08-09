@@ -92,7 +92,7 @@ describe('Unblock deep-links to the blocked step', () => {
     await mountBoard(fullyBlocked);
 
     const card = screen.getByRole('group', { name: /^Blocked Project —/ });
-    expect(within(card).getByText('2 steps blocked')).toBeTruthy();
+    expect(within(card).getByText('2 tasks blocked')).toBeTruthy();
     expect(within(card).getByText(/waiting on the grader/)).toBeTruthy();
   });
 });

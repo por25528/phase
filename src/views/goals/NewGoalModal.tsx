@@ -66,7 +66,7 @@ export function NewGoalModal({
   const dateError = projectDateError(start || undefined, deadline || undefined);
 
   return (
-    <Modal open={open} onClose={onClose} title="New project">
+    <Modal open={open} onClose={onClose} title="New goal">
       <div className="flex flex-col gap-[14px]">
         <div className="flex flex-col gap-[5px]">
           <label className={labelCls}>Title</label>
@@ -108,7 +108,7 @@ export function NewGoalModal({
         {dateError && <div className="text-compact text-warn">{dateError}</div>}
 
         <div className="flex flex-col gap-[6px]">
-          <label className={labelCls}>First steps <span className="text-faint font-normal">(optional)</span></label>
+          <label className={labelCls}>First tasks <span className="text-faint font-normal">(optional)</span></label>
           {subgoals.length > 0 && (
             <div className="flex flex-col gap-[4px]">
               {subgoals.map((s, i) => (
@@ -129,7 +129,7 @@ export function NewGoalModal({
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Type a step, press Enter…"
+            placeholder="Type a task, press Enter…"
             className={`${fieldCls} w-full`}
             onKeyDown={(e) => {
               if (e.key === 'Enter') { e.preventDefault(); commitDraft(); }
@@ -150,7 +150,7 @@ export function NewGoalModal({
 
         <div className="flex items-center gap-[8px] mt-[2px]">
           <button className={primaryBtn} onClick={submit} disabled={!title.trim() || !!dateError}>
-            Add project
+            Add goal
           </button>
           <button className={ghostBtn} onClick={onClose}>Cancel</button>
         </div>

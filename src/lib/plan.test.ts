@@ -528,12 +528,12 @@ describe('nearestMeaningfulDate', () => {
 describe('nextOpenAction', () => {
   it('prompts a breakdown when there are no leaves', () => {
     expect(nextOpenAction(goal({ nodes: [] }), TODAY))
-      .toEqual({ kind: 'needs-breakdown', title: 'No steps yet — break the project into actions' });
+      .toEqual({ kind: 'needs-breakdown', title: 'No tasks yet — break the goal into actions' });
   });
 
   it('reports completion when every leaf is done', () => {
     const g = goal({ nodes: [{ id: 'a', title: 'A', status: 'done' }] });
-    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'complete', title: 'All steps complete' });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'complete', title: 'All tasks complete' });
   });
 
   it('prefers a leaf planned for this week over the first open leaf', () => {
@@ -574,7 +574,7 @@ describe('nextOpenAction', () => {
       { id: 'a', title: 'A', status: 'blocked' },
       { id: 'b', title: 'B', status: 'blocked' },
     ]});
-    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'All open steps are blocked' });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'All open tasks are blocked' });
   });
 
   it('still prefers a leaf planned for this week even when a doing leaf exists', () => {
@@ -610,7 +610,7 @@ describe('attentionBadge', () => {
 
   it('renders the needs-a-first-step badge', () => {
     expect(attentionBadge(goal({ column: 0, nodes: [] }), TODAY))
-      .toEqual({ label: 'Needs a first step', tone: 'step' });
+      .toEqual({ label: 'Needs a first task', tone: 'step' });
   });
 
   it('renders the ready-to-complete badge', () => {

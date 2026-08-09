@@ -16,13 +16,13 @@ interface NavCommand {
 
 const NAV_COMMANDS: NavCommand[] = [
   { id: 'nav-plan', label: 'Go to Plan', view: 'plan', key: '1' },
-  { id: 'nav-goals', label: 'Go to Projects', view: 'goals', key: '2' },
+  { id: 'nav-goals', label: 'Go to Goals', view: 'goals', key: '2' },
   { id: 'nav-timeline', label: 'Go to Timeline', view: 'timeline', key: '3' },
 ];
 
 const KIND_LABEL: Record<SearchKind, string> = {
-  project: 'PROJECT',
-  step: 'STEP',
+  project: 'GOAL',
+  step: 'TASK',
   task: 'TASK',
   habit: 'HABIT',
 };
@@ -214,8 +214,8 @@ export function CommandPalette({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search projects, steps, tasks and habits…"
-            aria-label="Search projects, steps, tasks and habits"
+            placeholder="Search goals, tasks and habits…"
+            aria-label="Search goals, tasks and habits"
             // `combobox` is what makes the rest of this mean anything: without
             // it the listbox below is never announced, and `aria-activedescendant`
             // has no widget to move a virtual cursor within.

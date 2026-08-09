@@ -377,8 +377,8 @@ export interface NextAction {
 // excludes them — two functions answering "what's next" must not disagree.
 export function nextOpenAction(g: Goal, today: string): NextAction {
   const leaves = leafCount(g.nodes);
-  if (leaves.total === 0) return { kind: 'needs-breakdown', title: 'No steps yet — break the project into actions' };
-  if (leaves.done === leaves.total) return { kind: 'complete', title: 'All steps complete' };
+  if (leaves.total === 0) return { kind: 'needs-breakdown', title: 'No tasks yet — break the goal into actions' };
+  if (leaves.done === leaves.total) return { kind: 'complete', title: 'All tasks complete' };
   const week = weekOf(today);
   const doing: GoalNode[] = [];
   const todo: GoalNode[] = [];
@@ -394,7 +394,7 @@ export function nextOpenAction(g: Goal, today: string): NextAction {
     // breakdown" would lie (steps already exist) and "complete" would lie
     // worse. 'open' is the least dishonest kind left — the real "unblock this"
     // verdict is a later task's job, not this one's to invent.
-    return { kind: 'open', title: 'All open steps are blocked' };
+    return { kind: 'open', title: 'All open tasks are blocked' };
   }
   const planned = workable.find((n) => n.plannedWeek === week);
   const pick = planned ?? doing[0] ?? todo[0];
@@ -419,7 +419,7 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
 
   switch (attention) {
     case 'needs-breakdown':
-      return { label: 'Needs a first step', tone: 'step' };
+      return { label: 'Needs a first task', tone: 'step' };
     case 'behind': {
       if (!hasTrustedSchedule(g)) return null;
       const done = Math.round(goalPct(g));

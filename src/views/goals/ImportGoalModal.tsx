@@ -49,11 +49,11 @@ export function ImportGoalModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Import project">
+    <Modal open={open} onClose={onClose} title="Import goal">
       <div className="flex flex-col gap-[14px]">
         <p className="text-body text-muted leading-[1.5]">
-          Paste JSON to create a project with its steps. No AI handy? Copy the prompt below
-          and ask any AI to plan a project for you, then paste its reply here.
+          Paste JSON to create a goal with its tasks. No AI handy? Copy the prompt below
+          and ask any AI to plan a goal for you, then paste its reply here.
         </p>
 
         <div className="flex items-center gap-[10px]">
@@ -73,7 +73,7 @@ export function ImportGoalModal({
         </details>
 
         <div className="flex flex-col gap-[5px]">
-          <label className={labelCls}>Paste project JSON</label>
+          <label className={labelCls}>Paste goal JSON</label>
           <textarea
             value={text}
             onChange={(e) => { setText(e.target.value); if (error) setError(null); }}

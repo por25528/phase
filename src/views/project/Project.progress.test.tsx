@@ -93,7 +93,7 @@ async function mountGoal(goal: Goal, sessions: Session[] = []): Promise<Store> {
 describe('Project page', () => {
   it('renders the project title and its progress', async () => {
     await mountPage();
-    expect(screen.getByRole('button', { name: /Rename project "Studying Roblox"/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Rename goal "Studying Roblox"/ })).toBeTruthy();
     expect(screen.getByText('0%')).toBeTruthy();
   });
 
@@ -105,7 +105,7 @@ describe('Project page', () => {
 
   it('opens on the steps tab and lists the steps', async () => {
     await mountPage();
-    expect(screen.getByRole('tab', { name: 'Steps' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Work' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('Define the topics')).toBeTruthy();
   });
 
@@ -122,7 +122,7 @@ describe('Project page', () => {
     store.actions.openStep('n1');
     store.actions.closeStep();
 
-    expect(screen.queryByRole('button', { name: 'Close step details' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close task details' })).toBeNull();
   });
 
   it('drops the panel when its step is deleted', async () => {
@@ -131,7 +131,7 @@ describe('Project page', () => {
     store.actions.removeNode('n1');
 
     expect(store.getState().openStepId).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Close step details' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close task details' })).toBeNull();
   });
 
   it('keeps the navigated step selected after the pulse pointer clears', async () => {
@@ -147,7 +147,7 @@ describe('Project page', () => {
       // The leading `✦` used to be part of the accessible name — it was a bare
       // text node, so a screen reader read the decoration out. It is now an
       // aria-hidden icon and the name is the words alone.
-      fireEvent.click(screen.getByRole('button', { name: 'Break a step into subtasks…' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Break a task into subtasks…' }));
       expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('n2');
     } finally {
       vi.useRealTimers();
@@ -159,9 +159,9 @@ describe('Project page', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
     expect(store.getState().projectTab).toBe('notes');
     expect(screen.queryByText('Define the topics')).toBeNull();
-    expect(screen.getByLabelText('Project notes')).toBeTruthy();
+    expect(screen.getByLabelText('Goal notes')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Steps' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Work' }));
     expect(screen.getByText('Define the topics')).toBeTruthy();
   });
 
@@ -170,7 +170,7 @@ describe('Project page', () => {
     try {
       const store = await mountPage();
       fireEvent.click(screen.getByRole('tab', { name: 'Notes' }));
-      const editor = screen.getByLabelText('Project notes');
+      const editor = screen.getByLabelText('Goal notes');
 
       expect(editor.textContent).toContain('Existing note text');
 
@@ -191,7 +191,7 @@ describe('Project page', () => {
 
   it('associates the active tab with the project panel', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Steps' });
+    const steps = screen.getByRole('tab', { name: 'Work' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
     const panel = screen.getByRole('tabpanel');
 
@@ -208,7 +208,7 @@ describe('Project page', () => {
 
   it('roves the tab stop with the selected tab', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Steps' });
+    const steps = screen.getByRole('tab', { name: 'Work' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
     expect(steps.getAttribute('tabindex')).toBe('0');
@@ -222,7 +222,7 @@ describe('Project page', () => {
 
   it('moves right between tabs and wraps', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Steps' });
+    const steps = screen.getByRole('tab', { name: 'Work' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
     steps.focus();
@@ -237,7 +237,7 @@ describe('Project page', () => {
 
   it('moves left from the first tab to the last tab', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Steps' });
+    const steps = screen.getByRole('tab', { name: 'Work' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
     steps.focus();
@@ -248,7 +248,7 @@ describe('Project page', () => {
 
   it('selects the first and last tabs with Home and End', async () => {
     const store = await mountPage();
-    const steps = screen.getByRole('tab', { name: 'Steps' });
+    const steps = screen.getByRole('tab', { name: 'Work' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
     steps.focus();
@@ -263,14 +263,14 @@ describe('Project page', () => {
 
   it('the breadcrumb returns to the board', async () => {
     const store = await mountPage();
-    fireEvent.click(screen.getByRole('button', { name: 'Back to Projects' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Goals' }));
     expect(store.getState().view).toBe('goals');
     expect(store.getState().openGoalId).toBeNull();
   });
 
   it('renders nothing once the project is closed', async () => {
     const store = await mountPage();
-    expect(screen.queryByRole('tab', { name: 'Steps' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Work' })).toBeTruthy();
     store.actions.closeProject();
     cleanup();
     const { Project } = await import('../Project');
@@ -326,7 +326,7 @@ describe('a project with no schedule', () => {
         openLeaf('b'), openLeaf('c'),
       ],
     });
-    expect(screen.getByText(/nothing finished in 14 days · 2 steps open/)).toBeTruthy();
+    expect(screen.getByText(/nothing finished in 14 days · 2 tasks open/)).toBeTruthy();
   });
 
   it('adds remaining effort when every open step is estimated', async () => {
@@ -345,7 +345,7 @@ describe('a project with no schedule', () => {
   it('falls back to a useful message when the project has no steps at all', async () => {
     await mountGoal({ id: 'g', title: 'Empty', nodes: [] });
     expect(screen.queryByText(/No project schedule/)).toBeNull();
-    expect(screen.getByText(/no steps yet/)).toBeTruthy();
+    expect(screen.getByText(/no tasks yet/)).toBeTruthy();
   });
 });
 
@@ -357,7 +357,7 @@ describe('disclosing how the percentage was computed', () => {
         openLeaf('b', 360),
       ],
     });
-    expect(screen.getByText(/1\/2 steps, weighted by estimate/)).toBeTruthy();
+    expect(screen.getByText(/1\/2 tasks, weighted by estimate/)).toBeTruthy();
     // 20 of 380 minutes, not the 50% an equal-weight mean would report.
     expect(screen.getByText('5%')).toBeTruthy();
   });
@@ -369,7 +369,7 @@ describe('disclosing how the percentage was computed', () => {
         openLeaf('b'),
       ],
     });
-    const counter = screen.getByText(/1\/2 steps/);
+    const counter = screen.getByText(/1\/2 tasks/);
     expect(counter.textContent).not.toMatch(/weighted/);
     expect(screen.getByText('50%')).toBeTruthy();
   });

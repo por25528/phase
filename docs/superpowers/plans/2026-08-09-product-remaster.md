@@ -14,7 +14,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 
 ## M1 — the first milestone
 
-- [ ] **S1 Vocabulary.** Project → Goal, Step → Task, sub-goal → Area in every
+- [x] **S1 Vocabulary.** Project → Goal, Step → Task, sub-goal → Area in every
       user-facing string. Code identifiers (`GoalNode`, `openStepId`) stay put:
       §21.5/21.6 is about the primary UI, and renaming the store in the same
       breath would bury the visible change in a mechanical diff.

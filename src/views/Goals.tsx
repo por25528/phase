@@ -302,9 +302,9 @@ export function Goals() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-[10px] sm:gap-[16px] mb-[6px]">
         <div className="min-w-0">
-          <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em]">Projects</h1>
+          <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em]">Goals</h1>
           <p className="text-ui text-muted mt-[3px]">
-            Drag a project between horizons to recommit it — Now is what you're actively pushing on, and {summary.slots.limit} at a time is the target that keeps focus honest.
+            Drag a goal between horizons to recommit it — Now is what you're actively pushing on, and {summary.slots.limit} at a time is the target that keeps focus honest.
           </p>
         </div>
         <div className="flex-none flex items-center gap-[8px] self-start">
@@ -312,13 +312,13 @@ export function Goals() {
             className="text-body font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
             onClick={() => setModal('import')}
           >
-            Import project
+            Import goal
           </button>
           <button
             className="text-body font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
             onClick={() => setModal('new')}
           >
-            + New project
+            + New goal
           </button>
         </div>
       </div>
@@ -327,8 +327,8 @@ export function Goals() {
       {isEmpty && (
         <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
           <p className="text-ink-soft text-lead max-w-[440px] mb-[16px] leading-[1.6]">
-            No projects yet. A project is one outcome you can finish — a pset, a paper, a
-            launch — split into a few steps you check off. Start one, or drop in the example
+            No goals yet. A goal is one outcome you can finish — a pset, a paper, a
+            launch — split into a few tasks you check off. Start one, or drop in the example
             to see how a good one decomposes.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-[10px]">
@@ -336,13 +336,13 @@ export function Goals() {
               className="text-body font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
               onClick={() => setModal('new')}
             >
-              + New project
+              + New goal
             </button>
             <button
               className="text-body font-semibold text-accent-deep border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-accent-tint"
               onClick={() => {
                 actions.addSampleProject();
-                actions.showToast('Example project added — delete it anytime');
+                actions.showToast('Example goal added — delete it anytime');
               }}
             >
               Load example
@@ -351,7 +351,7 @@ export function Goals() {
               className="text-body font-medium text-ink-soft border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-hover"
               onClick={() => setModal('import')}
             >
-              Import project
+              Import goal
             </button>
           </div>
           <p className="text-muted text-compact mt-[13px]">
@@ -363,7 +363,7 @@ export function Goals() {
       {unconfirmed.length > 0 && !dateReviewDismissed && (
         <div className="mt-[16px] flex items-center gap-[10px] rounded-card border border-line-2 bg-panel px-[13px] py-[10px] shadow-card">
           <p className="flex-1 text-ui text-ink-soft">
-            {unconfirmed.length} {unconfirmed.length === 1 ? 'project has' : 'projects have'} unconfirmed dates
+            {unconfirmed.length} {unconfirmed.length === 1 ? 'goal has' : 'goals have'} unconfirmed dates
           </p>
           {confirmableCount > 0 && (
             <button
@@ -410,7 +410,7 @@ export function Goals() {
               key={col.id}
               type="button"
               aria-pressed={i === activeHorizon}
-              aria-label={`Show ${col.label} — ${(columns[i] ?? []).length} project${(columns[i] ?? []).length === 1 ? '' : 's'}`}
+              aria-label={`Show ${col.label} — ${(columns[i] ?? []).length} goal${(columns[i] ?? []).length === 1 ? '' : 's'}`}
               onClick={() => actions.setActiveHorizon(i)}
               className={`flex-1 text-ui font-medium px-[6px] py-[7px] rounded-field transition-colors ${
                 i === activeHorizon ? 'bg-panel text-ink shadow-card' : 'text-muted hover:text-ink'
@@ -489,7 +489,7 @@ export function Goals() {
         onClose={() => setModal(null)}
         onAdd={(goal) => {
           actions.addGoals([goal]);
-          actions.showToast('Project added');
+          actions.showToast('Goal added');
           setModal(null);
         }}
         columns={COLUMNS}
@@ -499,7 +499,7 @@ export function Goals() {
         onClose={() => setModal(null)}
         onImport={(imported) => {
           actions.addGoals(imported);
-          actions.showToast(`Imported ${imported.length} project${imported.length === 1 ? '' : 's'}`);
+          actions.showToast(`Imported ${imported.length} goal${imported.length === 1 ? '' : 's'}`);
           setModal(null);
         }}
       />

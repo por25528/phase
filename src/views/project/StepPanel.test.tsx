@@ -136,7 +136,7 @@ describe('StepPanel', () => {
     await mountPanel(leafWithDates);
 
     expect(document.activeElement?.tagName).not.toBe('INPUT');
-    expect(screen.getByRole('button', { name: 'Rename step "Wire up auth"' }).textContent).toBe('Wire up auth');
+    expect(screen.getByRole('button', { name: 'Rename task "Wire up auth"' }).textContent).toBe('Wire up auth');
   });
 
   it('shows the new step title when the mounted panel switches nodes', async () => {
@@ -156,7 +156,7 @@ describe('StepPanel', () => {
       actions: store.actions,
     }));
 
-    expect(screen.getByRole('button', { name: 'Rename step "Step B"' }).textContent).toBe('Step B');
+    expect(screen.getByRole('button', { name: 'Rename task "Step B"' }).textContent).toBe('Step B');
     expect(renameNode).not.toHaveBeenCalled();
   });
 
@@ -171,7 +171,7 @@ describe('StepPanel', () => {
       actions: store.actions,
     }));
 
-    expect(screen.getByLabelText('Step notes').textContent).toContain('Note A');
+    expect(screen.getByLabelText('Task notes').textContent).toContain('Note A');
 
     view.rerender(createElement(StepPanel, {
       goal,
@@ -179,7 +179,7 @@ describe('StepPanel', () => {
       actions: store.actions,
     }));
 
-    expect(screen.getByLabelText('Step notes').textContent).toContain('Note B');
+    expect(screen.getByLabelText('Task notes').textContent).toContain('Note B');
     expect(setNodeNotes).not.toHaveBeenCalled();
   });
 
@@ -198,7 +198,7 @@ describe('StepPanel', () => {
       store.actions.removeNode('n2');
       expect(store.getState().pendingUndo).not.toBeNull();
 
-      const editor = screen.getByLabelText('Step notes');
+      const editor = screen.getByLabelText('Task notes');
       editor.innerHTML = '<p>Typed while undo is available</p>';
       fireEvent.input(editor);
       act(() => { vi.advanceTimersByTime(801); });
@@ -225,7 +225,7 @@ describe('StepPanel', () => {
       }));
       const setNodeNotes = vi.spyOn(store.actions, 'setNodeNotes');
 
-      const editor = screen.getByLabelText('Step notes');
+      const editor = screen.getByLabelText('Task notes');
       editor.innerHTML = '<p>Typed before delete</p>';
       fireEvent.input(editor);
       await act(async () => { await Promise.resolve(); });
@@ -250,7 +250,7 @@ describe('StepPanel', () => {
         goal, node: goal.nodes[0], actions: store.actions,
       }));
 
-      const editor = screen.getByLabelText('Step notes');
+      const editor = screen.getByLabelText('Task notes');
       editor.innerHTML = '<p>Typed before bulk delete</p>';
       fireEvent.input(editor);
       await act(async () => { await Promise.resolve(); });
@@ -275,7 +275,7 @@ describe('StepPanel', () => {
       actions: store.actions,
     }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rename step "Step B"' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rename task "Step B"' }));
     const editor = screen.getByDisplayValue('Step B');
     fireEvent.change(editor, { target: { value: 'Renamed B' } });
     fireEvent.keyDown(editor, { key: 'Enter' });
@@ -295,14 +295,14 @@ describe('StepPanel', () => {
       actions: store.actions,
     }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rename step "Step B"' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rename task "Step B"' }));
     const editor = screen.getByDisplayValue('Step B');
     fireEvent.change(editor, { target: { value: 'Discarded B' } });
     fireEvent.keyDown(editor, { key: 'Escape' });
 
     expect(store.getState().goals[0].nodes[1].title).toBe('Step B');
     expect(screen.queryByDisplayValue('Discarded B')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Rename step "Step B"' }).textContent).toBe('Step B');
+    expect(screen.getByRole('button', { name: 'Rename task "Step B"' }).textContent).toBe('Step B');
   });
 
   it('shows the title as a level-2 heading and labels both span fields', async () => {
@@ -371,7 +371,7 @@ describe('StepPanel', () => {
   it('closes with the close button', async () => {
     const store = await mountPanel(leafWithDates);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close step details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close task details' }));
 
     expect(store.getState().openStepId).toBeNull();
   });

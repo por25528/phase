@@ -16,7 +16,7 @@ export function Stats() {
 
   const stats: [string, string, string][] = [
     [`${habitsDone}/${habits.length}`, 'habits', 'Habits checked off today'],
-    [`${wkDone}/${wk.length}`, 'planned this week', 'Planned steps completed this week'],
+    [`${wkDone}/${wk.length}`, 'planned this week', 'Planned tasks completed this week'],
   ];
   if (habits.length > 0) {
     stats.push([

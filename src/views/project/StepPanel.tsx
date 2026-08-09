@@ -138,7 +138,7 @@ export function StepPanel({ goal, node, actions }: {
               type="button"
               className="font-disp text-h2 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px]"
               onClick={() => setEditingTitle(true)}
-              aria-label={`Rename step "${node.title}"`}
+              aria-label={`Rename task "${node.title}"`}
               title="Click to rename"
             >
               {node.title}
@@ -166,7 +166,7 @@ export function StepPanel({ goal, node, actions }: {
         )}
         <button
           type="button"
-          aria-label="Close step details"
+          aria-label="Close task details"
           onClick={() => actions.closeStep()}
           className="text-meta font-semibold text-muted px-[7px] py-[4px] min-h-[24px] rounded-field hover:bg-hover hover:text-ink"
         >
@@ -315,7 +315,7 @@ export function StepPanel({ goal, node, actions }: {
               setDraftNotes(markdown);
             }}
             placeholder="What actually happened?"
-            ariaLabel="Step notes"
+            ariaLabel="Task notes"
           />
         </div>
       </section>

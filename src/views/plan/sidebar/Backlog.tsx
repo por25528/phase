@@ -111,7 +111,7 @@ function BacklogRow({
         <IconCheck size={13} />
       </button>
       {/*
-        Tasks only. A step belongs to a project's structure — it is deleted in
+        Loose tasks only. A goal's task belongs to its structure — it is deleted in
         the Goals view, where the tree it lives in is visible; offering that
         here would let a stray click amputate a branch from a flat list.
       */}
@@ -248,14 +248,14 @@ export function Backlog({
               {' '}
               {hidden.parked > 0 && (
                 <span className="not-italic">
-                  {hidden.parked} deferred project{hidden.parked === 1 ? ' is' : 's are'} not shown
+                  {hidden.parked} deferred goal{hidden.parked === 1 ? ' is' : 's are'} not shown
                   — move one to Now to plan it.
                 </span>
               )}
               {hidden.parked > 0 && hidden.blocked > 0 && ' '}
               {hidden.blocked > 0 && (
                 <span className="not-italic">
-                  {hidden.blocked} project{hidden.blocked === 1 ? ' has' : 's have'} blocked steps
+                  {hidden.blocked} goal{hidden.blocked === 1 ? ' has' : 's have'} blocked tasks
                   not shown — unblock one to plan it.
                 </span>
               )}

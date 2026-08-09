@@ -209,7 +209,7 @@ function SelectionBar({
           aria-label="Selection"
           className="text-ui text-ink-soft flex-1 min-w-0"
         >
-          {count > 0 && `${count} step${count === 1 ? '' : 's'} selected`}
+          {count > 0 && `${count} task${count === 1 ? '' : 's'} selected`}
         </span>
         {/* Conditionally rendered, not just untabbable. `max-h-0 opacity-0`
             clips the bar visually and hides it from nobody: a screen reader in
@@ -373,7 +373,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
           single-select right up until the moment it wasn't. It is also what
           makes the per-row `aria-selected` mean "one of several" rather than
           "the cursor is here". */}
-      <div role="tree" aria-label="Steps" aria-multiselectable="true">
+      <div role="tree" aria-label="Tasks" aria-multiselectable="true">
         <GoalSiblingList
           nodes={nodes}
           depth={depth}

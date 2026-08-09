@@ -146,11 +146,11 @@ export function TaskCaptureModal({
                 : 'text-ink-soft border-line-2 hover:bg-hover'
             }`}
           >
-            Choose project
+            Choose goal
           </button>
           {draft.chooseProject && (
             <select
-              aria-label="Project"
+              aria-label="Goal"
               value={projects.some((project) => project.id === draft.goalId) ? draft.goalId : ''}
               onChange={(event) => setDraft((current) => ({
                 ...current,
@@ -158,7 +158,7 @@ export function TaskCaptureModal({
               }))}
               className={`${fieldCls} w-full`}
             >
-              <option value="">No project</option>
+              <option value="">No goal</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>{project.title}</option>
               ))}

@@ -32,9 +32,9 @@ const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
 const MENU_HEIGHT_PX = 210;
 
 const PRIMARY_LABEL: Record<'plan' | 'define' | 'complete' | 'unblock', string> = {
-  plan: 'Plan next step',
-  define: 'Define first step',
-  complete: 'Complete project',
+  plan: 'Plan next task',
+  define: 'Define first task',
+  complete: 'Complete goal',
   unblock: 'Unblock',
 };
 
@@ -128,7 +128,7 @@ function CardFace({
         // the card, and 3.17:1 is not a contrast to say it at.
         <p className="font-mono text-badge tabular-nums tracking-[.01em] text-muted">
           {wk.length > 0
-            ? `${wkDone} of ${wk.length} planned steps done`
+            ? `${wkDone} of ${wk.length} planned tasks done`
             : hasLeaves
               ? 'Nothing planned this week'
               : 'Nothing to plan yet'}
@@ -157,7 +157,7 @@ function CardFace({
             // signal counts — this is a step tally, and the two must not read
             // as the same quantity (a card showing this can still be dimmed
             // by that signal without contradicting itself).
-            <span className="text-meta text-warn whitespace-nowrap">{blocked} step{blocked === 1 ? '' : 's'} blocked</span>
+            <span className="text-meta text-warn whitespace-nowrap">{blocked} task{blocked === 1 ? '' : 's'} blocked</span>
           )}
           {blockedReason && (
             <span
@@ -381,7 +381,7 @@ export function BoardCard({
           onClick={act(() => onOpen(goal.id))}
           className="text-compact font-medium text-muted px-[8px] py-[4px] rounded-field hover:bg-hover hover:text-ink"
         >
-          Open project
+          Open goal
         </button>
 
         <div className="relative ml-auto" ref={menuRef}>
@@ -441,7 +441,7 @@ export function BoardCard({
                 })}
                 className="w-full text-left text-ui px-[11px] py-[5px] text-warn hover:bg-hover"
               >
-                Delete project
+                Delete goal
               </button>
             </div>
           )}

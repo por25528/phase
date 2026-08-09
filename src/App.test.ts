@@ -22,15 +22,15 @@ describe('App toast announcements', () => {
     expect(taskAnnouncement).toHaveLength(1);
   });
 
-  it('visually marks Projects as active in both nav bars on the project page', () => {
+  it('visually marks Goals as active in both nav bars on the goal page', () => {
     vi.useFakeTimers();
     actions.openProject('g');
     try {
       const html = renderToStaticMarkup(createElement(App));
 
       expect(html.match(/aria-current="page"/g)).toHaveLength(2);
-      expect(html).toMatch(/aria-current="page"[^>]*bg-ink text-paper font-semibold[^>]*>Projects<\/button>/);
-      expect(html).toMatch(/aria-current="page"[^>]*text-ink font-semibold[^>]*>Projects/);
+      expect(html).toMatch(/aria-current="page"[^>]*bg-ink text-paper font-semibold[^>]*>Goals<\/button>/);
+      expect(html).toMatch(/aria-current="page"[^>]*text-ink font-semibold[^>]*>Goals/);
     } finally {
       actions.closeProject();
     }

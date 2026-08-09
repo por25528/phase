@@ -92,17 +92,17 @@ export function ProjectHeader({
 
   const paceLine =
     pace === 'complete'
-      ? 'every step done — ready to complete'
+      ? 'every task done — ready to complete'
       : datesUnconfirmed
         ? 'Dates unconfirmed'
         : !trustedSchedule
           // Falls back to the old wording only when there is genuinely nothing
           // to report — a project with no steps at all.
-          ? (velocityLine ?? 'no steps yet — add one to start tracking progress')
+          ? (velocityLine ?? 'no tasks yet — add one to start tracking progress')
           : pace === 'behind'
             ? `${behind} pts behind pace · expected ${expected}% by today`
             : pace === 'needs-breakdown'
-              ? `define next step · expected ${expected}% by today`
+              ? `define next task · expected ${expected}% by today`
               : `on pace · expected ${expected}% by today`;
 
   /*
@@ -141,7 +141,7 @@ export function ProjectHeader({
               type="button"
               className="font-disp text-h1 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px] line-clamp-2"
               onClick={() => setEditingTitle(true)}
-              aria-label={`Rename project "${g.title}"`}
+              aria-label={`Rename goal "${g.title}"`}
               title="Click to rename"
             >
               {g.title}
@@ -221,10 +221,10 @@ export function ProjectHeader({
         {total > 0 && (
           <span title={
             basis === 'weighted'
-              ? 'Weighted by each step’s estimate, so a long step counts for more than a short one'
-              : 'Every step counts equally — estimate them all to weight this by effort'
+              ? 'Weighted by each task’s estimate, so a long task counts for more than a short one'
+              : 'Every task counts equally — estimate them all to weight this by effort'
           }>
-            {done}/{total} steps{basis === 'weighted' ? ', weighted by estimate' : ''}
+            {done}/{total} tasks{basis === 'weighted' ? ', weighted by estimate' : ''}
           </span>
         )}
         {total > 0 && <Dot />}
@@ -236,7 +236,7 @@ export function ProjectHeader({
         {calibration && (
           <>
             <Dot />
-            <span title="Based on time you logged against completed steps in this project. Your estimates are never changed automatically.">
+            <span title="Based on time you logged against completed tasks in this goal. Your estimates are never changed automatically.">
               {calibration}
             </span>
           </>
@@ -253,7 +253,7 @@ export function ProjectHeader({
             onClick={() => actions.reopenGoal(g.id)}
             className="text-ui font-semibold text-ink-soft px-[10px] py-[5px] rounded-field border border-line-2 hover:bg-panel"
           >
-            Reopen project
+            Reopen goal
           </button>
         </div>
       ) : pace === 'complete' ? (
@@ -261,7 +261,7 @@ export function ProjectHeader({
           onClick={() => actions.completeGoal(g.id)}
           className="mt-[16px] text-body font-semibold text-accent-contrast bg-accent px-[15px] py-[8px] rounded-field hover:bg-accent-deep"
         >
-          Complete project
+          Complete goal
         </button>
       ) : null}
     </div>

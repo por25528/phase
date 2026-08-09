@@ -5,7 +5,7 @@ import { StepsTab } from './project/StepsTab';
 import { NotesTab } from './project/NotesTab';
 
 const TABS: ReadonlyArray<readonly [ProjectTab, string]> = [
-  ['steps', 'Steps'],
+  ['steps', 'Work'],
   ['notes', 'Notes'],
 ];
 
@@ -74,7 +74,7 @@ export function Project() {
 
       <div
         role="tablist"
-        aria-label="Project sections"
+        aria-label="Goal sections"
         className="flex gap-[2px] mt-[18px] border-b border-line"
         onKeyDown={(e) => {
           const index = TABS.findIndex(([key]) => key === projectTab);

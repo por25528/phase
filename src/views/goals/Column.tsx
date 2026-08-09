@@ -6,7 +6,7 @@ import { NOW_WIP_LIMIT } from '../../lib/plan';
 // go silent there (horizon gating, spec §2.2), so the calm reads as intentional.
 const HINTS: Record<number, string> = {
   2: 'Quiet by design — schedule pressure is hidden off Now / Next.',
-  3: 'Ideas — no "define a step" nag until you commit them.',
+  3: 'Ideas — no "define a task" nag until you commit them.',
 };
 
 export function Column({
@@ -58,7 +58,7 @@ export function Column({
           {children}
           {ids.length === 0 && (
             <div className="grid place-items-center min-h-[110px] rounded-card border border-dashed border-line-2 text-muted text-compact px-[10px] text-center">
-              Drop a project here
+              Drop a goal here
             </div>
           )}
         </div>

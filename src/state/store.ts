@@ -73,7 +73,7 @@ export type ViewName = 'plan' | 'goals' | 'timeline' | 'project';
 
 export const VIEW_LABELS = {
   plan: 'Plan',
-  goals: 'Projects',
+  goals: 'Goals',
   timeline: 'Timeline',
 } as const;
 
@@ -551,10 +551,10 @@ const DESTRUCTIVE_UNDO_MS = 15000;
  * button or an accessible label rather than phrasing a toast.
  */
 const STATUS_LABEL: Record<StepStatus, (n: number) => string> = {
-  todo: (n) => `Reset ${n} step${n === 1 ? '' : 's'}`,
-  doing: (n) => `Marked ${n} step${n === 1 ? '' : 's'} in progress`,
-  blocked: (n) => `Blocked ${n} step${n === 1 ? '' : 's'}`,
-  done: (n) => `Completed ${n} step${n === 1 ? '' : 's'}`,
+  todo: (n) => `Reset ${n} task${n === 1 ? '' : 's'}`,
+  doing: (n) => `Marked ${n} task${n === 1 ? '' : 's'} in progress`,
+  blocked: (n) => `Blocked ${n} task${n === 1 ? '' : 's'}`,
+  done: (n) => `Completed ${n} task${n === 1 ? '' : 's'}`,
 };
 
 /**
@@ -972,7 +972,7 @@ export const actions = {
    * At root level `parentId` is null, so Enter did nothing whatsoever, and a
    * fresh project's steps are ALL root-level.
    */
-  insertSiblingAfter(nodeId: string, title = 'New step') {
+  insertSiblingAfter(nodeId: string, title = 'New task') {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const result = treeInsertSiblingAfter(state.goals, nodeId, title);
     if (!result) return;
@@ -1092,7 +1092,7 @@ export const actions = {
       && targets.some((id) => nodeContains(id, openStepId));
     for (const g of goals) for (const id of targets) removeNode(g.nodes, id);
     withUndo(
-      `Deleted ${removed} step${removed === 1 ? '' : 's'}`,
+      `Deleted ${removed} task${removed === 1 ? '' : 's'}`,
       'goals',
       goals,
       DESTRUCTIVE_UNDO_MS,
@@ -1123,7 +1123,7 @@ export const actions = {
       });
     }
     const count = leafIds.size;
-    withUndo(`Completed ${count} step${count === 1 ? '' : 's'}`, 'goals', goals);
+    withUndo(`Completed ${count} task${count === 1 ? '' : 's'}`, 'goals', goals);
     return true;
   },
 
@@ -1365,14 +1365,14 @@ export const actions = {
   removeGoal(goalId: string) {
     flushPendingNote();
     const goal = state.goals.find((g) => g.id === goalId);
-    const title = goal?.title ?? 'project';
+    const title = goal?.title ?? 'goal';
     const goals = state.goals.filter((g) => g.id !== goalId);
     // Name the cost. Deleting a project takes two clicks and can take a dozen
     // steps, checkpoints and a week of scheduling with it; "Deleted X" alone
     // gave no sense of how much was riding on the Undo button.
     const steps = goal ? leafCount(goal.nodes).total : 0;
     const label = steps > 0
-      ? `Deleted "${title}" and its ${steps} step${steps === 1 ? '' : 's'}`
+      ? `Deleted "${title}" and its ${steps} task${steps === 1 ? '' : 's'}`
       : `Deleted "${title}"`;
     withUndo(label, 'goals', goals, DESTRUCTIVE_UNDO_MS);
   },
@@ -1653,7 +1653,7 @@ export const actions = {
     if (nodePath && nodePath.length > 1) {
       expanded.add(nodePath[nodePath.length - 2]); // new parent container
     }
-    withUndo(`Indented "${node?.title ?? 'step'}"`, 'goals', goals, UNDO_MS, { expanded });
+    withUndo(`Indented "${node?.title ?? 'task'}"`, 'goals', goals, UNDO_MS, { expanded });
   },
 
   outdentNode(nodeId: string): void {
@@ -1670,7 +1670,7 @@ export const actions = {
         expanded.delete(oldParentId);
       }
     }
-    withUndo(`Outdented "${node?.title ?? 'step'}"`, 'goals', goals, UNDO_MS, { expanded });
+    withUndo(`Outdented "${node?.title ?? 'task'}"`, 'goals', goals, UNDO_MS, { expanded });
   },
 
   reorderSiblingNodes(activeId: string, overId: string): void {
@@ -1746,7 +1746,7 @@ export const actions = {
     const idSet = new Set(ids);
     const goals = state.goals.map((g) => (idSet.has(g.id) ? { ...g, datesConfirmed: true } : g));
     withUndo(
-      `Confirmed dates for ${ids.length} project${ids.length === 1 ? '' : 's'}`,
+      `Confirmed dates for ${ids.length} goal${ids.length === 1 ? '' : 's'}`,
       'goals',
       goals,
     );

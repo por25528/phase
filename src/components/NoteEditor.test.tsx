@@ -115,8 +115,8 @@ describe('roundTrip', () => {
 
 describe('NoteEditor', () => {
   it('exposes its accessible name', () => {
-    render(<NoteEditor docKey="g1" value="hello" onChange={() => {}} placeholder="Notes…" ariaLabel="Project notes" />);
-    expect(screen.getByLabelText('Project notes')).toBeTruthy();
+    render(<NoteEditor docKey="g1" value="hello" onChange={() => {}} placeholder="Notes…" ariaLabel="Goal notes" />);
+    expect(screen.getByLabelText('Goal notes')).toBeTruthy();
   });
 
   it('does not fire onChange on mount', () => {

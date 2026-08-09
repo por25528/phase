@@ -44,7 +44,7 @@ export function ConfirmImportModal({
   return (
     <Modal open={open} onClose={onCancel} title="Import backup">
       <p className="text-body text-ink-soft leading-[1.6]">
-        This replaces every project, habit and task currently in Phase with the contents of{' '}
+        This replaces every goal, habit and task currently in Phase with the contents of{' '}
         <span className="text-ink font-semibold">{fileName}</span>. It cannot be undone.
       </p>
       <label className="mt-[16px] block text-body text-ink-soft">

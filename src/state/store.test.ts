@@ -3485,7 +3485,7 @@ describe('bulk step operations', () => {
     actions.removeNodes(['b', 'd']);
 
     expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'grp']);
-    expect(getState().pendingUndo?.label).toBe('Deleted 2 steps');
+    expect(getState().pendingUndo?.label).toBe('Deleted 2 tasks');
 
     actions.undoLastDelete();
     expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'grp', 'd']);
@@ -3511,7 +3511,7 @@ describe('bulk step operations', () => {
     const { actions, getState } = await storeWithPsets();
     actions.removeNodes(['grp']);
     // grp + its two children.
-    expect(getState().pendingUndo?.label).toBe('Deleted 3 steps');
+    expect(getState().pendingUndo?.label).toBe('Deleted 3 tasks');
   });
 
   it('does not double-remove when a group and its child are both selected', async () => {
@@ -3520,7 +3520,7 @@ describe('bulk step operations', () => {
     actions.removeNodes(['grp', 'c1']);
 
     expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'd']);
-    expect(getState().pendingUndo?.label).toBe('Deleted 3 steps');
+    expect(getState().pendingUndo?.label).toBe('Deleted 3 tasks');
   });
 
   it('completes the open LEAVES under a selection, never the container', async () => {
@@ -3534,7 +3534,7 @@ describe('bulk step operations', () => {
     expect(findInAll(getState().goals, 'b')?.status).toBe('done');
     // The container itself stays a container — its done-ness is derived.
     expect(findInAll(getState().goals, 'grp')?.status).toBeUndefined();
-    expect(getState().pendingUndo?.label).toBe('Completed 3 steps');
+    expect(getState().pendingUndo?.label).toBe('Completed 3 tasks');
   });
 
   it('leaves an already-finished step untouched instead of re-stamping doneAt', async () => {
@@ -3544,7 +3544,7 @@ describe('bulk step operations', () => {
     actions.completeNodes(['a', 'b']);
 
     expect(findInAll(getState().goals, 'a')?.doneAt).toBe('2026-07-01');
-    expect(getState().pendingUndo?.label).toBe('Completed 1 step');
+    expect(getState().pendingUndo?.label).toBe('Completed 1 task');
   });
 
   it('undoes a batch completion in one step', async () => {
@@ -3662,7 +3662,7 @@ describe('setNodesStatus', () => {
     ] }]);
 
     expect(actions.setNodesStatus(['a', 'b'], 'doing')).toBe(true);
-    expect(getState().pendingUndo?.label).toBe('Marked 2 steps in progress');
+    expect(getState().pendingUndo?.label).toBe('Marked 2 tasks in progress');
 
     actions.undoLastDelete();
     expect(findInAll(getState().goals, 'a')?.status).toBeUndefined();
@@ -3698,7 +3698,7 @@ describe('setNodesStatus', () => {
     ] }]);
 
     expect(actions.setNodesStatus(['parent'], 'doing')).toBe(true);
-    expect(getState().pendingUndo?.label).toBe('Marked 2 steps in progress');
+    expect(getState().pendingUndo?.label).toBe('Marked 2 tasks in progress');
     expect(findInAll(getState().goals, 'a')?.status).toBe('doing');
     // A done leaf under the selection is a legitimate target too — see the
     // 'todo' pair below.
@@ -3720,7 +3720,7 @@ describe('setNodesStatus', () => {
     ] }]);
 
     expect(actions.setNodesStatus(['a'], 'todo')).toBe(true);
-    expect(getState().pendingUndo?.label).toBe('Reset 1 step');
+    expect(getState().pendingUndo?.label).toBe('Reset 1 task');
     const a = findInAll(getState().goals, 'a');
     expect(a?.status).toBeUndefined();
     expect(a?.doneAt).toBeUndefined();
@@ -3846,7 +3846,7 @@ describe('undo durability', () => {
   it('names how many steps went with the project', async () => {
     const { actions, getState } = await storeWithProject();
     actions.removeGoal('g');
-    expect(getState().pendingUndo?.label).toBe('Deleted "6.5840" and its 2 steps');
+    expect(getState().pendingUndo?.label).toBe('Deleted "6.5840" and its 2 tasks');
   });
 
   it('does not let another undoable edit silently discard a pending delete', async () => {
@@ -3943,7 +3943,7 @@ describe('undo durability', () => {
     const secondId = getState().goals.find((g) => g.title === 'Second')!.id;
 
     actions.removeGoal('g');
-    expect(getState().pendingUndo?.label).toBe('Deleted "6.5840" and its 2 steps');
+    expect(getState().pendingUndo?.label).toBe('Deleted "6.5840" and its 2 tasks');
 
     actions.renameGoal(secondId, 'Renamed'); // not undoable — voids the restore
 

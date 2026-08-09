@@ -97,7 +97,7 @@ export const GoalRow = memo(function GoalRow({
               </span>
               {pace === 'behind' && <BehindChip pts={behind} donePct={p} className="flex-none" />}
               {pace === 'needs-breakdown' && (
-                <span className="text-badge text-muted italic flex-none">define next step</span>
+                <span className="text-badge text-muted italic flex-none">define next task</span>
               )}
             </span>
             {warnings.length > 0 && (
@@ -142,7 +142,7 @@ export const GoalRow = memo(function GoalRow({
           ) : (
             <button
               type="button"
-              aria-label={`${g.title}: dates unconfirmed, ${fmtD(g.start)}–${fmtD(g.deadline)}. Open project to review dates.`}
+              aria-label={`${g.title}: dates unconfirmed, ${fmtD(g.start)}–${fmtD(g.deadline)}. Open goal to review dates.`}
               onClick={() => actions.openProject(g.id)}
               onMouseMove={(e) => setBarTip({ x: e.clientX, y: e.clientY })}
               onMouseLeave={() => setBarTip(null)}
@@ -229,7 +229,7 @@ export const GoalRow = memo(function GoalRow({
                 return `${behind} pts behind pace · expected ${expected}% by today`;
               }
               if (pace === 'needs-breakdown') {
-                return `define next step · expected ${expected}% by today`;
+                return `define next task · expected ${expected}% by today`;
               }
               if (pace === 'complete') return 'complete';
               return `on pace · expected ${expected}% by today`;

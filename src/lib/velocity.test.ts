@@ -109,13 +109,13 @@ describe('describeVelocity', () => {
    */
   it('calls out a stall', () => {
     expect(describeVelocity({ completed: 0, windowDays: 14, open: 8 })).toBe(
-      'nothing finished in 14 days · 8 steps open',
+      'nothing finished in 14 days · 8 tasks open',
     );
   });
 
   it('singularises one open step', () => {
     expect(describeVelocity({ completed: 0, windowDays: 14, open: 1 })).toBe(
-      'nothing finished in 14 days · 1 step open',
+      'nothing finished in 14 days · 1 task open',
     );
   });
 

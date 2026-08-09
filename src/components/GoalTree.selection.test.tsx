@@ -217,7 +217,7 @@ describe('building a selection', () => {
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
 
     const status = screen.getByRole('status', { name: 'Selection' });
-    expect(status.textContent).toBe('2 steps selected');
+    expect(status.textContent).toBe('2 tasks selected');
   });
 });
 
@@ -232,7 +232,7 @@ describe('acting on a selection', () => {
 
     expect(findInAll(store.getState().goals, 'c1')?.status).toBe('done');
     expect(findInAll(store.getState().goals, 'c2')?.status).toBe('done');
-    expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Completed 2 tasks');
     expect(selectedIds()).toEqual([]); // the bar retires with the selection
   });
 
@@ -245,7 +245,7 @@ describe('acting on a selection', () => {
 
     expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'd']);
     // Pset 8 + its two children + Problems 1-3 is covered by the container.
-    expect(store.getState().pendingUndo?.label).toBe('Deleted 3 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Deleted 3 tasks');
 
     store.actions.undoLastDelete();
     expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'grp', 'd']);
@@ -259,7 +259,7 @@ describe('acting on a selection', () => {
     await user.keyboard('{Backspace}');
 
     expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['grp', 'd']);
-    expect(store.getState().pendingUndo?.label).toBe('Deleted 2 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Deleted 2 tasks');
   });
 
   it('expands a container with Space, matching what a click does', async () => {
@@ -295,7 +295,7 @@ describe('acting on a selection', () => {
 
     expect(findInAll(store.getState().goals, 'a')?.status).toBe('blocked');
     expect(findInAll(store.getState().goals, 'b')?.status).toBe('blocked');
-    expect(store.getState().pendingUndo?.label).toBe('Blocked 2 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Blocked 2 tasks');
     expect(selectedIds()).toEqual([]); // the bar retires with the selection, like Complete/Delete
   });
 });
@@ -346,12 +346,12 @@ describe('getting out of a selection', () => {
     const { store, user } = await mountTree();
     row('Pset 6').focus();
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
-    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('2 steps selected');
+    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('2 tasks selected');
 
     // Something else removes one of them out from under the selection.
     store.actions.removeNode('b');
 
-    expect(await screen.findByText('1 step selected')).toBeTruthy();
+    expect(await screen.findByText('1 task selected')).toBeTruthy();
   });
 });
 
@@ -387,7 +387,7 @@ describe('a refused bulk action', () => {
     await user.click(screen.getByRole('button', { name: 'Complete' }));
 
     expect(selectedIds()).toEqual(['a', 'b']);
-    expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Completed 2 tasks');
   });
 
   it('keeps the selection when Set status is reapplied to an unchanged status', async () => {

@@ -16,7 +16,7 @@ describe('TaskCaptureModal', () => {
     expect(html).toContain('>Tomorrow</button>');
     expect(html).toContain('>Pick day</button>');
     expect(html).toMatch(/aria-pressed="true"[^>]*>Today<\/button>/);
-    expect(html).toMatch(/aria-pressed="false"[^>]*>Choose project<\/button>/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Choose goal<\/button>/);
     expect(html).toContain('<form');
     expect(html).toContain('type="submit"');
     expect(html).toMatch(/type="submit" disabled=""[^>]*>Add task<\/button>/);

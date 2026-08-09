@@ -43,20 +43,20 @@ export function FocusSummary({
       txt: 'focus slots used',
       matchCount: slots.goalIds.length,
       warn: over,
-      sub: over ? `Focus is spread across ${slots.used} projects` : undefined,
+      sub: over ? `Focus is spread across ${slots.used} goals` : undefined,
     },
     {
       key: 'needs-step',
-      label: 'Next step',
+      label: 'Next task',
       num: String(needsFirstStep.count),
-      txt: `Now ${plural(needsFirstStep.count, 'project needs', 'projects need')} a first step`,
+      txt: `Now ${plural(needsFirstStep.count, 'goal needs', 'goals need')} a first task`,
       matchCount: needsFirstStep.count,
     },
     {
       key: 'behind',
       label: 'Schedule',
       num: String(behind.count),
-      txt: `${plural(behind.count, 'project', 'projects')} behind schedule`,
+      txt: `${plural(behind.count, 'goal', 'goals')} behind schedule`,
       matchCount: behind.count,
     },
     {
@@ -73,9 +73,9 @@ export function FocusSummary({
       // then dims a card that visibly says "2 blocked", which looks like a
       // contradiction unless the label itself says which noun it means.
       key: 'blocked',
-      label: 'Blocked projects',
+      label: 'Blocked goals',
       num: String(blocked.count),
-      txt: `${plural(blocked.count, 'project has', 'projects have')} every step stuck`,
+      txt: `${plural(blocked.count, 'goal has', 'goals have')} every task stuck`,
       matchCount: blocked.count,
     },
   ];
@@ -91,7 +91,7 @@ export function FocusSummary({
             type="button"
             disabled={!enabled}
             aria-pressed={isActive}
-            aria-label={`${s.label}: ${s.num} ${s.txt}${enabled ? `, ${isActive ? 'showing' : 'show'} these projects` : ''}`}
+            aria-label={`${s.label}: ${s.num} ${s.txt}${enabled ? `, ${isActive ? 'showing' : 'show'} these goals` : ''}`}
             onClick={() => enabled && onToggle(s.key)}
             className={[
               'flex flex-col gap-[3px] text-left px-[14px] py-[9px] rounded-[11px] border shadow-card min-w-0 transition-colors',

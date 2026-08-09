@@ -406,7 +406,7 @@ describe('parseGoalImport rejects what it used to swallow', () => {
     });
     const out = parseGoalImport(raw, TODAY);
     expect('error' in out).toBe(true);
-    expect('error' in out && out.error).toContain('group of 3 steps');
+    expect('error' in out && out.error).toContain('group of 3 tasks');
   });
 
   it('refuses a `subgoals` that is a string — the classic LLM slip', () => {
