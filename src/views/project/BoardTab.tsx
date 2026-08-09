@@ -236,7 +236,7 @@ function Card({ card, onOpen }: { card: BoardCard; onOpen: (nodeId: string) => v
         // A card is still an opening button. dnd-kit's KeyboardSensor claims
         // both Enter and Space by default, so preserve Enter for opening while
         // delegating Space and the drag-navigation keys to the sensor.
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' && !isDragging) {
           event.preventDefault();
           onOpen(card.node.id);
           return;

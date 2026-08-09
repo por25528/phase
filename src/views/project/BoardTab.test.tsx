@@ -157,6 +157,21 @@ describe('the goal board', () => {
     expect(store.getState().openStepId).toBe('Auth');
   });
 
+  it('does not open the inspector when Enter is pressed during a keyboard drag', async () => {
+    const { store } = await mount(BIG);
+    const card = screen.getByText('Auth').closest('button')!;
+
+    fireEvent.keyDown(card, { key: ' ', code: 'Space' });
+    await waitFor(() => expect(card.getAttribute('aria-pressed')).toBe('true'));
+    // KeyboardSensor installs its document-level drag controls on the next
+    // task after activation.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.keyDown(card, { key: 'Enter', code: 'Enter' });
+
+    expect(store.getState().openStepId).toBeNull();
+  });
+
   /**
    * Four large empty drop zones teach a user the feature is broken. Below a
    * handful of open tasks the tree wins — it shows ORDER, which is what a
