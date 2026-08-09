@@ -225,12 +225,16 @@ describe('Project page', () => {
   it('moves right between tabs and wraps', async () => {
     const store = await mountPage();
     const steps = screen.getByRole('tab', { name: 'Work' });
+    const board = screen.getByRole('tab', { name: 'Board' });
     const notes = screen.getByRole('tab', { name: 'Notes' });
 
     steps.focus();
     fireEvent.keyDown(steps, { key: 'ArrowRight' });
+    expect(store.getState().projectTab).toBe('board');
+    expect(document.activeElement).toBe(board);
+
+    fireEvent.keyDown(board, { key: 'ArrowRight' });
     expect(store.getState().projectTab).toBe('notes');
-    expect(document.activeElement).toBe(notes);
 
     fireEvent.keyDown(notes, { key: 'ArrowRight' });
     expect(store.getState().projectTab).toBe('steps');

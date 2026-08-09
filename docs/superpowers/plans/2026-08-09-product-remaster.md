@@ -36,8 +36,11 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 
 - [x] **S6 Real `Cmd+K` (change 4).** Verbs, not just navigation: create,
       complete, schedule, set status, move, open settings, export.
-- [ ] **S7 Goal tabs (change 6).** Work / Board / Calendar / Notes over one task
-      store, never duplicated arrays.
+- [x] **S7 Goal tabs (change 6).** Work / Board / Notes over one task store,
+      never duplicated arrays. The Calendar tab is deliberately NOT here: it
+      needs the same capacity and drop machinery Plan owns, and building a
+      second copy of it before S11 reworks that view is how two calendars end
+      up disagreeing. It ships with S12.
 - [x] **S8 Remaining effort and health (change 9).** `12h 30m remaining · 8 of 14
       tasks · On track`, with the estimate-coverage qualifier stated. Landed
       with S3, which could not state a compact header without them.

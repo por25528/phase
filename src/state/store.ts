@@ -86,8 +86,13 @@ export const VIEW_LABELS = {
  */
 export type GoalModal = 'new' | 'import' | null;
 
-/** Which tab the project page is showing. */
-export type ProjectTab = 'steps' | 'notes';
+/**
+ * Which tab the goal workspace is showing.
+ *
+ * `'steps'` keeps its stored name so no persisted or in-flight value has to be
+ * migrated for a rename; it is labelled Work.
+ */
+export type ProjectTab = 'steps' | 'board' | 'notes';
 
 interface UIState {
   view: ViewName;
