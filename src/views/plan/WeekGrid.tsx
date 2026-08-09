@@ -37,7 +37,7 @@ const AXIS_WIDTH_PX = 46;
  * `scrollWindow` opens on.
  */
 export function WeekGrid({
-  days, today, nowMinute, windows, scrollWindow, readOnly, dayCapacity,
+  days, today, nowMinute, windows, scrollWindow, readOnly, dayCapacity, dragDurationMin,
   onCreate, scrollerRef, gridRef, children,
 }: {
   days: string[];
@@ -54,6 +54,15 @@ export function WeekGrid({
    * week total — which cannot tell you that Tuesday is full.
    */
   dayCapacity?: DayCapacity[];
+  /**
+   * How long the block currently being dragged is, or null when nothing is.
+   *
+   * Capacity feedback belonged AFTER the drop: the store resolved a slot,
+   * failed, and raised "no free time left that day" — by which point the user
+   * had already aimed, committed and let go. With this the heading says
+   * whether the day can take it while it is still in the air.
+   */
+  dragDurationMin?: number | null;
   /** Draw a block on a day's empty canvas. Absent ⇒ no canvas is rendered. */
   onCreate?: (date: string, span: CanvasSpan) => void;
   /** Owned by Plan, which needs it live to resolve a drop. */
@@ -231,14 +240,34 @@ export function WeekGrid({
                     busy day cannot shove the header row down relative to its
                     neighbours. */}
                 <div className="h-[12px] leading-[12px]">
-                  {load && (
+                  {dragDurationMin != null && cap ? (
+                    (() => {
+                      // Free time LESS what is already committed to the day.
+                      // `freeMin` only nets off meetings, so comparing the raw
+                      // figure would promise room that this week's own work has
+                      // already taken.
+                      const left = cap.freeMin - cap.plannedMin - cap.backlogMin;
+                      const fits = left >= dragDurationMin;
+                      return (
+                        <span
+                          role="status"
+                          title={fits
+                            ? `${left}m free after what is already planned`
+                            : `Only ${Math.max(0, left)}m free — this needs ${dragDurationMin}m`}
+                          className={`font-mono text-eyebrow tabular-nums font-semibold ${fits ? 'text-accent' : 'text-warn'}`}
+                        >
+                          {fits ? 'fits' : 'full'}
+                        </span>
+                      );
+                    })()
+                  ) : load ? (
                     <span
                       title={cap ? dayLoadHint(cap) : undefined}
                       className={`font-mono text-eyebrow tabular-nums ${over ? 'text-warn font-semibold' : 'text-muted'}`}
                     >
                       {load}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             );

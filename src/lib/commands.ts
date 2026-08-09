@@ -42,6 +42,7 @@ export const COMMANDS: Command[] = [
   { id: 'theme', label: 'Switch theme', keywords: ['dark', 'light', 'appearance', 'system'], group: 'view' },
   { id: 'shortcuts', label: 'Keyboard shortcuts', keywords: ['keys', 'help', 'cheat sheet'], hint: '?', group: 'view' },
 
+  { id: 'settings', label: 'Working hours', keywords: ['availability', 'settings', 'hours', 'schedule'], group: 'view' },
   { id: 'export', label: 'Export a backup', keywords: ['download', 'save', 'json', 'data'], group: 'data' },
   { id: 'import', label: 'Import a backup', keywords: ['restore', 'upload', 'data'], group: 'data' },
   { id: 'reclaim', label: 'Reclaim space', keywords: ['storage', 'unused', 'images', 'clean'], group: 'data' },

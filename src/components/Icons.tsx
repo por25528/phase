@@ -176,6 +176,16 @@ export function IconRotate(p: IconProps) {
   );
 }
 
+/** Working hours — the availability window everything free is measured against. */
+export function IconClock(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <circle cx="12" cy="12" r="8.2" />
+      <path d="M12 7.4V12l3.2 2" />
+    </Icon>
+  );
+}
+
 // ── Indicators ────────────────────────────────────────────────────────────────
 
 /**

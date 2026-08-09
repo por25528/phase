@@ -248,3 +248,55 @@ describe('vertical restoration', () => {
     expect(scrollerRef.current?.scrollTop).toBe(540);
   });
 });
+
+/**
+ * Capacity feedback used to arrive AFTER the drop: the store resolved a slot,
+ * failed, and raised "no free time left that day" — by which point the user had
+ * aimed, committed and let go. These assert it arrives while the block is still
+ * in the air.
+ */
+describe('capacity while dragging', () => {
+  const DAYS = ['2026-08-10', '2026-08-11'];
+  const cap = (freeMin: number, plannedMin = 0) => ({
+    date: '2026-08-10', freeMin, plannedMin, backlogMin: 0, unestimated: 0,
+    blockedBy: [], hasData: true,
+  });
+
+  function draw(dragDurationMin: number | null) {
+    const { container } = render(createElement(WeekGrid, {
+      days: DAYS,
+      today: DAYS[0],
+      nowMinute: null,
+      windows: [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1080 })),
+      scrollWindow: { startMin: 540, endMin: 1080 },
+      dayCapacity: [cap(120), cap(120, 90)],
+      dragDurationMin,
+      scrollerRef: { current: null },
+      gridRef: { current: null },
+      children: () => null,
+    }));
+    return container.innerHTML;
+  }
+
+  it('says which days can take the block, and which cannot', () => {
+    const html = draw(60);
+    expect(html).toContain('fits');
+    expect(html).toContain('full');
+  });
+
+  /**
+   * `freeMin` only nets off meetings, so comparing the raw figure would promise
+   * room that this week's own work has already taken.
+   */
+  it('counts what is already planned against the day, not just meetings', () => {
+    // 120 free, 90 planned, 60 needed: it does not fit, even though `freeMin`
+    // alone says it would.
+    expect(draw(60).split('full').length - 1).toBe(1);
+  });
+
+  it('goes back to the ordinary load figure once the drag ends', () => {
+    const html = draw(null);
+    expect(html).not.toContain('fits');
+    expect(html).not.toContain('full');
+  });
+});

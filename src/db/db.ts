@@ -148,12 +148,21 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
   await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
-/** Which sidebar panels are expanded. The backlog is pinned and never listed. */
-export type SidebarPanel = 'habits' | 'stats' | 'availability';
+/**
+ * The collapsible sections in the Plan rail.
+ *
+ * Down to one. Stats was an accordion of figures the week header already
+ * carries, and Working hours was a settings form sitting as a peer of the one
+ * section used repeatedly while planning — both left the rail on the way to
+ * Settings and the header. An unknown value in a stored list is dropped by
+ * `parseSidebarPanels`, so an old preference naming either of them degrades to
+ * "collapsed" rather than to an error.
+ */
+export type SidebarPanel = 'habits';
 
 // Stored order — `saveSidebarPanels` writes panels in this order, so append
 // new members rather than inserting them.
-const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'stats', 'availability'];
+const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits'];
 const SIDEBAR_PANELS_KEY = 'sidebarPanels';
 
 /**

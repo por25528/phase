@@ -111,7 +111,12 @@ export function DayBlocks({
         };
         const isWork = item.kind !== 'busy' && item.id !== null;
         const drag: PlanDragData | undefined = isWork
-          ? { kind: item.kind as 'step' | 'task', id: item.id!, goalId: item.goalId, title: item.title }
+          ? {
+            kind: item.kind as 'step' | 'task', id: item.id!, goalId: item.goalId, title: item.title,
+            // Already on the grid, so its length is the block's own height —
+            // no estimate lookup, and no chance of the two disagreeing.
+            durationMin: item.endMin - item.startMin,
+          }
           : undefined;
         return (
           <EventBlock

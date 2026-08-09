@@ -36,10 +36,8 @@ import { WeekHeader } from './plan/WeekHeader';
 import { UnestimatedPanel } from './plan/UnestimatedPanel';
 import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
 import { RecapPanel } from './plan/RecapPanel';
-import { AvailabilitySettings } from './plan/AvailabilitySettings';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
-import { Stats } from './plan/sidebar/Stats';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
 import type { BacklogItem } from '../lib/backlog';
 
@@ -85,8 +83,8 @@ let lastViewedWeek: string | null = null;
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
  */
-export function Plan() {
-  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels, revealItem, planMode } = useAppStore();
+export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const { goals, tasks, habits, hydration, availability, allDayBlocks, revealItem, planMode } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
@@ -227,6 +225,9 @@ export function Plan() {
 
   const [dragTitle, setDragTitle] = useState<string | null>(null);
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
+  // Live for the length of a drag, so the day headings can answer "does this fit"
+  // while the block is still in the air rather than refusing it after the drop.
+  const [dragDuration, setDragDuration] = useState<number | null>(null);
   const [showUnestimated, setShowUnestimated] = useState(false);
   /*
    * The block being drawn: a gesture that has landed but not yet been named.
@@ -425,15 +426,19 @@ export function Plan() {
   }, [focusedItem, weekStart, availability, isPast, draft]);
 
   function handleDragStart(e: DragStartEvent) {
-    setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
+    const data = e.active.data.current as PlanDragData | undefined;
+    setDragTitle(data?.title ?? null);
+    setDragDuration(data?.durationMin ?? null);
   }
 
   function handleDragCancel() {
     setDragTitle(null);
+    setDragDuration(null);
   }
 
   function handleDragEnd(e: DragEndEvent) {
     setDragTitle(null);
+    setDragDuration(null);
     const data = e.active.data.current as PlanDragData | undefined;
     const overId = typeof e.over?.id === 'string' ? e.over.id : null;
     if (!data || !e.over || !overId?.startsWith('day:')) return;
@@ -542,12 +547,6 @@ export function Plan() {
           <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
             <Habits reveal={revealItem} />
           </SidebarSection>
-          <SidebarSection panel="stats" title="This week">
-            <Stats />
-          </SidebarSection>
-          <SidebarSection panel="availability" title="Working hours">
-            <AvailabilitySettings />
-          </SidebarSection>
         </PlanSidebar>
 
         <div className="min-w-0 md:pl-[18px]">
@@ -579,17 +578,14 @@ export function Plan() {
               No working hours set — every day is off, so nothing can be scheduled.{' '}
               <button
                 type="button"
-                // Expands the sidebar's "Working hours" panel rather than
-                // navigating: the editor is already on this page, beside the
-                // banner. Guarded against re-adding an already-open panel so a
-                // second click can't duplicate the entry.
-                onClick={() => {
-                  if (sidebarPanels.includes('availability')) return;
-                  actions.setSidebarPanels([...sidebarPanels, 'availability']);
-                }}
+                // Straight into Settings. The editor used to be an accordion in
+                // the rail beside this banner; it is a dialog now, and the one
+                // banner that exists because availability is unset should be
+                // the shortest route to setting it.
+                onClick={onOpenSettings}
                 className="font-semibold text-accent hover:text-accent-deep"
               >
-                Set your availability
+                Set your working hours
               </button>
             </div>
           )}
@@ -644,6 +640,7 @@ export function Plan() {
             scrollWindow={scrollWindow}
             readOnly={isPast}
             dayCapacity={capacity.days}
+            dragDurationMin={dragDuration}
             onCreate={(date, span) => setDraft({ date, span })}
             scrollerRef={scrollerRef}
             gridRef={gridRef}

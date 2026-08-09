@@ -6,6 +6,13 @@ export interface PlanDragData {
   id: string;
   goalId: string | null;
   title: string;
+  /**
+   * How long the block will be, from `durationOf`. Carried on the drag so the
+   * week's day headings can say whether it fits BEFORE the drop — a refusal
+   * after the fact is feedback arriving one action too late, and the user has
+   * already let go of the thing they were aiming.
+   */
+  durationMin: number;
 }
 
 export interface AimInput {

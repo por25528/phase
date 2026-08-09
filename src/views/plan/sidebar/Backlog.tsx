@@ -5,6 +5,7 @@ import { backlogGroups, capBacklog, hiddenProjectCounts, dueChip } from '../../.
 import { revealDomId, groupKeyContaining, type RevealTarget } from '../../../lib/reveal';
 import { countOpenCarryOver } from '../../../lib/deferWork';
 import { weekOf } from '../../../lib/plan';
+import { durationOf } from '../../../lib/slot';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
@@ -48,6 +49,7 @@ function BacklogRow({
   const due = dueChip(item.due, today);
   const data: PlanDragData = {
     kind: item.kind, id: item.id, goalId: item.goalId, title: item.title,
+    durationMin: durationOf(item.estimateMin),
   };
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `${item.kind}:${item.id}`,

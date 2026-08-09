@@ -7,6 +7,7 @@ import { Project } from './views/Project';
 import { QuickAdd } from './components/QuickAdd';
 import { ConfirmImportModal } from './components/ConfirmImportModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { SettingsModal } from './components/SettingsModal';
 import { useLocalDate } from './hooks/useLocalDate';
 import { addDays, todayStr } from './lib/dates';
 import type { SearchEntry } from './lib/search';
@@ -17,6 +18,7 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconBackspace,
+  IconClock,
   IconMoon,
   IconPlus,
   IconSearch,
@@ -70,6 +72,7 @@ export function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // Held between "a file was picked" and "the user typed REPLACE". The File is
   // captured here, so the input can be reset immediately and stay re-pickable.
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -194,6 +197,7 @@ export function App() {
       case 'export': void actions.exportBackup(); return;
       case 'import': fileInputRef.current?.click(); return;
       case 'reclaim': reclaimSpace(); return;
+      case 'settings': setSettingsOpen(true); return;
     }
   }
 
@@ -308,6 +312,10 @@ export function App() {
             {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
             Theme: {THEME_LABEL[theme]}
           </HeaderMenuItem>
+          <HeaderMenuItem onClick={() => setSettingsOpen(true)}>
+            <IconClock />
+            Working hours
+          </HeaderMenuItem>
           <HeaderMenuItem onClick={() => setShowShortcuts(true)}>
             {/* Stays a character: `?` is ASCII, it is in the font, and it is the
                 literal key you press. The 14px box keeps it in the icon gutter. */}
@@ -411,7 +419,7 @@ export function App() {
           </div>
         ) : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[24px]">
-            <Plan />
+            <Plan onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         ) : view === 'project' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[28px] pb-[90px]">
@@ -471,6 +479,7 @@ export function App() {
           setPendingImport(null);
         }}
       />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <CommandPalette
         open={paletteOpen}

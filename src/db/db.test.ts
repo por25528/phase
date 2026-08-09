@@ -584,8 +584,19 @@ describe('sidebar panels', () => {
   });
 
   it('round-trips a saved selection', async () => {
-    await saveSidebarPanels(['habits', 'stats']);
-    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+    await saveSidebarPanels(['habits']);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
+  });
+
+  /**
+   * Stats and Working hours were panels here until they moved to the week
+   * header and to Settings. An old preference naming one has to degrade to
+   * "collapsed" rather than to an error — a settings row is not worth a
+   * failed hydration.
+   */
+  it('forgets a panel that no longer exists', async () => {
+    await db.settings.put({ key: 'sidebarPanels', value: JSON.stringify(['habits', 'availability']) });
+    expect(await loadSidebarPanels()).toEqual(['habits']);
   });
 
   it('drops unknown panel names rather than storing them', async () => {
@@ -599,8 +610,8 @@ describe('sidebar panels', () => {
   });
 
   it('deduplicates repeated panels', async () => {
-    await saveSidebarPanels(['stats', 'stats']);
-    expect(await loadSidebarPanels()).toEqual(['stats']);
+    await saveSidebarPanels(['habits', 'habits']);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
   });
 
   describe('planMode', () => {
@@ -628,9 +639,9 @@ describe('sidebar panels', () => {
     // defends against a row written by a different version of the app.
     await db.settings.put({
       key: 'sidebarPanels',
-      value: JSON.stringify(['habits', 'bogus', 'stats', 'stats']),
+      value: JSON.stringify(['habits', 'bogus', 'habits']),
     });
-    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
   });
 });
 
@@ -642,18 +653,18 @@ describe('sidebar panels', () => {
  */
 describe('sidebarPanels round-trips through a backup', () => {
   it('restores the panels a backup carries', async () => {
-    await saveSidebarPanels(['habits', 'stats']);
-    const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [], sidebarPanels: ['availability'] }));
+    await saveSidebarPanels(['habits']);
+    const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [], sidebarPanels: [] }));
     const out = await importStateFromFile(file);
-    expect(out.sidebarPanels).toEqual(['availability']);
-    expect(await loadSidebarPanels()).toEqual(['availability']);
+    expect(out.sidebarPanels).toEqual([]);
+    expect(await loadSidebarPanels()).toEqual([]);
   });
 
   it('leaves this device alone when the backup is silent — absent is not "default"', async () => {
-    await saveSidebarPanels(['habits', 'stats']);
+    await saveSidebarPanels(['habits']);
     const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [] }));
     const out = await importStateFromFile(file);
-    expect(out.sidebarPanels).toEqual(['habits', 'stats']);
+    expect(out.sidebarPanels).toEqual(['habits']);
   });
 
   it('collapses a malformed value rather than half-trusting it', async () => {
