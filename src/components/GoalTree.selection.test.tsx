@@ -264,24 +264,32 @@ describe('acting on a selection', () => {
     expect(store.getState().pendingUndo?.label).toBe('Deleted 2 tasks');
   });
 
-  it('expands a container with Space, matching what a click does', async () => {
+  /**
+   * Space selects, per the ARIA treeview pattern. It used to complete a leaf
+   * and collapse a container — the keyboard twin of the old row click, bound
+   * to the key most likely to be pressed by someone who thought they were
+   * scrolling.
+   */
+  it('adds the focused row to the selection with Space, and leaves it alone otherwise', async () => {
     const { store, user } = await mountTree();
-    const rowEl = row('Pset 8');
+    const { findInAll } = await import('../lib/tree');
     expect(store.getState().expanded.has('grp')).toBe(true);
-    rowEl.focus();
 
+    row('Pset 8').focus();
     await user.keyboard(' ');
 
-    expect(store.getState().expanded.has('grp')).toBe(false);
+    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('1 task selected');
+    expect(store.getState().expanded.has('grp')).toBe(true);
+    expect(findInAll(store.getState().goals, 'grp')?.status).toBeUndefined();
   });
 
-  it('completes from the keyboard with Space', async () => {
+  it('completes from the keyboard with X', async () => {
     const { store, user } = await mountTree();
     const { findInAll } = await import('../lib/tree');
     row('Pset 6').focus();
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
 
-    await user.keyboard(' ');
+    await user.keyboard('x');
 
     expect(findInAll(store.getState().goals, 'a')?.status).toBe('done');
     expect(findInAll(store.getState().goals, 'b')?.status).toBe('done');
@@ -335,13 +343,14 @@ describe('getting out of a selection', () => {
     expect(findInAll(store.getState().goals, 'd')?.status).toBeUndefined();
   });
 
-  it('leaves ordinary clicking alone when nothing is selected', async () => {
+  it('opens a row on an ordinary click, and completes nothing', async () => {
     const { store, user } = await mountTree();
     const { findInAll } = await import('../lib/tree');
 
     await user.click(row('Pset 9'));
 
-    expect(findInAll(store.getState().goals, 'd')?.status).toBe('done');
+    expect(store.getState().openStepId).toBe('d');
+    expect(findInAll(store.getState().goals, 'd')?.status).toBeUndefined();
   });
 
   it('drops ids that stop existing, so the bar cannot count ghosts', async () => {

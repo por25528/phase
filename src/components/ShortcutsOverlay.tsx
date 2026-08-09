@@ -43,19 +43,23 @@ const BOARD_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['⌥', '↑/↓'], label: 'Move up / down within the horizon' },
 ];
 
-// Step-tree keys, inside a project's drawer. Indent/outdent are chords rather
-// than Tab: on Tab they made the tree a keyboard trap, and re-parented a step
+// Task-tree keys, inside a goal's Work tab. Indent/outdent are chords rather
+// than Tab: on Tab they made the tree a keyboard trap, and re-parented a task
 // on the way. A chord also has to be documented somewhere to exist at all,
-// which is what this block is for.
+// which is what this block is for — and so does `X`, which took completion
+// over from Space.
 const TREE_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['↑', '↓'], label: 'Move between tasks' },
+  { keys: ['↵'], label: 'Rename the focused task' },
+  { keys: ['X'], label: 'Check the focused task off' },
+  { keys: ['Space'], label: 'Add the focused task to the selection' },
   { keys: ['⌘', 'click'], label: 'Add a task to the selection' },
   { keys: ['⇧', '↑/↓'], label: 'Extend the selection' },
   { keys: ['⌘', 'A'], label: 'Select every task' },
   { keys: ['⌫'], label: 'Delete the selection' },
   { keys: ['→', '←'], label: 'Expand or collapse a task' },
-  { keys: ['Space'], label: 'Check the focused task off' },
   { keys: ['S'], label: 'Cycle a task: to do → in progress → blocked' },
+  { keys: ['⌘', '↵'], label: 'Add a task below this one' },
   { keys: ['⌘', ']'], label: 'Indent — make it a subtask' },
   { keys: ['⌘', '['], label: 'Outdent' },
 ];

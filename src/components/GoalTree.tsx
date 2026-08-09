@@ -458,11 +458,21 @@ function GoalTreeNode({
     setEditing(false);
   }
 
-  // Single click anywhere on the row runs its primary action: toggle a leaf's
-  // done state, or expand/collapse a container. Interactive children (checkbox,
-  // twirl, drag handle, + sub, delete) stopPropagation so they never reach here.
-  // Double-click on the title enters rename; its two underlying single clicks
-  // toggle then untoggle (net zero) before the editor opens (Approach A).
+  /**
+   * A plain click OPENS the row. It does not complete it and it does not
+   * expand it.
+   *
+   * The row used to run a "primary action" that depended on what the row was:
+   * completion on a leaf, expand/collapse on a container. Efficient once
+   * memorised, and unusually dangerous — the single most consequential action
+   * in the product, the one that moves every number, was bound to the largest
+   * click target on the page, on the object people click at to read it. A
+   * mis-aimed click on a title checked work off.
+   *
+   * So the row behaves the way a row behaves everywhere else: clicking it makes
+   * it the subject. The checkbox completes, the chevron expands, and each of
+   * those is a deliberate 24px target that says what it does.
+   */
   /**
    * Modifier clicks are caught on the way DOWN, before any child sees them.
    *
@@ -489,13 +499,10 @@ function GoalTreeNode({
     if (editing) return;
     // Modifiers are handled in the capture phase above and never arrive here.
     if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-    // A plain click while a selection is up dismisses it and stops there. It
-    // must NOT also toggle done: the click that ends a selection is the click
-    // people use to "get out", and having it silently tick a box off is exactly
-    // the accidental destructive action a selection UI has to avoid.
+    // A plain click while a selection is up dismisses it and stops there — the
+    // click people use to "get out" must not also do something to a row.
     if (selected.size > 0) { onSelect(n.id, 'clear'); return; }
-    if (hasKids) actions.toggleExpand(n.id);
-    else actions.toggleLeaf(n.id);
+    actions.openStep(n.id);
   }
 
   // Move focus to the next/previous VISIBLE row in DOM order. Because children
@@ -598,15 +605,26 @@ function GoalTreeNode({
       else actions.removeNode(n.id);
       return;
     }
-    // Space runs the row's primary action, the same one a click runs: the
-    // selection if there is one, else complete a leaf or expand a container.
-    // Always prevented — on a container it previously fell through and scrolled
+    // Space adds the focused row to the selection, per the ARIA treeview
+    // pattern and per every list this product is trying to feel like. It used
+    // to complete a leaf — the keyboard twin of the row click, and dangerous
+    // for the same reason, on the key most likely to be pressed by someone who
+    // thought they were scrolling.
+    //
+    // Always prevented: on a container it previously fell through and scrolled
     // the page, which is a key that both does nothing and does something wrong.
     if (plain && e.key === ' ' && !editing) {
       e.preventDefault();
+      onSelect(n.id, 'toggle');
+      return;
+    }
+    // X completes — the selection if there is one, otherwise this row. A letter
+    // rather than Space, because completion is the one keystroke here that
+    // moves a number and it should take an aimed press.
+    if (plain && (e.key === 'x' || e.key === 'X') && !editing) {
+      e.preventDefault();
       if (selected.size > 0) onBulk('complete');
-      else if (hasKids) actions.toggleExpand(n.id);
-      else actions.toggleLeaf(n.id);
+      else if (!hasKids) actions.toggleLeaf(n.id);
       return;
     }
     // S cycles a leaf's status: todo → doing → blocked → todo. `done` is
@@ -618,17 +636,23 @@ function GoalTreeNode({
       actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
       return;
     }
-    // Enter → a new step directly below this one, opened ready to type.
+    // ⌘Enter → a new task directly below this one, opened ready to type.
     //
-    // This used to be `addChild(parentId)`, which pushes onto the END of the
-    // parent's list — so on the first of ten psets the new row appeared tenth,
-    // unfocused, titled "New item". And `parentId` is null for every root-level
-    // step, so on a freshly created project Enter did nothing at all.
     // `insertSiblingAfter` works off the row's own sibling list, so it needs no
-    // parent id and behaves the same at every depth.
-    if (plain && e.key === 'Enter' && !editing) {
+    // parent id and behaves the same at every depth — unlike the
+    // `addChild(parentId)` this began as, which pushed onto the END of the
+    // parent's list and did nothing at all at root level.
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !editing) {
       e.preventDefault();
       actions.insertSiblingAfter(n.id);
+      return;
+    }
+    // Enter → edit the title. Double-click was the only route to a rename for
+    // a long time, which is an invisible affordance on the most common edit
+    // there is; on the keyboard there was none at all.
+    if (plain && e.key === 'Enter' && !editing) {
+      e.preventDefault();
+      setEditing(true);
     }
   }
 
@@ -727,20 +751,15 @@ function GoalTreeNode({
           />
         ) : (
           /*
-           * The title swallows its own clicks.
+           * The title lets its clicks through now.
            *
-           * Double-click here opens the rename editor, and the two single
-           * clicks underneath it used to reach the row's toggle first. The
-           * in-code claim that this is "net zero" holds for `done` and NOT for
-           * `doneAt`: on an already-finished step, click one deletes the
-           * completion date and click two re-sets it to today. Renaming a pset
-           * you finished last Tuesday silently rewrote when you finished it —
-           * and `doneAt` is what the week recap reads.
-           *
-           * Stopping propagation also fixes the milder complaint that the whole
-           * row is a completion target, so a stray click on the text checks
-           * work off. The checkbox is the deliberate 24px target, and the row
-           * outside the title still toggles.
+           * It used to stop them, because underneath was a completion toggle
+           * and a rename double-click therefore ticked the box off and on
+           * again — net zero for `done` but NOT for `doneAt`, so renaming a
+           * pset you finished last Tuesday silently rewrote when you finished
+           * it. Under a row click that merely opens the inspector there is
+           * nothing left to defend against, and swallowing the click would make
+           * the largest part of the row the one part that does not open it.
            */
           <span
             className={`flex-1 text-lead select-none ${
@@ -750,7 +769,6 @@ function GoalTreeNode({
                   ? 'line-through text-faint'
                   : 'text-ink-soft'
             }`}
-            onClick={hasKids ? undefined : (e) => e.stopPropagation()}
             onDoubleClick={() => setEditing(true)}
           >
             {n.title}
@@ -807,26 +825,6 @@ function GoalTreeNode({
             onClear={() => actions.clearSessionsFor('step', n.id)}
           />
         )}
-
-        {/* Open the detail panel. `GoalNode` has carried `start`, `deadline`,
-            `plannedWeek` and `estimateMin` for a long time with almost nowhere
-            to show them; this is that place. It is a separate control rather
-            than a row click because the row click is the completion gesture,
-            and reassigning the single action that moves every number in the
-            product would be a bad trade for a disclosure affordance. */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Open details for "${n.title}"`}
-          title="Details"
-          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            actions.openStep(n.id);
-          }}
-        >
-          ◈
-        </button>
 
         {/* Rename. Double-clicking the title still works, but it was the ONLY
             route — an invisible affordance on the single most common edit, and
