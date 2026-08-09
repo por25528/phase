@@ -18,7 +18,7 @@ const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done']
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-meta font-[550] uppercase tracking-[0.08em] text-muted mb-[7px]">
+    <div className="text-meta font-semibold text-muted mb-[7px]">
       {children}
     </div>
   );
@@ -126,7 +126,7 @@ export function StepPanel({ goal, node, actions }: {
           {editingTitle ? (
             <InlineEdit
               value={node.title}
-              className="font-disp text-h2 font-semibold tracking-[-0.01em]"
+              className="text-h2 font-semibold tracking-[-0.01em]"
               onCommit={(title) => {
                 if (title !== node.title) actions.renameNode(node.id, title);
                 setEditingTitle(false);
@@ -136,7 +136,7 @@ export function StepPanel({ goal, node, actions }: {
           ) : (
             <button
               type="button"
-              className="font-disp text-h2 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px]"
+              className="text-h2 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px]"
               onClick={() => setEditingTitle(true)}
               aria-label={`Rename task "${node.title}"`}
               title="Click to rename"

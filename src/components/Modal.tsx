@@ -89,7 +89,7 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-[12px] mb-[16px]">
-          <h2 className="font-disp text-h2 font-semibold tracking-[-0.01em]">{title}</h2>
+          <h2 className="text-h2 font-semibold tracking-[-0.01em]">{title}</h2>
           <button
             ref={closeBtnRef}
             aria-label="Close"

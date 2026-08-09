@@ -456,7 +456,7 @@ export function Timeline() {
 
   return (
     <div>
-      <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
+      <h1 className="text-h1 font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
 
       <div className="flex flex-wrap items-center justify-between gap-[8px] mb-[10px]">
         <div className="flex flex-wrap items-center gap-[6px] min-w-0">
@@ -577,7 +577,7 @@ export function Timeline() {
           <div style={{ width: `${labelW + canvasW}px` }}>
             {/* Time header — sticky against vertical scroll; its label cell also against horizontal */}
             <div className="sticky top-0 z-[15] flex border-b border-line bg-bg">
-              <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-meta tracking-[.1em] uppercase text-muted font-semibold bg-bg">
+              <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-meta font-semibold text-muted bg-bg">
                 Goal
               </div>
               <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
@@ -610,7 +610,7 @@ export function Timeline() {
               horizonGroups.map((grp) => (
                 <Fragment key={grp.col}>
                   <div className="flex items-stretch border-b border-line bg-bg">
-                    <div className="sticky left-0 z-[12] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[5px] bg-bg font-mono text-tiny tracking-[.11em] uppercase text-muted font-semibold">
+                    <div className="sticky left-0 z-[12] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[5px] bg-bg text-meta font-semibold text-muted">
                       {grp.label} · {grp.goals.length}
                     </div>
                     <div className="flex-none" style={{ width: `${canvasW}px` }} />

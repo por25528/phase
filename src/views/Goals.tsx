@@ -312,7 +312,7 @@ export function Goals() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-[10px] sm:gap-[16px] mb-[6px]">
         <div className="min-w-0">
-          <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em]">Goals</h1>
+          <h1 className="text-h1 font-semibold tracking-[-0.015em]">Goals</h1>
           <p className="text-ui text-muted mt-[3px]">
             {timeline
               ? 'Every goal with a start and a deadline, laid out against the calendar.'
@@ -592,7 +592,7 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
         >
           <IconChevronRight size={12} />
         </span>
-        <span className="font-mono text-kbd tracking-[.11em] uppercase text-muted font-semibold">Completed</span>
+        <span className="text-meta font-semibold text-muted">Completed</span>
         <span className="font-mono text-badge text-muted tabular-nums">{goals.length}</span>
       </button>
       {open && (
@@ -603,7 +603,7 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
               className="flex items-center gap-[10px] px-[13px] py-[11px] border border-line rounded-card bg-panel opacity-[.86]"
             >
               <span className="text-accent inline-flex" aria-hidden="true"><IconCheck /></span>
-              <span className="font-disp text-lead font-semibold flex-1 min-w-0 truncate">{g.title}</span>
+              <span className="text-lead font-semibold flex-1 min-w-0 truncate">{g.title}</span>
               {g.completedAt && <span className="font-mono text-tiny text-muted whitespace-nowrap">{fmtD(g.completedAt)}</span>}
               <button
                 type="button"

@@ -41,7 +41,7 @@ export function SidebarSection({
         >
           <IconChevronRight size={11} />
         </span>
-        <span className="font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold flex-1">
+        <span className="text-meta font-semibold text-muted flex-1">
           {title}
         </span>
         {count && <span className="font-mono text-eyebrow text-muted tabular-nums flex-none">{count}</span>}

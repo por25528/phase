@@ -392,7 +392,7 @@ export function App() {
       <main className="flex-1 min-w-0 pb-[60px] md:pb-0">
         {hydration === 'error' ? (
           <div className="max-w-[520px] mx-auto mt-[80px] px-[24px] text-center">
-            <div className="font-disp text-h1 font-semibold mb-[10px]">
+            <div className="text-h1 font-semibold mb-[10px]">
               Phase can’t reach its local database
             </div>
             <p className="text-lead text-muted leading-[1.6] mb-[18px]">

@@ -211,7 +211,7 @@ export function Backlog({
 
   return (
     <div>
-      <h3 className="flex items-baseline gap-[6px] font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold py-[6px] px-[6px]">
+      <h3 className="flex items-baseline gap-[6px] text-meta font-semibold text-muted py-[6px] px-[6px]">
         <span className="flex-1">To plan</span>
         <span className="text-muted tabular-nums">{total}</span>
       </h3>
@@ -268,7 +268,7 @@ export function Backlog({
         capped.map((group, i) => (
           <div key={group.key} className={i === 0 ? '' : 'mt-[14px]'}>
             <div className="flex items-baseline gap-[6px] px-[6px]">
-              <span className="font-disp text-body font-semibold text-ink flex-1 min-w-0 truncate">
+              <span className="text-body font-semibold text-ink flex-1 min-w-0 truncate">
                 {group.goalTitle}
               </span>
               {group.goalId && (

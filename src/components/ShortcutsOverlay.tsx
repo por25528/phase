@@ -143,7 +143,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
         className="w-full max-w-[360px] bg-panel border border-line rounded-card shadow-card p-[20px]"
       >
         <div className="flex items-center justify-between mb-[14px]">
-          <h2 className="font-disp text-h3 font-semibold tracking-[-0.01em]">Keyboard shortcuts</h2>
+          <h2 className="text-h3 font-semibold tracking-[-0.01em]">Keyboard shortcuts</h2>
           <button
             ref={closeRef}
             type="button"
@@ -160,7 +160,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           ))}
         </dl>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
+          <h3 className="text-meta font-semibold text-muted mb-[9px]">
             While planning a task
           </h3>
           <dl className="flex flex-col gap-[9px]">
@@ -170,7 +170,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           </dl>
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
+          <h3 className="text-meta font-semibold text-muted mb-[9px]">
             On a goal card
           </h3>
           <dl className="flex flex-col gap-[9px]">
@@ -180,7 +180,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           </dl>
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
+          <h3 className="text-meta font-semibold text-muted mb-[9px]">
             In a goal's tasks
           </h3>
           <dl className="flex flex-col gap-[9px]">

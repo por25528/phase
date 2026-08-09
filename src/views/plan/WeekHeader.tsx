@@ -48,7 +48,7 @@ export function WeekHeader({
   const unestimated = isMonth ? null : unestimatedLabel(capacity);
   return (
     <div className="flex items-baseline gap-[10px] mb-[10px] flex-wrap">
-      <h3 className="font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold">
+      <h3 className="text-meta font-semibold text-muted">
         {isMonth ? ymLabel(ymOf(weekStart)) : `${fmtD(weekStart)} – ${fmtD(addDays(weekStart, 6))}`}
       </h3>
       {/*

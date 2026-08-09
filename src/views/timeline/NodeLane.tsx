@@ -143,7 +143,7 @@ export function NodeLane({ goal, rangeStart, pxPerDay, labelW, segs, bands, toda
       {unscheduled.length > 0 && (
         <div className="flex items-stretch min-h-[30px] border-t border-line">
           <div className="sticky left-0 z-[10] tl-label-w flex-shrink-0 border-r border-line pl-[28px] pr-[8px] flex items-center bg-panel">
-            <span className="font-mono text-tiny tracking-[.1em] uppercase text-muted">
+            <span className="text-meta text-muted">
               Unscheduled tasks ({unscheduled.length})
             </span>
           </div>

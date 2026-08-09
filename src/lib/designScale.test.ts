@@ -203,3 +203,35 @@ describe('design scale', () => {
     expect(fontSizes.filter((key) => colors.includes(key))).toEqual([]);
   });
 });
+
+/**
+ * Two rules the remaster added, both of them about restraint rather than
+ * consistency — the scale was already consistent and still too ornamental.
+ */
+describe('type roles', () => {
+  /**
+   * Fraunces made ordinary metadata feel editorial: it was on goal titles, task
+   * titles, percentages, modal headings, the focus-summary numerals and the
+   * backlog rows, so a `62%` carried the same voice as a masthead. It is a
+   * brand mark now and nothing else.
+   */
+  it('keeps the display serif out of the working UI', () => {
+    const hits = offenders(/font-disp/g);
+    expect(hits).toEqual(['App.tsx:257 font-disp']);
+  });
+
+  /**
+   * A letter-spaced uppercase mono eyebrow over every group is a second
+   * typeface doing a job a font weight already does. The survivors are the
+   * weekday strips on the calendars, which is what a terse uppercase micro
+   * label is genuinely for.
+   */
+  it('reserves uppercase for terse date labels', () => {
+    const files = offenders(/uppercase/g).map((h) => h.split(':')[0]);
+    expect([...new Set(files)].sort()).toEqual([
+      'views/plan/MonthGrid.tsx',
+      'views/plan/WeekGrid.tsx',
+      'views/timeline/DaysLane.tsx',
+    ]);
+  });
+});

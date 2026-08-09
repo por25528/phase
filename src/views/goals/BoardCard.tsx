@@ -90,7 +90,7 @@ function CardFace({
           // Three lines, not two: course projects are "<course> — <assignment>"
           // and two lines clipped at "…— Pse…", losing the only thing that
           // distinguishes Pset 6 from Pset 7.
-          className="font-disp text-title font-semibold tracking-[-0.01em] leading-[1.24] flex-1 min-w-0 line-clamp-3"
+          className="text-title font-semibold tracking-[-0.01em] leading-[1.24] flex-1 min-w-0 line-clamp-3"
         >
           {goal.title}
         </h3>
@@ -136,7 +136,7 @@ function CardFace({
       )}
 
       <div className="flex items-center gap-[8px]">
-        <span className="font-disp text-ui font-semibold tabular-nums text-ink-soft min-w-[30px]">
+        <span className="text-ui font-semibold tabular-nums text-ink-soft min-w-[30px]">
           {hasLeaves ? `${pct}%` : '—'}
         </span>
         <ProgressBar pct={hasLeaves ? pct : 0} />
@@ -412,7 +412,7 @@ export function BoardCard({
                 menuUp ? 'bottom-[34px]' : 'top-[34px]'
               }`}
             >
-              <div className="px-[11px] py-[3px] font-mono text-eyebrow tracking-[.11em] uppercase text-muted">
+              <div className="px-[11px] py-[3px] text-meta text-muted">
                 Move to
               </div>
               {HORIZON_LABELS.map((label, i) => (

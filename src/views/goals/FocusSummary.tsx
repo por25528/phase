@@ -105,9 +105,9 @@ export function FocusSummary({
               enabled ? 'cursor-pointer' : 'opacity-55 cursor-default',
             ].join(' ')}
           >
-            <span className="font-mono text-eyebrow tracking-[.11em] uppercase text-muted">{s.label}</span>
+            <span className="text-meta text-muted">{s.label}</span>
             <span className="flex items-baseline gap-[6px]">
-              <span className={`font-disp text-h2 font-semibold tabular-nums leading-none ${s.warn ? 'text-warn' : ''}`}>
+              <span className={`text-h2 font-semibold tabular-nums leading-none ${s.warn ? 'text-warn' : ''}`}>
                 {s.num}
               </span>
               <span className="text-ui text-ink-soft">{s.txt}</span>

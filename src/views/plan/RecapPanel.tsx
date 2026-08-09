@@ -39,7 +39,7 @@ export function RecapPanel() {
     <section className="mb-[14px] p-[12px] rounded-card border border-line-2 bg-panel">
       <div className="flex flex-col gap-[14px]">
         <p className="text-title text-ink">
-          <span className="font-disp text-h2 font-semibold tabular-nums">
+          <span className="text-h2 font-semibold tabular-nums">
             {r.nowComplete.length} of {r.planned}
           </span>{' '}
           of last week's commitments are now complete.
@@ -69,7 +69,7 @@ export function RecapPanel() {
 
         {r.nowComplete.length > 0 && (
           <section>
-            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Done</h3>
+            <h3 className="text-meta font-semibold text-muted mb-[4px]">Done</h3>
             {r.nowComplete.map((e) => (
               <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-body">
                 <span className="text-accent inline-flex" aria-hidden="true"><IconCheck size={13} /></span>
@@ -82,7 +82,7 @@ export function RecapPanel() {
 
         {r.unfinished.length > 0 && (
           <section>
-            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-warn font-semibold mb-[4px]">
+            <h3 className="text-meta font-semibold text-warn mb-[4px]">
               Unfinished — decide
             </h3>
             {r.unfinished.map((e) => (
@@ -127,7 +127,7 @@ export function RecapPanel() {
                 so this is DELETED work, not unscheduled work — and the button
                 above says "Unschedule". One panel cannot call two different
                 outcomes "removed". */}
-            <h3 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold mb-[4px]">Deleted</h3>
+            <h3 className="text-meta font-semibold text-muted mb-[4px]">Deleted</h3>
             {r.removed.map((e) => (
               <div key={e.nodeId} className="py-[3px] text-body text-muted line-through">
                 {e.leafTitle} <span className="no-underline text-meta">· {e.goalTitle}</span>

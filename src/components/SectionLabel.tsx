@@ -6,7 +6,7 @@ interface Props {
 export function SectionLabel({ children, first }: Props) {
   return (
     <div
-      className={`font-mono text-meta tracking-[.13em] uppercase text-muted font-semibold mb-3 ${
+      className={`text-meta font-semibold text-muted mb-3 ${
         first ? 'mt-0' : 'mt-[34px]'
       }`}
     >

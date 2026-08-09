@@ -4,10 +4,12 @@ import type { Goal } from '../../db/types';
 import { NoteEditor } from '../../components/NoteEditor';
 import { NOTE_SAVE_DEBOUNCE_MS, shouldFlushNoteSave } from '../../lib/noteAutosave';
 
-// Shared uppercase section label so the project page's sections read as one system.
+// Shared section label so the goal page's sections read as one system. Sentence
+// case, UI face: a letter-spaced all-caps mono eyebrow over every group is a
+// second typeface doing a job a weight already does.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-meta font-[550] uppercase tracking-[0.08em] text-muted mb-[9px]">
+    <div className="text-meta font-semibold text-muted mb-[9px]">
       {children}
     </div>
   );
