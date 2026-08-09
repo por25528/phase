@@ -982,9 +982,19 @@ export const actions = {
   // Batch add (the AI daily-subtasks helper): append several children to a node
   // at once, converting a leaf into a container. Same freeze + field-clearing as
   // addChild; blanks are dropped and an all-blank list is a no-op.
-  addChildren(nodeId: string, titles: string[]) {
+  /**
+   * `titles` may carry estimates.
+   *
+   * A proposal arrives as "Read chapter 7 — 45m", and dropping the 45 on the
+   * way in would mean the user re-typing every duration the proposal already
+   * stated — on the surface whose whole point is that the breakdown arrives
+   * priced. Plain strings still work; every existing caller passes them.
+   */
+  addChildren(nodeId: string, titles: ReadonlyArray<string | { title: string; estimateMin?: number }>) {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
-    const clean = titles.map((t) => t.trim()).filter(Boolean);
+    const clean = titles
+      .map((t) => (typeof t === 'string' ? { title: t.trim() } : { ...t, title: t.title.trim() }))
+      .filter((t) => t.title.length > 0);
     if (clean.length === 0) return;
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
@@ -994,7 +1004,14 @@ export const actions = {
       && (isDone(node) || node.plannedWeek !== undefined
         || node.estimateMin !== undefined || node.checkpoint === true);
     if (!node.children) node.children = [];
-    for (const title of clean) node.children.push({ id: uid(), title });
+    for (const child of clean) {
+      const estimate = normalizeEstimate(child.estimateMin);
+      node.children.push({
+        id: uid(),
+        title: child.title,
+        ...(estimate === undefined ? {} : { estimateMin: estimate }),
+      });
+    }
     delete node.status;
     delete node.blockedOn;
     delete node.doneAt;

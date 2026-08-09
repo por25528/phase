@@ -63,8 +63,11 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
       affordance only. The spec's non-counting Milestone OBJECT is deliberately
       not built: Phase had one, and retired it because a marker that never moved
       a number was a marker nobody looked at.
-- [ ] **S15 Inline AI proposal / diff (change 8).** Retires the clipboard
-      round-trip as the primary path.
+- [x] **S15 Inline AI proposal / diff (change 8).** The acceptance surface is
+      built and the modal is gone. The round trip itself stays until there is a
+      provider: shipping a UI that promises generation Phase cannot do is the
+      dishonesty §9 is objecting to, one layer up. A provider replaces the paste
+      box and nothing else.
 - [x] **S16 Visual system (change 15).** Type roles, spacing, radius, surfaces,
       interaction states, motion.
 - [ ] **S17 Quality-of-life sweep.** The §19 P0 list that the slices above did

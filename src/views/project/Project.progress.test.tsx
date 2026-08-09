@@ -146,11 +146,19 @@ describe('Project page', () => {
       expect(store.getState().focusNodeId).toBeNull();
       expect(store.getState().openStepId).toBe('n2');
 
-      // The leading `✦` used to be part of the accessible name — it was a bare
-      // text node, so a screen reader read the decoration out. It is now an
-      // aria-hidden icon and the name is the words alone.
-      fireEvent.click(screen.getByRole('button', { name: 'Break a task into subtasks…' }));
-      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('n2');
+      /*
+       * The breakdown control names its subject rather than asking for it.
+       * It used to open a dialog whose first field was a dropdown asking which
+       * task you meant — about a task you had just clicked on.
+       *
+       * The leading `✦` is an aria-hidden icon, so the accessible name is the
+       * words alone; it used to be a bare text node and screen readers read the
+       * decoration out.
+       */
+      const breakdown = screen.getByRole('button', { name: /^Break “/ });
+      expect(breakdown.textContent).toContain('Order the topics');
+      fireEvent.click(breakdown);
+      expect(screen.getByRole('heading', { name: /Break down/ })).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
