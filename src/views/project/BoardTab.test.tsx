@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalNode, Session } from '../../db/types';
 
@@ -106,8 +106,9 @@ describe('the goal board', () => {
 
   it('never renders an area as a card among the tasks', async () => {
     await mount(BIG);
-    // "Engineering" appears only as a breadcrumb and a filter chip.
-    expect(screen.queryByRole('button', { name: /^Drag "Engineering"$/ })).toBeNull();
+    // "Engineering" is a filter button and a breadcrumb, but never a task
+    // button of its own.
+    expect(screen.getAllByRole('button', { name: 'Engineering' })).toHaveLength(1);
   });
 
   it('filters to one area without changing what a column means', async () => {
@@ -120,12 +121,55 @@ describe('the goal board', () => {
     expect(screen.getByRole('heading', { name: /In progress/ })).toBeTruthy();
   });
 
-  it('opens the inspector when a card is clicked', async () => {
+  it('uses the whole card surface for both dragging and opening', async () => {
     const { store } = await mount(BIG);
+    const card = screen.getByText('Auth').closest('button')!;
 
-    fireEvent.click(screen.getByText('Auth').closest('button')!);
+    expect(card.getAttribute('aria-roledescription')).toBe('draggable');
+    expect(card.tabIndex).toBe(0);
+    expect(screen.queryByRole('button', { name: 'Drag "Auth"' })).toBeNull();
+
+    fireEvent.click(card);
+    expect(store.getState().openStepId).toBe('Auth');
+  });
+
+  it('starts dragging from the card title once pointer movement passes the threshold', async () => {
+    await mount(BIG);
+    const title = screen.getByText('Auth');
+
+    fireEvent.pointerDown(title, { button: 0, clientX: 10, clientY: 10, pointerId: 1, isPrimary: true });
+    fireEvent.pointerMove(document, { clientX: 15, clientY: 10, pointerId: 1, isPrimary: true });
+
+    await waitFor(() => expect(screen.getAllByText('Auth')).toHaveLength(2));
+    fireEvent.pointerUp(document, { clientX: 15, clientY: 10, pointerId: 1, isPrimary: true });
+    // dnd-kit deliberately keeps its click-suppression listener for 50ms after
+    // a pointer drag ends. Let it detach so this test cannot swallow the next
+    // test's unrelated click.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  });
+
+  it('still opens the inspector with Enter', async () => {
+    const { store } = await mount(BIG);
+    const card = screen.getByText('Auth').closest('button')!;
+
+    fireEvent.keyDown(card, { key: 'Enter', code: 'Enter' });
 
     expect(store.getState().openStepId).toBe('Auth');
+  });
+
+  it('does not open the inspector when Enter is pressed during a keyboard drag', async () => {
+    const { store } = await mount(BIG);
+    const card = screen.getByText('Auth').closest('button')!;
+
+    fireEvent.keyDown(card, { key: ' ', code: 'Space' });
+    await waitFor(() => expect(card.getAttribute('aria-pressed')).toBe('true'));
+    // KeyboardSensor installs its document-level drag controls on the next
+    // task after activation.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.keyDown(card, { key: 'Enter', code: 'Enter' });
+
+    expect(store.getState().openStepId).toBeNull();
   });
 
   /**
@@ -160,7 +204,10 @@ describe('the goal board', () => {
       nodes: Array.from({ length: 4 }, (_, i) => leaf(`n${i}`, { status: 'doing' })),
     });
 
-    expect(within(column('In progress')).getByText(/over 3/)).toBeTruthy();
-    expect(within(column('In progress')).getAllByRole('button', { name: /^Drag/ })).toHaveLength(4);
+    const inProgress = within(column('In progress'));
+    expect(inProgress.getByText(/over 3/)).toBeTruthy();
+    const cards = inProgress.getAllByRole('button');
+    expect(cards).toHaveLength(4);
+    expect(cards.every((card) => card.getAttribute('aria-roledescription') === 'draggable')).toBe(true);
   });
 });

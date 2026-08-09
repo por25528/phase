@@ -226,32 +226,36 @@ function Column({
 function Card({ card, onOpen }: { card: BoardCard; onOpen: (nodeId: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: card.node.id });
   return (
-    <div
+    <button
+      type="button"
       ref={setNodeRef}
       style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 1 } : undefined}
-      className={`group relative bg-panel border border-line rounded-[6px] ${isDragging ? 'opacity-40' : ''}`}
+      {...attributes}
+      {...listeners}
+      onKeyDown={(event) => {
+        // A card is still an opening button. dnd-kit's KeyboardSensor claims
+        // both Enter and Space by default, so preserve Enter for opening while
+        // delegating Space and the drag-navigation keys to the sensor.
+        if (event.key === 'Enter' && !isDragging) {
+          event.preventDefault();
+          onOpen(card.node.id);
+          return;
+        }
+        listeners?.onKeyDown?.(event);
+      }}
+      onClick={() => onOpen(card.node.id)}
+      className={`group relative w-full text-left px-[9px] py-[8px] bg-panel border border-line rounded-[6px] cursor-grab active:cursor-grabbing hover:bg-hover ${
+        isDragging ? 'opacity-40' : ''
+      }`}
     >
-      {/* The handle carries the drag attributes, not the card: the card body is
-          a button, and `role="button"` wrapped around a button swallows its
-          label. Same rule as the tree's rows. */}
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        tabIndex={-1}
-        aria-label={`Drag "${card.node.title}"`}
-        className="quiet-control absolute top-[4px] right-[4px] w-[24px] h-[24px] grid place-items-center text-faint cursor-grab active:cursor-grabbing"
+      <span
+        aria-hidden="true"
+        className="absolute top-[4px] right-[4px] w-[24px] h-[24px] grid place-items-center text-faint"
       >
         <IconGrip size={12} />
-      </button>
-      <button
-        type="button"
-        onClick={() => onOpen(card.node.id)}
-        className="w-full text-left px-[9px] py-[8px] rounded-[6px] hover:bg-hover"
-      >
-        <CardBody node={card.node} areaPath={card.areaPath} />
-      </button>
-    </div>
+      </span>
+      <CardBody node={card.node} areaPath={card.areaPath} />
+    </button>
   );
 }
 
