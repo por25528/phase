@@ -511,10 +511,13 @@ export function Goals() {
         onClose={() => setModal(null)}
         onAdd={(goal) => {
           actions.addGoals([goal]);
-          actions.showToast('Goal added');
           setModal(null);
+          // Straight into the workspace. Creation used to end on the board with
+          // a toast, which is the one place the new goal is a card among
+          // fifteen others and the least useful place to be standing when the
+          // next thing to do is break it down.
+          actions.openProject(goal.id);
         }}
-        columns={COLUMNS}
       />
       <ImportGoalModal
         open={modal === 'import'}

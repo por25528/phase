@@ -5,6 +5,7 @@ import { GoalTree } from '../../components/GoalTree';
 import { IconSparkle } from '../../components/Icons';
 import { SubtaskAiModal } from '../../components/SubtaskAiModal';
 import { findNode } from '../../lib/tree';
+import { TEMPLATES, inferGoalType } from '../../lib/goalType';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { StepPanel } from './StepPanel';
 
@@ -25,6 +26,7 @@ export function StepsTab({
   const hasSteps = g.nodes.length > 0;
   const wide = useMediaQuery('(min-width: 768px)');
   const openNode = openStepId ? findNode(g.nodes, openStepId) : null;
+  const goalType = g.type ?? inferGoalType(g.title);
 
   return (
     <section>
@@ -32,13 +34,26 @@ export function StepsTab({
           the header states `8 of 14 tasks`, and a label that repeats its own
           tab is a line of chrome between the reader and the first row.
 
-          The empty state is one sentence, not a dashed bordered card: a dashed
-          border is the app's drop-target signal, and spending it on "there is
-          nothing here yet" is how it stops meaning anything. */}
-      {!hasSteps && (
-        <p className="text-ui text-muted mb-[6px] px-[6px]">
-          Break this goal into the actions that move it forward.
-        </p>
+          The empty state is one sentence and one offer, not a dashed bordered
+          card with three buttons: a dashed border is the app's drop-target
+          signal, and spending it on "there is nothing here yet" is how it stops
+          meaning anything. The template is a SUGGESTION with its contents named
+          in the button, so accepting it is not a leap of faith — and typing in
+          the field below it is always the other route. */}
+      {!hasSteps && !isCompleted && (
+        <div className="mb-[8px] px-[6px] flex flex-wrap items-center gap-[10px]">
+          <p className="text-ui text-muted">
+            Break this goal into the actions that move it forward.
+          </p>
+          <button
+            type="button"
+            onClick={() => actions.addRootNodes(g.id, TEMPLATES[goalType].areas)}
+            title={TEMPLATES[goalType].areas.join(' · ')}
+            className="text-ui font-semibold text-accent-deep px-[9px] py-[4px] rounded-field hover:bg-accent-tint"
+          >
+            Start with {TEMPLATES[goalType].areas.join(' · ')}
+          </button>
+        </div>
       )}
 
       <div className={isCompleted ? 'opacity-70 pointer-events-none' : ''} aria-disabled={isCompleted}>

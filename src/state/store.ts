@@ -1042,6 +1042,27 @@ export const actions = {
     setAndPersist({ goals });
   },
 
+  /**
+   * Several root tasks at once — how a template lands.
+   *
+   * One write rather than a loop over `addRootNode`: each of those persists,
+   * so accepting a five-area template would be five writes and five renders of
+   * a growing tree. Not undoable, deliberately, and for the same reason
+   * `addRootNode` is not: adding is the one edit that discards nothing, and
+   * every row it creates is a click away from being deleted.
+   */
+  addRootNodes(goalId: string, titles: string[]) {
+    if (!isActiveGoal(goalId)) return;
+    const clean = titles.map((t) => t.trim()).filter(Boolean);
+    if (clean.length === 0) return;
+    const goals = state.goals.map((g) =>
+      g.id === goalId
+        ? { ...g, nodes: [...g.nodes, ...clean.map((title) => ({ id: uid(), title }))] }
+        : g
+    );
+    setAndPersist({ goals });
+  },
+
   renameNode(nodeId: string, title: string) {
     // Deep clone for the same reason as `addChild`: the shallow spread shared
     // every node object with live state, so this wrote the new title into the

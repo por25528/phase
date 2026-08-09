@@ -70,6 +70,16 @@ export interface Goal {
   nodes: GoalNode[];
   notes?: string;           // free-form working notes — rides along in the goal object
   column?: number;          // commitment-horizon column, 0 = Now … 3 = Someday. Absent ⇒ 0.
+  /**
+   * Study / Project / General — a TEMPLATE, not a second object model. All
+   * three share the same Areas, Tasks and schedule; the type only decides what
+   * an empty workspace offers on the first visit.
+   *
+   * Optional, and read by nothing except those suggestions: a goal that
+   * predates types, or whose owner declined one, loses a starting point and no
+   * behaviour.
+   */
+  type?: 'study' | 'project' | 'general';
   completedAt?: string;     // 'YYYY-MM-DD' — set when the project is explicitly archived. Absent ⇒ active.
 }
 
