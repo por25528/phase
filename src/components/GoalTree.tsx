@@ -26,6 +26,8 @@ import { LogTimeControl } from './LogTimeControl';
 import { loggedForNode } from '../lib/actuals';
 import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
 import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
+import { scheduleCell } from '../lib/rowSchedule';
+import { todayStr } from '../lib/dates';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -432,6 +434,7 @@ function GoalTreeNode({
   }, []);
   const hasKids = Boolean(n.children && n.children.length > 0);
   const isOpen = hasKids && expanded.has(n.id);
+  const when = scheduleCell(n, todayStr());
   const ind = depth * 22;
 
   const {
@@ -795,6 +798,21 @@ function GoalTreeNode({
           <span className="text-meta text-warn flex-shrink-0">blocked</span>
         )}
 
+        {/* WHEN — one cell, fixed width, so the column is a column.
+            `GoalNode` carries `plannedStartMin`, `plannedDay`, `plannedWeek`
+            and `deadline`, and the row used to show none of them; four
+            separate cells would be four columns of mostly-empty metadata, so
+            `scheduleCell` picks the most specific one. The placeholder keeps
+            the estimate beside it aligned across rows that have no date. */}
+        <span
+          className={`hidden sm:block w-[92px] flex-none text-right text-meta tabular-nums truncate ${
+            when?.tone === 'warn' ? 'text-warn' : 'text-muted'
+          }`}
+          title={when?.hint}
+        >
+          {when?.text ?? ''}
+        </span>
+
         {/* Estimate — LEAVES only, matching `setNodeEstimate`'s own guard: a
             container's duration is the sum of its children's, not a figure of
             its own, and `addChild` deletes `estimateMin` when a leaf becomes a
@@ -805,13 +823,15 @@ function GoalTreeNode({
             sole host, and it shows only unplaced work from Now/Next projects.
             So a Later project's steps, and anything already on the calendar,
             had no estimate route at all. */}
-        {!hasKids && (
-          <EstimateControl
-            minutes={n.estimateMin}
-            label={n.title}
-            onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
-          />
-        )}
+        <span className="w-[56px] flex-none flex justify-end">
+          {!hasKids && (
+            <EstimateControl
+              minutes={n.estimateMin}
+              label={n.title}
+              onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+            />
+          )}
+        </span>
 
         {/* Actual time, beside the estimate that predicted it — the other half
             of the loop. Explicit only: nothing infers minutes from a scheduled

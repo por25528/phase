@@ -158,3 +158,26 @@ describe('a step says where it stands', () => {
     expect(screen.queryByRole('button', { name: 'Change status of "Group"' })).toBeNull();
   });
 });
+
+/**
+ * The row now says WHEN, in a fixed column beside the estimate. A node has
+ * carried `plannedStartMin`, `plannedDay`, `plannedWeek` and `deadline` for a
+ * long time with nowhere on the row to show any of them.
+ */
+describe('the schedule column', () => {
+  it('names the day a task is placed on', async () => {
+    const { todayStr } = await import('../lib/dates');
+    await mountTree([{ id: 'a', title: 'Problems 1–15', plannedWeek: '2020-01-06', plannedDay: todayStr(), plannedStartMin: 840 }]);
+    expect(screen.getByText(/^Today /)).toBeTruthy();
+  });
+
+  it('warns when the day it was placed on has been and gone', async () => {
+    await mountTree([{ id: 'a', title: 'Slipped', plannedWeek: '2020-01-06', plannedDay: '2020-01-07' }]);
+    expect(screen.getByText('Jan 7').className).toContain('text-warn');
+  });
+
+  it('falls through to a deadline when nothing is committed', async () => {
+    await mountTree([{ id: 'a', title: 'Exam', deadline: '2099-08-24' }]);
+    expect(screen.getByText('Due Aug 24')).toBeTruthy();
+  });
+});
