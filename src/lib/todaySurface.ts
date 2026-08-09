@@ -151,3 +151,24 @@ export function attentionItems(
 
   return out.slice(0, MAX_ATTENTION);
 }
+
+/**
+ * Why this row is on today's list at all.
+ *
+ * Every item here arrived through a different door — a deadline, a day it was
+ * placed on, a week it was committed to — and the surface showed them as one
+ * undifferentiated list. "Show why an item is surfaced" is the difference
+ * between a list you trust and a list you re-derive.
+ *
+ * Null where the row already says it: something placed at 14:00 shows 14:00,
+ * and a chip reading "placed today" beside it is a word for a fact already on
+ * screen.
+ */
+export function surfaceReason(item: DailyWorkItem): string | null {
+  switch (item.source) {
+    case 'due': return 'Due today';
+    case 'this-week': return 'This week';
+    case 'carry-over': return 'Carried over';
+    default: return null;
+  }
+}

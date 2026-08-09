@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode } from '../db/types';
 import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
-import { MAX_ATTENTION, attentionItems, nowFocus } from './todaySurface';
+import { MAX_ATTENTION, attentionItems, nowFocus, surfaceReason } from './todaySurface';
 
 const TODAY = '2026-08-12';
 
@@ -150,5 +150,24 @@ describe('attentionItems', () => {
     expect(out).toHaveLength(MAX_ATTENTION);
     // The thing that already slipped outranks the thing that might.
     expect(out[0].kind).toBe('carry-over');
+  });
+});
+
+describe('surfaceReason', () => {
+  const at = (source: DailyWorkItem['source']) => surfaceReason(item({ source }));
+
+  it('names the door each row came through', () => {
+    expect(at('due')).toBe('Due today');
+    expect(at('this-week')).toBe('This week');
+    expect(at('carry-over')).toBe('Carried over');
+  });
+
+  /**
+   * A block at 14:00 shows 14:00. A chip beside it reading "placed today" is a
+   * word for a fact already on screen.
+   */
+  it('says nothing where the row already says it', () => {
+    expect(at('pinned-today')).toBeNull();
+    expect(at('task-today')).toBeNull();
   });
 });

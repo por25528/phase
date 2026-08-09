@@ -3,7 +3,7 @@ import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
-import { attentionItems, nowFocus } from '../lib/todaySurface';
+import { attentionItems, nowFocus, surfaceReason } from '../lib/todaySurface';
 import { proposalMinutes, proposeReplan, slippedWork } from '../lib/replan';
 import { ReplanPreview } from './today/ReplanPreview';
 import { clockLabel } from '../lib/clock';
@@ -182,6 +182,12 @@ export function Today() {
                       <span className="block truncate text-meta text-muted">{item.goalTitle}</span>
                     )}
                   </button>
+                  {/* Why this row is here at all. Absent where the row already
+                      says it — a block at 14:00 does not need a chip reading
+                      "placed today". */}
+                  {surfaceReason(item) && (
+                    <span className="flex-none text-meta text-muted">{surfaceReason(item)}</span>
+                  )}
                   {item.estimateMin !== undefined && (
                     <span className="flex-none text-meta text-muted tabular-nums">
                       {fmtMinutes(item.estimateMin)}
