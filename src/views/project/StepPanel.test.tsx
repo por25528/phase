@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Goal, GoalNode, Session } from '../../db/types';
+import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -10,7 +10,7 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async () => []),
+  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
@@ -315,18 +315,44 @@ describe('StepPanel', () => {
     expect(screen.getByLabelText('Span end')).toBeTruthy();
   });
 
-  it('shows a planned week and an Unschedule button', async () => {
+  it('shows where a planned task sits, and offers to clear it', async () => {
     await mountPanel(plannedLeaf);
 
-    expect(screen.getByText(/Plan/i)).toBeTruthy();
-    expect(screen.getByText(/Jul 27/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Unschedule' })).toBeTruthy();
+    expect(screen.getByText(/Schedule/i)).toBeTruthy();
+    // The DAY and the TIME, not the week it belongs to: "week of Jul 27" was
+    // the coarsest true thing the panel could say about a block sitting at
+    // 09:00 on the Tuesday.
+    expect(screen.getByText(/Jul 28/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();
   });
 
-  it('explains when a step is not planned', async () => {
-    await mountPanel(unplannedLeaf);
+  /**
+   * "Not planned — use the Plan view to commit this to a week" was a dead end:
+   * the inspector knew the answer and sent the user to another surface to act
+   * on it, for the single most common thing to do to a task you just opened.
+   */
+  it('schedules an unplanned task from here rather than pointing elsewhere', async () => {
+    // A Monday inside the mocked availability window, so the slot search has
+    // somewhere to put it.
+    vi.setSystemTime(new Date(2026, 6, 27, 8));
+    dbMocks.loadAvailability.mockResolvedValueOnce(
+      [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 })),
+    );
+    const store = await mountPanel(unplannedLeaf);
 
-    expect(screen.getByText('Not planned — use the Plan view to commit this to a week.')).toBeTruthy();
+    expect(screen.queryByText(/use the Plan view/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }));
+
+    const node = store.getState().goals[0].nodes[0];
+    expect(node.plannedDay).toBe('2026-07-27');
+    expect(node.plannedStartMin).toBeTypeOf('number');
+  });
+
+  it('says a group is scheduled through its tasks, and offers no buttons', async () => {
+    await mountPanel(containerNode);
+
+    expect(screen.getByText('A group is scheduled through its tasks.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Today' })).toBeNull();
   });
 
   it('shows estimate and log-time controls for a leaf', async () => {

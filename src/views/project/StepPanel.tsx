@@ -10,8 +10,9 @@ import { NoteEditor } from '../../components/NoteEditor';
 import { loggedForNode } from '../../lib/actuals';
 import { NOTE_SAVE_DEBOUNCE_MS, shouldFlushNoteSave } from '../../lib/noteAutosave';
 import { nodePct } from '../../lib/pct';
-import { fmtD } from '../../lib/dates';
+import { addDays, fmtD, todayStr } from '../../lib/dates';
 import { containerStatus, STATUS_WORD, stepStatus } from '../../lib/status';
+import { clockLabel } from '../../lib/clock';
 import type { StepStatus } from '../../db/types';
 
 const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
@@ -256,24 +257,57 @@ export function StepPanel({ goal, node, actions }: {
       </section>
 
       <section className="mt-[22px]">
-        <SectionLabel>Plan</SectionLabel>
+        <SectionLabel>Schedule</SectionLabel>
+        {/*
+          This used to read "Not planned — use the Plan view to commit this to
+          a week", which is a dead end: the inspector knew the answer and sent
+          the user to another surface to act on it. Scheduling is the single
+          most common thing to do to a task you have just opened.
+
+          `aimMin: 0` means "the earliest gap that fits", the same rule
+          `replanNode` uses. The store refuses with a toast when the day has no
+          room, so a full day says so rather than silently landing the block
+          somewhere else.
+        */}
         {node.plannedWeek ? (
-          <div className="flex items-center gap-[8px]">
+          <div className="flex flex-wrap items-center gap-[8px]">
             <span className="text-ui text-ink-soft tabular-nums">
-              Week of {fmtD(node.plannedWeek)}
-              {node.plannedDay ? ` · ${fmtD(node.plannedDay)}` : ''}
+              {node.plannedDay
+                ? `${fmtD(node.plannedDay)}${node.plannedStartMin === undefined ? '' : ` · ${clockLabel(node.plannedStartMin)}`}`
+                : `Week of ${fmtD(node.plannedWeek)} — not placed on a day`}
             </span>
             <button
               type="button"
               onClick={() => actions.unscheduleNode(goal.id, node.id)}
               className="text-meta font-semibold text-muted px-[6px] py-[3px] min-h-[24px] rounded-field hover:bg-hover hover:text-ink"
             >
-              Unschedule
+              Clear
+            </button>
+          </div>
+        ) : isLeaf ? (
+          <div className="flex flex-wrap items-center gap-[5px]">
+            {([['Today', 0], ['Tomorrow', 1]] as const).map(([label, offset]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => actions.scheduleNode(goal.id, node.id, addDays(todayStr(), offset), 0)}
+                className="text-meta font-semibold text-accent-deep px-[8px] py-[4px] rounded-field hover:bg-accent-tint"
+              >
+                {label}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => actions.replanNode(goal.id, node.id)}
+              title="The first free slot in the next two weeks"
+              className="text-meta font-medium text-ink-soft px-[8px] py-[4px] rounded-field border border-line-2 hover:bg-hover"
+            >
+              Next free slot
             </button>
           </div>
         ) : (
           <p className="m-0 text-ui text-muted">
-            Not planned — use the Plan view to commit this to a week.
+            A group is scheduled through its tasks.
           </p>
         )}
       </section>
