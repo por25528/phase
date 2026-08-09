@@ -10,6 +10,9 @@ import { clockLabel } from '../lib/clock';
 import { fmtMinutes } from '../lib/effort';
 import { dateKicker, greeting } from '../lib/today';
 import { useLocalDate } from '../hooks/useLocalDate';
+import { dayLabel, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
+import { dueChip } from '../lib/backlog';
+import { weekOf } from '../lib/plan';
 
 /**
  * What to do now.
@@ -20,12 +23,13 @@ import { useLocalDate } from '../hooks/useLocalDate';
  * The Plan grid was the closest thing to an execution surface, and at 10:10 on
  * a Tuesday it showed seven days when two blocks mattered.
  *
- * Three zones, in this order, and nothing else: the one thing in front of you,
- * the rest of the day, and at most three exceptions. No portfolio analytics, no
- * habit configuration, no dashboard cards — a surface that answers one question
- * stops answering it the moment it also answers nine others.
+ * Four zones, in this order, and nothing else: the one thing in front of you,
+ * the rest of the day, what to do with the time still free, and at most three
+ * exceptions. No portfolio analytics, no habit configuration, no dashboard
+ * cards — a surface that answers one question stops answering it the moment it
+ * also answers nine others.
  */
-export function Today() {
+export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { goals, tasks, availability, allDayBlocks, actions } = useAppStore();
   const today = useLocalDate();
   const [nowMinute, setNowMinute] = useState(() => {
@@ -64,9 +68,32 @@ export function Today() {
   const divider = nowDividerIndex(open, nowMinute);
   const doneCount = sections.completedToday.length;
 
+  // What to do with the time that is still free — the answer this surface used
+  // to withhold on exactly the day it mattered most.
+  const offer = useMemo(
+    () => todayPlan({
+      goals, tasks, availability, blocks: [], allDayBlocks,
+      today, week: weekOf(today), now: { date: today, minute: nowMinute },
+    }),
+    [goals, tasks, availability, allDayBlocks, today, nowMinute],
+  );
+
   function complete(item: DailyWorkItem): void {
     if (item.kind === 'task') actions.toggleTask(item.id);
     else actions.toggleLeaf(item.id);
+  }
+
+  /**
+   * Book a proposed row. Both actions resolve the slot themselves and toast
+   * when the item will not fit contiguously, so there is no optimistic UI here
+   * and no second way to say "no room".
+   */
+  function place(row: ProposalRow, date: string, isToday: boolean): void {
+    // Aim at the clock on today so the block lands at the next usable minute;
+    // at 0 on a later day, which `resolveSlot` clamps to the first gap.
+    const aim = isToday ? nowMinute : 0;
+    if (row.kind === 'task') actions.scheduleTask(row.id, date, aim);
+    else if (row.goalId) actions.scheduleNode(row.goalId, row.id, date, aim);
   }
 
   function openItem(item: DailyWorkItem): void {
@@ -105,7 +132,11 @@ export function Today() {
         </div>
       )}
 
-      {/* ── Now ── */}
+      {/* ── Now ──
+          Silent when there is nothing on today AND an offer below is about to
+          say what to do with the day. Two messages both saying "nothing" is how
+          this page became apologetic in the first place. */}
+      {(focus || offer.kind !== 'offer') && (
       <section aria-label="Now" className="mb-[22px]">
         {focus ? (
           <div className="border border-line-2 rounded-card p-[14px] bg-panel">
@@ -151,9 +182,14 @@ export function Today() {
           </p>
         )}
       </section>
+      )}
 
-      {/* ── Today's plan ── */}
-      {open.length > 1 && (
+      {/* ── Today's plan ──
+          Hidden only when the Now card is ALREADY showing the day's one open
+          item. `nowFocus` deliberately returns null once everything timed is
+          behind us, so a bare `> 1` dropped a single unticked 10:00 standup off
+          the page entirely at six in the evening. */}
+      {open.length > (focus ? 1 : 0) && (
         <section aria-label="Today’s plan" className="mb-[22px]">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
           <ul className="border-t border-line">
@@ -196,6 +232,65 @@ export function Today() {
                 </div>
               </li>
             ))}
+          </ul>
+        </section>
+      )}
+
+      {/* ── Free time ──
+          One row per project, never a project's whole queue: this is a choice
+          between commitments, and the moment it lists everything open it is a
+          second backlog rail on a page that is not the backlog. */}
+      {offer.kind === 'no-hours' && (
+        <section aria-label="Free time" className="mb-[22px]">
+          <div className="px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
+            {/* "Nobody told me when you work" and "you are out of time" are
+                different sentences, and only one of them is true here. */}
+            No working hours set, so Phase can’t offer you a time.{' '}
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="font-semibold text-accent hover:text-accent-deep"
+            >
+              Set your working hours
+            </button>
+          </div>
+        </section>
+      )}
+
+      {offer.kind === 'offer' && (
+        <section aria-label="Free time" className="mb-[22px]">
+          <h2 className="text-meta font-semibold text-muted mb-[6px]">
+            {offerHeading(offer, today)}
+          </h2>
+          <ul className="border-t border-line">
+            {offer.rows.map((row) => {
+              const chip = dueChip(row.due, today);
+              return (
+                <li key={row.key}>
+                  <button
+                    type="button"
+                    onClick={() => place(row, offer.date, offer.today)}
+                    aria-label={`Plan “${row.title}” ${dayLabel(offer.date, today)}`}
+                    className="w-full text-left flex items-center gap-[9px] py-[7px] border-b border-line hover:bg-hover"
+                  >
+                    <span className="flex-1 min-w-0">
+                      <span className="block truncate text-ui text-ink-soft">{row.title}</span>
+                      <span className="block truncate text-meta text-muted">{row.goalTitle}</span>
+                    </span>
+                    {chip && (
+                      <span className={`flex-none text-meta ${chip.overdue ? 'text-warn' : 'text-muted'}`}>
+                        {chip.text}
+                      </span>
+                    )}
+                    {row.estimateMin !== undefined && (
+                      <span className="flex-none text-meta text-muted tabular-nums">
+                        {fmtMinutes(row.estimateMin)}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

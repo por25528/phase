@@ -118,6 +118,24 @@ export const DAY_START_MIN = 0;
 export const DAY_END_MIN = MINUTES_PER_DAY;
 export const DAY_HEIGHT_PX = (DAY_END_MIN - DAY_START_MIN) * PX_PER_MINUTE;
 
+/**
+ * How tall the calendar region is — the window onto the time, not the time.
+ *
+ * On the week grid this is the scroller's own height: the sticky day headings
+ * live INSIDE this box, eating into it, exactly as they do in every calendar,
+ * so the visible hour grid is shorter than 720px by whatever the heading row
+ * costs. The content behind them is `DAY_HEIGHT_PX` tall and reachable by
+ * scrolling. The sidebar bounds itself to this region, whatever it nets out to
+ * — see the rail note in CLAUDE.md.
+ *
+ * The MONTH grid takes the same figure, and must: its rows are `1fr` of an
+ * `flex-1` box, so with no height to divide, every cell collapses to the height
+ * of its date number and the month reads as a table of numbers rather than a
+ * calendar. One constant so the two modes occupy the same rectangle and the
+ * page does not jump when the toggle is thrown.
+ */
+export const GRID_VIEWPORT_PX = 720;
+
 /** Vertical offset of `minute` within the day's content box, in pixels. */
 export function minuteToPx(minute: number): number {
   return (minute - DAY_START_MIN) * PX_PER_MINUTE;

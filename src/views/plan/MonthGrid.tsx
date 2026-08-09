@@ -1,4 +1,5 @@
 import { monthGrid, ymOf } from '../../lib/calendar';
+import { GRID_VIEWPORT_PX } from '../../lib/grid';
 import type { ScheduledItem } from '../../lib/scheduled';
 import { MonthCell } from './MonthCell';
 
@@ -16,6 +17,12 @@ const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
  * Row count comes from `weeks.length` rather than a fixed 6, and the rows are
  * `minmax(0, 1fr)`: a 5-row month and a 6-row month both fill the same space
  * instead of one leaving a gap and the other overflowing.
+ *
+ * That space is `GRID_VIEWPORT_PX`, declared HERE and not inherited. `1fr`
+ * divides a height; a `flex-1` box inside an auto-height parent has none to
+ * divide, so every row collapsed to its date number and a month of work drew
+ * as six lines of digits. It is the same figure the week grid's scroller uses,
+ * so the two modes occupy one rectangle and the toggle does not move the page.
  */
 export function MonthGrid({
   ym, today, itemsByDay, isPastDay, onCreate, onOpenDay,
@@ -31,7 +38,11 @@ export function MonthGrid({
   const weeks = monthGrid(ym);
 
   return (
-    <div className="flex flex-col min-h-0 border-r border-b border-line-soft">
+    <div
+      data-testid="month-grid"
+      className="flex flex-col min-h-0 border-r border-b border-line-soft"
+      style={{ height: `${GRID_VIEWPORT_PX}px` }}
+    >
       <div className="grid grid-cols-7 flex-none">
         {DOW.map((d) => (
           <div

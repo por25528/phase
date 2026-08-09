@@ -156,11 +156,18 @@ describe('the three views render against a populated store', () => {
   it('Today leads with one thing and stays out of the way otherwise', async () => {
     await readyStore();
     const { Today } = await import('./Today');
-    const html = renderToStaticMarkup(createElement(Today));
+    const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
 
     expect(html).not.toContain('Loading…');
-    // The three zones, and nothing resembling a dashboard.
-    expect(html).toContain('aria-label="Now"');
+    /*
+     * The day's one open commitment is on the page — as the Now card in the
+     * morning, as a row in the rest of the day by the evening. Which of the two
+     * depends on the wall clock this suite runs at, and pinning `Now` meant
+     * asserting that an evening render still claims to have a "now": before the
+     * free-time offer existed, that zone passed this test by printing "Nothing
+     * committed to today" over an unticked 10:00 standup.
+     */
+    expect(html).toContain('Standup');
     expect(html).not.toContain('Habits');
     expect(html).not.toContain('Working hours');
   });
@@ -258,10 +265,24 @@ describe('the three views render against a populated store', () => {
     });
 
     it('Today says what to do about an empty account rather than showing a blank page', async () => {
+      // `readyStore` here was a copy-paste: it asserted the empty-account
+      // sentence against a POPULATED account, which is precisely the bug the
+      // free-time offer exists to fix — three live projects, and Today saying
+      // there is nothing to do.
+      await emptyStore();
+      const { Today } = await import('./Today');
+      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+      expect(html).toContain('Nothing committed to today');
+    });
+
+    it('offers work to place when projects exist but the day is empty', async () => {
       await readyStore();
       const { Today } = await import('./Today');
-      const html = renderToStaticMarkup(createElement(Today));
-      expect(html).toContain('Nothing committed to today');
+      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+
+      expect(html).toContain('aria-label="Free time"');
+      expect(html).toContain('Investor deck');       // one project's next action
+      expect(html).not.toContain('Nothing committed to today');
     });
 
     it('Projects and Timeline render with nothing in them', async () => {

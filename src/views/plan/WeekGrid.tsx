@@ -3,7 +3,7 @@ import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
 import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
 import { windowForDate } from '../../lib/availability';
-import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
+import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, GRID_VIEWPORT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
 import type { CanvasSpan } from '../../lib/canvasCreate';
 import { DayColumn } from './DayColumn';
@@ -11,18 +11,6 @@ import { DayColumn } from './DayColumn';
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 import { clockLabel } from '../../lib/clock';
-
-/**
- * How tall the scroller itself is — the window onto the day, not the day.
- *
- * 720px is the scroller's own height: the sticky day headings now live INSIDE
- * this box, eating into it, exactly as they do in every calendar, so the
- * visible hour grid is shorter than 720px by whatever the heading row costs.
- * The sidebar bounds itself to this region, whatever it nets out to — see
- * the rail note in CLAUDE.md. The content behind the headings is
- * `DAY_HEIGHT_PX` tall and reachable by scrolling.
- */
-export const GRID_VIEWPORT_PX = 720;
 
 const AXIS_WIDTH_PX = 46;
 

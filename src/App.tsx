@@ -421,7 +421,7 @@ export function App() {
           </div>
         ) : view === 'today' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[28px]">
-            <Today />
+            <Today onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         ) : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[24px]">
