@@ -1,13 +1,24 @@
 import type { Goal, Task } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { walkLeaves } from './plan';
-import { durationOf, type PlacedSpan } from './slot';
+import { type PlacedSpan } from './slot';
+import { blocksOf, blocksOn } from './blocks';
 import { isDone } from './status';
 
 /** One block on the grid, from either kind of commitment. */
 export interface ScheduledItem {
   kind: 'step' | 'task';
   id: string;              // nodeId or taskId
+  /**
+   * WHICH sitting this is.
+   *
+   * A task can have several, so `id` stopped being unique per drawn block the
+   * moment blocks became a list — it is no longer a usable React key, and it is
+   * no longer the right thing to exclude when repositioning one sitting, which
+   * must not be allowed to collide with itself but must still respect its
+   * siblings.
+   */
+  blockId: string;
   goalId: string | null;
   goalTitle: string;       // '' for a task with no project
   title: string;
@@ -21,10 +32,13 @@ export interface ScheduledItem {
 /**
  * Everything drawn on `date`, in start order.
  *
- * An item counts as scheduled only when it has BOTH a day and a start minute —
- * the invariant from the spec. A half-state is skipped rather than guessed at,
- * so a bug that writes one field without the other stays visible instead of
- * silently rendering at midnight.
+ * A leaf or task contributes one item PER SITTING on that day — so a task split
+ * into a morning hour and an afternoon hour draws twice, from one task, without
+ * being duplicated anywhere it is counted.
+ *
+ * A block's height comes from its own `minutes`, not from the estimate. That is
+ * the difference the split bought: resizing one sitting changes that sitting,
+ * and two sittings of a three-hour task are not two three-hour bars.
  */
 export function scheduledOn(goals: Goal[], tasks: Task[], date: string): ScheduledItem[] {
   const out: ScheduledItem[] = [];
@@ -32,25 +46,26 @@ export function scheduledOn(goals: Goal[], tasks: Task[], date: string): Schedul
   for (const g of goals) {
     if (g.completedAt) continue; // archived projects never surface commitments
     walkLeaves(g, (n) => {
-      if (n.plannedDay !== date || n.plannedStartMin === undefined) return;
-      const duration = durationOf(n.estimateMin);
-      out.push({
-        kind: 'step', id: n.id, goalId: g.id, goalTitle: g.title, title: n.title,
-        done: isDone(n), date, startMin: n.plannedStartMin,
-        endMin: n.plannedStartMin + duration,
-        estimated: normalizeEstimate(n.estimateMin) !== undefined,
-      });
+      for (const b of blocksOn(n, date)) {
+        out.push({
+          kind: 'step', id: n.id, blockId: b.id, goalId: g.id, goalTitle: g.title,
+          title: n.title, done: isDone(n), date, startMin: b.startMin,
+          endMin: b.startMin + b.minutes,
+          estimated: normalizeEstimate(n.estimateMin) !== undefined,
+        });
+      }
     });
   }
 
   for (const t of tasks) {
-    if (t.date !== date || t.startMin === undefined) continue;
-    const duration = durationOf(t.estimateMin);
-    out.push({
-      kind: 'task', id: t.id, goalId: t.goalId, goalTitle: '', title: t.title,
-      done: t.done, date, startMin: t.startMin, endMin: t.startMin + duration,
-      estimated: normalizeEstimate(t.estimateMin) !== undefined,
-    });
+    for (const b of blocksOn(t, date)) {
+      out.push({
+        kind: 'task', id: t.id, blockId: b.id, goalId: t.goalId, goalTitle: '',
+        title: t.title, done: t.done, date, startMin: b.startMin,
+        endMin: b.startMin + b.minutes,
+        estimated: normalizeEstimate(t.estimateMin) !== undefined,
+      });
+    }
   }
 
   return out.sort((a, b) => a.startMin - b.startMin || a.title.localeCompare(b.title));
@@ -80,29 +95,30 @@ export function scheduledByDate(
   for (const g of goals) {
     if (g.completedAt) continue; // archived projects never surface commitments
     walkLeaves(g, (n) => {
-      if (n.plannedDay === undefined || n.plannedStartMin === undefined) return;
-      const bucket = out.get(n.plannedDay);
-      if (!bucket) return;
-      const duration = durationOf(n.estimateMin);
-      bucket.push({
-        kind: 'step', id: n.id, goalId: g.id, goalTitle: g.title, title: n.title,
-        done: isDone(n), date: n.plannedDay, startMin: n.plannedStartMin,
-        endMin: n.plannedStartMin + duration,
-        estimated: normalizeEstimate(n.estimateMin) !== undefined,
-      });
+      for (const b of blocksOf(n)) {
+        const bucket = out.get(b.date);
+        if (!bucket) continue;
+        bucket.push({
+          kind: 'step', id: n.id, blockId: b.id, goalId: g.id, goalTitle: g.title,
+          title: n.title, done: isDone(n), date: b.date, startMin: b.startMin,
+          endMin: b.startMin + b.minutes,
+          estimated: normalizeEstimate(n.estimateMin) !== undefined,
+        });
+      }
     });
   }
 
   for (const t of tasks) {
-    if (t.date === undefined || t.startMin === undefined) continue;
-    const bucket = out.get(t.date);
-    if (!bucket) continue;
-    const duration = durationOf(t.estimateMin);
-    bucket.push({
-      kind: 'task', id: t.id, goalId: t.goalId, goalTitle: '', title: t.title,
-      done: t.done, date: t.date, startMin: t.startMin, endMin: t.startMin + duration,
-      estimated: normalizeEstimate(t.estimateMin) !== undefined,
-    });
+    for (const b of blocksOf(t)) {
+      const bucket = out.get(b.date);
+      if (!bucket) continue;
+      bucket.push({
+        kind: 'task', id: t.id, blockId: b.id, goalId: t.goalId, goalTitle: '',
+        title: t.title, done: t.done, date: b.date, startMin: b.startMin,
+        endMin: b.startMin + b.minutes,
+        estimated: normalizeEstimate(t.estimateMin) !== undefined,
+      });
+    }
   }
 
   for (const bucket of out.values()) {
@@ -114,17 +130,25 @@ export function scheduledByDate(
 /**
  * The occupied spans on `date`, for `resolveSlot`'s `placed` argument.
  *
- * `excludeId` drops one item. Moving an already-placed block MUST exclude
- * itself, or it collides with its own current position and can never be
- * repositioned inside the gap it already occupies.
+ * `exclude` drops SITTINGS, by block id — never by task id. The distinction
+ * carries two different intents:
+ *
+ * - Moving one bar excludes just that bar, or it collides with its own current
+ *   position and can never be repositioned inside the gap it already occupies.
+ *   Its task's OTHER sittings stay in, because they are real occupancy it has
+ *   to work around.
+ * - REPLACING a task's placement excludes all of them, because every one is
+ *   about to be removed — leaving them in makes the task collide with the self
+ *   it is in the middle of vacating, and the drop slides past its own aim.
  */
 export function spansOn(
   goals: Goal[],
   tasks: Task[],
   date: string,
-  excludeId?: string,
+  exclude?: string | ReadonlySet<string>,
 ): PlacedSpan[] {
+  const drop = typeof exclude === 'string' ? new Set([exclude]) : exclude;
   return scheduledOn(goals, tasks, date)
-    .filter((i) => i.id !== excludeId)
+    .filter((i) => !drop?.has(i.blockId))
     .map((i) => ({ startMin: i.startMin, endMin: i.endMin }));
 }

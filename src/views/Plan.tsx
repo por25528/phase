@@ -461,8 +461,8 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
         actions.showToast('No working hours on that day.');
         return;
       }
-      if (data.kind === 'task') actions.scheduleTask(data.id, date, dayWindow.startMin);
-      else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, dayWindow.startMin);
+      if (data.kind === 'task') actions.scheduleTask(data.id, date, dayWindow.startMin, { blockId: data.blockId });
+      else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, dayWindow.startMin, { blockId: data.blockId });
       return;
     }
 
@@ -515,8 +515,13 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
       gridOffsetPx: gridRef.current?.offsetTop ?? 0,
     });
 
-    if (data.kind === 'task') actions.scheduleTask(data.id, date, aim);
-    else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim);
+    /*
+     * `blockId` is set only when an existing bar is being dragged, so the drop
+     * MOVES that sitting. A row from the rail has none, and placing it replaces
+     * whatever the task had — "put this here", not "and also here".
+     */
+    if (data.kind === 'task') actions.scheduleTask(data.id, date, aim, { blockId: data.blockId });
+    else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim, { blockId: data.blockId });
   }
 
   if (hydration !== 'ready') {
@@ -654,9 +659,11 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
                 allDayBlocks={allDayBlocks}
                 readOnly={isPast}
                 reveal={revealItem}
-                onRemove={(kind, id, goalId) => {
-                  if (kind === 'task') actions.unscheduleTask(id);
-                  else if (goalId) actions.unscheduleNode(goalId, id);
+                onRemove={(kind, id, goalId, blockId) => {
+                  // The SITTING comes off, not the task: a four-hour task sat
+                  // twice must not lose Thursday because Tuesday was cancelled.
+                  if (kind === 'task') actions.unscheduleTask(id, blockId);
+                  else if (goalId) actions.unscheduleNode(goalId, id, blockId);
                 }}
                 // Fires on past weeks too: `readOnly` above stops history being
                 // rescheduled, not recorded. See DayBlocks' `readOnly` note.
@@ -664,9 +671,11 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
                   if (kind === 'task') actions.toggleTask(id);
                   else actions.toggleLeaf(id);
                 }}
-                onResize={(kind, id, minutes) => {
-                  if (kind === 'task') actions.resizeTask(id, minutes);
-                  else actions.resizeNode(id, minutes);
+                onResize={(kind, id, blockId, minutes) => {
+                  // Resizing a bar changes THAT sitting's length, never the
+                  // task's estimate — which is what it used to write.
+                  if (kind === 'task') actions.resizeTask(id, blockId, minutes);
+                  else actions.resizeNode(id, blockId, minutes);
                 }}
               />
               {draft?.date === date && (

@@ -36,7 +36,7 @@ describe('sampleProject', () => {
     const backlog: string[] = [];
     const walk = (nodes: typeof g.nodes) => nodes.forEach((n) => {
       if (n.children) walk(n.children);
-      else if (!isDone(n) && n.plannedWeek === weekOf(TODAY) && n.plannedDay === undefined && n.plannedStartMin === undefined) {
+      else if (!isDone(n) && n.plannedWeek === weekOf(TODAY) && (n.blocks?.length ?? 0) === 0) {
         backlog.push(n.id);
       }
     });

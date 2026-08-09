@@ -1,4 +1,16 @@
 import type { AvailabilityWindow, Goal, GoalNode, Task } from '../db/types';
+
+/**
+ * The pre-`WorkBlock` shape, spelled out.
+ *
+ * This migration repairs data written when a leaf held ONE placement in
+ * `plannedDay` + `plannedStartMin`, and it runs BEFORE `migrateWorkBlocks`
+ * moves that pair into `blocks`. The fields are gone from `GoalNode`/`Task`, so
+ * reading them requires admitting they were once there — the same deliberate
+ * arrangement `migrateNodeStatus` has with the legacy `done` boolean.
+ */
+export type LegacyNode = GoalNode & { plannedDay?: string; plannedStartMin?: number };
+export type LegacyTask = Task & { startMin?: number };
 import { windowForDate } from './availability';
 import { walkLeaves, weekOf } from './plan';
 import { durationOf, resolveSlot, NO_PAST_LIMIT, type PlacedSpan } from './slot';
@@ -16,7 +28,7 @@ export interface MigrationReport {
  * (leaves) / `startMin` (tasks) is never present without a day — see db/types.ts
  * — so every path that returns an item to the sidebar must drop both fields in
  * the same step or it leaves the half-state the invariant forbids. */
-function clearNodePlan(n: GoalNode): void {
+function clearNodePlan(n: LegacyNode): void {
   delete n.plannedWeek;
   delete n.plannedDay;
   delete n.plannedStartMin;
@@ -84,7 +96,8 @@ export function migrateSlots(
     const archived = !!g.completedAt;
     const map = archived ? archivedOccupied : occupied;
 
-    walkLeaves(g, (n) => {
+    walkLeaves(g, (raw) => {
+      const n = raw as LegacyNode;
       if (isDone(n) || !n.plannedWeek) return;
 
       // Already migrated: keep it, but register its span so later items avoid it.
@@ -139,12 +152,13 @@ export function migrateSlots(
     });
   }
 
-  const nextTasks = tasks.map((t) => {
-    if (t.done || !t.date) return t;
+  const nextTasks = tasks.map((raw) => {
+    const t = raw as LegacyTask;
+    if (t.done || !t.date) return t as Task;
 
     if (t.startMin !== undefined) {
       spansFrom(occupied, t.date).push({ startMin: t.startMin, endMin: t.startMin + durationOf(t.estimateMin) });
-      return t;
+      return t as Task;
     }
 
     const duration = durationOf(t.estimateMin);
@@ -160,12 +174,12 @@ export function migrateSlots(
       const unpinned = { ...t };
       delete unpinned.startMin;
       report.unpinnedTasks++;
-      return unpinned;
+      return unpinned as Task;
     }
 
     spansFrom(occupied, t.date).push({ startMin, endMin: startMin + duration });
     report.scheduledTasks++;
-    return { ...t, startMin };
+    return { ...t, startMin } as Task;
   });
 
   return { goals: nextGoals, tasks: nextTasks, report };

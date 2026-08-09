@@ -1,5 +1,32 @@
 export type StepStatus = 'todo' | 'doing' | 'blocked' | 'done';
 
+/**
+ * One sitting: a span of calendar time allocated to a task.
+ *
+ * This is what makes a four-hour task two two-hour sittings without duplicating
+ * it. Before this a leaf carried `plannedDay` + `plannedStartMin` — exactly ONE
+ * placement — so the only ways to express two sittings were to split the task
+ * (which duplicates it in every count and roll-up) or to schedule it once and
+ * lie about the length.
+ *
+ * `minutes` belongs to the BLOCK, not to the task. That is the whole point:
+ * resizing a sitting changes that sitting, never the estimate, and "planned
+ * sittings exceed the estimate" is then a comparison of two real numbers rather
+ * than a guess. A task's estimate stays a fact about the work.
+ *
+ * Blocks live INSIDE the node or task they belong to, not in a table of their
+ * own. Every calendar read already walks the whole tree (`scheduledOn`), so the
+ * table would buy nothing — and it would introduce a dangling-reference class
+ * that `Session` is only allowed to have because a stray session is inert. A
+ * stray BLOCK would draw itself on a Tuesday.
+ */
+export interface WorkBlock {
+  id: string;
+  date: string;     // 'YYYY-MM-DD' local
+  startMin: number; // minutes from local midnight, 0..1440
+  minutes: number;  // this sitting's own length, > 0
+}
+
 export interface GoalNode {
   id: string;
   title: string;
@@ -19,11 +46,25 @@ export interface GoalNode {
   // A node with children[].length > 0 is a container.
   start?: string;    // 'YYYY-MM-DD' — scheduling metadata only, never affects pct
   deadline?: string; // both present or both absent
-  plannedWeek?: string; // 'YYYY-MM-DD' Monday — "this week" commitment. Scheduling metadata only, never affects pct.
-  plannedDay?: string;  // optional pin within plannedWeek; never present without plannedWeek
-  plannedStartMin?: number; // minutes from local midnight, 0..1440. Never present
-                            // without plannedDay. Scheduling metadata: never
-                            // affects the pct roll-up.
+  /**
+   * 'YYYY-MM-DD' Monday — the "this week" COMMITMENT. Scheduling metadata only,
+   * never affects pct.
+   *
+   * Commitment and placement are separate facts and neither derives the other:
+   * a leaf can be committed to a week with nothing on the calendar (the rail's
+   * "to place"), and — since a sitting can be moved without renegotiating the
+   * week — its blocks need not all fall inside `plannedWeek`.
+   */
+  plannedWeek?: string;
+  /**
+   * The sittings this leaf is placed at. LEAVES only, like `estimateMin`, and
+   * absent rather than `[]` when there are none — `scheduledOn` reads presence,
+   * and an empty array is the legacy-leaf ambiguity `children` already suffers.
+   *
+   * Replaces `plannedDay` + `plannedStartMin`, which between them could hold
+   * exactly one placement. `migrateWorkBlocks` moves the old pair in.
+   */
+  blocks?: WorkBlock[];
   estimateMin?: number;  // LEAVES only — expected effort in minutes.
                          // Scheduling metadata: never affects pct roll-up.
   /**
@@ -107,11 +148,15 @@ export interface Task {
   // planner and stopped being true when the rail shipped; `unscheduleTask` now
   // clears both fields, matching `unscheduleNode`.)
   date?: string;
-  // Minutes from local midnight. Never present without `date`. A task WITH a
-  // date and NO startMin is committed to that day but not placed on the grid:
-  // it shows in Today and the old planner, and belongs in the task backlog
-  // once that ships.
-  startMin?: number;
+  /**
+   * The sittings this task is placed at — the same object a `GoalNode` carries,
+   * for the same reason. Replaces `startMin`, which could hold one.
+   *
+   * `date` survives as the DAY COMMITMENT: a task captured with `@friday` has a
+   * date and no blocks, which is what the rail calls "to place". A task with
+   * blocks is placed, whatever `date` says.
+   */
+  blocks?: WorkBlock[];
   done: boolean;
   doneAt?: string; // local 'YYYY-MM-DD' completion date; optional for legacy data
   goalId: string | null; // tag FOR CONTEXT ONLY

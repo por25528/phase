@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { BusyBlock, AvailabilityWindow, Task } from '../db/types';
 import type { PlannedLeaf } from './plan';
 import { capacityBefore, freeMinutes, MAX_FORECAST_DAYS, mergeIntervals, workloadOf, weekCapacity, normalizeEstimate, type Now } from './capacity';
+import { makeBlock } from './blocks';
 
 // Mon–Fri 09:00–18:00 (540 min window), weekend off.
 const WINDOWS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({
@@ -23,7 +24,7 @@ function block(date: string, startMin: number, endMin: number, title = 'x'): Bus
 function leaf(over: Partial<PlannedLeaf> = {}): PlannedLeaf {
   return {
     goalId: 'g1', goalTitle: 'G', nodeId: 'n1', title: 'N',
-    done: false, plannedWeek: MON, ...over,
+    done: false, plannedWeek: MON, blocks: [], ...over,
   };
 }
 
@@ -244,7 +245,7 @@ describe('weekCapacity', () => {
    * empty and the same item was listed under "To plan".
    */
   it('charges a PLACED leaf to its day and to the week', () => {
-    const leaves = [leaf({ plannedDay: TUE, plannedStartMin: 600, estimateMin: 60 })];
+    const leaves = [leaf({ estimateMin: 60, blocks: [makeBlock(TUE, 600, 60)] })];
     const out = weekCapacity({ ...base, leaves });
     expect(out.days.find((d) => d.date === TUE)?.plannedMin).toBe(60);
     expect(out.days.find((d) => d.date === TUE)?.backlogMin).toBe(0);
@@ -252,12 +253,18 @@ describe('weekCapacity', () => {
     expect(out.backlogMin).toBe(0);
   });
 
-  it('charges a day-pinned but UNPLACED leaf to backlog, not to planned', () => {
-    const leaves = [leaf({ plannedDay: TUE, estimateMin: 60 })]; // no start minute
+  /**
+   * A leaf has no DAY commitment any more — the week is the commitment and a
+   * sitting is the placement — so this is now a week-committed leaf with
+   * nothing on the calendar, which is exactly what "to place" means.
+   */
+  it('charges a committed but UNPLACED leaf to backlog, not to planned', () => {
+    const leaves = [leaf({ estimateMin: 60 })]; // no sitting
     const out = weekCapacity({ ...base, leaves });
     const tue = out.days.find((d) => d.date === TUE)!;
     expect(tue.plannedMin).toBe(0);
-    expect(tue.backlogMin).toBe(60);
+    // No day owns it: a leaf with no sitting belongs to the WEEK's backlog.
+    expect(tue.backlogMin).toBe(0);
     expect(out.plannedMin).toBe(0);
     expect(out.backlogMin).toBe(60);
   });
@@ -286,7 +293,7 @@ describe('weekCapacity', () => {
   });
 
   it('charges a PLACED task to its date', () => {
-    const out = weekCapacity({ ...base, tasks: [task({ date: TUE, startMin: 600, estimateMin: 25 })] });
+    const out = weekCapacity({ ...base, tasks: [task({ date: TUE, estimateMin: 25, blocks: [makeBlock(TUE, 600, 25)] })] });
     expect(out.days.find((d) => d.date === TUE)?.plannedMin).toBe(25);
     expect(out.plannedMin).toBe(25);
   });
@@ -317,11 +324,19 @@ describe('weekCapacity', () => {
     expect(out.days.every((d) => d.hasData === false)).toBe(true);
   });
 
-  it('excludes a leaf pinned outside the week from day totals', () => {
-    const leaves = [leaf({ plannedDay: '2026-08-10', plannedStartMin: 600, estimateMin: 60 })];
+  /**
+   * A sitting outside the week is outside the week — for the day figures AND
+   * for the total. The week's planned time is the sum of the sittings that
+   * fall in it, so the header cannot claim hours the grid does not draw.
+   *
+   * It is not backlog either: the work IS placed, just not here.
+   */
+  it('excludes a sitting outside the week from every figure', () => {
+    const leaves = [leaf({ estimateMin: 60, blocks: [makeBlock('2026-08-10', 600, 60)] })];
     const out = weekCapacity({ ...base, leaves });
     expect(out.days.every((d) => d.plannedMin === 0)).toBe(true);
-    expect(out.plannedMin).toBe(60); // still a commitment for this week
+    expect(out.plannedMin).toBe(0);
+    expect(out.backlogMin).toBe(0);
   });
 
   // Blocked work leaves the QUEUE (backlogGroups), not the calendar. Capacity's
@@ -433,7 +448,7 @@ describe('weekCapacity in the past tense', () => {
   it('does not call an ordinary mid-week Thursday over-committed', () => {
     const out = weekCapacity({
       ...base,
-      leaves: [leaf({ plannedDay: MON, plannedStartMin: 600, estimateMin: 120 })], // Monday's, already spent
+      leaves: [leaf({ estimateMin: 120, blocks: [makeBlock(MON, 600, 120)] })], // Monday's, already spent
     });
     expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(false);
   });
@@ -442,7 +457,7 @@ describe('weekCapacity in the past tense', () => {
     const out = weekCapacity({
       ...base,
       now: { date: '2026-08-10', minute: 0 },
-      leaves: [leaf({ plannedDay: TUE, plannedStartMin: 600, estimateMin: 120 })],
+      leaves: [leaf({ estimateMin: 120, blocks: [makeBlock(TUE, 600, 120)] })],
     });
     expect(out.freeMin).toBe(540 * 5);
     expect(out.plannedMin).toBe(120);
@@ -493,7 +508,7 @@ describe('normalizeEstimate', () => {
   it('makes a sub-minute estimate count as unestimated in the workload', () => {
     const leaf = (over: Partial<PlannedLeaf>): PlannedLeaf => ({
       goalId: 'g', goalTitle: 'G', nodeId: 'n', title: 'T',
-      done: false, plannedWeek: MON, ...over,
+      done: false, plannedWeek: MON, blocks: [], ...over,
     });
     // Previously: plannedMin += 0 and unestimated stayed 0, so the work was
     // invisible to capacity AND absent from the "N unestimated" list that

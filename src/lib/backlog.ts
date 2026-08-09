@@ -5,6 +5,7 @@ import { isPlanningHorizon } from './horizons';
 import { goalPct } from './pct';
 import { attentionRank, walkLeaves } from './plan';
 import { isDone, stepStatus } from './status';
+import { isPlaced } from './blocks';
 
 /** One draggable row in the backlog rail. */
 export interface BacklogItem {
@@ -119,7 +120,13 @@ export const LOOSE_GROUP_TITLE = 'Loose tasks';
 export function backlogGroups(
   goals: Goal[],
   tasks: Task[],
-  week: string,
+  /**
+   * Kept in the signature, and deliberately unused for the placed/unplaced
+   * split: a leaf with a sitting on ANY day is not waiting to be placed, so the
+   * test cannot be "placed inside this week". Callers still pass it, and it
+   * still reads as the week the rail is for.
+   */
+  _week: string,
   today: string,
 ): BacklogGroup[] {
   const withEstimate = (min: number | undefined): { estimateMin?: number } => {
@@ -142,9 +149,9 @@ export function backlogGroups(
     const items: BacklogItem[] = [];
     walkLeaves(g, (n) => {
       if (isDone(n)) return;
-      const placed =
-        n.plannedWeek === week && n.plannedDay !== undefined && n.plannedStartMin !== undefined;
-      if (placed) return;
+      // Placed anywhere at all, not just inside `week`: a sitting is a sitting,
+      // and a leaf with one on the calendar is not waiting to be placed.
+      if (isPlaced(n)) return;
       if (parked.has(g.id) && n.plannedWeek === undefined) return;
       // Blocked work is not a queue you can work. Dropped, unless committed —
       // weekCapacity bills a plannedWeek step to "to place", and a number you
@@ -163,7 +170,7 @@ export function backlogGroups(
   const loose: BacklogItem[] = [];
   for (const t of tasks) {
     if (t.done) continue;
-    if (t.date !== undefined && t.startMin !== undefined) continue; // on the grid
+    if (isPlaced(t)) continue; // on the grid
     const item: BacklogItem = {
       kind: 'task', id: t.id, goalId: t.goalId, title: t.title,
       ...withEstimate(t.estimateMin),

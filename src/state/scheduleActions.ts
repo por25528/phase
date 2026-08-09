@@ -1,26 +1,43 @@
 import type { AvailabilityWindow, BusyBlock, GoalNode } from '../db/types';
+import { addBlock, clearBlocks, makeBlock, setOnlyBlock } from '../lib/blocks';
 import { freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN, type PlacedSpan } from '../lib/slot';
 import { weekOf } from '../lib/plan';
 
 /**
- * The single writer for a scheduled slot.
+ * The single writer for a leaf's ONE sitting.
  *
- * `plannedWeek` is fully derivable from `plannedDay` and is kept only to avoid
- * a 31-site refactor (see the spec). Routing every write through here — and
- * never assigning the three fields separately — is what stops the two from
- * ever disagreeing. Its sibling test is the guard.
+ * A leaf can hold several now, so this is the "replace whatever is there with
+ * this" write — what a drag from the rail, a `1`-`7` placement and a Today/
+ * Tomorrow button all mean. Adding a sitting beside the existing ones is
+ * `addPlannedSlot`, and the two are separate functions rather than a boolean
+ * because "move it" and "sit again" are different intents and a flag would let
+ * a caller pick the wrong one silently.
+ *
+ * `plannedWeek` moves with it. The week is the COMMITMENT, and placing work on
+ * a Wednesday is committing to that Wednesday's week — routing every write
+ * through here is what stops the two from disagreeing.
  */
-export function setPlannedSlot(node: GoalNode, day: string, startMin: number): void {
+export function setPlannedSlot(node: GoalNode, day: string, startMin: number, minutes: number): void {
   node.plannedWeek = weekOf(day);
-  node.plannedDay = day;
-  node.plannedStartMin = startMin;
+  setOnlyBlock(node, makeBlock(day, startMin, minutes));
 }
 
-/** Remove all three together — a partial clear would leave an illegal half-state. */
+/** A second (or fifth) sitting for the same leaf, leaving the others alone. */
+export function addPlannedSlot(node: GoalNode, day: string, startMin: number, minutes: number): void {
+  node.plannedWeek ??= weekOf(day);
+  addBlock(node, makeBlock(day, startMin, minutes));
+}
+
+/**
+ * Remove every sitting AND the week commitment together.
+ *
+ * Both, because "unschedule" means the work is not happening — leaving the week
+ * behind would drop the leaf into the rail's "to place" bucket, which reads as
+ * a commitment the user has just withdrawn.
+ */
 export function clearPlannedSlot(node: GoalNode): void {
   delete node.plannedWeek;
-  delete node.plannedDay;
-  delete node.plannedStartMin;
+  clearBlocks(node);
 }
 
 export interface ClampResizeInput {

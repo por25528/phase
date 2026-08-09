@@ -1,4 +1,5 @@
-import type { Goal, GoalNode, PlanReview, PlanReviewEntry, Session } from '../db/types';
+import type { Goal, GoalNode, PlanReview, PlanReviewEntry, Session, WorkBlock } from '../db/types';
+import { blocksOf, isPlaced, sortedBlocks } from './blocks';
 import { weekDates, addDays } from './dates';
 import { behindPaceHint, behindPaceLabel } from './pace';
 import { goalPct } from './pct';
@@ -31,9 +32,19 @@ export interface PlannedLeaf {
   title: string;
   done: boolean;
   plannedWeek: string;
-  plannedDay?: string;
-  /** Present only when the leaf is genuinely ON the grid, per db/types.ts. */
-  plannedStartMin?: number;
+  /**
+   * The leaf's sittings, carried whole.
+   *
+   * This used to be a `plannedDay` and a `plannedStartMin` — one placement — so
+   * a leaf could be billed to exactly one day. `weekCapacity` bills each block
+   * to ITS day now, which is the arithmetic multi-sitting work always needed:
+   * two hours on Tuesday and two on Thursday is not four hours on Tuesday.
+   *
+   * `status` is still deliberately absent. Blocked-but-scheduled work is booked
+   * time, and dropping status at this projection boundary is what guarantees
+   * capacity cannot start disagreeing with the calendar about it.
+   */
+  blocks: readonly WorkBlock[];
   estimateMin?: number;
 }
 
@@ -69,8 +80,7 @@ function hasLeaf(nodes: GoalNode[]): boolean {
 function asPlanned(g: Goal, n: GoalNode): PlannedLeaf {
   return {
     goalId: g.id, goalTitle: g.title, nodeId: n.id, title: n.title,
-    done: isDone(n), plannedWeek: n.plannedWeek!, plannedDay: n.plannedDay,
-    plannedStartMin: n.plannedStartMin,
+    done: isDone(n), plannedWeek: n.plannedWeek!, blocks: sortedBlocks(n),
     estimateMin: n.estimateMin,
   };
 }
@@ -83,13 +93,26 @@ export function activeGoals(goals: Goal[]): Goal[] {
 }
 
 // All leaves planned for `week` (done and not), day-pinned first in day order.
+/**
+ * The leaves that belong to `week`: committed to it, OR placed in it.
+ *
+ * The second half is new and is what multi-sitting work requires. A leaf
+ * committed to last week whose remaining sitting sits on this Wednesday IS this
+ * week's work — it is drawn on this grid, and a capacity figure that ignored it
+ * would be smaller than the calendar beside it.
+ */
 export function plannedLeaves(goals: Goal[], week: string): PlannedLeaf[] {
   const out: PlannedLeaf[] = [];
+  const dates = new Set(weekDates(week));
   for (const g of goals) {
     if (g.completedAt) continue;
-    walkLeaves(g, (n) => { if (n.plannedWeek === week) out.push(asPlanned(g, n)); });
+    walkLeaves(g, (n) => {
+      if (n.plannedWeek === week || blocksOf(n).some((b) => dates.has(b.date))) {
+        out.push(asPlanned(g, n));
+      }
+    });
   }
-  return out.sort((a, b) => (a.plannedDay ?? '9999').localeCompare(b.plannedDay ?? '9999'));
+  return out.sort((a, b) => (a.blocks[0]?.date ?? '9999').localeCompare(b.blocks[0]?.date ?? '9999'));
 }
 
 export interface PlannedGoalGroup {
@@ -126,7 +149,7 @@ export function groupPlannedByGoal(leaves: PlannedLeaf[]): PlannedGoalGroup[] {
 export function unplannedOpenLeaves(g: Goal, week: string): GoalNode[] {
   const out: GoalNode[] = [];
   walkLeaves(g, (n) => {
-    if (!isDone(n) && (n.plannedWeek !== week || n.plannedDay === undefined || n.plannedStartMin === undefined)) out.push(n);
+    if (!isDone(n) && (n.plannedWeek !== week || !isPlaced(n))) out.push(n);
   });
   return out;
 }
@@ -154,7 +177,7 @@ export function railTree(g: Goal, week: string): RailTreeNode[] {
       if (n.children && n.children.length) {
         const children = build(n.children);
         if (children.length > 0) out.push({ id: n.id, title: n.title, isLeaf: false, children });
-      } else if (!isDone(n) && (n.plannedWeek !== week || n.plannedDay === undefined || n.plannedStartMin === undefined)) {
+      } else if (!isDone(n) && (n.plannedWeek !== week || !isPlaced(n))) {
         out.push({ id: n.id, title: n.title, isLeaf: true, children: [] });
       }
     }
@@ -532,7 +555,10 @@ export function pinnedDayCounts(goals: Goal[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const g of goals) {
     walkLeaves(g, (n) => {
-      if (!isDone(n) && n.plannedDay) m.set(n.plannedDay, (m.get(n.plannedDay) ?? 0) + 1);
+      if (isDone(n)) return;
+      // One count per SITTING: two hours on Tuesday and two on Thursday is two
+      // marks, on two days, from one leaf.
+      for (const b of blocksOf(n)) m.set(b.date, (m.get(b.date) ?? 0) + 1);
     });
   }
   return m;

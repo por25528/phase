@@ -12,6 +12,7 @@ import {
 import type { PlannedLeaf } from './plan';
 import { CHECKPOINT_SOON_DAYS, checkpointWithin } from './checkpoints';
 import { leafCount } from './board';
+import { makeBlock } from './blocks';
 
 // 2026-07-15 is a Wednesday; its week is Mon 2026-07-13 … Sun 2026-07-19.
 const TODAY = '2026-07-15';
@@ -56,7 +57,7 @@ describe('plannedLeaves', () => {
   it('collects planned leaves (done and not) for the week, day-pinned first', () => {
     const g = goal({ nodes: [
       { id: 'a', title: 'A', plannedWeek: WEEK },
-      { id: 'b', title: 'B', status: 'done', plannedWeek: WEEK, plannedDay: '2026-07-14' },
+      { id: 'b', title: 'B', status: 'done', plannedWeek: WEEK, blocks: [makeBlock('2026-07-14', 540, 60)] },
       { id: 'c', title: 'C', plannedWeek: LAST_WEEK },
       { id: 'd', title: 'D' },
     ]});
@@ -92,8 +93,8 @@ describe('plannedLeaves', () => {
    */
   it('drops status at the GoalNode → PlannedLeaf boundary', () => {
     const g = goal({ nodes: [
-      { id: 'a', title: 'A', status: 'blocked', plannedWeek: WEEK, plannedDay: '2026-07-14', plannedStartMin: 600, estimateMin: 60 },
-      { id: 'b', title: 'B', status: 'doing', plannedWeek: WEEK, plannedDay: '2026-07-15', plannedStartMin: 540, estimateMin: 30 },
+      { id: 'a', title: 'A', status: 'blocked', plannedWeek: WEEK, estimateMin: 60, blocks: [makeBlock('2026-07-14', 600, 60)] },
+      { id: 'b', title: 'B', status: 'doing', plannedWeek: WEEK, estimateMin: 30, blocks: [makeBlock('2026-07-15', 540, 30)] },
     ] });
     const out = plannedLeaves([g], WEEK);
 
@@ -105,8 +106,9 @@ describe('plannedLeaves', () => {
     // The fields capacity DOES read all survive the projection.
     expect(blocked.estimateMin).toBe(60);
     expect(blocked.plannedWeek).toBe(WEEK);
-    expect(blocked.plannedDay).toBe('2026-07-14');
-    expect(blocked.plannedStartMin).toBe(600);
+    expect(blocked.blocks).toEqual([
+      expect.objectContaining({ date: '2026-07-14', startMin: 600 }),
+    ]);
     expect(blocked.done).toBe(false);
   });
 });
@@ -656,7 +658,7 @@ describe('attentionBadge', () => {
 
 describe('groupPlannedByGoal', () => {
   const leaf = (nodeId: string, goalId: string, goalTitle: string): PlannedLeaf => ({
-    goalId, goalTitle, nodeId, title: nodeId, done: false, plannedWeek: WEEK,
+    goalId, goalTitle, nodeId, title: nodeId, done: false, plannedWeek: WEEK, blocks: [],
   });
 
   it('groups leaves by project, preserving first-seen order within and across groups', () => {
@@ -683,10 +685,7 @@ describe('unplannedOpenLeaves', () => {
       { id: 'b', title: 'B', status: 'done' },                        // done → out
       { id: 'c', title: 'C', plannedWeek: WEEK },    // committed, no day → in (backlog)
       { id: 'd', title: 'D', plannedWeek: LAST_WEEK }, // carry-over → in (available)
-      {
-        id: 'placed', title: 'Placed', plannedWeek: WEEK,
-        plannedDay: '2026-07-14', plannedStartMin: 600,
-      },                                                            // on the grid → out
+      { id: 'placed', title: 'Placed', plannedWeek: WEEK, blocks: [makeBlock('2026-07-14', 600, 60)] },                                                            // on the grid → out
       { id: 'grp', title: 'G', children: [
         { id: 'e', title: 'E' },                     // nested open → in
       ]},
@@ -707,7 +706,7 @@ describe('unplannedOpenLeaves', () => {
 
   it('a leaf placed on a day and start minute this week is not backlog', () => {
     const g = goal({ nodes: [
-      { id: 'a', title: 'A', plannedWeek: WEEK, plannedDay: '2026-07-14', plannedStartMin: 540 },
+      { id: 'a', title: 'A', plannedWeek: WEEK, blocks: [makeBlock('2026-07-14', 540, 60)] },
     ]});
     expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual([]);
   });
@@ -726,9 +725,14 @@ describe('unplannedOpenLeaves', () => {
     expect(unplannedOpenLeaves(g, WEEK)).toEqual([]);
   });
 
-  it('a leaf with a plannedDay but no plannedStartMin is backlog, not invisible', () => {
+  /**
+   * A week commitment with no sitting is backlog, not invisible — the state
+   * that replaced "a day with no start minute", which could no longer be
+   * written once a placement carried its own date.
+   */
+  it('a leaf committed to the week but never placed is backlog', () => {
     const g = goal({ nodes: [
-      { id: 'a', title: 'A', plannedWeek: WEEK, plannedDay: '2026-07-14' },
+      { id: 'a', title: 'A', plannedWeek: WEEK },
     ]});
     expect(unplannedOpenLeaves(g, WEEK).map((n) => n.id)).toEqual(['a']);
   });
@@ -741,10 +745,7 @@ describe('railTree', () => {
       { id: 'b', title: 'B', status: 'done' },                        // done → out
       { id: 'c', title: 'C', plannedWeek: WEEK },    // committed, no day → in (backlog)
       { id: 'd', title: 'D', plannedWeek: LAST_WEEK }, // carry-over → in
-      {
-        id: 'placed', title: 'Placed', plannedWeek: WEEK,
-        plannedDay: '2026-07-14', plannedStartMin: 600,
-      },                                                            // on the grid → out
+      { id: 'placed', title: 'Placed', plannedWeek: WEEK, blocks: [makeBlock('2026-07-14', 600, 60)] },                                                            // on the grid → out
     ]});
     const tree = railTree(g, WEEK);
     expect(tree.map((n) => n.id)).toEqual(['a', 'c', 'd']);
@@ -760,7 +761,7 @@ describe('railTree', () => {
 
   it('a leaf placed on a day and start minute this week is not backlog', () => {
     const g = goal({ nodes: [
-      { id: 'a', title: 'A', plannedWeek: WEEK, plannedDay: '2026-07-14', plannedStartMin: 540 },
+      { id: 'a', title: 'A', plannedWeek: WEEK, blocks: [makeBlock('2026-07-14', 540, 60)] },
     ]});
     expect(railTree(g, WEEK)).toEqual([]);
   });
@@ -779,9 +780,9 @@ describe('railTree', () => {
     expect(railTree(g, WEEK)).toEqual([]);
   });
 
-  it('a leaf with a plannedDay but no plannedStartMin is backlog, not invisible', () => {
+  it('a leaf committed to the week but never placed is backlog', () => {
     const g = goal({ nodes: [
-      { id: 'a', title: 'A', plannedWeek: WEEK, plannedDay: '2026-07-14' },
+      { id: 'a', title: 'A', plannedWeek: WEEK },
     ]});
     expect(railTree(g, WEEK).map((n) => n.id)).toEqual(['a']);
   });
@@ -805,10 +806,7 @@ describe('railTree', () => {
     const g = goal({ nodes: [
       { id: 'grp', title: 'Subgoal', children: [
         { id: 'x', title: 'X', status: 'done' },
-        {
-          id: 'y', title: 'Y', plannedWeek: WEEK,
-          plannedDay: '2026-07-14', plannedStartMin: 600,
-        },
+        { id: 'y', title: 'Y', plannedWeek: WEEK, blocks: [makeBlock('2026-07-14', 600, 60)] },
       ]},
     ]});
     expect(railTree(g, WEEK)).toEqual([]);

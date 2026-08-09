@@ -25,15 +25,17 @@ import { backlogGroups } from '../lib/backlog';
 import { topLevelSelection, openLeavesUnder, allLeavesUnder, selectionRemovalCount } from '../lib/selection';
 import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
+import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
 import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted, leafCount } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
 import { formatEstimateValue } from '../lib/estimateInput';
-import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN } from '../lib/slot';
+import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT } from '../lib/slot';
 import { spansOn } from '../lib/scheduled';
 import { assetIdsInMarkdown } from '../lib/notes';
-import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
+import { addPlannedSlot, clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
+import { addBlock, blocksOf, clearBlocks, isPlaced, makeBlock, removeBlock, replaceBlock, setOnlyBlock } from '../lib/blocks';
 import type { ReplanMove } from '../lib/replan';
 import { MAX_IMAGE_EDGE, scaledDimensions } from '../lib/imageScale';
 import {
@@ -531,6 +533,19 @@ export async function initStore(): Promise<void> {
       }
     }
 
+    /*
+     * Blocks last, and unconditionally.
+     *
+     * It follows `migrateSlots`, which repairs pre-slot data by writing the
+     * very `plannedDay`/`plannedStartMin` pair this consumes — the other order
+     * leaves the repair with nothing to read. No done-flag and no snapshot,
+     * unlike the two above: this is a pure re-shaping that computes nothing and
+     * is idempotent by construction (a row that already has `blocks` is left
+     * alone), so running it every launch costs one walk and cannot double-apply.
+     */
+    const blocked = migrateWorkBlocks(migrated.goals, migrated.tasks);
+    migrated = { ...migrated, goals: blocked.goals, tasks: blocked.tasks };
+
     state = {
       ...state,
       ...migrated,
@@ -763,33 +778,34 @@ function describeEstimateChange(
  * side, so the result is visible and fixable rather than lost — what was
  * missing was being told.
  */
-function warnIfEstimateOverflows(
-  title: string,
-  date: string | undefined,
-  startMin: number | undefined,
-  nextEstimate: number | undefined,
-  excludeId: string,
-): void {
-  if (date === undefined || startMin === undefined) return; // not on the grid
-  const wanted = durationOf(nextEstimate);
-  const fits = clampResize({
-    date,
-    startMin,
-    requestedMin: wanted,
-    windows: state.availability,
-    blocks: [],
-    placed: spansOn(state.goals, state.tasks, date, excludeId),
-    allDayBlocks: state.allDayBlocks,
-  });
-  // Compared against the SNAPPED duration, not the raw one. `clampResize`
-  // rounds to the 5-minute slot grid, so a 37-minute estimate came back as 35
-  // and looked like a refusal — every estimate whose minutes fell 1 or 2 past a
-  // multiple of five raised a false alarm on a completely empty day.
-  const snapped = Math.round(wanted / SLOT_GRANULARITY_MIN) * SLOT_GRANULARITY_MIN;
-  if (fits === null || fits < snapped) {
-    actions.showToast(`"${title}" no longer fits its slot — move it or shorten the day`);
-  }
+/**
+ * Which of an item's own sittings the slot search must ignore.
+ *
+ * Moving one bar vacates that bar. A REPLACE vacates all of them, because every
+ * one is about to be removed — leave them in and the task collides with the
+ * self it is in the middle of vacating, and a re-drop at 10:30 slides past its
+ * own aim to 11:00. An ADD vacates nothing: the existing sittings stay, so the
+ * new one has to find room beside them.
+ */
+function vacating(
+  item: GoalNode | Task,
+  opts: { blockId?: string; mode?: 'replace' | 'add' },
+): string | ReadonlySet<string> | undefined {
+  if (opts.blockId) return opts.blockId;
+  if (opts.mode === 'add') return undefined;
+  return new Set(blocksOf(item).map((b) => b.id));
 }
+
+/*
+ * `warnIfEstimateOverflows` lived here.
+ *
+ * It fired when a new estimate made a block taller than its gap — which could
+ * only happen while a block's height WAS the estimate. A sitting owns its own
+ * `minutes` now, so changing an estimate moves nothing on the calendar and
+ * there is nothing left to warn about. The discrepancy it was really groping
+ * at — planned sittings adding up to more or less than the estimate — is
+ * `planVsEstimate` in lib/blocks.ts, which states it rather than refusing it.
+ */
 
 // Snapshot the outgoing week's commitments exactly once per rollover. Entries
 // are immutable after creation; a week with no commitments needs no review.
@@ -1110,7 +1126,6 @@ export const actions = {
     if (before === next) return;
     if (next === undefined) delete node.estimateMin;
     else node.estimateMin = next;
-    warnIfEstimateOverflows(node.title, node.plannedDay, node.plannedStartMin, next, nodeId);
     withUndo(describeEstimateChange(node.title, before, next), 'goals', goals);
   },
 
@@ -1125,7 +1140,6 @@ export const actions = {
       else copy.estimateMin = next;
       return copy;
     });
-    warnIfEstimateOverflows(target.title, target.date, target.startMin, next, taskId);
     withUndo(describeEstimateChange(target.title, target.estimateMin, next), 'tasks', tasks);
   },
 
@@ -1691,7 +1705,7 @@ export const actions = {
       // no room there, or no availability window at all. Clearing it returns
       // the task to that day's backlog rather than parking it in dead time.
       const moved = { ...item, date };
-      delete moved.startMin;
+      clearBlocks(moved);
       return moved;
     });
     setAndPersist({ tasks });
@@ -1920,14 +1934,35 @@ export const actions = {
   // persists. Views never call resolveSlot. Returns whether a slot was found
   // and persisted — callers must not report success on a refusal, since the
   // refusal already wrote its own explanatory toast.
-  scheduleNode(goalId: string, nodeId: string, day: string, aimMin: number): boolean {
+  /**
+   * Put a leaf's sitting on `day`.
+   *
+   * `blockId` names WHICH sitting is being moved — a drag of one block among
+   * three must not disturb its siblings, and must not collide with itself.
+   * Without one this REPLACES every sitting, which is what a drag from the rail,
+   * a `1`-`7` placement and the inspector's Today button all mean: "put this
+   * here", not "and also here".
+   *
+   * `mode: 'add'` is the third intent, for Option-drag: another sitting for the
+   * same task, leaving the others where they are.
+   */
+  scheduleNode(
+    goalId: string,
+    nodeId: string,
+    day: string,
+    aimMin: number,
+    opts: { blockId?: string; mode?: 'replace' | 'add' } = {},
+  ): boolean {
     if (!isActiveGoal(goalId)) return false; // frozen on a completed project
     const source = state.goals.find((g) => g.id === goalId);
     const sourceNode = source ? findNode(source.nodes, nodeId) : null;
     if (!sourceNode || sourceNode.children) return false;
 
-    const durationMin = durationOf(sourceNode.estimateMin);
-    const placed = spansOn(state.goals, state.tasks, day, nodeId);
+    const moving = opts.blockId ? blocksOf(sourceNode).find((b) => b.id === opts.blockId) : undefined;
+    // The sitting keeps its own length when it moves; a fresh one is sized from
+    // the estimate, which is the only thing there is to go on.
+    const durationMin = moving?.minutes ?? durationOf(sourceNode.estimateMin);
+    const placed = spansOn(state.goals, state.tasks, day, vacating(sourceNode, opts));
     // Moving something already on the grid is an ADJUSTMENT, not a new
     // commitment against "right now" — which is the case `NO_PAST_LIMIT`'s own
     // note describes, and which `clampResize` already uses it for. With the
@@ -1936,9 +1971,16 @@ export const actions = {
     // dragging one onto an earlier weekday of the same week refused with "no
     // free time left that day" about a day that was nine hours empty. Both
     // outcomes came from treating a rearrangement as a fresh booking.
-    const now = sourceNode.plannedDay !== undefined && sourceNode.plannedStartMin !== undefined
-      ? NO_PAST_LIMIT
-      : nowMoment();
+    /*
+     * Already on the grid ⇒ this is an ADJUSTMENT, not a fresh booking.
+     *
+     * True whether or not a specific sitting was named: dropping a placed task
+     * onto an earlier weekday is still a rearrangement. Requiring `blockId` for
+     * this re-introduced the bug `NO_PAST_LIMIT` exists for — at 2pm, dragging
+     * a 09:00 block found the day's only remaining gap at 14:00 and silently
+     * dropped it there.
+     */
+    const now = moving !== undefined || isPlaced(sourceNode) ? NO_PAST_LIMIT : nowMoment();
     const startMin = resolveSlot({
       date: day,
       aimMin,
@@ -1959,22 +2001,35 @@ export const actions = {
 
     const goals = cloneGoals(state.goals);
     const node = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
-    setPlannedSlot(node, day, startMin);
+    if (opts.blockId) {
+      node.plannedWeek ??= weekOf(day);
+      replaceBlock(node, opts.blockId, { date: day, startMin });
+    } else if (opts.mode === 'add') {
+      addPlannedSlot(node, day, startMin, durationMin);
+    } else {
+      setPlannedSlot(node, day, startMin, durationMin);
+    }
     setAndPersist({ goals });
     return true;
   },
 
-  scheduleTask(taskId: string, date: string, aimMin: number): boolean {
+  /** The task twin of `scheduleNode` — same three intents, same rules. */
+  scheduleTask(
+    taskId: string,
+    date: string,
+    aimMin: number,
+    opts: { blockId?: string; mode?: 'replace' | 'add' } = {},
+  ): boolean {
     const task = state.tasks.find((t) => t.id === taskId);
     if (!task || !isValidLocalDate(date)) return false;
 
-    const durationMin = durationOf(task.estimateMin);
-    const placed = spansOn(state.goals, state.tasks, date, taskId);
+    const moving = opts.blockId ? blocksOf(task).find((b) => b.id === opts.blockId) : undefined;
+    const durationMin = moving?.minutes ?? durationOf(task.estimateMin);
+    const placed = spansOn(state.goals, state.tasks, date, vacating(task, opts));
     // See scheduleNode: a task already on the grid is being rearranged, not
     // booked, so the wall clock must not amputate the earlier part of its day.
-    const now = task.date !== undefined && task.startMin !== undefined
-      ? NO_PAST_LIMIT
-      : nowMoment();
+    // See `scheduleNode`: a placed task is being rearranged, not booked.
+    const now = moving !== undefined || isPlaced(task) ? NO_PAST_LIMIT : nowMoment();
     const startMin = resolveSlot({
       date,
       aimMin,
@@ -1992,7 +2047,14 @@ export const actions = {
     }
 
     setAndPersist({
-      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, date, startMin } : t)),
+      tasks: state.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+        const next = { ...t, date };
+        if (opts.blockId) replaceBlock(next, opts.blockId, { date, startMin });
+        else if (opts.mode === 'add') addBlock(next, makeBlock(date, startMin, durationMin));
+        else setOnlyBlock(next, makeBlock(date, startMin, durationMin));
+        return next;
+      }),
     });
     return true;
   },
@@ -2048,7 +2110,7 @@ export const actions = {
       id: uid(),
       title: trimmed,
       date,
-      startMin: resolved,
+      blocks: [makeBlock(date, resolved, minutes)],
       done: false,
       goalId: null,
       estimateMin: minutes,
@@ -2128,12 +2190,19 @@ export const actions = {
         if (!goal || goal.completedAt) continue;
         const node = findNode(goal.nodes, move.id);
         if (!node) continue;
-        setPlannedSlot(node, move.to, move.startMin);
+        // The SITTING moves, not the leaf. Only the sittings in the past
+        // slipped; a later one on the same task stays where it was planned.
+        replaceBlock(node, move.blockId, { date: move.to, startMin: move.startMin });
         moved += 1;
         continue;
       }
       if (!state.tasks.some((t) => t.id === move.id)) continue;
-      tasks = tasks.map((t) => (t.id === move.id ? { ...t, date: move.to, startMin: move.startMin } : t));
+      tasks = tasks.map((t) => {
+        if (t.id !== move.id) return t;
+        const next = { ...t };
+        replaceBlock(next, move.blockId, { date: move.to, startMin: move.startMin });
+        return next;
+      });
       moved += 1;
     }
 
@@ -2142,13 +2211,23 @@ export const actions = {
     return true;
   },
 
-  unscheduleNode(goalId: string, nodeId: string): void {
+  /**
+   * `blockId` takes ONE sitting off the calendar; without it the whole leaf
+   * comes off, week commitment and all.
+   *
+   * The `×` on a calendar block passes the sitting it is drawn for, because
+   * removing Tuesday's hour must not also remove Thursday's. The inspector's
+   * Clear passes nothing, because there it means "this is not happening".
+   */
+  unscheduleNode(goalId: string, nodeId: string, blockId?: string): void {
     if (!isActiveGoal(goalId)) return;
     const goal = state.goals.find((g) => g.id === goalId);
     const node = goal ? findNode(goal.nodes, nodeId) : null;
     if (!goal || !node || !node.plannedWeek) return;
     const goals = cloneGoals(state.goals);
-    clearPlannedSlot(findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!);
+    const target = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
+    if (blockId) removeBlock(target, blockId);
+    else clearPlannedSlot(target);
     // "Unscheduled", matching the button that fires it — the × on a calendar
     // block and the Recap panel both say Unschedule.
     withUndo(`Unscheduled "${node.title}"`, 'goals', goals);
@@ -2177,13 +2256,17 @@ export const actions = {
    *
    * Two × buttons on the same grid must not mean two different things.
    */
-  unscheduleTask(taskId: string): void {
+  unscheduleTask(taskId: string, blockId?: string): void {
     const task = state.tasks.find((t) => t.id === taskId);
-    if (!task || !task.date || task.startMin === undefined) return;
+    if (!task || !(task.blocks?.length)) return;
     const tasks = state.tasks.map((t) => {
       if (t.id !== taskId) return t;
       const cleared = { ...t };
-      delete cleared.startMin;
+      if (blockId) {
+        removeBlock(cleared, blockId);
+        return cleared;
+      }
+      clearBlocks(cleared);
       delete cleared.date;
       return cleared;
     });
@@ -2193,19 +2276,28 @@ export const actions = {
     actions.revealInPlan('task', taskId);
   },
 
-  resizeNode(nodeId: string, minutes: number): void {
+  /**
+   * Resizing a sitting changes THAT SITTING.
+   *
+   * It used to write `estimateMin` — so dragging Tuesday's block an inch
+   * shorter re-priced the task everywhere, and with two sittings it would have
+   * silently resized the other one too. An estimate is a fact about the work; a
+   * sitting's length is a fact about a Tuesday.
+   */
+  resizeNode(nodeId: string, blockId: string, minutes: number): void {
     if (!isActiveNode(nodeId)) return;
     const goal = goalOfNode(nodeId);
     const node = goal ? findNode(goal.nodes, nodeId) : null;
-    if (!goal || !node || node.plannedDay === undefined || node.plannedStartMin === undefined) return;
+    const block = node ? blocksOf(node).find((b) => b.id === blockId) : undefined;
+    if (!goal || !node || !block) return;
 
     const clamped = clampResize({
-      date: node.plannedDay,
-      startMin: node.plannedStartMin,
+      date: block.date,
+      startMin: block.startMin,
       requestedMin: minutes,
       windows: state.availability,
       blocks: [],
-      placed: spansOn(state.goals, state.tasks, node.plannedDay, nodeId),
+      placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,
     });
     if (clamped === null) {
@@ -2214,21 +2306,23 @@ export const actions = {
     }
 
     const goals = cloneGoals(state.goals);
-    findNode(goals.find((g) => g.id === goal.id)!.nodes, nodeId)!.estimateMin = clamped;
+    replaceBlock(findNode(goals.find((g) => g.id === goal.id)!.nodes, nodeId)!, blockId, { minutes: clamped });
     setAndPersist({ goals });
   },
 
-  resizeTask(taskId: string, minutes: number): void {
+  /** See `resizeNode`: this changes the sitting, never the estimate. */
+  resizeTask(taskId: string, blockId: string, minutes: number): void {
     const task = state.tasks.find((t) => t.id === taskId);
-    if (!task || task.date === undefined || task.startMin === undefined) return;
+    const block = task ? blocksOf(task).find((b) => b.id === blockId) : undefined;
+    if (!task || !block) return;
 
     const clamped = clampResize({
-      date: task.date,
-      startMin: task.startMin,
+      date: block.date,
+      startMin: block.startMin,
       requestedMin: minutes,
       windows: state.availability,
       blocks: [],
-      placed: spansOn(state.goals, state.tasks, task.date, taskId),
+      placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,
     });
     if (clamped === null) {
@@ -2237,7 +2331,12 @@ export const actions = {
     }
 
     setAndPersist({
-      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, estimateMin: clamped } : t)),
+      tasks: state.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+        const next = { ...t };
+        replaceBlock(next, blockId, { minutes: clamped });
+        return next;
+      }),
     });
   },
 

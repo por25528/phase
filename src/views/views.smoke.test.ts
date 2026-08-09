@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, Habit, Task } from '../db/types';
+import { makeBlock } from '../lib/blocks';
 
 /**
  * Render every view once, against a dataset shaped like a real term.
@@ -122,7 +123,7 @@ const GOALS: Goal[] = [
 
 const TASKS: Task[] = [
   { id: 't-overdue', title: 'Email advisor', date: iso(-2), done: false, goalId: null },
-  { id: 't-placed', title: 'Standup', date: iso(0), startMin: 600, done: false, goalId: 'g-startup', estimateMin: 30 },
+  { id: 't-placed', title: 'Standup', date: iso(0), done: false, goalId: 'g-startup', estimateMin: 30, blocks: [makeBlock(iso(0), 600, 30)] },
   { id: 't-loose', title: 'Renew T pass', done: false, goalId: null },
 ];
 

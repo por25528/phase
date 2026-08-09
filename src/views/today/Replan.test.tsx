@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode, Task } from '../../db/types';
+import { makeBlock } from '../../lib/blocks';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: Task[]; sessions: never[] }> => ({
@@ -67,8 +68,8 @@ const slippedGoal: Goal = {
   id: 'g',
   title: 'Physics Final',
   nodes: [
-    leaf('a', { title: 'Problems 1–15', plannedWeek: '2026-08-10', plannedDay: '2026-08-10', plannedStartMin: 540, estimateMin: 60 }),
-    leaf('b', { title: 'Problems 16–30', plannedWeek: '2026-08-10', plannedDay: '2026-08-11', plannedStartMin: 540, estimateMin: 60 }),
+    leaf('a', { title: 'Problems 1–15', plannedWeek: '2026-08-10', estimateMin: 60, blocks: [makeBlock('2026-08-10', 540, 60)] }),
+    leaf('b', { title: 'Problems 16–30', plannedWeek: '2026-08-10', estimateMin: 60, blocks: [makeBlock('2026-08-11', 540, 60)] }),
   ],
 };
 
@@ -101,7 +102,7 @@ describe('recovering a day that slipped', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Replan' }));
 
     expect(screen.getByRole('dialog')).toBeTruthy();
-    expect(store.getState().goals[0].nodes[0].plannedDay).toBe('2026-08-10');
+    expect(store.getState().goals[0].nodes[0].blocks?.[0].date).toBe('2026-08-10');
   });
 
   it('shows where each task came from and where it would go', async () => {
@@ -120,12 +121,12 @@ describe('recovering a day that slipped', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Move 2 tasks$/ }));
 
     const after = store.getState().goals[0].nodes;
-    expect(after[0].plannedDay).toBe('2026-08-12');
-    expect(after[1].plannedDay).toBe('2026-08-12');
+    expect(after[0].blocks?.[0].date).toBe('2026-08-12');
+    expect(after[1].blocks?.[0].date).toBe('2026-08-12');
     expect(store.getState().pendingUndo?.label).toBe('Replanned 2 tasks');
 
     store.actions.undoLastDelete();
-    expect(store.getState().goals[0].nodes[0].plannedDay).toBe('2026-08-10');
+    expect(store.getState().goals[0].nodes[0].blocks?.[0].date).toBe('2026-08-10');
   });
 
   /**
@@ -138,7 +139,7 @@ describe('recovering a day that slipped', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Move 2 tasks$/ }));
 
     const [a, b] = store.getState().goals[0].nodes;
-    expect(a.plannedStartMin).not.toBe(b.plannedStartMin);
+    expect(a.blocks?.[0].startMin).not.toBe(b.blocks?.[0].startMin);
   });
 
   /**
@@ -149,17 +150,14 @@ describe('recovering a day that slipped', () => {
     const store = await mount([{
       id: 'g',
       title: 'Big',
-      nodes: [leaf('marathon', {
-        title: 'Marathon', plannedWeek: '2026-08-10', plannedDay: '2026-08-10',
-        plannedStartMin: 540, estimateMin: 600,
-      })],
+      nodes: [leaf('marathon', { title: 'Marathon', plannedWeek: '2026-08-10', estimateMin: 600, blocks: [makeBlock('2026-08-10', 540, 600)] })],
     }]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Replan' }));
 
     expect(screen.getByText(/won’t fit in the next two weeks/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Move nothing$/ })).toHaveProperty('disabled', true);
-    expect(store.getState().goals[0].nodes[0].plannedDay).toBe('2026-08-10');
+    expect(store.getState().goals[0].nodes[0].blocks?.[0].date).toBe('2026-08-10');
   });
 
   it('leaves everything alone when the preview is dismissed', async () => {
@@ -167,7 +165,7 @@ describe('recovering a day that slipped', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Replan' }));
     fireEvent.click(screen.getByRole('button', { name: 'Leave it where it is' }));
 
-    expect(store.getState().goals[0].nodes[0].plannedDay).toBe('2026-08-10');
+    expect(store.getState().goals[0].nodes[0].blocks?.[0].date).toBe('2026-08-10');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

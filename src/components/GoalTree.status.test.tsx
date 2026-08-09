@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalNode } from '../db/types';
+import { makeBlock } from '../lib/blocks';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: never[] }> => ({ goals: [], habits: [], tasks: [], sessions: [] })),
@@ -167,13 +168,13 @@ describe('a step says where it stands', () => {
 describe('the schedule column', () => {
   it('names the day a task is placed on', async () => {
     const { todayStr } = await import('../lib/dates');
-    await mountTree([{ id: 'a', title: 'Problems 1–15', plannedWeek: '2020-01-06', plannedDay: todayStr(), plannedStartMin: 840 }]);
+    await mountTree([{ id: 'a', title: 'Problems 1–15', plannedWeek: '2020-01-06', blocks: [makeBlock(todayStr(), 840, 60)] }]);
     expect(screen.getByText(/^Today /)).toBeTruthy();
   });
 
   it('warns when the day it was placed on has been and gone', async () => {
-    await mountTree([{ id: 'a', title: 'Slipped', plannedWeek: '2020-01-06', plannedDay: '2020-01-07' }]);
-    expect(screen.getByText('Jan 7').className).toContain('text-warn');
+    await mountTree([{ id: 'a', title: 'Slipped', plannedWeek: '2020-01-06', blocks: [makeBlock('2020-01-07', 540, 60)] }]);
+    expect(screen.getByText(/^Jan 7 /).className).toContain('text-warn');
   });
 
   it('falls through to a deadline when nothing is committed', async () => {

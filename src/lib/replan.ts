@@ -1,7 +1,8 @@
 import type { AvailabilityWindow, BusyBlock, Goal, Task } from '../db/types';
 import { addDays } from './dates';
 import { isDone } from './status';
-import { durationOf, resolveSlot, type PlacedSpan } from './slot';
+import { resolveSlot, type PlacedSpan } from './slot';
+import { blocksOf } from './blocks';
 import { scheduledOn } from './scheduled';
 import type { Now } from './capacity';
 
@@ -22,12 +23,20 @@ import type { Now } from './capacity';
 export interface SlippedItem {
   kind: 'step' | 'task';
   id: string;
+  /**
+   * WHICH sitting slipped.
+   *
+   * A task can be sat several times, and only the sittings that are in the past
+   * have slipped — moving the whole task would drag Thursday's planned hour
+   * backwards because Monday's went unused.
+   */
+  blockId: string;
   goalId: string | null;
   goalTitle: string;
   title: string;
   /** The day it was placed on, which is in the past. */
   from: string;
-  /** How long it takes, from its estimate or the default slot. */
+  /** How long this sitting is — its own length, not the task's estimate. */
   minutes: number;
 }
 
@@ -66,17 +75,19 @@ export function slippedWork(
       for (const n of nodes) {
         if (n.children && n.children.length > 0) { walk(n.children); continue; }
         if (isDone(n)) continue;
-        if (n.plannedDay === undefined || n.plannedStartMin === undefined) continue;
-        if (n.plannedDay >= today) continue;
-        out.push({
-          kind: 'step',
-          id: n.id,
-          goalId: goal.id,
-          goalTitle: goal.title,
-          title: n.title,
-          from: n.plannedDay,
-          minutes: durationOf(n.estimateMin),
-        });
+        for (const b of blocksOf(n)) {
+          if (b.date >= today) continue;
+          out.push({
+            kind: 'step',
+            id: n.id,
+            blockId: b.id,
+            goalId: goal.id,
+            goalTitle: goal.title,
+            title: n.title,
+            from: b.date,
+            minutes: b.minutes,
+          });
+        }
       }
     };
     walk(goal.nodes);
@@ -84,17 +95,19 @@ export function slippedWork(
 
   for (const t of tasks) {
     if (t.done) continue;
-    if (t.date === undefined || t.startMin === undefined) continue;
-    if (t.date >= today) continue;
-    out.push({
-      kind: 'task',
-      id: t.id,
-      goalId: t.goalId,
-      goalTitle: goals.find((g) => g.id === t.goalId)?.title ?? '',
-      title: t.title,
-      from: t.date,
-      minutes: durationOf(t.estimateMin),
-    });
+    for (const b of blocksOf(t)) {
+      if (b.date >= today) continue;
+      out.push({
+        kind: 'task',
+        id: t.id,
+        blockId: b.id,
+        goalId: t.goalId,
+        goalTitle: goals.find((g) => g.id === t.goalId)?.title ?? '',
+        title: t.title,
+        from: b.date,
+        minutes: b.minutes,
+      });
+    }
   }
 
   // Oldest first: the thing that slipped furthest has waited longest, and a

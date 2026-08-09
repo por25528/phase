@@ -1,19 +1,33 @@
 import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, Goal, Task } from '../db/types';
-import { migrateSlots, describeMigration } from './migrateSlots';
+import { migrateSlots, describeMigration, type LegacyNode, type LegacyTask } from './migrateSlots';
+
+/*
+ * This suite speaks the PRE-`WorkBlock` shape on purpose.
+ *
+ * `migrateSlots` repairs data written when a leaf held one placement in
+ * `plannedDay` + `plannedStartMin`; it runs before `migrateWorkBlocks` moves
+ * that pair into `blocks`, and it is the only code left that may read those
+ * fields. The fixtures and the assertions therefore go through the exported
+ * legacy types rather than `GoalNode`/`Task` — which no longer have them, and
+ * should not.
+ */
+type LegacyGoal = Omit<Goal, 'nodes'> & { nodes: LegacyNode[] };
+const legacyNodes = (g: Goal): LegacyNode[] => g.nodes as LegacyNode[];
+const legacyTasks = (t: Task[]): LegacyTask[] => t as LegacyTask[];
 
 const WED = '2026-07-15';   // Wednesday, dow 2
 const WEEK = '2026-07-13';
 const WINDOWS: AvailabilityWindow[] = [{ dow: 2, startMin: 540, endMin: 1080 }];
 
-const goal = (nodes: Goal['nodes'], over: Partial<Goal> = {}): Goal =>
-  ({ id: 'g1', title: 'Thesis', nodes, ...over });
+const goal = (nodes: LegacyNode[], over: Partial<Goal> = {}): Goal =>
+  ({ id: 'g1', title: 'Thesis', nodes, ...over } as LegacyGoal as Goal);
 
 describe('migrateSlots', () => {
   it('places an open day-pinned step at the start of its window', () => {
     const g = goal([{ id: 'n1', title: 'Draft', plannedWeek: WEEK, plannedDay: WED, estimateMin: 90 }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
-    expect(goals[0].nodes[0].plannedStartMin).toBe(540);
+    expect(legacyNodes(goals[0])[0].plannedStartMin).toBe(540);
     expect(report.scheduledSteps).toBe(1);
   });
 
@@ -23,7 +37,7 @@ describe('migrateSlots', () => {
       { id: 'n2', title: 'B', plannedWeek: WEEK, plannedDay: WED, estimateMin: 60 },
     ]);
     const { goals } = migrateSlots([g], [], WINDOWS, true);
-    expect(goals[0].nodes.map((n) => n.plannedStartMin)).toEqual([540, 630]);
+    expect(legacyNodes(goals[0]).map((n) => n.plannedStartMin)).toEqual([540, 630]);
   });
 
   /**
@@ -39,7 +53,7 @@ describe('migrateSlots', () => {
     const g = goal([{ id: 'n1', title: 'Draft', plannedWeek: WEEK }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
     expect(goals[0].nodes[0].plannedWeek).toBe(WEEK);
-    expect(goals[0].nodes[0].plannedDay).toBeUndefined();
+    expect(legacyNodes(goals[0])[0].plannedDay).toBeUndefined();
     expect(report.sidebarSteps).toBe(0);
   });
 
@@ -69,7 +83,7 @@ describe('migrateSlots', () => {
     const g = goal([{ id: 'n1', title: 'Huge', plannedWeek: WEEK, plannedDay: WED, estimateMin: 600 }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
     expect(goals[0].nodes[0].plannedWeek).toBeUndefined();
-    expect(goals[0].nodes[0].plannedStartMin).toBeUndefined();
+    expect(legacyNodes(goals[0])[0].plannedStartMin).toBeUndefined();
     expect(report.sidebarSteps).toBe(1);
   });
 
@@ -90,7 +104,7 @@ describe('migrateSlots', () => {
   it('places an open dated task', () => {
     const t: Task = { id: 't1', title: 'Email', date: WED, done: false, goalId: null, estimateMin: 15 };
     const { tasks, report } = migrateSlots([], [t], WINDOWS, true);
-    expect(tasks[0].startMin).toBe(540);
+    expect(legacyTasks(tasks)[0].startMin).toBe(540);
     expect(report.scheduledTasks).toBe(1);
   });
 
@@ -109,8 +123,8 @@ describe('migrateSlots', () => {
     const g = goal([{ id: 'n1', title: 'Step', plannedWeek: WEEK, plannedDay: WED, estimateMin: 60 }]);
     const t: Task = { id: 't1', title: 'Task', date: WED, done: false, goalId: null, estimateMin: 60 };
     const { goals, tasks } = migrateSlots([g], [t], WINDOWS, true);
-    expect(goals[0].nodes[0].plannedStartMin).toBe(540);
-    expect(tasks[0].startMin).toBe(600);
+    expect(legacyNodes(goals[0])[0].plannedStartMin).toBe(540);
+    expect(legacyTasks(tasks)[0].startMin).toBe(600);
   });
 
   it('sends a step to the sidebar when the day is off entirely', () => {
@@ -149,9 +163,9 @@ describe('migrateSlots', () => {
     ]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
 
-    expect(goals[0].nodes[0].plannedStartMin).toBe(540); // untouched
-    expect(goals[0].nodes[1].plannedStartMin).toBeUndefined();
-    expect(goals[0].nodes[1].plannedDay).toBeUndefined();
+    expect(legacyNodes(goals[0])[0].plannedStartMin).toBe(540); // untouched
+    expect(legacyNodes(goals[0])[1].plannedStartMin).toBeUndefined();
+    expect(legacyNodes(goals[0])[1].plannedDay).toBeUndefined();
     expect(report.sidebarSteps).toBe(1);
     expect(report.scheduledSteps).toBe(0);
   });
@@ -168,20 +182,20 @@ describe('migrateSlots', () => {
     ]);
     const { goals } = migrateSlots([g], [], WINDOWS, true);
 
-    expect(goals[0].nodes[0].plannedStartMin).toBe(540); // untouched
-    expect(goals[0].nodes[1].plannedStartMin).toBe(630); // stacks right after 540+90, not at 1440
+    expect(legacyNodes(goals[0])[0].plannedStartMin).toBe(540); // untouched
+    expect(legacyNodes(goals[0])[1].plannedStartMin).toBe(630); // stacks right after 540+90, not at 1440
   });
 
   it('does not place a new task on top of an already-migrated task', () => {
-    const already: Task = {
+    const already: LegacyTask = {
       id: 't1', title: 'Already placed', date: WED, startMin: 540, done: false, goalId: null, estimateMin: 540,
     };
     const fresh: Task = { id: 't2', title: 'New task', date: WED, done: false, goalId: null, estimateMin: 30 };
-    const { tasks, report } = migrateSlots([], [already, fresh], WINDOWS, true);
+    const { tasks, report } = migrateSlots([], [already as Task, fresh], WINDOWS, true);
 
-    expect(tasks[0].startMin).toBe(540); // untouched
+    expect(legacyTasks(tasks)[0].startMin).toBe(540); // untouched
     expect(tasks[1].date).toBe(WED); // date is RETAINED — no room left in the 540..1080 window, but no sidebar to fall back to
-    expect(tasks[1].startMin).toBeUndefined();
+    expect(legacyTasks(tasks)[1].startMin).toBeUndefined();
     expect(report.unpinnedTasks).toBe(1);
     expect(report.scheduledTasks).toBe(0);
   });
@@ -190,14 +204,14 @@ describe('migrateSlots', () => {
   // registered span covers the already-migrated task's TRUE extent
   // (startMin..startMin+duration), not e.g. the whole day.
   it('stacks a new task immediately after an already-migrated task\'s true end', () => {
-    const already: Task = {
+    const already: LegacyTask = {
       id: 't1', title: 'Already placed', date: WED, startMin: 540, done: false, goalId: null, estimateMin: 90,
     };
     const fresh: Task = { id: 't2', title: 'New task', date: WED, done: false, goalId: null, estimateMin: 60 };
-    const { tasks } = migrateSlots([], [already, fresh], WINDOWS, true);
+    const { tasks } = migrateSlots([], [already as Task, fresh], WINDOWS, true);
 
-    expect(tasks[0].startMin).toBe(540); // untouched
-    expect(tasks[1].startMin).toBe(630); // stacks right after 540+90, not at 1440
+    expect(legacyTasks(tasks)[0].startMin).toBe(540); // untouched
+    expect(legacyTasks(tasks)[1].startMin).toBe(630); // stacks right after 540+90, not at 1440
   });
 
   // Finding 3 / mutation 2: legacy plannedWeek can drift from the week its
@@ -209,7 +223,7 @@ describe('migrateSlots', () => {
     const g = goal([{ id: 'n1', title: 'Drifted', plannedWeek: DRIFTED_WEEK, plannedDay: WED, estimateMin: 30 }]);
     const { goals } = migrateSlots([g], [], WINDOWS, true);
     expect(goals[0].nodes[0].plannedWeek).toBe(WEEK); // re-derived from plannedDay, not kept as-is
-    expect(goals[0].nodes[0].plannedStartMin).toBe(540);
+    expect(legacyNodes(goals[0])[0].plannedStartMin).toBe(540);
   });
 
   it('does not mutate its inputs', () => {
@@ -264,8 +278,8 @@ describe('migrateSlots', () => {
       // The archived leaf's span is registered in its OWN map, not the live map —
       // the live step gets the earliest gap in the (empty) live window instead of
       // being pushed out, even though the archived leaf fills the entire window.
-      expect(goals[0].nodes[0].plannedStartMin).toBe(540); // archived leaf untouched
-      expect(goals[1].nodes[0].plannedStartMin).toBe(540); // live step unaffected
+      expect(legacyNodes(goals[0])[0].plannedStartMin).toBe(540); // archived leaf untouched
+      expect(legacyNodes(goals[1])[0].plannedStartMin).toBe(540); // live step unaffected
       expect(report.scheduledSteps).toBe(1);
       expect(report.sidebarSteps).toBe(0);
     });
@@ -279,8 +293,8 @@ describe('migrateSlots', () => {
         { completedAt: '2026-06-01' },
       );
       const { goals, report } = migrateSlots([g], [], WINDOWS, true);
-      expect(goals[0].nodes[0].plannedStartMin).toBe(540); // untouched
-      expect(goals[0].nodes[1].plannedStartMin).toBe(630); // stacks after the first's true end
+      expect(legacyNodes(goals[0])[0].plannedStartMin).toBe(540); // untouched
+      expect(legacyNodes(goals[0])[1].plannedStartMin).toBe(630); // stacks after the first's true end
       expect(report).toEqual({ scheduledSteps: 0, scheduledTasks: 0, sidebarSteps: 0, unpinnedTasks: 0 });
     });
 

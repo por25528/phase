@@ -4,6 +4,7 @@ import {
   backlogGroups, BACKLOG_CAP, capBacklog, hiddenProjectCounts, dueChip, LOOSE_GROUP_KEY,
 } from './backlog';
 import type { BacklogGroup } from './backlog';
+import { makeBlock } from './blocks';
 
 const WEEK = '2026-07-13';
 const TODAY = '2026-07-15';
@@ -28,13 +29,28 @@ describe('backlogGroups', () => {
     expect(backlogGroups([g], [], WEEK, TODAY)[0].items.map((i) => i.id)).toEqual(['n1']);
   });
 
-  it('includes a step with a day but no start minute — it is not on the grid', () => {
-    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: WEEK, plannedDay: TODAY }] });
+  /**
+   * "Committed, not placed" is the rail's whole reason to exist. It used to be
+   * a day with no start minute; it is a week commitment with no sitting now,
+   * which is the same fact with one fewer way to be half-written.
+   */
+  it('includes a step committed to the week but never placed', () => {
+    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: WEEK }] });
     expect(backlogGroups([g], [], WEEK, TODAY)[0].items.map((i) => i.id)).toEqual(['n1']);
   });
 
+  /**
+   * A sitting on ANY day counts as placed, not just one inside this week. The
+   * rail asks "does this still need a time", and a task sat next Tuesday has
+   * one.
+   */
+  it('excludes a step placed outside the week it is committed to', () => {
+    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: WEEK, blocks: [makeBlock('2026-09-01', 540, 60)] }] });
+    expect(backlogGroups([g], [], WEEK, TODAY)).toEqual([]);
+  });
+
   it('excludes a step genuinely placed on the grid this week', () => {
-    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 600 }] });
+    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: WEEK, blocks: [makeBlock(TODAY, 600, 60)] }] });
     expect(backlogGroups([g], [], WEEK, TODAY)).toEqual([]);
   });
 
@@ -55,7 +71,7 @@ describe('backlogGroups', () => {
   });
 
   it('excludes a task placed on the grid, and a done task', () => {
-    const placed = task({ id: 't1', date: TODAY, startMin: 600 });
+    const placed = task({ id: 't1', date: TODAY, blocks: [makeBlock(TODAY, 600, 60)] });
     const finished = task({ id: 't2', done: true });
     expect(backlogGroups([], [placed, finished], WEEK, TODAY)).toEqual([]);
   });

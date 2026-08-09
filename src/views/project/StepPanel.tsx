@@ -13,6 +13,8 @@ import { nodePct } from '../../lib/pct';
 import { addDays, fmtD, todayStr } from '../../lib/dates';
 import { containerStatus, STATUS_WORD, stepStatus } from '../../lib/status';
 import { clockLabel } from '../../lib/clock';
+import { planVsEstimate, sortedBlocks } from '../../lib/blocks';
+import { fmtMinutes } from '../../lib/effort';
 import type { StepStatus } from '../../db/types';
 
 const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
@@ -46,6 +48,8 @@ export function StepPanel({ goal, node, actions }: {
   actionsRef.current = actions;
   pendingUndoRef.current = pendingUndo;
   const isLeaf = !node.children || node.children.length === 0;
+  const sittings = sortedBlocks(node);
+  const discrepancy = planVsEstimate(node);
 
   useEffect(() => {
     setEditingTitle(false);
@@ -269,12 +273,61 @@ export function StepPanel({ goal, node, actions }: {
           room, so a full day says so rather than silently landing the block
           somewhere else.
         */}
-        {node.plannedWeek ? (
+        {sittings.length > 0 ? (
+          <div className="flex flex-col gap-[4px]">
+            {/*
+              One row per SITTING. A four-hour task sat twice is two rows here,
+              each removable on its own — the panel used to be able to state one
+              placement, so the second sitting had nowhere to be named.
+            */}
+            {sittings.map((b) => (
+              <div key={b.id} className="flex items-center gap-[8px]">
+                <span className="text-ui text-ink-soft tabular-nums flex-1 min-w-0">
+                  {fmtD(b.date)} · {clockLabel(b.startMin)}
+                  <span className="text-muted"> · {fmtMinutes(b.minutes)}</span>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove the sitting on ${fmtD(b.date)}`}
+                  onClick={() => actions.unscheduleNode(goal.id, node.id, b.id)}
+                  className="text-meta font-semibold text-muted px-[6px] py-[3px] min-h-[24px] rounded-field hover:bg-hover hover:text-ink"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            {/*
+              The discrepancy, stated rather than refused. It is only expressible
+              because a sitting owns its own length: "you have set aside 2h for a
+              3h task" is two real numbers, not a guess.
+            */}
+            {discrepancy && discrepancy.planned !== discrepancy.estimate && (
+              <p className="m-0 text-meta text-muted">
+                {fmtMinutes(discrepancy.planned)} set aside for a {fmtMinutes(discrepancy.estimate)} task
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-[5px] mt-[2px]">
+              <button
+                type="button"
+                onClick={() => actions.scheduleNode(goal.id, node.id, todayStr(), 0, { mode: 'add' })}
+                title="Another sitting for the same task, leaving the others where they are"
+                className="text-meta font-semibold text-accent-deep px-[8px] py-[4px] rounded-field hover:bg-accent-tint"
+              >
+                Sit again today
+              </button>
+              <button
+                type="button"
+                onClick={() => actions.unscheduleNode(goal.id, node.id)}
+                className="text-meta font-medium text-muted px-[8px] py-[4px] rounded-field hover:bg-hover hover:text-ink"
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+        ) : node.plannedWeek ? (
           <div className="flex flex-wrap items-center gap-[8px]">
             <span className="text-ui text-ink-soft tabular-nums">
-              {node.plannedDay
-                ? `${fmtD(node.plannedDay)}${node.plannedStartMin === undefined ? '' : ` · ${clockLabel(node.plannedStartMin)}`}`
-                : `Week of ${fmtD(node.plannedWeek)} — not placed on a day`}
+              Week of {fmtD(node.plannedWeek)} — not placed on a day
             </span>
             <button
               type="button"

@@ -4,6 +4,7 @@ import { goalPct } from '../lib/pct';
 import { leafCount } from '../lib/board';
 import type { Asset, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
+import { makeBlock } from '../lib/blocks';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
@@ -257,7 +258,7 @@ describe('store actions', () => {
       actions.addTask('Email', '2026-07-15');
       const id = getState().tasks[0].id;
       actions.scheduleTask(id, '2026-07-15', 600);
-      expect(getState().tasks[0].startMin).toBe(600);
+      expect(getState().tasks[0].blocks?.[0].startMin).toBe(600);
 
       actions.rescheduleTask(id, '2026-07-16');
       expect(getState().tasks[0].date).toBe('2026-07-16');
@@ -271,7 +272,7 @@ describe('store actions', () => {
       const id = getState().tasks[0].id;
       actions.scheduleTask(id, '2026-07-15', 600);
       actions.rescheduleTask(id, '2026-07-15');
-      expect(getState().tasks[0].startMin).toBe(600);
+      expect(getState().tasks[0].blocks?.[0].startMin).toBe(600);
     });
 
     it('removes a task with undo support and restores the same id', async () => {
@@ -492,13 +493,13 @@ describe('store actions', () => {
       // under test here, not scheduleNode's slot resolution.
       getState().goals[0].nodes[0].status = 'done';
       getState().goals[0].nodes[0].plannedWeek = '2026-07-13';
-      getState().goals[0].nodes[0].plannedDay = '2026-07-15';
+      getState().goals[0].nodes[0].blocks = [makeBlock('2026-07-15', 540, 60)];
       actions.addChild(nid, 'child');
       const node = getState().goals[0].nodes[0];
       expect(node.children).toHaveLength(1);
       expect(node.status).toBeUndefined();
       expect(node.plannedWeek).toBeUndefined();
-      expect(node.plannedDay).toBeUndefined();
+      expect(node.blocks?.[0].date).toBeUndefined();
     });
 
     /**
@@ -975,8 +976,8 @@ describe('store actions', () => {
       actions.scheduleNode(gid, nid, '2026-07-15', 600);
       const n = getState().goals[0].nodes[0];
       expect(n.plannedWeek).toBe('2026-07-13');
-      expect(n.plannedDay).toBe('2026-07-15');
-      expect(n.plannedStartMin).toBe(600);
+      expect(n.blocks?.[0].date).toBe('2026-07-15');
+      expect(n.blocks?.[0].startMin).toBe(600);
     });
 
     it('is a no-op on containers and unknown ids', async () => {
@@ -1003,7 +1004,7 @@ describe('store actions', () => {
 
       actions.scheduleNode(gid, nid, '2026-07-15', 600);
 
-      expect(getState().goals[0].nodes[0].plannedDay).toBeUndefined();
+      expect(getState().goals[0].nodes[0].blocks?.[0].date).toBeUndefined();
       expect(getState().toast).toBe('No 10h gap left that day — longest free stretch is 9h');
     });
 
@@ -1020,15 +1021,15 @@ describe('store actions', () => {
 
       const cleared = getState().goals[0].nodes[0];
       expect(cleared.plannedWeek).toBeUndefined();
-      expect(cleared.plannedDay).toBeUndefined();
-      expect(cleared.plannedStartMin).toBeUndefined();
+      expect(cleared.blocks?.[0].date).toBeUndefined();
+      expect(cleared.blocks?.[0].startMin).toBeUndefined();
       expect(getState().pendingUndo).not.toBeNull();
 
       actions.undoLastDelete();
       const restored = getState().goals[0].nodes[0];
       expect(restored.plannedWeek).toBe('2026-07-13');
-      expect(restored.plannedDay).toBe('2026-07-15');
-      expect(restored.plannedStartMin).toBe(600);
+      expect(restored.blocks?.[0].date).toBe('2026-07-15');
+      expect(restored.blocks?.[0].startMin).toBe(600);
     });
 
     it('unscheduling from the project page does not navigate away', async () => {
@@ -1080,8 +1081,8 @@ describe('store actions', () => {
       expect(actions.scheduleNode(gid, nid, '2026-07-15', 630)).toBe(true); // move within the same free day
 
       const n = getState().goals[0].nodes[0];
-      expect(n.plannedDay).toBe('2026-07-15');
-      expect(n.plannedStartMin).toBe(630);
+      expect(n.blocks?.[0].date).toBe('2026-07-15');
+      expect(n.blocks?.[0].startMin).toBe(630);
     });
 
     /**
@@ -1104,12 +1105,12 @@ describe('store actions', () => {
       actions.addRootNode(gid, '6.1200 pset');
       const nid = getState().goals[0].nodes[0].id;
       actions.scheduleNode(gid, nid, '2026-07-15', 540); // 09:00
-      expect(getState().goals[0].nodes[0].plannedStartMin).toBe(540);
+      expect(getState().goals[0].nodes[0].blocks?.[0].startMin).toBe(540);
 
       vi.setSystemTime(new Date(2026, 6, 15, 14)); // it is now 2pm
       expect(actions.scheduleNode(gid, nid, '2026-07-15', 660)).toBe(true); // aim 11:00
 
-      expect(getState().goals[0].nodes[0].plannedStartMin).toBe(660);
+      expect(getState().goals[0].nodes[0].blocks?.[0].startMin).toBe(660);
     });
 
     it('moves a block back onto an earlier weekday of the same week', async () => {
@@ -1127,8 +1128,8 @@ describe('store actions', () => {
       expect(actions.scheduleNode(gid, nid, '2026-07-13', 600)).toBe(true);
 
       const n = getState().goals[0].nodes[0];
-      expect(n.plannedDay).toBe('2026-07-13');
-      expect(n.plannedStartMin).toBe(600);
+      expect(n.blocks?.[0].date).toBe('2026-07-13');
+      expect(n.blocks?.[0].startMin).toBe(600);
     });
   });
 
@@ -1144,7 +1145,7 @@ describe('store actions', () => {
       const task = getState().tasks[0];
       expect(task.title).toBe('Read the Raft paper');
       expect(task.date).toBe('2026-07-15');
-      expect(task.startMin).toBe(600);
+      expect(task.blocks?.[0].startMin).toBe(600);
       expect(task.estimateMin).toBe(90);
       expect(task.goalId).toBeNull();
       expect(task.done).toBe(false);
@@ -1196,7 +1197,7 @@ describe('store actions', () => {
       actions.createTaskAt('Second', '2026-07-15', 600, 60);
 
       const second = getState().tasks.find((t) => t.title === 'Second')!;
-      expect(second.startMin).toBe(660);
+      expect(second.blocks?.[0].startMin).toBe(660);
     });
   });
 
@@ -1215,7 +1216,7 @@ describe('store actions', () => {
 
       const t = getState().tasks[0];
       expect(t.date).toBe('2026-07-15');
-      expect(t.startMin).toBe(630);
+      expect(t.blocks?.[0].startMin).toBe(630);
     });
   });
 
@@ -1241,13 +1242,13 @@ describe('store actions', () => {
 
       const cleared = getState().tasks[0];
       expect(cleared.date).toBeUndefined();
-      expect(cleared.startMin).toBeUndefined();
+      expect(cleared.blocks?.[0].startMin).toBeUndefined();
       expect(getState().pendingUndo).not.toBeNull();
 
       actions.undoLastDelete();
       const restored = getState().tasks[0];
       expect(restored.date).toBe('2026-07-15');
-      expect(restored.startMin).toBe(600);
+      expect(restored.blocks?.[0].startMin).toBe(600);
     });
 
     // The whole point of clearing the date: the task must stop being counted as
@@ -1298,33 +1299,62 @@ describe('store actions', () => {
       return { actions, getState, gid, firstId, secondId };
     }
 
-    // Regression guard: without excludeId in the resize path, `first`'s own
-    // 540..600 span would appear in `placed`, so `first` would collide with
-    // ITSELF and never be able to grow — even into genuinely free time before
-    // `second`. This proves growing in place (excluding self) works.
-    it('resizes a node in place, growing into the free gap right up to the next block', async () => {
+    /*
+     * Regression guard: without excluding the block being resized, `first`'s
+     * own 540..600 span appears in `placed`, so it collides with ITSELF and can
+     * never grow — even into genuinely free time before `second`. The exclusion
+     * is by BLOCK id now, which is what lets one sitting grow while its
+     * siblings still count as occupancy.
+     */
+    const blockOf = (node: { blocks?: readonly { id: string; minutes: number }[] }) => node.blocks![0];
+
+    it('resizes a sitting in place, growing into the free gap right up to the next block', async () => {
       const { actions, getState, firstId } = await scheduledPair();
+      const first = () => getState().goals[0].nodes.find((n) => n.id === firstId)!;
 
-      actions.resizeNode(firstId, 120); // 540..660 would exactly touch `second` at 660
+      actions.resizeNode(firstId, blockOf(first()).id, 120); // 540..660 exactly touches `second`
 
-      expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBe(120);
+      expect(blockOf(first()).minutes).toBe(120);
+    });
+
+    /**
+     * The sitting changes; the ESTIMATE does not.
+     *
+     * This used to write `estimateMin`, so dragging Tuesday's block an inch
+     * shorter re-priced the task everywhere it was counted — and with two
+     * sittings it would have silently resized the other one too. An estimate is
+     * a fact about the work; a sitting's length is a fact about a Tuesday.
+     */
+    it('never touches the estimate', async () => {
+      const { actions, getState, gid, firstId } = await scheduledPair();
+      actions.setNodeEstimate(firstId, 45);
+      const first = () => getState().goals[0].nodes.find((n) => n.id === firstId)!;
+
+      actions.resizeNode(firstId, blockOf(first()).id, 120);
+
+      expect(first().estimateMin).toBe(45);
+      expect(blockOf(first()).minutes).toBe(120);
+      expect(gid).toBeTruthy();
     });
 
     it('clamps a resize so it cannot overlap the next block', async () => {
       const { actions, getState, firstId } = await scheduledPair();
+      const first = () => getState().goals[0].nodes.find((n) => n.id === firstId)!;
 
-      actions.resizeNode(firstId, 600); // would run straight through `second`
+      actions.resizeNode(firstId, blockOf(first()).id, 600); // would run through `second`
 
-      // Clamped to the free gap: 540 (its own start) .. 660 (second's start) = 120min.
-      expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBe(120);
+      // Clamped to the free gap: 540 (its own start) .. 660 (second's start).
+      expect(blockOf(first()).minutes).toBe(120);
     });
 
-    it('leaves estimateMin untouched and explains itself when the resize is refused (non-positive request)', async () => {
+    it('leaves the sitting alone and explains itself when the resize is refused', async () => {
       const { actions, getState, firstId } = await scheduledPair();
+      const first = () => getState().goals[0].nodes.find((n) => n.id === firstId)!;
+      const before = blockOf(first()).minutes;
 
-      actions.resizeNode(firstId, 0);
+      actions.resizeNode(firstId, blockOf(first()).id, 0);
 
-      expect(getState().goals[0].nodes.find((n) => n.id === firstId)?.estimateMin).toBeUndefined();
+      expect(blockOf(first()).minutes).toBe(before);
       expect(getState().toast).toBe('Can\'t resize "first" — it no longer fits a free slot that day');
     });
 
@@ -1336,12 +1366,14 @@ describe('store actions', () => {
       const [firstId, secondId] = getState().tasks.map((t) => t.id);
       actions.scheduleTask(firstId, '2026-07-15', 540);
       actions.scheduleTask(secondId, '2026-07-15', 660);
+      const first = () => getState().tasks.find((t) => t.id === firstId)!;
 
-      actions.resizeTask(firstId, 120); // exactly touches `second` — must succeed
-      expect(getState().tasks.find((t) => t.id === firstId)?.estimateMin).toBe(120);
+      const sitting = blockOf(first()).id;
+      actions.resizeTask(firstId, sitting, 120); // exactly touches `second`
+      expect(blockOf(first()).minutes).toBe(120);
 
-      actions.resizeTask(firstId, 600); // would run through `second` — must clamp
-      expect(getState().tasks.find((t) => t.id === firstId)?.estimateMin).toBe(120);
+      actions.resizeTask(firstId, sitting, 600); // would run through `second`
+      expect(blockOf(first()).minutes).toBe(120);
     });
   });
 
@@ -1700,7 +1732,7 @@ describe('store actions', () => {
             nodes: [{
               id: 'leaf1', title: 'Real leaf',
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
-            }],
+            }] as unknown as GoalNode[],
           }],
           habits: [], tasks: [], sessions: [],
         });
@@ -1710,8 +1742,8 @@ describe('store actions', () => {
 
         expect(store.getState().hydration).toBe('ready');
         const node = store.getState().goals[0].nodes[0];
-        expect(node.plannedStartMin).toBe(540);
-        expect(node.plannedDay).toBe('2026-07-15');
+        expect(node.blocks?.[0].startMin).toBe(540);
+        expect(node.blocks?.[0].date).toBe('2026-07-15');
       });
 
       // Real, non-empty data — an open leaf committed to a day but never given
@@ -1735,7 +1767,7 @@ describe('store actions', () => {
             nodes: [{
               id: 'leaf1', title: 'Real leaf',
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
-            }],
+            }] as unknown as GoalNode[],
           }],
           habits: [], tasks: [], sessions: [],
         });
@@ -1746,17 +1778,21 @@ describe('store actions', () => {
           expect.objectContaining({
             goals: [expect.objectContaining({
               id: 'g1',
-              nodes: [expect.objectContaining({
-                id: 'leaf1',
-                plannedStartMin: 540,
-                plannedDay: '2026-07-15',
-              })],
+              /*
+               * The PERSISTED shape is still the legacy pair, and that is
+               * correct: `migrateSlots` writes the repair, persists it, then
+               * marks its flag — and `migrateWorkBlocks` runs afterwards, on
+               * read, exactly as `migrateNodeStatus` always has. Disk catches
+               * up on the next ordinary write; the store state below is the
+               * shape the app actually uses.
+               */
+              nodes: [expect.objectContaining({ id: 'leaf1', plannedStartMin: 540 })],
             })],
           }),
         );
         const node = store.getState().goals[0].nodes[0];
-        expect(node.plannedStartMin).toBe(540);
-        expect(node.plannedDay).toBe('2026-07-15');
+        expect(node.blocks?.[0].startMin).toBe(540);
+        expect(node.blocks?.[0].date).toBe('2026-07-15');
       });
 
       // describeMigration returns null for a no-op migration and a string
@@ -1772,7 +1808,7 @@ describe('store actions', () => {
             nodes: [{
               id: 'leaf1', title: 'Real leaf',
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
-            }],
+            }] as unknown as GoalNode[],
           }],
           habits: [], tasks: [], sessions: [],
         });
@@ -2267,7 +2303,7 @@ describe('openProject node focus (T8)', () => {
 describe('addChildren (AI daily subtasks)', () => {
   const withStep: Goal = {
     id: 'g', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
-    nodes: [{ id: 'n', title: 'Step', status: 'done', plannedWeek: '2026-07-13', plannedDay: '2026-07-15' }],
+    nodes: [{ id: 'n', title: 'Step', status: 'done', plannedWeek: '2026-07-13', blocks: [makeBlock('2026-07-15', 540, 60)] }],
   };
 
   it('appends several children, converting a leaf to a container and clearing its plan fields', async () => {
@@ -2278,7 +2314,7 @@ describe('addChildren (AI daily subtasks)', () => {
     expect(node.children?.map((c) => c.title)).toEqual(['Sub A', 'Sub B']); // trimmed, blanks dropped
     expect(node.status).toBeUndefined();
     expect(node.plannedWeek).toBeUndefined();
-    expect(node.plannedDay).toBeUndefined();
+    expect(node.blocks?.[0].date).toBeUndefined();
     expect(getState().expanded.has('n')).toBe(true);
   });
 
@@ -2352,7 +2388,7 @@ describe('deferOpenToNextWeek', () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([{
       id: 'g', title: 'G', column: 0, datesConfirmed: true,
-      nodes: [{ id: 'slipped', title: 'Slipped', plannedWeek: '2026-07-13', plannedDay: '2026-07-15' }],
+      nodes: [{ id: 'slipped', title: 'Slipped', plannedWeek: '2026-07-13', blocks: [makeBlock('2026-07-15', 540, 60)] }],
     }]);
     actions.addTask('Overdue', '2026-07-21');
     actions.addTask('Future', '2026-07-30');
@@ -2364,13 +2400,13 @@ describe('deferOpenToNextWeek', () => {
     expect(getState().tasks.find((t) => t.title === 'Future')!.date).toBe('2026-07-30');
     const step = getState().goals[0].nodes[0];
     expect(step.plannedWeek).toBe('2026-07-27');
-    expect(step.plannedDay).toBeUndefined();
+    expect(step.blocks?.[0].date).toBeUndefined();
     expect(getState().pendingUndo).not.toBeNull();
 
     actions.undoLastDelete();
     expect(getState().tasks.find((t) => t.id === overdueId)!.date).toBe('2026-07-21');
     expect(getState().goals[0].nodes[0].plannedWeek).toBe('2026-07-13');
-    expect(getState().goals[0].nodes[0].plannedDay).toBe('2026-07-15');
+    expect(getState().goals[0].nodes[0].blocks?.[0].date).toBe('2026-07-15');
   });
 
   it('is a no-op when nothing is open (no undo armed)', async () => {
@@ -2622,14 +2658,15 @@ describe('estimates', () => {
   };
 
   /**
-   * Block height is `durationOf(estimateMin)`, so raising the estimate of an
-   * already-placed item stretched it over its neighbours and past the end of
-   * the day — the exact collision `resolveSlot` gatekeeps every drop against,
-   * reachable from a field that said nothing at all. The estimate itself is not
-   * clamped (it is a fact about the work, and `resizeNode` is the gesture that
-   * means "make the block this long"), but the consequence is now stated.
+   * The estimate stopped being able to outgrow anything.
+   *
+   * A block's height WAS `durationOf(estimateMin)`, so raising the estimate of
+   * an already-placed item stretched it over its neighbours — a collision
+   * reachable from a field that said nothing, which is why a warning existed. A
+   * sitting owns its own `minutes` now, so an estimate change moves nothing on
+   * the calendar and there is nothing left to warn about.
    */
-  it('warns when a bigger estimate outgrows the slot the item sits in', async () => {
+  it('leaves a placed sitting alone when the estimate changes, and says nothing', async () => {
     vi.setSystemTime(new Date(2026, 6, 15, 8));
     const store = await freshStore();
     await store.initStore();
@@ -2642,26 +2679,13 @@ describe('estimates', () => {
     store.actions.scheduleNode('g9', 'a', '2026-07-15', 540); // 09:00–09:30
     store.actions.scheduleNode('g9', 'b', '2026-07-15', 600); // 10:00–10:30
 
-    store.actions.setNodeEstimate('a', 600); // ten hours, straight through b
+    store.actions.setNodeEstimate('a', 600); // ten hours, on paper
 
     const { findInAll } = await import('../lib/tree');
-    expect(findInAll(store.getState().goals, 'a')?.estimateMin).toBe(600);
-    expect(store.getState().toast).toBe('"Pset" no longer fits its slot — move it or shorten the day');
-  });
-
-  it('says nothing when the estimate still fits, or the item is not on the grid', async () => {
-    vi.setSystemTime(new Date(2026, 6, 15, 8));
-    const store = await freshStore();
-    await store.initStore();
-    store.actions.addGoals([{
-      id: 'g9', title: '6.1200', nodes: [{ id: 'a', title: 'Pset', estimateMin: 30 }],
-    }]);
-
-    store.actions.setNodeEstimate('a', 120); // unplaced — nothing to overflow
-    expect(store.getState().toast).toBeNull();
-
-    store.actions.scheduleNode('g9', 'a', '2026-07-15', 540);
-    store.actions.setNodeEstimate('a', 60); // an empty day has room
+    const a = findInAll(store.getState().goals, 'a')!;
+    expect(a.estimateMin).toBe(600);
+    // The sitting is still the half hour it was booked for.
+    expect(a.blocks?.[0].minutes).toBe(30);
     expect(store.getState().toast).toBeNull();
   });
 
@@ -3199,7 +3223,7 @@ describe('replanNode', () => {
     actions.replanNode('g', 'n');
 
     const { findInAll } = await import('../lib/tree');
-    expect(findInAll(getState().goals, 'n')?.plannedDay).toBe('2026-07-20'); // Monday
+    expect(findInAll(getState().goals, 'n')?.blocks?.[0].date).toBe('2026-07-20'); // Monday
     expect(getState().toast).toContain('Replanned "Part 2B"');
   });
 
@@ -3210,7 +3234,7 @@ describe('replanNode', () => {
     actions.replanNode('g', 'n');
 
     const { findInAll } = await import('../lib/tree');
-    expect(findInAll(getState().goals, 'n')?.plannedDay).toBe('2026-07-15');
+    expect(findInAll(getState().goals, 'n')?.blocks?.[0].date).toBe('2026-07-15');
     expect(getState().toast).toContain('Replanned');
   });
 
@@ -3227,7 +3251,7 @@ describe('replanNode', () => {
     store.actions.replanNode('g', 'n');
 
     const { findInAll } = await import('../lib/tree');
-    expect(findInAll(store.getState().goals, 'n')?.plannedDay).toBeUndefined();
+    expect(findInAll(store.getState().goals, 'n')?.blocks?.[0].date).toBeUndefined();
     expect(store.getState().toast).toContain('No free slot');
   });
 });
@@ -4113,5 +4137,128 @@ describe('the Goals representation', () => {
     const store = await freshStore();
     await store.initStore();
     expect(store.getState().goalsMode).toBe('timeline');
+  });
+});
+
+/**
+ * The reason `WorkBlock` exists.
+ *
+ * A four-hour task sat as two two-hour sittings must not be duplicated, and
+ * must not be finished by the first block. Before this a leaf held ONE
+ * placement, so the only ways to express two sittings were to split the task —
+ * which doubles it in every count and roll-up — or to schedule it once and lie
+ * about the length.
+ */
+describe('several sittings for one task', () => {
+  async function placedLeaf() {
+    vi.setSystemTime(new Date(2026, 6, 15, 8)); // Wed, 09:00–18:00 window
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Implement parser');
+    const nid = getState().goals[0].nodes[0].id;
+    actions.setNodeEstimate(nid, 240);
+    return { actions, getState, gid, nid, node: () => getState().goals[0].nodes[0] };
+  }
+
+  it('sits the same task twice without duplicating it', async () => {
+    const { actions, getState, gid, nid, node } = await placedLeaf();
+
+    actions.scheduleNode(gid, nid, '2026-07-15', 540);
+    actions.scheduleNode(gid, nid, '2026-07-16', 540, { mode: 'add' });
+
+    expect(getState().goals[0].nodes).toHaveLength(1);
+    expect(node().blocks?.map((b) => b.date)).toEqual(['2026-07-15', '2026-07-16']);
+  });
+
+  it('draws both sittings, on their own days', async () => {
+    const { actions, getState, gid, nid } = await placedLeaf();
+    const { scheduledOn } = await import('../lib/scheduled');
+
+    actions.scheduleNode(gid, nid, '2026-07-15', 540);
+    actions.scheduleNode(gid, nid, '2026-07-16', 540, { mode: 'add' });
+
+    const { goals, tasks } = getState();
+    expect(scheduledOn(goals, tasks, '2026-07-15')).toHaveLength(1);
+    expect(scheduledOn(goals, tasks, '2026-07-16')).toHaveLength(1);
+  });
+
+  /**
+   * Two hours on Wednesday and two on Thursday is not four hours on Wednesday.
+   * The old model billed the whole estimate to the single day it was pinned to.
+   */
+  it('bills each sitting to its own day', async () => {
+    const { actions, getState, gid, nid } = await placedLeaf();
+    const { weekCapacity } = await import('../lib/capacity');
+    const { plannedLeaves, weekOf } = await import('../lib/plan');
+
+    actions.scheduleNode(gid, nid, '2026-07-15', 540);
+    actions.scheduleNode(gid, nid, '2026-07-16', 540, { mode: 'add' });
+
+    const week = weekOf('2026-07-15');
+    const cap = weekCapacity({
+      week,
+      windows: getState().availability,
+      blocks: [],
+      leaves: plannedLeaves(getState().goals, week),
+      tasks: [],
+      now: { date: '2026-07-15', minute: 0 },
+      allDayBlocks: true,
+      hasData: false,
+    });
+
+    expect(cap.days.find((d) => d.date === '2026-07-15')?.plannedMin).toBe(240);
+    expect(cap.days.find((d) => d.date === '2026-07-16')?.plannedMin).toBe(240);
+  });
+
+  it('removing one sitting leaves the other on the calendar', async () => {
+    const { actions, gid, nid, node } = await placedLeaf();
+
+    actions.scheduleNode(gid, nid, '2026-07-15', 540);
+    actions.scheduleNode(gid, nid, '2026-07-16', 540, { mode: 'add' });
+    actions.unscheduleNode(gid, nid, node().blocks![0].id);
+
+    expect(node().blocks?.map((b) => b.date)).toEqual(['2026-07-16']);
+    expect(node().plannedWeek).toBeTruthy();
+  });
+
+  /**
+   * Completion is still explicit and still belongs to the TASK. Finishing the
+   * first sitting does not finish the work, which is the second half of the
+   * spec's rule.
+   */
+  it('is not finished by its first sitting', async () => {
+    const { actions, getState, gid, nid, node } = await placedLeaf();
+    actions.scheduleNode(gid, nid, '2026-07-15', 540);
+    actions.scheduleNode(gid, nid, '2026-07-16', 540, { mode: 'add' });
+
+    expect(node().status).toBeUndefined();
+    actions.toggleLeaf(nid);
+    expect(getState().goals[0].nodes[0].status).toBe('done');
+  });
+
+  /**
+   * A plain drop means "put it here", not "and also here" — otherwise dragging
+   * a placed task to a new day would silently double the time it has booked.
+   */
+  it('a plain placement replaces the sittings rather than adding one', async () => {
+    const { actions, gid, nid, node } = await placedLeaf();
+
+    actions.scheduleNode(gid, nid, '2026-07-15', 540);
+    actions.scheduleNode(gid, nid, '2026-07-16', 540, { mode: 'add' });
+    actions.scheduleNode(gid, nid, '2026-07-17', 540);
+
+    expect(node().blocks?.map((b) => b.date)).toEqual(['2026-07-17']);
+  });
+
+  it('resizing one sitting leaves the other, and the estimate, alone', async () => {
+    const { actions, gid, nid, node } = await placedLeaf();
+
+    actions.scheduleNode(gid, nid, '2026-07-15', 540);
+    actions.scheduleNode(gid, nid, '2026-07-16', 540, { mode: 'add' });
+    actions.resizeNode(nid, node().blocks![0].id, 90);
+
+    expect(node().blocks?.map((b) => b.minutes)).toEqual([90, 240]);
+    expect(node().estimateMin).toBe(240);
   });
 });

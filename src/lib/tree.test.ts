@@ -13,6 +13,7 @@ import {
 } from './tree';
 import { goalPct } from './pct';
 import type { Goal, GoalNode, StepStatus } from '../db/types';
+import { makeBlock } from './blocks';
 
 // ---- helpers ----
 
@@ -185,7 +186,7 @@ describe('indentNode', () => {
       const goals: Goal[] = [{
         id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31',
         nodes: [
-          { id: 'a', title: 'A', status: 'done', plannedWeek: '2026-07-13', plannedDay: '2026-07-15' },
+          { id: 'a', title: 'A', status: 'done', plannedWeek: '2026-07-13', blocks: [makeBlock('2026-07-15', 540, 60)] },
           { id: 'b', title: 'B' },
         ],
       }];
@@ -194,7 +195,7 @@ describe('indentNode', () => {
       expect(a.children).toHaveLength(1);
       expect(a.status).toBeUndefined();
       expect(a.plannedWeek).toBeUndefined();
-      expect(a.plannedDay).toBeUndefined();
+      expect(a.blocks).toBeUndefined();
     });
 
     it('drops doneAt when a completed preceding leaf becomes a container', () => {

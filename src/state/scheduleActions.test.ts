@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, GoalNode } from '../db/types';
 import { weekOf } from '../lib/plan';
-import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
+import { addPlannedSlot, clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
 
 const WED = '2026-07-15';
 const WINDOWS: AvailabilityWindow[] = [{ dow: 2, startMin: 540, endMin: 1080 }];
 
 describe('the plannedWeek invariant', () => {
-  // plannedWeek is redundant with plannedDay and kept only to avoid a 31-site
-  // refactor (see the spec). This is the test that keeps the two from drifting.
-  it('setPlannedSlot always writes plannedWeek as the Monday of plannedDay', () => {
+  /*
+   * The week COMMITMENT and the sitting are two facts, and placing work on a
+   * Wednesday commits to that Wednesday's week. Routing every write through
+   * `setPlannedSlot` is what stops them drifting.
+   */
+  it('setPlannedSlot always writes plannedWeek as the Monday of the sitting', () => {
     const cases = [
       { day: '2026-07-13', week: '2026-07-13' }, // a Monday
       { day: '2026-07-15', week: '2026-07-13' }, // midweek
@@ -18,21 +21,45 @@ describe('the plannedWeek invariant', () => {
     ];
     for (const { day, week } of cases) {
       const node: GoalNode = { id: 'n1', title: 'x' };
-      setPlannedSlot(node, day, 600);
+      setPlannedSlot(node, day, 600, 60);
       expect(node.plannedWeek).toBe(week);
-      expect(node.plannedDay).toBe(day);
-      expect(node.plannedStartMin).toBe(600);
-      expect(node.plannedWeek).toBe(weekOf(node.plannedDay!));
+      expect(node.blocks).toEqual([expect.objectContaining({ date: day, startMin: 600, minutes: 60 })]);
+      expect(node.plannedWeek).toBe(weekOf(node.blocks![0].date));
     }
   });
 
-  it('clearPlannedSlot removes all three fields together', () => {
+  /**
+   * A leaf can hold several sittings now, so "put it here" has to mean exactly
+   * that. Leaving Tuesday's block behind when the user drops the task on
+   * Thursday would silently double the work it has booked.
+   */
+  it('setPlannedSlot replaces every sitting, rather than adding one', () => {
     const node: GoalNode = { id: 'n1', title: 'x' };
-    setPlannedSlot(node, '2026-07-15', 600);
+    setPlannedSlot(node, '2026-07-15', 600, 60);
+    setPlannedSlot(node, '2026-07-16', 540, 90);
+    expect(node.blocks).toHaveLength(1);
+    expect(node.blocks![0]).toMatchObject({ date: '2026-07-16', startMin: 540, minutes: 90 });
+  });
+
+  it('addPlannedSlot leaves the existing sittings where they are', () => {
+    const node: GoalNode = { id: 'n1', title: 'x' };
+    setPlannedSlot(node, '2026-07-15', 600, 60);
+    addPlannedSlot(node, '2026-07-16', 540, 90);
+    expect(node.blocks?.map((b) => b.date)).toEqual(['2026-07-15', '2026-07-16']);
+  });
+
+  /**
+   * Both, because "unschedule" means the work is not happening. Leaving the
+   * week behind would drop the leaf into the rail's "to place" bucket, which
+   * reads as a commitment the user has just withdrawn.
+   */
+  it('clearPlannedSlot removes the week commitment and every sitting', () => {
+    const node: GoalNode = { id: 'n1', title: 'x' };
+    setPlannedSlot(node, '2026-07-15', 600, 60);
+    addPlannedSlot(node, '2026-07-16', 540, 60);
     clearPlannedSlot(node);
     expect('plannedWeek' in node).toBe(false);
-    expect('plannedDay' in node).toBe(false);
-    expect('plannedStartMin' in node).toBe(false);
+    expect('blocks' in node).toBe(false);
   });
 });
 

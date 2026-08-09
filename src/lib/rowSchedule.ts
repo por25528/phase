@@ -2,6 +2,7 @@ import type { GoalNode } from '../db/types';
 import { clockLabel } from './clock';
 import { addDays, fmtD, parseD } from './dates';
 import { isDone } from './status';
+import { sortedBlocks } from './blocks';
 import { weekOf } from './plan';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -41,15 +42,27 @@ export function scheduleCell(n: GoalNode, today: string): ScheduleCell | null {
   // box reads as work still to come, on the one row that has none left.
   if (isDone(n)) return null;
 
-  if (n.plannedDay !== undefined) {
-    const late = n.plannedDay < today;
-    const time = n.plannedStartMin === undefined ? '' : ` ${clockLabel(n.plannedStartMin)}`;
+  /*
+   * The NEXT sitting, and how many more there are.
+   *
+   * A task can be sat several times, so "when" is a run of dates. Naming the
+   * next one and counting the rest is the only version of that which fits a
+   * row: `Tue 14:00 +2` says the same thing as three chips and leaves the
+   * column a column.
+   */
+  const blocks = sortedBlocks(n);
+  if (blocks.length > 0) {
+    const overdue = blocks.filter((b) => b.date < today);
+    const next = blocks.find((b) => b.date >= today) ?? overdue[overdue.length - 1];
+    const late = next.date < today;
+    const more = blocks.length - 1;
+    const time = ` ${clockLabel(next.startMin)}`;
     return {
-      text: `${dayLabel(n.plannedDay, today)}${time}`,
+      text: `${dayLabel(next.date, today)}${time}${more > 0 ? ` +${more}` : ''}`,
       tone: late ? 'warn' : 'muted',
       hint: late
-        ? `Was scheduled for ${fmtD(n.plannedDay)} and has not been done`
-        : `Scheduled for ${fmtD(n.plannedDay)}${time}`,
+        ? `Was scheduled for ${fmtD(next.date)} and has not been done`
+        : `Scheduled for ${fmtD(next.date)}${time}${more > 0 ? `, and ${more} more sitting${more === 1 ? '' : 's'}` : ''}`,
     };
   }
 

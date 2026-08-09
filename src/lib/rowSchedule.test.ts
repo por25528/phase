@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GoalNode } from '../db/types';
 import { dayLabel, scheduleCell } from './rowSchedule';
+import { makeBlock } from './blocks';
 
 // 2026-08-12 is a Wednesday; its Monday is 2026-08-10.
 const TODAY = '2026-08-12';
@@ -30,20 +31,34 @@ describe('dayLabel', () => {
 describe('scheduleCell', () => {
   it('prefers an actual time over everything else the node carries', () => {
     const cell = scheduleCell(
-      leaf({ plannedStartMin: 840, plannedDay: TODAY, plannedWeek: '2026-08-10', deadline: '2026-08-24' }),
+      leaf({ plannedWeek: '2026-08-10', deadline: '2026-08-24', blocks: [makeBlock(TODAY, 840, 60)] }),
       TODAY,
     );
     expect(cell?.text).toMatch(/^Today /);
     expect(cell?.tone).toBe('muted');
   });
 
-  it('falls back to the day when there is no start minute', () => {
-    expect(scheduleCell(leaf({ plannedDay: '2026-08-13', plannedWeek: '2026-08-10' }), TODAY))
-      .toMatchObject({ text: 'Tomorrow', tone: 'muted' });
+  it('names the day and the time of the next sitting', () => {
+    expect(scheduleCell(leaf({ blocks: [makeBlock('2026-08-13', 540, 60)], plannedWeek: '2026-08-10' }), TODAY)?.text)
+      .toMatch(/^Tomorrow /);
+  });
+
+  /**
+   * A task can be sat several times, so "when" is a run of dates. Naming the
+   * next one and counting the rest is the only version of that which fits a
+   * row.
+   */
+  it('counts the sittings beyond the next one', () => {
+    const cell = scheduleCell(leaf({
+      plannedWeek: '2026-08-10',
+      blocks: [makeBlock('2026-08-13', 540, 60), makeBlock('2026-08-14', 540, 60)],
+    }), TODAY);
+    expect(cell?.text).toMatch(/\+1$/);
+    expect(cell?.hint).toContain('1 more sitting');
   });
 
   it('warns on a day that has been and gone', () => {
-    expect(scheduleCell(leaf({ plannedDay: '2026-08-11', plannedWeek: '2026-08-10' }), TODAY)?.tone)
+    expect(scheduleCell(leaf({ blocks: [makeBlock('2026-08-11', 540, 60)], plannedWeek: '2026-08-10' }), TODAY)?.tone)
       .toBe('warn');
   });
 
@@ -80,7 +95,7 @@ describe('scheduleCell', () => {
    * reads as work still to come, on the one row that has none left.
    */
   it('says nothing once the task is done', () => {
-    expect(scheduleCell(leaf({ status: 'done', plannedDay: TODAY, plannedStartMin: 600 }), TODAY))
+    expect(scheduleCell(leaf({ status: 'done', blocks: [makeBlock(TODAY, 600, 60)] }), TODAY))
       .toBeNull();
   });
 });

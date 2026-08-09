@@ -6,6 +6,7 @@ import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
 import { parseAvailability, serializeAvailability } from '../lib/availability';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { migrateNodeStatus } from '../lib/migrateNodeStatus';
+import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { decodeAssets, encodeAssets } from '../lib/backupAssets';
 
@@ -85,6 +86,15 @@ export async function loadState(): Promise<AppState> {
     db.tasks.toArray(),
     db.sessions.toArray(),
   ]);
+  /*
+   * Status only, here.
+   *
+   * `migrateWorkBlocks` runs in the store's `initStore` instead, AFTER
+   * `migrateSlots` — which repairs pre-slot-era data by reading the very
+   * `plannedDay`/`plannedStartMin` pair the block migration consumes. Running
+   * the two in the other order leaves the repair with nothing to read, and it
+   * needs the availability windows and the tab lock that only the store has.
+   */
   return { goals: migrateNodeStatus(goals), habits, tasks, sessions };
 }
 
@@ -550,11 +560,20 @@ export async function importStateFromFile(
   // from legacy milestones, and those nodes must go through the status
   // migration too rather than entering the store carrying `done`.
   const { goals: checkpointed } = migrateCheckpoints(sanitizedGoals);
-  const goals = migrateNodeStatus(checkpointed);
+  /*
+   * …and the block migration last, so nodes APPENDED by migrateCheckpoints go
+   * through it too rather than entering the store with a legacy placement.
+   *
+   * Unlike hydration there is no `migrateSlots` to run first — this path has no
+   * availability windows to place anything against — so a day with no start
+   * minute degrades to a week commitment here. That is lossless: the rail lists
+   * a week-committed leaf exactly as it listed a day-committed one.
+   */
+  const blocked = migrateWorkBlocks(migrateNodeStatus(checkpointed), raw.tasks ?? []);
   const parsed: AppState = {
-    goals,
+    goals: blocked.goals,
     habits: (raw.habits ?? []).map(sanitizeBackupHabit),
-    tasks: raw.tasks ?? [],
+    tasks: blocked.tasks,
     sessions: raw.sessions ?? [],
   };
   await persist(parsed);

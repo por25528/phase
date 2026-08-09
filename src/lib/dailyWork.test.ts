@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode, Task } from '../db/types';
 import { buildDailyWork, nowDividerIndex, tasksForWeek } from './dailyWork';
 import type { DailyWorkItem } from './dailyWork';
+import { makeBlock } from './blocks';
 
 const TODAY = '2026-07-23';
 const WEEK = '2026-07-20';
@@ -44,22 +45,31 @@ describe('buildDailyWork commitments', () => {
           title: 'Due and pinned',
           deadline: TODAY,
           plannedWeek: WEEK,
-          plannedDay: TODAY,
+          blocks: [makeBlock(TODAY, 540, 60)],
         },
-        { id: 'pinned', title: 'Pinned', plannedWeek: WEEK, plannedDay: TODAY },
+        { id: 'pinned', title: 'Pinned', plannedWeek: WEEK, blocks: [makeBlock(TODAY, 540, 60)] },
         { id: 'week', title: 'Week', plannedWeek: WEEK },
-        { id: 'slipped', title: 'Slipped pin', plannedWeek: WEEK, plannedDay: '2026-07-22' },
-        { id: 'future', title: 'Future pin', plannedWeek: WEEK, plannedDay: '2026-07-24' },
+        { id: 'slipped', title: 'Slipped pin', plannedWeek: WEEK, blocks: [makeBlock('2026-07-22', 540, 60)] },
+        { id: 'future', title: 'Future pin', plannedWeek: WEEK, blocks: [makeBlock('2026-07-24', 540, 60)] },
       ]),
     ];
     const tasks = [task('today', TODAY), task('tomorrow', '2026-07-24')];
 
     const result = buildDailyWork(goals, tasks, TODAY);
 
+    /*
+     * `pinned` sorts ahead of `task:today` on the CLOCK, not on its bucket.
+     *
+     * A step pinned to today now always carries a time — a sitting is a day AND
+     * an hour, and the "pinned to a day, no hour" half-state it used to have is
+     * gone. `task:today` has no time, so it sinks below everything timed, which
+     * is the rule `sortByClock` has always applied. The bucket order is still
+     * the tie-break, as `step:week` before `step:slipped` shows.
+     */
     expect(result.commitments.map(({ key, source, due }) => ({ key, source, due }))).toEqual([
       { key: 'step:due', source: 'due', due: true },
-      { key: 'task:today', source: 'task-today', due: false },
       { key: 'step:pinned', source: 'pinned-today', due: false },
+      { key: 'task:today', source: 'task-today', due: false },
       { key: 'step:week', source: 'this-week', due: false },
       { key: 'step:slipped', source: 'this-week', due: false },
     ]);
@@ -73,7 +83,7 @@ describe('buildDailyWork commitments', () => {
           title: 'Step',
           deadline: TODAY,
           plannedWeek: WEEK,
-          plannedDay: TODAY,
+          blocks: [makeBlock(TODAY, 540, 60)],
         },
       ]),
     ];
@@ -98,6 +108,7 @@ describe('buildDailyWork commitments', () => {
         source: 'due',
         plannedWeek: WEEK,
         plannedDay: TODAY,
+        startMin: 540,
         scheduledDate: TODAY,
       },
       {
@@ -144,7 +155,7 @@ describe('buildDailyWork carryovers and completion', () => {
           id: 'slipped',
           title: 'Slipped this week',
           plannedWeek: WEEK,
-          plannedDay: '2026-07-22',
+          blocks: [makeBlock('2026-07-22', 540, 60)],
         },
       ]),
     ];
@@ -168,7 +179,6 @@ describe('buildDailyWork carryovers and completion', () => {
           id: 'stale-invalid-day',
           title: 'Stale with malformed pin',
           plannedWeek: '2026-07-13',
-          plannedDay: 'not-a-date',
         },
       ]),
     ];
@@ -311,15 +321,13 @@ describe('buildDailyWork malformed task dates', () => {
 // times at all, which made the default view contradict the flagship feature.
 describe('buildDailyWork clock times', () => {
   it('carries a task startMin onto its item', () => {
-    const sections = buildDailyWork([], [task('t', TODAY, { startMin: 540 })], TODAY);
+    const sections = buildDailyWork([], [task('t', TODAY, { blocks: [makeBlock(TODAY, 540, 60)] })], TODAY);
     expect(sections.commitments[0].startMin).toBe(540);
   });
 
   it('carries a pinned step plannedStartMin onto its item', () => {
-    const goals = [goal('g', [{
-      id: 'n', title: 'Step',
-      plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 660,
-    }])];
+    const goals = [goal('g', [{ id: 'n', title: 'Step',
+      plannedWeek: WEEK, blocks: [makeBlock(TODAY, 660, 60)] }])];
     expect(buildDailyWork(goals, [], TODAY).commitments[0].startMin).toBe(660);
   });
 
@@ -330,12 +338,12 @@ describe('buildDailyWork clock times', () => {
 
   it('sorts timed commitments chronologically, whatever their source bucket', () => {
     const goals = [goal('g', [
-      { id: 'n15', title: '15:00 kernel', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
-      { id: 'n09', title: '09:00 standup', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
+      { id: 'n15', title: '15:00 kernel', plannedWeek: WEEK, blocks: [makeBlock(TODAY, 900, 60)] },
+      { id: 'n09', title: '09:00 standup', plannedWeek: WEEK, blocks: [makeBlock(TODAY, 540, 60)] },
     ])];
     const tasks = [
-      task('t13', TODAY, { startMin: 780 }),
-      task('t11', TODAY, { startMin: 660 }),
+      task('t13', TODAY, { blocks: [makeBlock(TODAY, 780, 60)] }),
+      task('t11', TODAY, { blocks: [makeBlock(TODAY, 660, 60)] }),
     ];
 
     const titles = buildDailyWork(goals, tasks, TODAY).commitments.map((i) => i.title);
@@ -344,7 +352,7 @@ describe('buildDailyWork clock times', () => {
 
   it('sinks untimed work below every timed item but keeps its bucket order', () => {
     const goals = [goal('g', [
-      { id: 'n', title: 'Timed step', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
+      { id: 'n', title: 'Timed step', plannedWeek: WEEK, blocks: [makeBlock(TODAY, 900, 60)] },
       { id: 'nw', title: 'Anytime this week', plannedWeek: WEEK },
     ])];
     const tasks = [task('t', TODAY)];
@@ -357,9 +365,9 @@ describe('buildDailyWork clock times', () => {
 
   it('breaks a startMin tie by the existing bucket precedence, not by title', () => {
     const goals = [goal('g', [
-      { id: 'n', title: 'AAA step', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
+      { id: 'n', title: 'AAA step', plannedWeek: WEEK, blocks: [makeBlock(TODAY, 540, 60)] },
     ])];
-    const tasks = [task('zzz', TODAY, { startMin: 540 })];
+    const tasks = [task('zzz', TODAY, { blocks: [makeBlock(TODAY, 540, 60)] })];
 
     // task-today outranks pinned-today in the bucket order.
     expect(buildDailyWork(goals, tasks, TODAY).commitments.map((i) => i.title))

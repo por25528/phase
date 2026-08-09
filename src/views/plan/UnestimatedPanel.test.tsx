@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, Task } from '../../db/types';
+import { makeBlock } from '../../lib/blocks';
 
 /**
  * The header's "N unestimated" used to be inert text: the app naming a hole in
@@ -58,10 +59,8 @@ const PROJECT: Goal = {
   column: 0,
   nodes: [
     { id: 'n1', title: 'Implement AppendEntries', plannedWeek: '2026-07-27' },
-    {
-      id: 'n2', title: 'Debug figure-8',
-      plannedWeek: '2026-07-27', plannedDay: '2026-07-28', plannedStartMin: 540,
-    },
+    { id: 'n2', title: 'Debug figure-8',
+      plannedWeek: '2026-07-27', blocks: [makeBlock('2026-07-28', 540, 60)] },
   ],
 };
 

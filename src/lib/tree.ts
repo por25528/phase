@@ -179,11 +179,11 @@ export function indentNode(goals: Goal[], nodeId: string): Goal[] {
       delete prev.blockedOn;
       delete prev.doneAt;
       delete prev.checkpoint;
-      // A container can never carry a planned slot — clear all three
-      // together so plannedStartMin never survives without plannedDay.
+      // A container can never carry a plan — the week commitment and every
+      // sitting go together, or the tree would draw blocks for a node that has
+      // no work of its own left.
       delete prev.plannedWeek;
-      delete prev.plannedDay;
-      delete prev.plannedStartMin;
+      delete prev.blocks;
       delete prev.estimateMin;
     }
     (prev.children ??= []).push(node);

@@ -13,6 +13,14 @@ export interface PlanDragData {
    * already let go of the thing they were aiming.
    */
   durationMin: number;
+  /**
+   * Set when the thing being dragged is an EXISTING sitting, absent when it is
+   * a row from the rail.
+   *
+   * That difference is what tells the drop whether to move a bar or to place
+   * the task for the first time — and with several sittings, which bar.
+   */
+  blockId?: string;
 }
 
 export interface AimInput {

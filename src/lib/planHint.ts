@@ -1,4 +1,5 @@
 import type { Goal, GoalNode, Task } from '../db/types';
+import { isPlaced } from './blocks';
 
 /**
  * Has anything, ever, in any week, been placed on the calendar?
@@ -15,7 +16,7 @@ import type { Goal, GoalNode, Task } from '../db/types';
  */
 export function hasPlacedWork(goals: Goal[], tasks: Task[]): boolean {
   // Tasks first: a flat array with a real early exit, versus a tree walk.
-  if (tasks.some((t) => t.date !== undefined && t.startMin !== undefined)) return true;
+  if (tasks.some(isPlaced)) return true;
   // `walkLeaves` has no early exit, so a `found` flag still visits every leaf
   // of the goal it finds a hit in. `hasPlacedLeaf` stops at the first one —
   // this runs on every Plan render, including the 60-second now-line tick.
@@ -26,7 +27,7 @@ function hasPlacedLeaf(nodes: GoalNode[]): boolean {
   for (const n of nodes) {
     if (n.children && n.children.length) {
       if (hasPlacedLeaf(n.children)) return true;
-    } else if (n.plannedDay !== undefined && n.plannedStartMin !== undefined) {
+    } else if (isPlaced(n)) {
       return true;
     }
   }

@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
+import { makeBlock } from '../../lib/blocks';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -58,10 +59,8 @@ const leafWithDates: Goal = {
 
 const plannedLeaf: Goal = {
   id: 'g1', title: 'Project',
-  nodes: [{
-    id: 'n1', title: 'Wire up auth',
-    plannedWeek: '2026-07-27', plannedDay: '2026-07-28', plannedStartMin: 540,
-  }],
+  nodes: [{ id: 'n1', title: 'Wire up auth',
+    plannedWeek: '2026-07-27', blocks: [makeBlock('2026-07-28', 540, 60)] }],
 };
 
 const unplannedLeaf: Goal = {
@@ -323,7 +322,8 @@ describe('StepPanel', () => {
     // the coarsest true thing the panel could say about a block sitting at
     // 09:00 on the Tuesday.
     expect(screen.getByText(/Jul 28/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Remove the sitting on / })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Clear all' })).toBeTruthy();
   });
 
   /**
@@ -344,8 +344,8 @@ describe('StepPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Today' }));
 
     const node = store.getState().goals[0].nodes[0];
-    expect(node.plannedDay).toBe('2026-07-27');
-    expect(node.plannedStartMin).toBeTypeOf('number');
+    expect(node.blocks?.[0].date).toBe('2026-07-27');
+    expect(node.blocks?.[0].startMin).toBeTypeOf('number');
   });
 
   it('says a group is scheduled through its tasks, and offers no buttons', async () => {
