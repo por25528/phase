@@ -59,7 +59,10 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 
 - [x] **S13 Type-aware creation (change 14).** Two fields, then a type-specific
       starting point.
-- [ ] **S14 Milestones replace checkpoints.**
+- [x] **S14 Milestones replace checkpoints** — in the UI's vocabulary and
+      affordance only. The spec's non-counting Milestone OBJECT is deliberately
+      not built: Phase had one, and retired it because a marker that never moved
+      a number was a marker nobody looked at.
 - [ ] **S15 Inline AI proposal / diff (change 8).** Retires the clipboard
       round-trip as the primary path.
 - [ ] **S16 Visual system (change 15).** Type roles, spacing, radius, surfaces,
