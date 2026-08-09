@@ -70,5 +70,5 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
       box and nothing else.
 - [x] **S16 Visual system (change 15).** Type roles, spacing, radius, surfaces,
       interaction states, motion.
-- [ ] **S17 Quality-of-life sweep.** The §19 P0 list that the slices above did
+- [x] **S17 Quality-of-life sweep.** The §19 P0 list that the slices above did
       not already absorb.
