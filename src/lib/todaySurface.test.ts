@@ -1,0 +1,154 @@
+import { describe, expect, it } from 'vitest';
+import type { AvailabilityWindow, Goal, GoalNode } from '../db/types';
+import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
+import { MAX_ATTENTION, attentionItems, nowFocus } from './todaySurface';
+
+const TODAY = '2026-08-12';
+
+const HOURS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 }));
+
+const item = (over: Partial<DailyWorkItem>): DailyWorkItem => ({
+  key: over.id ?? 'k',
+  kind: 'step',
+  id: 'n',
+  title: 'n',
+  goalId: 'g',
+  due: false,
+  done: false,
+  editable: true,
+  source: 'this-week',
+  ...over,
+});
+
+describe('nowFocus', () => {
+  it('leads with the block the clock is inside', () => {
+    const focus = nowFocus([
+      item({ id: 'morning', startMin: 540, estimateMin: 60 }),
+      item({ id: 'afternoon', startMin: 840, estimateMin: 60 }),
+    ], 870);
+    expect(focus).toMatchObject({ current: true, item: { id: 'afternoon' } });
+  });
+
+  it('leads with the next one to start when nothing is running', () => {
+    const focus = nowFocus([
+      item({ id: 'morning', startMin: 540, estimateMin: 60 }),
+      item({ id: 'afternoon', startMin: 840, estimateMin: 60 }),
+    ], 700);
+    expect(focus).toMatchObject({ current: false, item: { id: 'afternoon' } });
+  });
+
+  /**
+   * A day with nothing on the calendar still has work in it, so answering
+   * "nothing" would be false. Items arrive in bucket precedence, so the first
+   * untimed one is the most urgent.
+   */
+  it('falls back to the first untimed commitment once the timed day is behind you', () => {
+    const focus = nowFocus([
+      item({ id: 'morning', startMin: 540, estimateMin: 60 }),
+      item({ id: 'loose' }),
+    ], 1200);
+    expect(focus).toMatchObject({ current: false, item: { id: 'loose' } });
+  });
+
+  it('ignores what is already done', () => {
+    expect(nowFocus([item({ id: 'a', startMin: 540, done: true })], 550)).toBeNull();
+  });
+
+  it('has nothing to say about an empty day', () => {
+    expect(nowFocus([], 600)).toBeNull();
+  });
+
+  /**
+   * Without an estimate the block's length is unknown. Assuming an hour is
+   * fine for deciding whether NOW is inside it, and the surface never prints
+   * that hour — inventing a duration nobody typed is what the unestimated
+   * count exists to prevent.
+   */
+  it('assumes an hour for an unestimated block rather than treating it as instant', () => {
+    expect(nowFocus([item({ id: 'a', startMin: 600 })], 630)).toMatchObject({ current: true });
+  });
+});
+
+describe('attentionItems', () => {
+  const sections = (over: Partial<DailyWorkSections> = {}): DailyWorkSections => ({
+    commitments: [], carryOvers: [], completedToday: [], ...over,
+  });
+
+  const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
+
+  const goal = (id: string, over: Partial<Goal> = {}): Goal => ({
+    id,
+    title: id,
+    start: TODAY,
+    deadline: '2026-08-24',
+    datesConfirmed: true,
+    nodes: [leaf('a', { estimateMin: 60 })],
+    ...over,
+  });
+
+  const attention = (goals: Goal[], s = sections()) =>
+    attentionItems(goals, s, TODAY, HOURS, [], true);
+
+  it('says nothing at all on a quiet day', () => {
+    expect(attention([goal('fine')])).toEqual([]);
+  });
+
+  it('names work that slipped from an earlier day', () => {
+    const s = sections({ carryOvers: [item({ id: 'x' }), item({ id: 'y' })] });
+    expect(attention([goal('fine')], s)[0]).toMatchObject({
+      kind: 'carry-over',
+      text: '2 tasks slipped from an earlier day',
+    });
+  });
+
+  it('does not count a carry-over that has since been finished', () => {
+    const s = sections({ carryOvers: [item({ id: 'x', done: true })] });
+    expect(attention([goal('fine')], s)).toEqual([]);
+  });
+
+  it('names a goal that cannot fit before its deadline', () => {
+    const doomed = goal('Physics Final', { nodes: [leaf('a', { estimateMin: 100_000 })] });
+    expect(attention([doomed])[0]).toMatchObject({
+      kind: 'at-risk',
+      goalId: 'Physics Final',
+    });
+  });
+
+  it('names a goal with nothing that can be started', () => {
+    const stuck = goal('Stuck', {
+      nodes: [leaf('a', { status: 'blocked', blockedOn: 'waiting on the TA' })],
+    });
+    expect(attention([stuck])[0]).toMatchObject({ kind: 'blocked' });
+  });
+
+  /**
+   * Tight is a state to notice when you open a goal, not one to interrupt a
+   * Tuesday morning with. Only the two that need acting on reach Today.
+   */
+  it('leaves Tight and No forecast off the list entirely', () => {
+    const tight = goal('Tight', { nodes: [leaf('a', { estimateMin: 60 }), leaf('b')] });
+    const unknown = goal('Unknown', { deadline: undefined, datesConfirmed: undefined });
+    expect(attention([tight, unknown])).toEqual([]);
+  });
+
+  it('ignores a completed goal, which has no exceptions left', () => {
+    const archived = goal('Archived', {
+      completedAt: TODAY,
+      nodes: [leaf('a', { status: 'blocked' })],
+    });
+    expect(attention([archived])).toEqual([]);
+  });
+
+  /**
+   * Three is the point. A warning region that always has something in it is a
+   * region people learn to skip, which is worse than not having one.
+   */
+  it('never shows more than three, however bad the week is', () => {
+    const doomed = (id: string) => goal(id, { nodes: [leaf('a', { estimateMin: 100_000 })] });
+    const s = sections({ carryOvers: [item({ id: 'x' })] });
+    const out = attention([doomed('a'), doomed('b'), doomed('c'), doomed('d')], s);
+    expect(out).toHaveLength(MAX_ATTENTION);
+    // The thing that already slipped outranks the thing that might.
+    expect(out[0].kind).toBe('carry-over');
+  });
+});

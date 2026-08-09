@@ -9,8 +9,9 @@ import { IconX } from './Icons';
 // Timeline is absent because it is not a destination any more — it is a mode
 // inside Goals, reachable from the command palette.
 const SHORTCUTS: { keys: string[]; label: string }[] = [
-  { keys: ['1'], label: 'Plan' },
-  { keys: ['2'], label: 'Goals' },
+  { keys: ['1'], label: 'Today' },
+  { keys: ['2'], label: 'Plan' },
+  { keys: ['3'], label: 'Goals' },
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
   { keys: ['⌘', 'K'], label: 'Search everything, and run commands' },

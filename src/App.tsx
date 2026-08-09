@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore, initStore, VIEW_LABELS } from './state/store';
+import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Plan } from './views/Plan';
 import { Project } from './views/Project';
@@ -52,6 +53,7 @@ const THEME_LABEL: Record<Theme, string> = { system: 'System', light: 'Light', d
 // presentation of goal dates people opened weekly, sitting at the same weight
 // as the surfaces they work in daily; it is a view mode inside Goals now.
 const NAV_TABS = [
+  ['today', VIEW_LABELS.today],
   ['plan', VIEW_LABELS.plan],
   ['goals', VIEW_LABELS.goals],
 ] as const;
@@ -161,6 +163,7 @@ export function App() {
       // View/navigation shortcuts must not fire underneath an open dialog — inside
       // a dialog, 1–7 mean "plan this step on that weekday", not "switch view".
       if (modalRegistry.hasOpenModal()) return;
+      if (command === 'view-today') actions.setView('today');
       if (command === 'view-plan') actions.setView('plan');
       if (command === 'view-goals') actions.setView('goals');
     }
@@ -182,6 +185,7 @@ export function App() {
       case 'add-task': openTaskCapture(); return;
       case 'new-goal': actions.setGoalModal('new'); return;
       case 'import-goal': actions.setGoalModal('import'); return;
+      case 'nav-today': actions.setView('today'); return;
       case 'nav-plan': actions.setView('plan'); return;
       case 'nav-goals': actions.setGoalsMode('board'); actions.setView('goals'); return;
       case 'nav-timeline': actions.setGoalsMode('timeline'); actions.setView('goals'); return;
@@ -400,6 +404,10 @@ export function App() {
           // header, which reads as breakage rather than as waiting.
           <div role="status" className="max-w-[420px] mx-auto mt-[100px] px-[24px] text-center">
             <div className="text-lead text-muted">Opening your local database…</div>
+          </div>
+        ) : view === 'today' ? (
+          <div className="w-full px-[16px] sm:px-[36px] py-[28px]">
+            <Today />
           </div>
         ) : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[24px]">

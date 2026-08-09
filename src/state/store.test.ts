@@ -1054,6 +1054,7 @@ describe('store actions', () => {
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
+      actions.setView('plan');
       actions.scheduleNode(gid, nid, '2026-07-15', 600);
 
       actions.unscheduleNode(gid, nid);
@@ -2504,9 +2505,14 @@ describe('toggleHabitOn (backfill)', () => {
 });
 
 describe('view', () => {
-  it('opens on the Plan calendar', async () => {
+  /**
+   * Today, not Plan. The first thing the app shows should answer the question
+   * it is opened to ask; a week grid is where you go to decide when, which is
+   * a Monday question, not a 10:10-on-Tuesday one.
+   */
+  it('opens on Today', async () => {
     const { getState } = await freshStore();
-    expect(getState().view).toBe('plan');
+    expect(getState().view).toBe('today');
   });
 
   describe('addChild and addChildren clear leaf-only fields when creating a container', () => {

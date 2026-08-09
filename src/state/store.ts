@@ -70,9 +70,10 @@ function writeStatus(n: GoalNode, next: StepStatus, today: string, blockedOn?: s
   }
 }
 
-export type ViewName = 'plan' | 'goals' | 'project';
+export type ViewName = 'today' | 'plan' | 'goals' | 'project';
 
 export const VIEW_LABELS = {
+  today: 'Today',
   plan: 'Plan',
   goals: 'Goals',
 } as const;
@@ -140,7 +141,7 @@ let state: FullState = {
   habits: [],
   tasks: [],
   sessions: [],
-  view: 'plan',
+  view: 'today',
   projectReturnView: 'goals',
   selDate: todayStr(),
   openGoalId: null,

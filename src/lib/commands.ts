@@ -34,8 +34,9 @@ export const COMMANDS: Command[] = [
   { id: 'new-goal', label: 'New goal', keywords: ['create', 'project', 'add'], group: 'create' },
   { id: 'import-goal', label: 'Import a goal from text', keywords: ['paste', 'json', 'ai'], group: 'create' },
 
-  { id: 'nav-plan', label: 'Go to Plan', keywords: ['calendar', 'week', 'schedule'], hint: '1', group: 'navigate' },
-  { id: 'nav-goals', label: 'Go to Goals', keywords: ['projects', 'board', 'portfolio'], hint: '2', group: 'navigate' },
+  { id: 'nav-today', label: 'Go to Today', keywords: ['now', 'next', 'execute'], hint: '1', group: 'navigate' },
+  { id: 'nav-plan', label: 'Go to Plan', keywords: ['calendar', 'week', 'schedule'], hint: '2', group: 'navigate' },
+  { id: 'nav-goals', label: 'Go to Goals', keywords: ['projects', 'board', 'portfolio'], hint: '3', group: 'navigate' },
   { id: 'nav-timeline', label: 'Go to Timeline', keywords: ['gantt', 'spans', 'semester'], group: 'navigate' },
 
   { id: 'theme', label: 'Switch theme', keywords: ['dark', 'light', 'appearance', 'system'], group: 'view' },
@@ -47,7 +48,7 @@ export const COMMANDS: Command[] = [
 ];
 
 /** The rows the palette shows before anything has been typed. */
-export const DEFAULT_COMMAND_IDS = ['add-task', 'new-goal', 'nav-plan', 'nav-goals'];
+export const DEFAULT_COMMAND_IDS = ['add-task', 'new-goal', 'nav-today', 'nav-plan', 'nav-goals'];
 
 function norm(s: string): string {
   return s.toLowerCase().trim();

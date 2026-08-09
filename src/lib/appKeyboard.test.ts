@@ -72,18 +72,18 @@ describe('resolveAppKeyCommand', () => {
     expect(resolveAppKeyCommand({ key: 'T' })).toBeNull();
   });
 
-  it('maps 1-2 to the two destinations in nav order, but not while typing', () => {
-    expect(resolveAppKeyCommand({ key: '1' })).toBe('view-plan');
-    expect(resolveAppKeyCommand({ key: '2' })).toBe('view-goals');
+  it('maps 1-3 to the three destinations in nav order, but not while typing', () => {
+    expect(resolveAppKeyCommand({ key: '1' })).toBe('view-today');
+    expect(resolveAppKeyCommand({ key: '2' })).toBe('view-plan');
+    expect(resolveAppKeyCommand({ key: '3' })).toBe('view-goals');
     expect(resolveAppKeyCommand({ key: '1', target: inputTarget })).toBeNull();
-    expect(resolveAppKeyCommand({ key: '2', target: inputTarget })).toBeNull();
+    expect(resolveAppKeyCommand({ key: '3', target: inputTarget })).toBeNull();
   });
 
-  // 3 went back to being unmapped when Timeline stopped being a destination:
-  // it is a representation of Goals, and a number key that changed both the
-  // view and the mode inside it would be the one nav key doing two things.
-  it('leaves 3, 4 and 5 unmapped', () => {
-    expect(resolveAppKeyCommand({ key: '3' })).toBeNull();
+  // 3 is Goals, not Timeline. Timeline stopped being a destination and became a
+  // representation of Goals; a key that jumped to a representation would be the
+  // one nav key doing two things.
+  it('leaves 4 and 5 unmapped', () => {
     expect(resolveAppKeyCommand({ key: '4' })).toBeNull();
     expect(resolveAppKeyCommand({ key: '5' })).toBeNull();
   });

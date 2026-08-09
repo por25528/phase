@@ -35,7 +35,7 @@ describe('matchCommands', () => {
   });
 
   it('keeps registry order within a tier, so the list does not shuffle', () => {
-    expect(ids('go to')).toEqual(['nav-plan', 'nav-goals', 'nav-timeline']);
+    expect(ids('go to')).toEqual(['nav-today', 'nav-plan', 'nav-goals', 'nav-timeline']);
   });
 
   it('gives every command a unique id', () => {

@@ -152,6 +152,18 @@ async function readyStore() {
 describe('the three views render against a populated store', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('Today leads with one thing and stays out of the way otherwise', async () => {
+    await readyStore();
+    const { Today } = await import('./Today');
+    const html = renderToStaticMarkup(createElement(Today));
+
+    expect(html).not.toContain('Loading…');
+    // The three zones, and nothing resembling a dashboard.
+    expect(html).toContain('aria-label="Now"');
+    expect(html).not.toContain('Habits');
+    expect(html).not.toContain('Working hours');
+  });
+
   it('Plan draws the week, the rail and the capacity readout', async () => {
     const store = await readyStore();
     expect(store.getState().hydration).toBe('ready');
@@ -242,6 +254,13 @@ describe('the three views render against a populated store', () => {
 
       expect(html).toContain('Nothing left to plan');
       expect(html).toContain('No habits yet');
+    });
+
+    it('Today says what to do about an empty account rather than showing a blank page', async () => {
+      await readyStore();
+      const { Today } = await import('./Today');
+      const html = renderToStaticMarkup(createElement(Today));
+      expect(html).toContain('Nothing committed to today');
     });
 
     it('Projects and Timeline render with nothing in them', async () => {

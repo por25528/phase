@@ -2,6 +2,7 @@ import type { Goal, GoalNode, Task } from '../db/types';
 import { addDays, weekDates } from './dates';
 import { isValidLocalDate } from './schedule';
 import { isDone } from './status';
+import { normalizeEstimate } from './capacity';
 
 export type DailyWorkSource =
   | 'due'
@@ -31,6 +32,13 @@ export interface DailyWorkItem {
    * but not placed on the Plan grid — it sorts below everything timed.
    */
   startMin?: number;
+  /**
+   * Mirrored from `Task.estimateMin` / `GoalNode.estimateMin`, normalised the
+   * same way every other reader of an estimate does. Today's Now card states
+   * how long the thing in front of you is meant to take; without it the one
+   * row the surface exists for is the one row with no size.
+   */
+  estimateMin?: number;
 }
 
 export interface DailyWorkSections {
@@ -77,6 +85,7 @@ function taskItem(
     source,
     ...(isValidLocalDate(task.date) ? { scheduledDate: task.date } : {}),
     ...(isPlacedMinute(task.startMin) ? { startMin: task.startMin } : {}),
+    ...(estimate(task.estimateMin) === undefined ? {} : { estimateMin: estimate(task.estimateMin) }),
   };
 }
 
@@ -97,8 +106,12 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
     ...(isValidLocalDate(node.plannedDay) ? { plannedDay: node.plannedDay } : {}),
     ...(isValidLocalDate(node.deadline) ? { scheduledDate: node.deadline } : {}),
     ...(isPlacedMinute(node.plannedStartMin) ? { startMin: node.plannedStartMin } : {}),
+    ...(estimate(node.estimateMin) === undefined ? {} : { estimateMin: estimate(node.estimateMin) }),
   };
 }
+
+/** The one definition of a usable estimate, shared with the capacity math. */
+const estimate = normalizeEstimate;
 
 // A minute-of-day is only meaningful in 0..1440; anything else is corrupt data
 // and is treated as "not placed on the grid" rather than sorted to midnight.
