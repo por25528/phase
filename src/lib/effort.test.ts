@@ -96,4 +96,27 @@ describe('describeEffort', () => {
   it('has nothing to say about a goal with no tasks', () => {
     expect(describeEffort({ remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBeNull();
   });
+
+  /**
+   * The zero this suppresses was on screen: a freshly seeded goal read
+   * `0m left · 2/6 · 4 unestimated`, which claims "no work remaining" and
+   * "four tasks nobody has sized" in the same breath. The first half is not a
+   * small measurement, it is the absence of one, so it is not printed at all.
+   */
+  it('omits the minutes entirely when nothing has been estimated', () => {
+    expect(describeEffort({ remainingMin: 0, unestimated: 4, total: 6, done: 2 }))
+      .toBe('2 of 6 tasks · 4 unestimated');
+  });
+
+  it('still states the count when nothing is estimated and nothing is flagged', () => {
+    expect(describeEffort({ remainingMin: 0, unestimated: 0, total: 6, done: 2 }))
+      .toBe('2 of 6 tasks');
+  });
+
+  it('never emits a bare zero duration for an unfinished goal', () => {
+    for (const unestimated of [0, 4]) {
+      expect(describeEffort({ remainingMin: 0, unestimated, total: 6, done: 2 }))
+        .not.toMatch(/\b0m\b/);
+    }
+  });
 });

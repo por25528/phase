@@ -98,7 +98,16 @@ function CardFace({
         <p className="text-compact text-ink-soft tabular-nums">
           {effort.done === effort.total
             ? 'Every task done'
-            : `${fmtMinutes(effort.remainingMin)} left · ${effort.done}/${effort.total}`}
+            : /*
+               * `0m left` is not a measurement — it is the absence of one, and
+               * printing it beside "4 unestimated" made a goal nobody had
+               * estimated read as a goal with no work left in it. The count is
+               * always true; the minutes are stated only once something has
+               * actually been estimated.
+               */
+              effort.remainingMin > 0
+                ? `${fmtMinutes(effort.remainingMin)} left · ${effort.done}/${effort.total}`
+                : `${effort.done}/${effort.total}`}
           {effort.unestimated > 0 && (
             <span className="text-muted"> · {effort.unestimated} unestimated</span>
           )}

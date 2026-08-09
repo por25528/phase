@@ -95,12 +95,20 @@ export function fmtMinutes(min: number): string {
  * Returns null for a goal with no tasks at all — there is nothing to be
  * remaining about, and "0m remaining · 0 of 0 tasks" reads like a finished
  * goal rather than an empty one.
+ *
+ * The minutes are omitted entirely when nothing has been estimated yet, for
+ * the same reason one step up: `0m remaining` is not a small amount of work
+ * left, it is nobody having said how much there is — and printing it beside
+ * the "4 unestimated" qualifier contradicts the qualifier that exists to
+ * explain it. The count is always true, so the count is what is stated.
  */
 export function describeEffort(e: GoalEffort): string | null {
   if (e.total === 0) return null;
   const count = `${e.done} of ${e.total} task${e.total === 1 ? '' : 's'}`;
   if (e.done === e.total) return `every task done · ${count}`;
-  const parts = [`${fmtMinutes(e.remainingMin)} remaining`, count];
+  const parts = e.remainingMin > 0
+    ? [`${fmtMinutes(e.remainingMin)} remaining`, count]
+    : [count];
   if (e.unestimated > 0) {
     parts.push(`${e.unestimated} unestimated`);
   }

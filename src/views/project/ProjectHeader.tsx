@@ -137,7 +137,10 @@ export function ProjectHeader({
           {g.deadline && (
             <span className="text-muted whitespace-nowrap">· Due {fmtD(g.deadline)}</span>
           )}
-          {effort.total > 0 && !isCompleted && (
+          {/* Silent when nothing has been estimated: `0m left` is the absence
+              of a measurement wearing the clothes of one, and on a goal with
+              four unestimated tasks it read as "no work left". */}
+          {effort.total > 0 && !isCompleted && (effort.done === effort.total || effort.remainingMin > 0) && (
             <span className="text-muted whitespace-nowrap hidden sm:inline">
               · {effort.done === effort.total
                 ? 'every task done'
