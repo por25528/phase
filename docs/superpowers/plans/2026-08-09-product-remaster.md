@@ -47,7 +47,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 
 ## M3 — execution and planning
 
-- [ ] **S9 Today (change 10).** Now / Today's plan / Attention, and the nav
+- [x] **S9 Today (change 10).** Now / Today's plan / Attention, and the nav
       becomes Today · Plan · Goals.
 - [ ] **S10 Replan unfinished (change 12).** Bounded, consequence-aware preview.
       Nothing moves silently.
