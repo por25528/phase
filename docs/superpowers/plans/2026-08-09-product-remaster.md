@@ -29,7 +29,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 - [x] **S4 Conventional task rows (change 2).** Checkbox completes, chevron
       expands, row click selects and opens the inspector, Enter/double-click
       edits the title. Aligned status / estimate / schedule columns.
-- [ ] **S5 Quick add (change 5).** One line, unscheduled by default, visible
+- [x] **S5 Quick add (change 5).** One line, unscheduled by default, visible
       parsing of `#goal`, `~45m` and a date token. Replaces the modal.
 
 ## M2 — workspace and command layer
