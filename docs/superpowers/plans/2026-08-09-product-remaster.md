@@ -51,7 +51,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
       becomes Today · Plan · Goals.
 - [x] **S10 Replan unfinished (change 12).** Bounded, consequence-aware preview.
       Nothing moves silently.
-- [ ] **S11 Plan rail and drag capacity (change 13).** Availability to Settings,
+- [x] **S11 Plan rail and drag capacity (change 13).** Availability to Settings,
       stats to headers, capacity fit shown before the drop.
 - [ ] **S12 Multiple work sessions per task (change 11).**
 
