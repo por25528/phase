@@ -4,6 +4,8 @@ import { TodayCheckbox } from '../components/TodayCheckbox';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
 import { attentionItems, nowFocus } from '../lib/todaySurface';
+import { proposalMinutes, proposeReplan, slippedWork } from '../lib/replan';
+import { ReplanPreview } from './today/ReplanPreview';
 import { clockLabel } from '../lib/clock';
 import { fmtMinutes } from '../lib/effort';
 import { dateKicker, greeting } from '../lib/today';
@@ -44,6 +46,20 @@ export function Today() {
     () => attentionItems(goals, sections, today, availability, [], allDayBlocks),
     [goals, sections, today, availability, allDayBlocks],
   );
+  const [replanOpen, setReplanOpen] = useState(false);
+  const slipped = useMemo(() => slippedWork(goals, tasks, today), [goals, tasks, today]);
+  // Proposed lazily: the search walks fourteen days of gaps per item, and the
+  // strip only needs the count until someone asks what would happen.
+  const proposal = useMemo(
+    () => (replanOpen
+      ? proposeReplan({
+        goals, tasks, today, windows: availability, blocks: [], allDayBlocks,
+        now: { date: today, minute: nowMinute },
+      })
+      : { moves: [], unplaceable: [] }),
+    [replanOpen, goals, tasks, today, availability, allDayBlocks, nowMinute],
+  );
+
   const open = sections.commitments.filter((i) => !i.done);
   const divider = nowDividerIndex(open, nowMinute);
   const doneCount = sections.completedToday.length;
@@ -64,6 +80,30 @@ export function Today() {
         <h1 className="text-h2 font-semibold tracking-[-0.01em]">{greeting(new Date().getHours())}</h1>
         <p className="text-meta text-muted mt-[2px]">{dateKicker(today)}</p>
       </div>
+
+      {/* ── What slipped ──
+          Above Now, because a day planned on top of yesterday's unfinished work
+          is a day that will slip again. Two buttons, and neither of them moves
+          anything: `Replan` opens a preview, `Leave it` dismisses the strip
+          until the data changes. */}
+      {slipped.length > 0 && (
+        <div className="mb-[16px] flex flex-wrap items-center gap-[10px] px-[12px] py-[9px] rounded-card bg-warn-tint">
+          <span className="text-ui text-warn font-semibold">
+            {slipped.length} task{slipped.length === 1 ? '' : 's'} unfinished
+          </span>
+          <span className="text-meta text-ink-soft tabular-nums">
+            {fmtMinutes(slipped.reduce((n, s2) => n + s2.minutes, 0))}
+          </span>
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setReplanOpen(true)}
+            className="text-ui font-semibold text-ink px-[10px] py-[5px] rounded-field border border-line-2 bg-panel hover:bg-hover"
+          >
+            Replan
+          </button>
+        </div>
+      )}
 
       {/* ── Now ── */}
       <section aria-label="Now" className="mb-[22px]">
@@ -185,6 +225,19 @@ export function Today() {
           {doneCount} finished today.
         </p>
       )}
+
+      <ReplanPreview
+        open={replanOpen}
+        proposal={proposal}
+        onCancel={() => setReplanOpen(false)}
+        onApply={() => {
+          const moved = actions.applyReplan(proposal.moves);
+          setReplanOpen(false);
+          if (moved) {
+            actions.showToast(`Moved ${proposal.moves.length} task${proposal.moves.length === 1 ? '' : 's'} · ${fmtMinutes(proposalMinutes(proposal))}`);
+          }
+        }}
+      />
     </div>
   );
 }

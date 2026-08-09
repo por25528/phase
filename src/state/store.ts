@@ -34,6 +34,7 @@ import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY
 import { spansOn } from '../lib/scheduled';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
+import type { ReplanMove } from '../lib/replan';
 import { MAX_IMAGE_EDGE, scaledDimensions } from '../lib/imageScale';
 import {
   type Theme,
@@ -605,6 +606,37 @@ function scheduleUndo(
 // seam behind every undoable edit (deletes, date edits). Callers compute
 // `next` from the pre-write state and hand it in; the snapshot below is taken
 // before that value lands, so restore always replays the prior slice.
+/**
+ * An undoable write across SEVERAL slices.
+ *
+ * `withUndo` below snapshots exactly one, which was enough while every
+ * undoable edit touched one table — and is why deleting a step deliberately
+ * leaves its sessions behind: a restore that could only bring back one of the
+ * two would return the step with its history silently gone.
+ *
+ * A replan is the first edit that genuinely spans two. It moves goal tasks and
+ * loose tasks in the same breath, and undoing half of it would leave the user
+ * looking at a week that is neither the old one nor the new one — the worst of
+ * the three possible outcomes.
+ */
+function withUndoSlices(
+  label: string,
+  next: Partial<AppState>,
+  ttlMs = UNDO_MS,
+  uiPatch?: Partial<UIState>,
+): void {
+  const snapshot: Partial<AppState> = {};
+  for (const key of Object.keys(next) as (keyof AppState)[]) {
+    // `as never` only to satisfy the index write; the key and the value come
+    // from the same `AppState`, so the pairing is sound.
+    snapshot[key] = structuredClone(state[key]) as never;
+  }
+  scheduleUndo(label, () => withoutClearingUndo(() => {
+    setAndPersist(snapshot);
+  }), ttlMs);
+  withoutClearingUndo(() => setAndPersist(next, uiPatch));
+}
+
 function withUndo<K extends keyof AppState>(
   label: string,
   key: K,
@@ -617,11 +649,7 @@ function withUndo<K extends keyof AppState>(
   // preference, not data, and snapping it back would fight the user.
   uiPatch?: Partial<UIState>,
 ): void {
-  const snapshot = structuredClone(state[key]);
-  scheduleUndo(label, () => withoutClearingUndo(() => {
-    setAndPersist({ [key]: snapshot } as Partial<AppState>);
-  }), ttlMs);
-  withoutClearingUndo(() => setAndPersist({ [key]: next } as Partial<AppState>, uiPatch));
+  withUndoSlices(label, { [key]: next } as Partial<AppState>, ttlMs, uiPatch);
 }
 
 /** Run a write that must not invalidate the armed undo history. */
@@ -2035,6 +2063,45 @@ export const actions = {
     actions.showToast(
       `No free slot for "${node.title}" in the next ${REPLAN_HORIZON_DAYS} days — shorten it, or open up more hours.`,
     );
+  },
+
+  /**
+   * Move every slipped item to where the proposal said it would go.
+   *
+   * ONE write, and one undo entry covering both slices. A loop over
+   * `scheduleNode`/`scheduleTask` would arm an undo per item and each write's
+   * sweep would discard the one before it — so the toast would offer to undo a
+   * recovery and take back only its last step.
+   *
+   * The store re-derives nothing here: the caller has already seen these exact
+   * days and minutes in a preview and said yes to them. Recomputing slots at
+   * apply time is how "nothing moves silently" turns into "it moved somewhere
+   * else than the screen promised".
+   */
+  applyReplan(moves: ReplanMove[]): boolean {
+    if (moves.length === 0) return false;
+    const goals = cloneGoals(state.goals);
+    let tasks = state.tasks;
+    let moved = 0;
+
+    for (const move of moves) {
+      if (move.kind === 'step') {
+        const goal = goals.find((g) => g.id === move.goalId);
+        if (!goal || goal.completedAt) continue;
+        const node = findNode(goal.nodes, move.id);
+        if (!node) continue;
+        setPlannedSlot(node, move.to, move.startMin);
+        moved += 1;
+        continue;
+      }
+      if (!state.tasks.some((t) => t.id === move.id)) continue;
+      tasks = tasks.map((t) => (t.id === move.id ? { ...t, date: move.to, startMin: move.startMin } : t));
+      moved += 1;
+    }
+
+    if (moved === 0) return false;
+    withUndoSlices(`Replanned ${moved} task${moved === 1 ? '' : 's'}`, { goals, tasks });
+    return true;
   },
 
   unscheduleNode(goalId: string, nodeId: string): void {
