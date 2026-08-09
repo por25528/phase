@@ -186,6 +186,46 @@ export function IconClock(p: IconProps) {
   );
 }
 
+/**
+ * Open this as its own workspace — the `↗` the inspector offers on a container.
+ *
+ * Deliberately not a plain right arrow: `IconArrowRight` already means "then"
+ * in the date span two rows below it, and the two would sit close enough to be
+ * read as the same mark.
+ */
+export function IconArrowUpRight(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M7 17 17 7M8.4 7H17v8.6" />
+    </Icon>
+  );
+}
+
+/**
+ * A date — a deadline, a due day, the thing a date popover edits.
+ *
+ * Distinct from `IconClock`, which means a DURATION or a window: the inspector
+ * puts them on adjacent rows ("Aug 12" and "45m"), so they cannot share a mark
+ * without the two properties reading as one.
+ */
+export function IconCalendar(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3.2" y="5" width="17.6" height="16" rx="2.2" />
+      <path d="M3.2 10h17.6M8 3.2v3.6M16 3.2v3.6" />
+    </Icon>
+  );
+}
+
+/**
+ * An open task — the hollow ring the compact inspector leads its status row
+ * with. `LeafStatusBox` draws the tickable square on a tree row; this is the
+ * read-only mark beside a word, and it never toggles anything by itself.
+ */
+export function IconCircle(p: IconProps) {
+  return <Icon {...p}><circle cx="12" cy="12" r="8.2" /></Icon>;
+}
+
 // ── Indicators ────────────────────────────────────────────────────────────────
 
 /**

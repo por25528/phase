@@ -1,0 +1,111 @@
+/**
+ * What a task row's `⋯` menu offers, and nothing else.
+ *
+ * This mirrors `commands.ts`: the registry names the verbs and states when each
+ * one applies, and the handlers live with the store in `GoalTree`. Keeping them
+ * apart is what lets "does a done leaf still offer Schedule?" be a unit test
+ * rather than a component test that has to mount a tree to ask.
+ *
+ * The menu exists because the row could not hold what it was carrying. A leaf
+ * rendered a grip, a status box, a title, a schedule cell, an estimate control
+ * and a log-time control at rest, then revealed rename, add-subtask, cycle-
+ * status and delete on hover — ten controls to manipulate one task. Scanning a
+ * list of twenty of them meant reading past sixty small glyphs. The high-
+ * frequency properties stay inline and clickable; everything below that moves
+ * in here.
+ */
+
+export type RowActionId =
+  | 'open'
+  | 'add-task'
+  | 'rename'
+  | 'schedule'
+  | 'estimate'
+  | 'milestone'
+  | 'indent'
+  | 'outdent'
+  | 'delete';
+
+export interface RowAction {
+  id: RowActionId;
+  label: string;
+  /**
+   * The keyboard route to the same verb. Shown in the menu so the menu teaches
+   * its own shortcuts — the reason `ShortcutsOverlay` had to be opened to
+   * discover that `⌘]` indents.
+   */
+  hint?: string;
+  tone?: 'danger';
+  /** Verbs sharing a number sit together; a separator falls between groups. */
+  group: number;
+}
+
+export interface RowActionContext {
+  /** A container is opened as its own workspace; a leaf is not. */
+  isContainer: boolean;
+  isDone: boolean;
+  isMilestone: boolean;
+  /** False for the first child in a sibling run — there is nothing to nest under. */
+  canIndent: boolean;
+  /** False at the root — there is nowhere to go. */
+  canOutdent: boolean;
+}
+
+/**
+ * The verbs for one row, in menu order.
+ *
+ * Scheduling and estimating are LEAF-only, matching the store: a container has
+ * no `estimateMin` and no `blocks`, and is scheduled through its tasks. Offering
+ * them on a container would be a menu item that opens a panel which then has to
+ * explain why it cannot do anything.
+ *
+ * A DONE leaf keeps Schedule and Estimate. That looks wrong for about a second
+ * and is right: completion here is a checkbox, so it is routinely ticked early
+ * or by accident, and a menu that removes the repair verbs from the row you
+ * just mis-ticked is a menu that makes the mistake permanent. `toggleLeaf`
+ * reopens, and the properties are still the task's.
+ *
+ * Deliberately ABSENT: Duplicate and Move-to-goal, both of which the brief for
+ * this menu suggests. Neither has a store action, and a menu item that has to
+ * grow a new undoable mutation underneath it is not a menu change — it is a
+ * feature wearing one. They stay out until the action exists.
+ */
+export function rowActions(ctx: RowActionContext): RowAction[] {
+  const out: RowAction[] = [];
+
+  if (ctx.isContainer) out.push({ id: 'open', label: 'Open', hint: 'O', group: 0 });
+  out.push({ id: 'add-task', label: 'Add task', hint: '⌘↵', group: 0 });
+  out.push({ id: 'rename', label: 'Rename', hint: '↵', group: 0 });
+
+  if (!ctx.isContainer) {
+    out.push({ id: 'schedule', label: 'Schedule…', hint: '⇧S', group: 1 });
+    out.push({ id: 'estimate', label: 'Estimate…', hint: 'E', group: 1 });
+    out.push({
+      id: 'milestone',
+      label: ctx.isMilestone ? 'Not a milestone' : 'Make a milestone',
+      group: 1,
+    });
+  }
+
+  if (ctx.canIndent) out.push({ id: 'indent', label: 'Indent', hint: '⌘]', group: 2 });
+  if (ctx.canOutdent) out.push({ id: 'outdent', label: 'Outdent', hint: '⌘[', group: 2 });
+
+  out.push({ id: 'delete', label: 'Delete', hint: '⌫', tone: 'danger', group: 3 });
+  return out;
+}
+
+/**
+ * The same list, split into the runs a separator falls between.
+ *
+ * Done here rather than in the menu so the grouping is asserted once. A view
+ * that grouped by eye would drift the first time a verb moved.
+ */
+export function rowActionGroups(ctx: RowActionContext): RowAction[][] {
+  const groups: RowAction[][] = [];
+  for (const action of rowActions(ctx)) {
+    const last = groups.at(-1);
+    if (last && last[0].group === action.group) last.push(action);
+    else groups.push([action]);
+  }
+  return groups;
+}
