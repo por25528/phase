@@ -2,6 +2,7 @@ import type { Goal } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { addDays } from './dates';
 import { walkLeaves } from './plan';
+import { isDone } from './status';
 
 /**
  * Progress signals for a project with no schedule.
@@ -76,7 +77,7 @@ export function projectVelocity(goal: Goal, today: string): VelocitySignal {
   let remaining: number | null = 0;
 
   walkLeaves(goal, (leaf) => {
-    if (leaf.done) {
+    if (isDone(leaf)) {
       if (leaf.doneAt && leaf.doneAt >= since && leaf.doneAt <= today) completed += 1;
       return;
     }

@@ -1,4 +1,5 @@
 import type { GoalNode } from '../db/types';
+import { isDone } from './status';
 
 /**
  * Pure set-arithmetic for multi-selecting steps in a project tree.
@@ -82,6 +83,23 @@ export function topLevelSelection(nodes: GoalNode[], ids: Set<string>): string[]
  * the leaves. Selecting a group and one of its leaves yields that leaf once.
  */
 export function openLeavesUnder(nodes: GoalNode[], ids: Set<string>): string[] {
+  return leavesUnder(nodes, ids, (n) => !isDone(n));
+}
+
+/**
+ * Every leaf at or under the selection, deduplicated — done ones included.
+ *
+ * `setNodesStatus` has to be able to move a done step back to `'todo'`; that
+ * is a transition the bulk bar's own "Set status…" select offers. Filtering
+ * by done-ness — right for `completeNodes`, which only ever moves TOWARD
+ * done — made picking "to do" on a finished step a silent no-op: the bar
+ * offered the choice and nothing happened.
+ */
+export function allLeavesUnder(nodes: GoalNode[], ids: Set<string>): string[] {
+  return leavesUnder(nodes, ids, () => true);
+}
+
+function leavesUnder(nodes: GoalNode[], ids: Set<string>, include: (n: GoalNode) => boolean): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   const collect = (n: GoalNode): void => {
@@ -89,7 +107,7 @@ export function openLeavesUnder(nodes: GoalNode[], ids: Set<string>): string[] {
       for (const c of n.children) collect(c);
       return;
     }
-    if (n.done || seen.has(n.id)) return;
+    if (!include(n) || seen.has(n.id)) return;
     seen.add(n.id);
     out.push(n.id);
   };

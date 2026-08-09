@@ -1,4 +1,5 @@
 import type { Goal, GoalNode } from '../db/types';
+import { isDone, stepStatus } from './status';
 
 export function leafCount(nodes: GoalNode[]): { total: number; done: number } {
   let total = 0, done = 0;
@@ -9,10 +10,37 @@ export function leafCount(nodes: GoalNode[]): { total: number; done: number } {
       done += sub.done;
     } else {
       total++;
-      if (n.done) done++;
+      if (isDone(n)) done++;
     }
   }
   return { total, done };
+}
+
+/** Open leaves nobody can work. Zero for a project with nothing stuck. */
+export function blockedLeafCount(nodes: GoalNode[]): number {
+  let n = 0;
+  for (const node of nodes) {
+    if (node.children && node.children.length) n += blockedLeafCount(node.children);
+    else if (stepStatus(node) === 'blocked') n++;
+  }
+  return n;
+}
+
+/**
+ * The first blocked leaf in document order, or null if nothing is stuck.
+ * "Unblock" deep-links to this one node — the same tree walk `blockedLeafCount`
+ * does, stopping at the first match instead of counting all of them.
+ */
+export function firstBlockedLeaf(nodes: GoalNode[]): GoalNode | null {
+  for (const node of nodes) {
+    if (node.children && node.children.length) {
+      const found = firstBlockedLeaf(node.children);
+      if (found) return found;
+    } else if (stepStatus(node) === 'blocked') {
+      return node;
+    }
+  }
+  return null;
 }
 
 export function groupByColumn(goals: Goal[], n: number): string[][] {

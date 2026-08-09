@@ -4,6 +4,7 @@ import type { useAppStore } from '../state/store';
 import { Modal } from './Modal';
 import { todayStr } from '../lib/dates';
 import { buildSubtaskPrompt, parseSubtasks } from '../lib/goalImport';
+import { isDone } from '../lib/status';
 
 const field =
   'rounded-field border border-line-2 px-[8px] py-[5px] text-ui text-ink bg-transparent outline-none focus-visible:border-accent';
@@ -23,7 +24,7 @@ function collectOpenLeaves(nodes: GoalNode[], prefix = '', out: OpenLeaf[] = [])
   for (const n of nodes) {
     if (n.children && n.children.length) {
       collectOpenLeaves(n.children, prefix ? `${prefix} / ${n.title}` : n.title, out);
-    } else if (!n.done) {
+    } else if (!isDone(n)) {
       out.push({ id: n.id, title: n.title, path: prefix });
     }
   }

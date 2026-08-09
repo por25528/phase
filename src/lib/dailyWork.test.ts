@@ -192,14 +192,14 @@ describe('buildDailyWork carryovers and completion', () => {
   it('uses doneAt exactly and does not infer legacy completion dates', () => {
     const goals = [
       goal('g', [
-        { id: 'today', title: 'Done today', done: true, doneAt: TODAY },
-        { id: 'legacy', title: 'Legacy done', done: true },
-        { id: 'yesterday', title: 'Done yesterday', done: true, doneAt: '2026-07-22' },
+        { id: 'today', title: 'Done today', status: 'done', doneAt: TODAY },
+        { id: 'legacy', title: 'Legacy done', status: 'done' },
+        { id: 'yesterday', title: 'Done yesterday', status: 'done', doneAt: '2026-07-22' },
         {
           id: 'container',
           title: 'Container',
           doneAt: TODAY,
-          children: [{ id: 'nested', title: 'Nested today', done: true, doneAt: TODAY }],
+          children: [{ id: 'nested', title: 'Nested today', status: 'done', doneAt: TODAY }],
         },
       ]),
     ];
@@ -223,10 +223,10 @@ describe('buildDailyWork carryovers and completion', () => {
   it('requires done state but keeps same-day leaves from archived projects', () => {
     const goals = [
       goal('active', [
-        { id: 'open-stale', title: 'Open with stale timestamp', done: false, doneAt: TODAY },
+        { id: 'open-stale', title: 'Open with stale timestamp', doneAt: TODAY },
       ]),
       goal('archived', [
-        { id: 'archived-done', title: 'Archived completion', done: true, doneAt: TODAY },
+        { id: 'archived-done', title: 'Archived completion', status: 'done', doneAt: TODAY },
       ], { completedAt: TODAY }),
     ];
     const tasks = [
@@ -317,7 +317,7 @@ describe('buildDailyWork clock times', () => {
 
   it('carries a pinned step plannedStartMin onto its item', () => {
     const goals = [goal('g', [{
-      id: 'n', title: 'Step', done: false,
+      id: 'n', title: 'Step',
       plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 660,
     }])];
     expect(buildDailyWork(goals, [], TODAY).commitments[0].startMin).toBe(660);
@@ -330,8 +330,8 @@ describe('buildDailyWork clock times', () => {
 
   it('sorts timed commitments chronologically, whatever their source bucket', () => {
     const goals = [goal('g', [
-      { id: 'n15', title: '15:00 kernel', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
-      { id: 'n09', title: '09:00 standup', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
+      { id: 'n15', title: '15:00 kernel', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
+      { id: 'n09', title: '09:00 standup', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
     ])];
     const tasks = [
       task('t13', TODAY, { startMin: 780 }),
@@ -344,8 +344,8 @@ describe('buildDailyWork clock times', () => {
 
   it('sinks untimed work below every timed item but keeps its bucket order', () => {
     const goals = [goal('g', [
-      { id: 'n', title: 'Timed step', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
-      { id: 'nw', title: 'Anytime this week', done: false, plannedWeek: WEEK },
+      { id: 'n', title: 'Timed step', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 900 },
+      { id: 'nw', title: 'Anytime this week', plannedWeek: WEEK },
     ])];
     const tasks = [task('t', TODAY)];
 
@@ -357,7 +357,7 @@ describe('buildDailyWork clock times', () => {
 
   it('breaks a startMin tie by the existing bucket precedence, not by title', () => {
     const goals = [goal('g', [
-      { id: 'n', title: 'AAA step', done: false, plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
+      { id: 'n', title: 'AAA step', plannedWeek: WEEK, plannedDay: TODAY, plannedStartMin: 540 },
     ])];
     const tasks = [task('zzz', TODAY, { startMin: 540 })];
 

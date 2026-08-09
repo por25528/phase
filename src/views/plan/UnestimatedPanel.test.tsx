@@ -55,9 +55,9 @@ const PROJECT: Goal = {
   title: '6.5840',
   column: 0,
   nodes: [
-    { id: 'n1', title: 'Implement AppendEntries', done: false, plannedWeek: '2026-07-27' },
+    { id: 'n1', title: 'Implement AppendEntries', plannedWeek: '2026-07-27' },
     {
-      id: 'n2', title: 'Debug figure-8', done: false,
+      id: 'n2', title: 'Debug figure-8',
       plannedWeek: '2026-07-27', plannedDay: '2026-07-28', plannedStartMin: 540,
     },
   ],

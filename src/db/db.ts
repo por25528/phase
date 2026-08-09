@@ -5,6 +5,7 @@ import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
 import { parseAvailability, serializeAvailability } from '../lib/availability';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
+import { migrateNodeStatus } from '../lib/migrateNodeStatus';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { decodeAssets, encodeAssets } from '../lib/backupAssets';
 
@@ -84,7 +85,7 @@ export async function loadState(): Promise<AppState> {
     db.tasks.toArray(),
     db.sessions.toArray(),
   ]);
-  return { goals, habits, tasks, sessions };
+  return { goals: migrateNodeStatus(goals), habits, tasks, sessions };
 }
 
 export async function persist(state: AppState): Promise<void> {
@@ -513,7 +514,11 @@ export async function importStateFromFile(
   // Imported data must never enter the running store with the retired field:
   // converting before persist also makes a crash before resetCheckpointMigration
   // safe, because the done-flag cannot strand the just-imported milestones.
-  const { goals } = migrateCheckpoints(sanitizedGoals);
+  // Both migrations, in this order: migrateCheckpoints can APPEND nodes built
+  // from legacy milestones, and those nodes must go through the status
+  // migration too rather than entering the store carrying `done`.
+  const { goals: checkpointed } = migrateCheckpoints(sanitizedGoals);
+  const goals = migrateNodeStatus(checkpointed);
   const parsed: AppState = {
     goals,
     habits: (raw.habits ?? []).map(sanitizeBackupHabit),

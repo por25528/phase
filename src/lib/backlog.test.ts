@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Goal, GoalNode, Task } from '../db/types';
 import {
-  backlogGroups, BACKLOG_CAP, capBacklog, deferredProjectCount, dueChip, LOOSE_GROUP_KEY,
+  backlogGroups, BACKLOG_CAP, capBacklog, hiddenProjectCounts, dueChip, LOOSE_GROUP_KEY,
 } from './backlog';
 import type { BacklogGroup } from './backlog';
 
@@ -39,7 +39,7 @@ describe('backlogGroups', () => {
   });
 
   it('excludes done steps and archived projects', () => {
-    const done = goal({ nodes: [{ id: 'n1', title: 'Done', done: true }] });
+    const done = goal({ nodes: [{ id: 'n1', title: 'Done', status: 'done' }] });
     const archived = goal({ id: 'g2', completedAt: '2026-07-01', nodes: [{ id: 'n2', title: 'Old' }] });
     expect(backlogGroups([done, archived], [], WEEK, TODAY)).toEqual([]);
   });
@@ -137,29 +137,84 @@ describe('backlogGroups', () => {
 
     /**
      * What the empty rail says. "Nothing left to plan" is true of a placed week
-     * and false of a deferred board, and the two look identical from the rail —
-     * so the empty state has to be able to tell them apart.
+     * and false of a deferred or fully-blocked board, and all three look
+     * identical from the rail — so the empty state has to be able to tell them
+     * apart. `parked` and `blocked` are independent counts, not a partition.
      */
-    describe('deferredProjectCount', () => {
+    describe('hiddenProjectCounts', () => {
       it('counts parked projects holding uncommitted open work', () => {
         const later = goal({ id: 'g3', column: 2, nodes: [step()] });
         const someday = goal({ id: 'g4', column: 3, nodes: [step({ id: 'n2' })] });
-        expect(deferredProjectCount([later, someday], TODAY)).toBe(2);
+        expect(hiddenProjectCounts([later, someday], TODAY)).toEqual({ parked: 2, blocked: 0 });
       });
 
-      it('ignores Now and Next — those are already in the rail', () => {
-        expect(deferredProjectCount([goal({ column: 1, nodes: [step()] })], TODAY)).toBe(0);
+      it('does not count Now/Next projects as parked — those are already in the rail', () => {
+        expect(hiddenProjectCounts([goal({ column: 1, nodes: [step()] })], TODAY))
+          .toEqual({ parked: 0, blocked: 0 });
       });
 
       it('ignores a parked project whose work is done, or already committed', () => {
-        const finished = goal({ id: 'g3', column: 2, nodes: [step({ done: true })] });
+        const finished = goal({ id: 'g3', column: 2, nodes: [step({ status: 'done' })] });
         const committed = goal({ id: 'g4', column: 3, nodes: [step({ id: 'n2', plannedWeek: WEEK })] });
-        expect(deferredProjectCount([finished, committed], TODAY)).toBe(0);
+        expect(hiddenProjectCounts([finished, committed], TODAY)).toEqual({ parked: 0, blocked: 0 });
       });
 
       it('ignores archived projects, matching what the rail drops', () => {
         const archived = goal({ id: 'g3', column: 2, completedAt: '2026-07-01', nodes: [step()] });
-        expect(deferredProjectCount([archived], TODAY)).toBe(0);
+        expect(hiddenProjectCounts([archived], TODAY)).toEqual({ parked: 0, blocked: 0 });
+      });
+
+      /**
+       * The failure I2 exists to fix: one Now project, every open step
+       * blocked, nothing committed. `backlogGroups` returns [] for it (its
+       * only leaf is dropped by the per-leaf blocked rule), so the rail was
+       * about to say "Nothing left to plan" over three stuck steps.
+       */
+      it('counts a Now project whose every open leaf is blocked and uncommitted', () => {
+        const g = goal({ id: 'g5', column: 0, nodes: [
+          step({ id: 'a', status: 'blocked' }),
+          step({ id: 'b', status: 'blocked' }),
+        ] });
+        expect(backlogGroups([g], [], WEEK, TODAY)).toEqual([]);
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 1 });
+      });
+
+      /**
+       * MINOR A: this project's backlog group is NOT empty — the workable
+       * leaf keeps it in the rail — so `Backlog.tsx` never actually calls
+       * `hiddenProjectCounts` for it (`hidden` is only computed when the
+       * rail is already empty). Counting it here anyway cannot over-report
+       * on screen, and it is the looser, still-true condition MINOR A asks
+       * for: "has a blocked step not shown", not "fully blocked".
+       */
+      it('counts a Now project when one blocked leaf sits beside a workable one', () => {
+        const g = goal({ id: 'g5', column: 0, nodes: [
+          step({ id: 'a', status: 'blocked' }),
+          step({ id: 'b' }),
+        ] });
+        expect(backlogGroups([g], [], WEEK, TODAY)).not.toEqual([]);
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 1 });
+      });
+
+      it('does not count a Now project whose blocked leaf is committed to a week', () => {
+        const g = goal({ id: 'g5', column: 0, nodes: [
+          step({ id: 'a', status: 'blocked', plannedWeek: WEEK }),
+        ] });
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 0 });
+      });
+
+      /**
+       * MINOR B: a parked project whose only open leaf is also blocked used
+       * to land in `parked` alone (the branch `continue`d before the blocked
+       * check ran), so the rail said "move one to Now to plan it" — doing
+       * that would only re-surface it as fully blocked, swapping to the
+       * other sentence. Counting it in both is what the docstring above
+       * already claimed ("A project can land in both buckets"); the code did
+       * not match it until now.
+       */
+      it('counts a parked-and-blocked project in BOTH buckets', () => {
+        const g = goal({ id: 'g6', column: 2, nodes: [step({ status: 'blocked' })] });
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 1, blocked: 1 });
       });
     });
   });
@@ -191,6 +246,27 @@ describe('backlogGroups', () => {
     const empty = goal({ id: 'g2', title: 'Empty', nodes: [] });
     const g = goal({ nodes: [{ id: 'n1', title: 'Draft' }] });
     expect(backlogGroups([g, empty], [], WEEK, TODAY).map((x) => x.goalId)).toEqual(['g1']);
+  });
+});
+
+describe('blocked work in the rail', () => {
+  it('drops an uncommitted blocked step', () => {
+    const groups = backlogGroups([{ id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'a', title: 'A', status: 'blocked' }, { id: 'b', title: 'B' },
+    ] }], [], WEEK, TODAY);
+    expect(groups[0].items.map((i) => i.id)).toEqual(['b']);
+  });
+
+  /**
+   * Commitment is the exception, exactly as it is for a parked project:
+   * weekCapacity bills a plannedWeek step to "to place", and a number you plan
+   * against must have a row beside it.
+   */
+  it('keeps a blocked step that is committed to this week', () => {
+    const groups = backlogGroups([{ id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'a', title: 'A', status: 'blocked', plannedWeek: WEEK },
+    ] }], [], WEEK, TODAY);
+    expect(groups[0].items.map((i) => i.id)).toEqual(['a']);
   });
 });
 

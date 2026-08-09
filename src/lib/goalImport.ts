@@ -81,7 +81,8 @@ type SubgoalSpec =
 /**
  * Build a GoalNode tree from a subgoal spec, minting fresh ids. Enforces the
  * leaf-XOR-container invariant: a spec with a non-empty `subgoals` array becomes
- * a container (children, no `done`); everything else is a leaf (`done:false`).
+ * a container (children, no status); everything else is a leaf with no status
+ * key at all — an absent field IS todo.
  * Returns null for specs with no usable title so callers can skip them.
  *
  * `issues`, when supplied, collects a plain-English reason for every skip.
@@ -98,7 +99,7 @@ export function buildNode(spec: SubgoalSpec, issues?: string[]): GoalNode | null
     // skipped silently. Rejecting the whole paste over one is the opposite of
     // the point, which is that a titleless GROUP takes its subtree with it.
     const title = spec.trim();
-    return title ? { id: uid(), title, done: false } : null;
+    return title ? { id: uid(), title } : null;
   }
   if (!spec || typeof spec !== 'object') {
     issues?.push('a step is neither a string nor an object');
@@ -132,7 +133,7 @@ export function buildNode(spec: SubgoalSpec, issues?: string[]): GoalNode | null
   }
 
   // Leaf — carry scheduling dates only when both are present.
-  const node: GoalNode = { id: uid(), title, done: false };
+  const node: GoalNode = { id: uid(), title };
   if (isValidLocalDate(spec.start) && isValidLocalDate(spec.deadline)) {
     const clamped = clampSpan(spec.start, spec.deadline);
     node.start = clamped.start;
@@ -159,7 +160,7 @@ export function buildManualGoal(input: ManualGoalInput): Goal {
   const nodes: GoalNode[] = input.subgoalTitles
     .map((t) => t.trim())
     .filter(Boolean)
-    .map((title) => ({ id: uid(), title, done: false }));
+    .map((title) => ({ id: uid(), title }));
   const goal: Goal = {
     id: uid(),
     title: input.title.trim(),

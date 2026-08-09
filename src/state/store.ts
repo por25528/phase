@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset } from '../db/types';
+import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
@@ -21,7 +21,7 @@ import { HORIZON_LABELS, HORIZON_COUNT } from '../lib/horizons';
 import type { RevealKind, RevealTarget } from '../lib/reveal';
 import { deferOpenWork } from '../lib/deferWork';
 import { backlogGroups } from '../lib/backlog';
-import { topLevelSelection, openLeavesUnder, selectionRemovalCount } from '../lib/selection';
+import { topLevelSelection, openLeavesUnder, allLeavesUnder, selectionRemovalCount } from '../lib/selection';
 import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { sampleProject } from '../lib/sampleProject';
@@ -52,6 +52,22 @@ import {
   cloneGoals,
   insertSiblingAfter as treeInsertSiblingAfter,
 } from '../lib/tree';
+import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status';
+
+/**
+ * Write a status onto a node of an already-cloned tree.
+ *
+ * `applyStatus` is pure and returns a copy, so assigning it over the live node
+ * would keep any key the copy DROPPED — unticking a step would leave its
+ * `doneAt` behind, and `doneAt` is what the week recap reads.
+ */
+function writeStatus(n: GoalNode, next: StepStatus, today: string, blockedOn?: string): void {
+  const updated = applyStatus(n, next, today, blockedOn);
+  for (const key of ['status', 'blockedOn', 'doneAt'] as const) {
+    if (updated[key] === undefined) delete n[key];
+    else (n[key] as unknown) = updated[key];
+  }
+}
 
 export type ViewName = 'plan' | 'goals' | 'timeline' | 'project';
 
@@ -530,6 +546,18 @@ const UNDO_MS = 5000;
 const DESTRUCTIVE_UNDO_MS = 15000;
 
 /**
+ * Undo-toast wording for a batch status change. Distinct register from
+ * `STATUS_WORD` in `src/lib/status.ts`, which names a single state for a
+ * button or an accessible label rather than phrasing a toast.
+ */
+const STATUS_LABEL: Record<StepStatus, (n: number) => string> = {
+  todo: (n) => `Reset ${n} step${n === 1 ? '' : 's'}`,
+  doing: (n) => `Marked ${n} step${n === 1 ? '' : 's'} in progress`,
+  blocked: (n) => `Blocked ${n} step${n === 1 ? '' : 's'}`,
+  done: (n) => `Completed ${n} step${n === 1 ? '' : 's'}`,
+};
+
+/**
  * Arm an undo and show its toast.
  *
  * The timer only hides the TOAST. The restore itself stays on `undoStack`, so
@@ -766,17 +794,78 @@ export const actions = {
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node || node.children?.length) return;
-    if (node.done) {
-      // Unchecking is self-inverse and the row stays visible — no undo toast.
-      node.done = false;
-      delete node.doneAt;
+    const wasDone = isDone(node);
+    writeStatus(node, wasDone ? 'todo' : 'done', todayStr());
+    if (wasDone) {
+      // Unchecking lands on 'todo' unconditionally — a 'doing' step ticked
+      // then unticked does not come back 'doing' — but nothing undo-worthy is
+      // lost by that, and the row stays visible either way, so still no undo
+      // toast.
       setAndPersist({ goals });
     } else {
-      // Completion makes the row vanish from Next up — arm the undo window.
-      node.done = true;
-      node.doneAt = todayStr();
+      // Completion makes the row vanish from Next up, AND — for a 'blocked'
+      // step — discards its `blockedOn` (applyStatus clears it on any
+      // transition away from 'blocked'). Either reason alone would justify
+      // the undo window.
       withUndo(`Completed "${node.title}"`, 'goals', goals);
     }
+  },
+
+  /**
+   * Set one leaf's status. Containers are refused for the same reason they
+   * carry no `done`: a container's state is derived from its children, and
+   * storing one would be a second source of truth about the same work.
+   */
+  setNodeStatus(nodeId: string, next: StepStatus, blockedOn?: string): boolean {
+    if (!isActiveNode(nodeId)) return false; // frozen on a completed project
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
+    if (!node || node.children?.length) return false;
+    if (stepStatus(node) === next && (next !== 'blocked' || node.blockedOn === blockedOn?.trim())) {
+      return false;
+    }
+    writeStatus(node, next, todayStr(), blockedOn);
+    setAndPersist({ goals });
+    return true;
+  },
+
+  /**
+   * Set a whole selection in ONE write, arming ONE undo entry. A loop over
+   * `setNodeStatus` would arm an entry per node and each write's sweep would
+   * discard the ones before it, leaving an Undo button that restores only the
+   * last step.
+   *
+   * A selected id can be a container — `completeNodes` expands one to its open
+   * leaves via `openLeavesUnder` rather than matching ids directly, and this
+   * has to do the same: matching ids straight against `walkLeaves` (which only
+   * ever yields leaves) meant a selected container never matched anything, so
+   * "Set status" silently no-opped on it while "Complete" on the identical
+   * selection reached its children fine.
+   *
+   * Unlike `completeNodes`, this expands via `allLeavesUnder`, not
+   * `openLeavesUnder` — a done leaf is a legitimate target here. The bulk
+   * bar's "Set status…" select offers `'to do'` alongside the others, and a
+   * done step moved back to `'todo'` is exactly what that option means;
+   * filtering it out the way `completeNodes` correctly does made the option
+   * a silent no-op on the one selection it would ever matter for.
+   */
+  setNodesStatus(ids: string[], next: StepStatus): boolean {
+    const wanted = new Set(ids.filter((id) => isActiveNode(id)));
+    if (wanted.size === 0) return false;
+    const goals = cloneGoals(state.goals);
+    const leafIds = new Set(allLeavesUnder(goals.flatMap((g) => g.nodes), wanted));
+    const today = todayStr();
+    let count = 0;
+    for (const g of goals) {
+      walkLeaves(g, (n) => {
+        if (!leafIds.has(n.id) || stepStatus(n) === next) return;
+        writeStatus(n, next, today);
+        count++;
+      });
+    }
+    if (count === 0) return false;
+    withUndo(STATUS_LABEL[next](count), 'goals', goals);
+    return true;
   },
 
   toggleCheckpoint(nodeId: string): void {
@@ -800,7 +889,7 @@ export const actions = {
   addChild(nodeId: string, title = 'New item') {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     // `cloneGoals`, not a shallow `{ ...g, nodes: [...g.nodes] }`. That spread
-    // copies the arrays and SHARES the node objects, so the `delete node.done`
+    // copies the arrays and SHARES the node objects, so the `delete node.status`
     // below reached straight into live state — which meant the undo snapshot
     // taken a few lines later was of the already-mutated tree, and restoring it
     // left the new child in place. `setNodeEstimate` already clones properly.
@@ -819,11 +908,12 @@ export const actions = {
     // the armed undo in one click. Same trap as `hasLeaf` in lib/plan.ts.
     const converts = !node.children || node.children.length === 0;
     const carried = converts
-      && (node.done === true || node.plannedWeek !== undefined
+      && (isDone(node) || node.plannedWeek !== undefined
         || node.estimateMin !== undefined || node.checkpoint === true);
     if (!node.children) node.children = [];
     node.children.push({ id: uid(), title });
-    delete node.done;
+    delete node.status;
+    delete node.blockedOn;
     delete node.doneAt;
     delete node.checkpoint;
     clearPlannedSlot(node); // a container can never carry a planned slot
@@ -853,11 +943,12 @@ export const actions = {
     if (!node) return;
     const converts = !node.children || node.children.length === 0;
     const carried = converts
-      && (node.done === true || node.plannedWeek !== undefined
+      && (isDone(node) || node.plannedWeek !== undefined
         || node.estimateMin !== undefined || node.checkpoint === true);
     if (!node.children) node.children = [];
-    for (const title of clean) node.children.push({ id: uid(), title, done: false });
-    delete node.done;
+    for (const title of clean) node.children.push({ id: uid(), title });
+    delete node.status;
+    delete node.blockedOn;
     delete node.doneAt;
     delete node.checkpoint;
     clearPlannedSlot(node); // a container can never carry a planned slot
@@ -897,7 +988,7 @@ export const actions = {
     if (!isActiveGoal(goalId)) return; // frozen on a completed project
     const goals = state.goals.map((g) =>
       g.id === goalId
-        ? { ...g, nodes: [...g.nodes, { id: uid(), title, done: false }] }
+        ? { ...g, nodes: [...g.nodes, { id: uid(), title }] }
         : g
     );
     setAndPersist({ goals });
@@ -1028,8 +1119,7 @@ export const actions = {
     for (const g of goals) {
       walkLeaves(g, (n) => {
         if (!leafIds.has(n.id)) return;
-        n.done = true;
-        n.doneAt = today;
+        writeStatus(n, 'done', today);
       });
     }
     const count = leafIds.size;
@@ -1538,13 +1628,14 @@ export const actions = {
    * the leaf-XOR-container invariant.
    *
    * Indenting under a leaf turns that leaf into a container, and `treeIndentNode`
-   * therefore strips its `done`, `doneAt`, planned slot and `estimateMin` — so
-   * one keystroke can silently un-complete a step and take it off Thursday
-   * afternoon. Outdenting the last child does the milder version, resetting the
-   * emptied parent to `done: false`. Neither was recoverable: both went through
-   * bare `setAndPersist`, which additionally swept away any restore already
-   * armed. A structural edit that discards a completion has to be at least as
-    * reversible as deleting a checkpoint.
+   * therefore strips its `status`, `blockedOn`, `doneAt`, planned slot and
+   * `estimateMin` — so one keystroke can silently un-complete a step and take
+   * it off Thursday afternoon. Outdenting the last child does the milder
+   * version: the emptied parent becomes a leaf with no status key at all — an
+   * absent field IS todo, so there is nothing left to reset. Neither was
+   * recoverable: both went through bare `setAndPersist`, which additionally
+   * swept away any restore already armed. A structural edit that discards a
+    * completion has to be at least as reversible as deleting a checkpoint.
    */
   indentNode(nodeId: string): void {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
@@ -1857,7 +1948,7 @@ export const actions = {
    * availability, `windowForDate` returns null for a weekend, so every Replan
    * button failed outright on a Saturday or Sunday — which is exactly when a
    * weekly review gets done. And on a weekday that succeeded, nothing changed
-   * on screen: `weekRecap` buckets on `node.done`, which a replan doesn't
+   * on screen: `weekRecap` buckets on completion, which a replan doesn't
    * touch, and `scheduleNode`'s return value was discarded, so only the FAILURE
    * path ever spoke. Success was indistinguishable from a dead button, which is
    * how you end up clicking it five times.

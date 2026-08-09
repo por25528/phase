@@ -14,10 +14,10 @@ const OLD = '2026-06-01';
 const goal = (nodes: GoalNode[]): Goal => ({ id: 'g', title: 'Open-ended', nodes });
 
 const doneLeaf = (id: string, doneAt?: string, estimateMin?: number): GoalNode => ({
-  id, title: id, done: true, ...(doneAt ? { doneAt } : {}), ...(estimateMin ? { estimateMin } : {}),
+  id, title: id, status: 'done', ...(doneAt ? { doneAt } : {}), ...(estimateMin ? { estimateMin } : {}),
 });
 const openLeaf = (id: string, estimateMin?: number): GoalNode => ({
-  id, title: id, done: false, ...(estimateMin ? { estimateMin } : {}),
+  id, title: id, ...(estimateMin ? { estimateMin } : {}),
 });
 
 describe('projectVelocity', () => {

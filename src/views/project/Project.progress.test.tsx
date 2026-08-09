@@ -49,8 +49,8 @@ const seed: Goal = {
   id: 'g1', title: 'Studying Roblox', column: 0,
   start: '2026-01-01', deadline: '2026-12-31',
   nodes: [
-    { id: 'n1', title: 'Define the topics', done: false },
-    { id: 'n2', title: 'Order the topics', done: false },
+    { id: 'n1', title: 'Define the topics' },
+    { id: 'n2', title: 'Order the topics' },
   ],
   notes: 'Existing note text',
 };
@@ -291,7 +291,7 @@ describe('Project page', () => {
  */
 
 const openLeaf = (id: string, estimateMin?: number): GoalNode => ({
-  id, title: id, done: false, ...(estimateMin ? { estimateMin } : {}),
+  id, title: id, ...(estimateMin ? { estimateMin } : {}),
 });
 
 beforeEach(() => vi.clearAllMocks());
@@ -307,9 +307,9 @@ describe('a project with no schedule', () => {
     const recent = await daysAgo(3);
     await mountGoal({
       id: 'g', title: 'Open-ended', nodes: [
-        { id: 'a', title: 'a', done: true, doneAt: recent },
-        { id: 'b', title: 'b', done: true, doneAt: recent },
-        { id: 'c', title: 'c', done: true, doneAt: recent },
+        { id: 'a', title: 'a', status: 'done', doneAt: recent },
+        { id: 'b', title: 'b', status: 'done', doneAt: recent },
+        { id: 'c', title: 'c', status: 'done', doneAt: recent },
         openLeaf('d'), openLeaf('e'), openLeaf('f'),
       ],
     });
@@ -322,7 +322,7 @@ describe('a project with no schedule', () => {
     const old = await daysAgo(60);
     await mountGoal({
       id: 'g', title: 'Stalled', nodes: [
-        { id: 'a', title: 'a', done: true, doneAt: old },
+        { id: 'a', title: 'a', status: 'done', doneAt: old },
         openLeaf('b'), openLeaf('c'),
       ],
     });
@@ -333,9 +333,9 @@ describe('a project with no schedule', () => {
     const recent = await daysAgo(2);
     await mountGoal({
       id: 'g', title: 'Estimated', nodes: [
-        { id: 'a', title: 'a', done: true, doneAt: recent, estimateMin: 60 },
-        { id: 'b', title: 'b', done: true, doneAt: recent, estimateMin: 60 },
-        { id: 'c', title: 'c', done: true, doneAt: recent, estimateMin: 60 },
+        { id: 'a', title: 'a', status: 'done', doneAt: recent, estimateMin: 60 },
+        { id: 'b', title: 'b', status: 'done', doneAt: recent, estimateMin: 60 },
+        { id: 'c', title: 'c', status: 'done', doneAt: recent, estimateMin: 60 },
         openLeaf('d', 120), openLeaf('e', 90),
       ],
     });
@@ -353,7 +353,7 @@ describe('disclosing how the percentage was computed', () => {
   it('says the roll-up is weighted when every step is estimated', async () => {
     await mountGoal({
       id: 'g', title: 'W', nodes: [
-        { id: 'a', title: 'a', done: true, estimateMin: 20 },
+        { id: 'a', title: 'a', status: 'done', estimateMin: 20 },
         openLeaf('b', 360),
       ],
     });
@@ -365,7 +365,7 @@ describe('disclosing how the percentage was computed', () => {
   it('shows a bare step count when the roll-up fell back to equal weight', async () => {
     await mountGoal({
       id: 'g', title: 'E', nodes: [
-        { id: 'a', title: 'a', done: true, estimateMin: 20 },
+        { id: 'a', title: 'a', status: 'done', estimateMin: 20 },
         openLeaf('b'),
       ],
     });
@@ -379,7 +379,7 @@ describe('estimate calibration', () => {
   const calibrated: Goal = {
     id: 'g', title: 'C',
     nodes: Array.from({ length: 5 }, (_, i) => ({
-      id: `n${i}`, title: `n${i}`, done: true, estimateMin: 60,
+      id: `n${i}`, title: `n${i}`, status: 'done', estimateMin: 60,
     })),
   };
   const sessionsFor = (minutes: number): Session[] =>

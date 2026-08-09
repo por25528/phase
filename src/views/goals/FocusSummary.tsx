@@ -1,11 +1,11 @@
 import type { FocusSummary as FocusSummaryModel } from '../../lib/plan';
 
-// The four board signals (spec §2.3). Each is a button that spotlights its match
+// The five board signals (spec §2.3). Each is a button that spotlights its match
 // set and dims the rest; the parent owns the active filter and the dimming so no
 // attention predicate is ever re-derived here. Built from app tokens → themes
 // into dark automatically.
 
-export type FocusFilter = 'slots' | 'needs-step' | 'behind' | 'planned';
+export type FocusFilter = 'slots' | 'needs-step' | 'behind' | 'planned' | 'blocked';
 
 interface Signal {
   key: FocusFilter;
@@ -32,7 +32,7 @@ export function FocusSummary({
   onToggle: (f: FocusFilter) => void;
   onClear: () => void;
 }) {
-  const { slots, needsFirstStep, behind, plannedRemaining } = summary;
+  const { slots, needsFirstStep, behind, plannedRemaining, blocked } = summary;
   const over = slots.used > slots.limit;
 
   const signals: Signal[] = [
@@ -65,6 +65,18 @@ export function FocusSummary({
       num: String(plannedRemaining.count),
       txt: `planned ${plural(plannedRemaining.count, 'action', 'actions')} left`,
       matchCount: plannedRemaining.count,
+    },
+    {
+      // "Blocked" alone reads as the same quantity the board card's "N
+      // blocked" chip counts — but that chip counts STEPS, and this signal
+      // counts whole PROJECTS with nothing left workable. Clicking "Blocked"
+      // then dims a card that visibly says "2 blocked", which looks like a
+      // contradiction unless the label itself says which noun it means.
+      key: 'blocked',
+      label: 'Blocked projects',
+      num: String(blocked.count),
+      txt: `${plural(blocked.count, 'project has', 'projects have')} every step stuck`,
+      matchCount: blocked.count,
     },
   ];
 

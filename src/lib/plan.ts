@@ -8,6 +8,7 @@ import { isPlanningHorizon } from './horizons';
 import { findInAll } from './tree';
 import { hasTrustedSchedule, needsDateConfirmation, isValidLocalDate } from './schedule';
 import { checkpointWithin, CHECKPOINT_SOON_DAYS, nextCheckpoint } from './checkpoints';
+import { isDone, stepStatus } from './status';
 
 // One shared threshold so cards, the insight bar, and the planner never
 // disagree about what "behind" means.
@@ -68,7 +69,7 @@ function hasLeaf(nodes: GoalNode[]): boolean {
 function asPlanned(g: Goal, n: GoalNode): PlannedLeaf {
   return {
     goalId: g.id, goalTitle: g.title, nodeId: n.id, title: n.title,
-    done: !!n.done, plannedWeek: n.plannedWeek!, plannedDay: n.plannedDay,
+    done: isDone(n), plannedWeek: n.plannedWeek!, plannedDay: n.plannedDay,
     plannedStartMin: n.plannedStartMin,
     estimateMin: n.estimateMin,
   };
@@ -125,7 +126,7 @@ export function groupPlannedByGoal(leaves: PlannedLeaf[]): PlannedGoalGroup[] {
 export function unplannedOpenLeaves(g: Goal, week: string): GoalNode[] {
   const out: GoalNode[] = [];
   walkLeaves(g, (n) => {
-    if (!n.done && (n.plannedWeek !== week || n.plannedDay === undefined || n.plannedStartMin === undefined)) out.push(n);
+    if (!isDone(n) && (n.plannedWeek !== week || n.plannedDay === undefined || n.plannedStartMin === undefined)) out.push(n);
   });
   return out;
 }
@@ -153,7 +154,7 @@ export function railTree(g: Goal, week: string): RailTreeNode[] {
       if (n.children && n.children.length) {
         const children = build(n.children);
         if (children.length > 0) out.push({ id: n.id, title: n.title, isLeaf: false, children });
-      } else if (!n.done && (n.plannedWeek !== week || n.plannedDay === undefined || n.plannedStartMin === undefined)) {
+      } else if (!isDone(n) && (n.plannedWeek !== week || n.plannedDay === undefined || n.plannedStartMin === undefined)) {
         out.push({ id: n.id, title: n.title, isLeaf: true, children: [] });
       }
     }
@@ -191,20 +192,38 @@ export function deadlineBefore(date: string, today: string): boolean {
 
 function hasOpenLeaf(g: Goal): boolean {
   let open = false;
-  walkLeaves(g, (n) => { if (!n.done) open = true; });
+  walkLeaves(g, (n) => { if (!isDone(n)) open = true; });
   return open;
+}
+
+/**
+ * Open work exists, but none of it can be worked — every open leaf is
+ * 'blocked'. A project with zero open leaves (all done) is NOT fully
+ * blocked, and a project with one blocked leaf beside one workable one isn't
+ * either: `cardPrimaryAction` withholds "Plan next step" for this ONLY.
+ */
+export function isFullyBlocked(g: Goal): boolean {
+  let open = 0;
+  let blocked = 0;
+  walkLeaves(g, (n) => {
+    const s = stepStatus(n);
+    if (s === 'done') return;
+    open++;
+    if (s === 'blocked') blocked++;
+  });
+  return open > 0 && open === blocked;
 }
 
 function hasPlannedOpenLeafThisWeek(g: Goal, today: string): boolean {
   const week = weekOf(today);
   let planned = false;
-  walkLeaves(g, (n) => { if (!n.done && n.plannedWeek === week) planned = true; });
+  walkLeaves(g, (n) => { if (!isDone(n) && n.plannedWeek === week) planned = true; });
   return planned;
 }
 
 function hasOverdueLeaf(g: Goal, today: string): boolean {
   let overdue = false;
-  walkLeaves(g, (n) => { if (!n.done && n.deadline && deadlineBefore(n.deadline, today)) overdue = true; });
+  walkLeaves(g, (n) => { if (!isDone(n) && n.deadline && deadlineBefore(n.deadline, today)) overdue = true; });
   return overdue;
 }
 
@@ -280,6 +299,7 @@ export interface FocusSummary {
   needsFirstStep: { count: number; goalIds: string[] };
   behind: { count: number; goalIds: string[] };
   plannedRemaining: { count: number; goalIds: string[] };
+  blocked: { count: number; goalIds: string[] };
 }
 
 export function focusSummary(goals: Goal[], today: string): FocusSummary {
@@ -293,13 +313,20 @@ export function focusSummary(goals: Goal[], today: string): FocusSummary {
   const behind = active
     .filter((g) => projectAttention(g, today) === 'behind')
     .map((g) => g.id);
+  // Horizon-gated like every neighbouring signal: a parked project's blocked
+  // steps are dropped from the rail (backlog.ts) and its card withholds
+  // 'unblock' (cardPrimaryAction), so the Focus bar must not be the one place
+  // left loud about it.
+  const blocked = active
+    .filter((g) => isPlanningHorizon(g.column ?? 0) && isFullyBlocked(g))
+    .map((g) => g.id);
 
   // Open leaves planned for this week, and which projects still own one.
   let plannedCount = 0;
   const plannedIds: string[] = [];
   for (const g of active) {
     let has = false;
-    walkLeaves(g, (n) => { if (!n.done && n.plannedWeek === week) { plannedCount++; has = true; } });
+    walkLeaves(g, (n) => { if (!isDone(n) && n.plannedWeek === week) { plannedCount++; has = true; } });
     if (has) plannedIds.push(g.id);
   }
 
@@ -308,6 +335,7 @@ export function focusSummary(goals: Goal[], today: string): FocusSummary {
     needsFirstStep: { count: needsFirstStep.length, goalIds: needsFirstStep },
     behind: { count: behind.length, goalIds: behind },
     plannedRemaining: { count: plannedCount, goalIds: plannedIds },
+    blocked: { count: blocked.length, goalIds: blocked },
   };
 }
 
@@ -343,17 +371,33 @@ export interface NextAction {
 }
 
 // The single "what's next" line: a leaf already planned for this week wins, then
-// the first open leaf, then the breakdown/complete prompts. Preference order
-// mirrors how the planner surfaces work.
+// the first workable leaf (a 'doing' one preferred over 'todo'), then the
+// breakdown/complete prompts. Preference order mirrors how the planner surfaces
+// work, and blocked leaves are excluded exactly as `firstOpenLeaf` (tree.ts)
+// excludes them — two functions answering "what's next" must not disagree.
 export function nextOpenAction(g: Goal, today: string): NextAction {
   const leaves = leafCount(g.nodes);
   if (leaves.total === 0) return { kind: 'needs-breakdown', title: 'No steps yet — break the project into actions' };
   if (leaves.done === leaves.total) return { kind: 'complete', title: 'All steps complete' };
   const week = weekOf(today);
-  const open: GoalNode[] = [];
-  walkLeaves(g, (n) => { if (!n.done) open.push(n); });
-  const planned = open.find((n) => n.plannedWeek === week);
-  const pick = planned ?? open[0];
+  const doing: GoalNode[] = [];
+  const todo: GoalNode[] = [];
+  walkLeaves(g, (n) => {
+    const status = stepStatus(n);
+    if (status === 'doing') doing.push(n);
+    else if (status === 'todo') todo.push(n);
+  });
+  const workable = [...doing, ...todo];
+  if (isFullyBlocked(g)) {
+    // Open work exists (checked above) but every leaf is blocked. Naming one
+    // would contradict `firstOpenLeaf`, which refuses on principle; "needs
+    // breakdown" would lie (steps already exist) and "complete" would lie
+    // worse. 'open' is the least dishonest kind left — the real "unblock this"
+    // verdict is a later task's job, not this one's to invent.
+    return { kind: 'open', title: 'All open steps are blocked' };
+  }
+  const planned = workable.find((n) => n.plannedWeek === week);
+  const pick = planned ?? doing[0] ?? todo[0];
   return { kind: planned ? 'planned' : 'open', title: pick.title };
 }
 
@@ -404,7 +448,7 @@ export function attentionBadge(g: Goal, today: string): AttentionBadge | null {
   }
 }
 
-export type CardActionKind = 'plan' | 'define' | 'complete' | 'none';
+export type CardActionKind = 'plan' | 'define' | 'complete' | 'unblock' | 'none';
 
 // The card's primary verb follows the verdict: break it down, complete it, or
 // plan the next step.
@@ -421,7 +465,10 @@ export function cardPrimaryAction(g: Goal, today: string): CardActionKind {
     case 'needs-breakdown': return 'define';
     case 'ready-to-complete': return 'complete';
     case 'completed': return 'none';
-    default: return isPlanningHorizon(g.column) ? 'plan' : 'none';
+    default:
+      if (!isPlanningHorizon(g.column)) return 'none';
+      // Withheld for a stated reason, exactly as a parked project withholds it.
+      return isFullyBlocked(g) ? 'unblock' : 'plan';
   }
 }
 
@@ -441,7 +488,7 @@ export function weekRecap(review: PlanReview, goals: Goal[]): WeekRecapResult {
   for (const e of review.entries) {
     const node = findInAll(goals, e.nodeId);
     if (!node) removed.push(e);
-    else if (node.done) nowComplete.push(e);
+    else if (isDone(node)) nowComplete.push(e);
     else unfinished.push(e);
   }
   return { planned: review.entries.length, nowComplete, unfinished, removed };
@@ -485,7 +532,7 @@ export function pinnedDayCounts(goals: Goal[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const g of goals) {
     walkLeaves(g, (n) => {
-      if (!n.done && n.plannedDay) m.set(n.plannedDay, (m.get(n.plannedDay) ?? 0) + 1);
+      if (!isDone(n) && n.plannedDay) m.set(n.plannedDay, (m.get(n.plannedDay) ?? 0) + 1);
     });
   }
   return m;

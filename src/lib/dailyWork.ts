@@ -1,6 +1,7 @@
 import type { Goal, GoalNode, Task } from '../db/types';
 import { addDays, weekDates } from './dates';
 import { isValidLocalDate } from './schedule';
+import { isDone } from './status';
 
 export type DailyWorkSource =
   | 'due'
@@ -89,7 +90,7 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
     goalId: goal.id,
     goalTitle: goal.title,
     due: source === 'due',
-    done: Boolean(node.done),
+    done: isDone(node),
     editable: !goal.completedAt,
     source,
     ...(isValidLocalDate(node.plannedWeek) ? { plannedWeek: node.plannedWeek } : {}),
@@ -143,7 +144,7 @@ export function buildDailyWork(
 
   for (const leaf of activeLeaves) {
     if (
-      !leaf.node.done
+      !isDone(leaf.node)
       && isValidLocalDate(leaf.node.deadline)
       && leaf.node.deadline <= today
     ) {
@@ -162,7 +163,7 @@ export function buildDailyWork(
   for (const leaf of activeLeaves) {
     const { node } = leaf;
     if (
-      !node.done
+      !isDone(node)
       && hasValidPlannedWeek(node)
       && node.plannedWeek === currentWeek
       && isValidLocalDate(node.plannedDay)
@@ -174,7 +175,7 @@ export function buildDailyWork(
   for (const leaf of activeLeaves) {
     const { node } = leaf;
     if (
-      !node.done
+      !isDone(node)
       && hasValidPlannedWeek(node)
       && node.plannedWeek === currentWeek
       && (!isValidLocalDate(node.plannedDay) || node.plannedDay < today)
@@ -201,7 +202,7 @@ export function buildDailyWork(
       hasValidPlannedWeek(node) && node.plannedWeek < currentWeek,
     );
     const key = `step:${node.id}`;
-    if (!node.done && stale && !committedKeys.has(key)) {
+    if (!isDone(node) && stale && !committedKeys.has(key)) {
       carryOvers.push(stepItem(leaf, 'carry-over'));
     }
   }
@@ -213,7 +214,7 @@ export function buildDailyWork(
     }
   }
   for (const leaf of allLeaves) {
-    if (leaf.node.done === true && leaf.node.doneAt === today) {
+    if (isDone(leaf.node) && leaf.node.doneAt === today) {
       completedToday.push(stepItem(leaf, 'completed-today'));
     }
   }

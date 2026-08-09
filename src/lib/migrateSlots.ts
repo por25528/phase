@@ -3,6 +3,7 @@ import { windowForDate } from './availability';
 import { walkLeaves, weekOf } from './plan';
 import { durationOf, resolveSlot, NO_PAST_LIMIT, type PlacedSpan } from './slot';
 import { cloneGoals } from './tree';
+import { isDone } from './status';
 
 export interface MigrationReport {
   scheduledSteps: number;
@@ -84,7 +85,7 @@ export function migrateSlots(
     const map = archived ? archivedOccupied : occupied;
 
     walkLeaves(g, (n) => {
-      if (n.done || !n.plannedWeek) return;
+      if (isDone(n) || !n.plannedWeek) return;
 
       // Already migrated: keep it, but register its span so later items avoid it.
       if (n.plannedDay && n.plannedStartMin !== undefined) {

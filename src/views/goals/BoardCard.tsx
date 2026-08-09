@@ -6,7 +6,7 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { IconDots } from '../../components/Icons';
 import { goalPct } from '../../lib/pct';
 import { fmtD } from '../../lib/dates';
-import { leafCount } from '../../lib/board';
+import { leafCount, blockedLeafCount, firstBlockedLeaf } from '../../lib/board';
 import {
   nearestMeaningfulDate,
   nextOpenAction,
@@ -31,10 +31,11 @@ const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
 /** Roughly the menu's own height — enough to decide which way it fits. */
 const MENU_HEIGHT_PX = 210;
 
-const PRIMARY_LABEL: Record<'plan' | 'define' | 'complete', string> = {
+const PRIMARY_LABEL: Record<'plan' | 'define' | 'complete' | 'unblock', string> = {
   plan: 'Plan next step',
   define: 'Define first step',
   complete: 'Complete project',
+  unblock: 'Unblock',
 };
 
 export function storedDateRangeLabel(goal: Pick<Goal, 'start' | 'deadline'>): string {
@@ -78,6 +79,8 @@ function CardFace({
   const isNow = (goal.column ?? 0) === 0;
   const wk = isNow ? plannedLeaves([goal], weekOf(today)) : [];
   const wkDone = wk.filter((l) => l.done).length;
+  const blocked = blockedLeafCount(goal.nodes);
+  const blockedReason = blocked > 0 ? firstBlockedLeaf(goal.nodes)?.blockedOn : undefined;
 
   return (
     <>
@@ -139,14 +142,31 @@ function CardFace({
         <ProgressBar pct={hasLeaves ? pct : 0} />
       </div>
 
-      {badge && (
-        <div className="flex flex-wrap gap-[5px]">
-          <span
-            title={badge.hint}
-            className={`text-badge font-semibold px-[7px] py-[2px] rounded-full ${BADGE_TONE[badge.tone]}`}
-          >
-            {badge.label}
-          </span>
+      {(badge || blocked > 0) && (
+        <div className="flex flex-wrap items-center gap-[5px]">
+          {badge && (
+            <span
+              title={badge.hint}
+              className={`text-badge font-semibold px-[7px] py-[2px] rounded-full ${BADGE_TONE[badge.tone]}`}
+            >
+              {badge.label}
+            </span>
+          )}
+          {blocked > 0 && (
+            // "steps", not the bare count the Focus bar's "Blocked projects"
+            // signal counts — this is a step tally, and the two must not read
+            // as the same quantity (a card showing this can still be dimmed
+            // by that signal without contradicting itself).
+            <span className="text-meta text-warn whitespace-nowrap">{blocked} step{blocked === 1 ? '' : 's'} blocked</span>
+          )}
+          {blockedReason && (
+            <span
+              title={blockedReason}
+              className="text-meta text-muted overflow-hidden text-ellipsis whitespace-nowrap min-w-0"
+            >
+              · {blockedReason}
+            </span>
+          )}
         </div>
       )}
     </>
@@ -187,7 +207,13 @@ export function BoardCard({
 }: {
   goal: Goal;
   today: string;
-  onOpen: (id: string) => void;
+  /**
+   * Open the project, optionally deep-linked to one node — "Unblock" reuses
+   * this to land on the blocked step instead of merely opening the project,
+   * exactly as `openProject(goalId, nodeId)` already does for the command
+   * palette.
+   */
+  onOpen: (id: string, nodeId?: string) => void;
   onPlan: (id: string) => void;
   onDefine: (id: string) => void;
   onComplete: (id: string) => void;
@@ -236,6 +262,10 @@ export function BoardCard({
   };
 
   const primary = cardPrimaryAction(goal, today);
+  // Only needed for 'unblock', but cheap and 'unblock' implies at least one
+  // blocked leaf exists (cardPrimaryAction only returns it when the project
+  // is fully blocked), so this is never null when the button below uses it.
+  const blockedStepId = primary === 'unblock' ? firstBlockedLeaf(goal.nodes)?.id : undefined;
   const currentCol = goal.column ?? 0;
   const datesUnconfirmed = needsDateConfirmation(goal);
   const storedDateError = projectDateError(goal.start, goal.deadline);
@@ -336,7 +366,9 @@ export function BoardCard({
                 ? onComplete(goal.id)
                 : primary === 'define'
                   ? onDefine(goal.id)
-                  : onPlan(goal.id),
+                  : primary === 'unblock'
+                    ? onOpen(goal.id, blockedStepId)
+                    : onPlan(goal.id),
             )}
             className="text-compact font-semibold text-accent-deep px-[8px] py-[4px] rounded-field hover:bg-accent-tint"
           >

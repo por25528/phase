@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalNode, Session } from '../../db/types';
 
@@ -49,7 +49,7 @@ beforeEach(() => vi.clearAllMocks());
 const leafWithDates: Goal = {
   id: 'g1', title: 'Project',
   nodes: [{
-    id: 'n1', title: 'Wire up auth', done: false,
+    id: 'n1', title: 'Wire up auth',
     start: '2026-08-01', deadline: '2026-08-05',
   }],
 };
@@ -57,24 +57,24 @@ const leafWithDates: Goal = {
 const plannedLeaf: Goal = {
   id: 'g1', title: 'Project',
   nodes: [{
-    id: 'n1', title: 'Wire up auth', done: false,
+    id: 'n1', title: 'Wire up auth',
     plannedWeek: '2026-07-27', plannedDay: '2026-07-28', plannedStartMin: 540,
   }],
 };
 
 const unplannedLeaf: Goal = {
   id: 'g1', title: 'Project',
-  nodes: [{ id: 'n1', title: 'Wire up auth', done: false }],
+  nodes: [{ id: 'n1', title: 'Wire up auth' }],
 };
 
 const checkpointLeaf: Goal = {
   id: 'g1', title: 'Project',
-  nodes: [{ id: 'n1', title: 'Wire up auth', done: false, checkpoint: true }],
+  nodes: [{ id: 'n1', title: 'Wire up auth', checkpoint: true }],
 };
 
 const emptyChildrenLeaf: Goal = {
   id: 'g1', title: 'Project',
-  nodes: [{ id: 'n1', title: 'Wire up auth', done: false, children: [] }],
+  nodes: [{ id: 'n1', title: 'Wire up auth', children: [] }],
 };
 
 const containerNode: Goal = {
@@ -82,8 +82,8 @@ const containerNode: Goal = {
   nodes: [{
     id: 'n1', title: 'Auth work',
     children: [
-      { id: 'n2', title: 'Configure provider', done: true },
-      { id: 'n3', title: 'Wire up callback', done: false },
+      { id: 'n2', title: 'Configure provider', status: 'done' },
+      { id: 'n3', title: 'Wire up callback' },
     ],
   }],
 };
@@ -91,16 +91,16 @@ const containerNode: Goal = {
 const twoStepGoal: Goal = {
   id: 'g1', title: 'Project',
   nodes: [
-    { id: 'n1', title: 'Step A', done: false },
-    { id: 'n2', title: 'Step B', done: false },
+    { id: 'n1', title: 'Step A' },
+    { id: 'n2', title: 'Step B' },
   ],
 };
 
 const twoStepGoalWithNotes: Goal = {
   ...twoStepGoal,
   nodes: [
-    { id: 'n1', title: 'Step A', done: false, notes: 'Note A' },
-    { id: 'n2', title: 'Step B', done: false, notes: 'Note B' },
+    { id: 'n1', title: 'Step A', notes: 'Note A' },
+    { id: 'n2', title: 'Step B', notes: 'Note B' },
   ],
 };
 
@@ -387,5 +387,109 @@ describe('StepPanel', () => {
     const node = store.getState().goals[0].nodes[0] as GoalNode;
     expect(node.start).toBeUndefined();
     expect(node.deadline).toBeUndefined();
+  });
+
+  describe('status', () => {
+    it('shows a radio group for a leaf with "to do" checked by default', async () => {
+      await mountPanel(unplannedLeaf);
+
+      const group = screen.getByRole('radiogroup', { name: 'Status' });
+      const radios = within(group).getAllByRole('radio');
+      expect(radios.map((r) => r.textContent)).toEqual(['to do', 'in progress', 'blocked', 'done']);
+      expect(within(group).getByRole('radio', { name: 'to do' }).getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('sets a leaf to in progress on click', async () => {
+      const store = await mountPanel(unplannedLeaf);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'in progress' }));
+
+      expect(store.getState().goals[0].nodes[0].status).toBe('doing');
+      expect(screen.getByRole('radio', { name: 'in progress' }).getAttribute('aria-checked')).toBe('true');
+      expect(screen.getByRole('radio', { name: 'to do' }).getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('shows a blockedOn field only while blocked, and commits it on blur', async () => {
+      const store = await mountPanel(unplannedLeaf);
+
+      expect(screen.queryByLabelText('Blocked on')).toBeNull();
+
+      fireEvent.click(screen.getByRole('radio', { name: 'blocked' }));
+      expect(store.getState().goals[0].nodes[0].status).toBe('blocked');
+
+      const reason = screen.getByLabelText('Blocked on');
+      fireEvent.change(reason, { target: { value: 'the grader' } });
+      fireEvent.blur(reason);
+
+      expect(store.getState().goals[0].nodes[0].blockedOn).toBe('the grader');
+    });
+
+    it('hides the blockedOn field again once no longer blocked', async () => {
+      const store = await mountPanel(unplannedLeaf);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'blocked' }));
+      expect(screen.getByLabelText('Blocked on')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('radio', { name: 'to do' }));
+
+      expect(store.getState().goals[0].nodes[0].status).toBeUndefined();
+      expect(screen.queryByLabelText('Blocked on')).toBeNull();
+    });
+
+    it('shows read-only derived status text for a container, with no radio group', async () => {
+      await mountPanel(containerNode);
+
+      expect(screen.queryByRole('radiogroup', { name: 'Status' })).toBeNull();
+      // containerNode: one done leaf, one open leaf with no status → 'todo'.
+      expect(screen.getByText('to do')).toBeTruthy();
+    });
+
+    // Same state change as the tree checkbox (toggleLeaf), same reversibility
+    // story: completing from the panel must arm the identical undo, not a
+    // silent setNodeStatus write.
+    it('completing from the panel arms the same undo as the tree checkbox, and restores "to do"', async () => {
+      const store = await mountPanel(unplannedLeaf);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+
+      expect(store.getState().goals[0].nodes[0].status).toBe('done');
+      expect(store.getState().pendingUndo?.label).toBe('Completed "Wire up auth"');
+
+      store.actions.undoLastDelete();
+
+      expect(store.getState().goals[0].nodes[0].status).toBeUndefined();
+    });
+
+    it('restores blockedOn when undoing a completion from blocked', async () => {
+      const store = await mountPanel(unplannedLeaf);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'blocked' }));
+      const reason = screen.getByLabelText('Blocked on');
+      fireEvent.change(reason, { target: { value: 'the grader' } });
+      fireEvent.blur(reason);
+      expect(store.getState().goals[0].nodes[0].blockedOn).toBe('the grader');
+
+      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+      expect(store.getState().goals[0].nodes[0].status).toBe('done');
+      expect(store.getState().goals[0].nodes[0].blockedOn).toBeUndefined();
+
+      store.actions.undoLastDelete();
+
+      expect(store.getState().goals[0].nodes[0].status).toBe('blocked');
+      expect(store.getState().goals[0].nodes[0].blockedOn).toBe('the grader');
+    });
+
+    it('does not un-complete an already-done step when "done" is clicked again', async () => {
+      const store = await mountPanel(unplannedLeaf);
+
+      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+      expect(store.getState().goals[0].nodes[0].status).toBe('done');
+      const doneAt = store.getState().goals[0].nodes[0].doneAt;
+
+      fireEvent.click(screen.getByRole('radio', { name: 'done' }));
+
+      expect(store.getState().goals[0].nodes[0].status).toBe('done');
+      expect(store.getState().goals[0].nodes[0].doneAt).toBe(doneAt);
+    });
   });
 });

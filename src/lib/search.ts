@@ -1,5 +1,6 @@
 import type { Goal, GoalNode, Habit, Task } from '../db/types';
 import { stripAssetRefs } from './notes';
+import { isDone } from './status';
 
 // Everything the palette can find. The store already holds the whole dataset in
 // memory, so this is a derived projection rebuilt per keystroke-batch rather
@@ -56,7 +57,7 @@ function flattenNodes(
       ...(node.notes === undefined ? {} : { body: stripAssetRefs(node.notes) }),
       goalId: goal.id,
       nodeId: node.id,
-      done: node.done === true,
+      done: isDone(node),
       archived,
     });
     if (node.children?.length) flattenNodes(node.children, goal, archived, out);

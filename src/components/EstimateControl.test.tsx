@@ -68,15 +68,15 @@ const PROJECT: Goal = {
   title: '6.5840',
   column: 0,
   nodes: [
-    { id: 'a', title: 'Implement AppendEntries', done: false },
-    { id: 'b', title: 'Already estimated', done: false, estimateMin: 45 },
+    { id: 'a', title: 'Implement AppendEntries' },
+    { id: 'b', title: 'Already estimated', estimateMin: 45 },
     // Only reachable from an imported or hand-edited file; `parseEstimateInput`
     // cannot produce it.
-    { id: 'junk', title: 'Junk import', done: false, estimateMin: 0 },
+    { id: 'junk', title: 'Junk import', estimateMin: 0 },
     {
       id: 'grp',
       title: 'A container',
-      children: [{ id: 'c1', title: 'A child leaf', done: false }],
+      children: [{ id: 'c1', title: 'A child leaf' }],
     },
   ],
 };
@@ -322,7 +322,7 @@ describe('reaching the estimate from the step tree', () => {
       }),
     );
     const leaf = store.getState().goals[0].nodes.find((n) => n.id === 'a');
-    expect(leaf?.done).toBe(false);
+    expect(leaf?.status).toBeUndefined();
   });
 });
 
@@ -415,7 +415,7 @@ describe('logging actual time from the step tree', () => {
     await user.click(screen.getByRole('button', { name: 'Log 30m on "Implement AppendEntries"' }));
     // Logging time is journalling, not progress. The row's click handler must
     // never see this.
-    expect(store.getState().goals[0].nodes.find((n) => n.id === 'a')?.done).toBe(false);
+    expect(store.getState().goals[0].nodes.find((n) => n.id === 'a')?.status).toBeUndefined();
   });
 
   it('types a duration and commits it with Enter', async () => {

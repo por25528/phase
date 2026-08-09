@@ -84,17 +84,17 @@ const GOALS: Goal[] = [
     deadline: iso(60),
     datesConfirmed: true,
     nodes: [
-      { id: 'n-p7', title: 'Pset 7', done: true, doneAt: iso(-3) },
+      { id: 'n-p7', title: 'Pset 7', status: 'done', doneAt: iso(-3) },
       {
         id: 'n-p8',
         title: 'Pset 8',
         children: [
-          { id: 'n-p8a', title: 'Problems 1–3', done: false, deadline: iso(2), estimateMin: 120 },
-          { id: 'n-p8b', title: 'Problems 4–6', done: false, estimateMin: 90 },
+          { id: 'n-p8a', title: 'Problems 1–3', deadline: iso(2), estimateMin: 120 },
+          { id: 'n-p8b', title: 'Problems 4–6', estimateMin: 90 },
         ],
       },
-      { id: 'n-exam', title: '18.06 exam prep', done: false, deadline: iso(9) },
-      { id: 'm1', title: 'Midterm', checkpoint: true, done: false, start: iso(9), deadline: iso(9) },
+      { id: 'n-exam', title: '18.06 exam prep', deadline: iso(9) },
+      { id: 'm1', title: 'Midterm', checkpoint: true, start: iso(9), deadline: iso(9) },
     ],
     notes: 'Office hours Tue/Thu.',
   },
@@ -105,14 +105,14 @@ const GOALS: Goal[] = [
     // Deliberately unconfirmed, so the date-review banner and card render.
     start: iso(-10),
     deadline: iso(45),
-    nodes: [{ id: 'n-deck', title: 'Investor deck', done: false, estimateMin: 180 }],
+    nodes: [{ id: 'n-deck', title: 'Investor deck', estimateMin: 180 }],
   },
   {
     id: 'g-done',
     title: '6.031 (archived)',
     column: 0,
     completedAt: iso(-1),
-    nodes: [{ id: 'n-old', title: 'Final project', done: true, doneAt: iso(-2) }],
+    nodes: [{ id: 'n-old', title: 'Final project', status: 'done', doneAt: iso(-2) }],
   },
   // No nodes and no dates: the degenerate project every empty-state path keys off.
   { id: 'g-empty', title: 'Someday: learn Rust', column: 3, nodes: [] },

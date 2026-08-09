@@ -64,7 +64,7 @@ beforeAll(() => {
 });
 
 const project = (id: string, title: string, column: number): Goal =>
-  ({ id, title, column, nodes: [{ id: `${id}-n`, title: 'Step', done: false }], datesConfirmed: true });
+  ({ id, title, column, nodes: [{ id: `${id}-n`, title: 'Step' }], datesConfirmed: true });
 
 // Three in Now, one in Next — enough to move in every direction and to hit both
 // ends of a column.

@@ -11,6 +11,10 @@ import { loggedForNode } from '../../lib/actuals';
 import { NOTE_SAVE_DEBOUNCE_MS, shouldFlushNoteSave } from '../../lib/noteAutosave';
 import { nodePct } from '../../lib/pct';
 import { fmtD } from '../../lib/dates';
+import { containerStatus, STATUS_WORD, stepStatus } from '../../lib/status';
+import type { StepStatus } from '../../db/types';
+
+const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -29,6 +33,7 @@ export function StepPanel({ goal, node, actions }: {
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftStart, setDraftStart] = useState(node.start ?? '');
   const [draftDeadline, setDraftDeadline] = useState(node.deadline ?? '');
+  const [draftBlockedOn, setDraftBlockedOn] = useState(node.blockedOn ?? '');
   const initialNotes = node.notes ?? '';
   const [draftNotes, setDraftNotes] = useState(initialNotes);
   const draftNotesRef = useRef(initialNotes);
@@ -49,6 +54,10 @@ export function StepPanel({ goal, node, actions }: {
     setDraftStart(node.start ?? '');
     setDraftDeadline(node.deadline ?? '');
   }, [node.id, node.start, node.deadline]);
+
+  useEffect(() => {
+    setDraftBlockedOn(node.blockedOn ?? '');
+  }, [node.id, node.blockedOn]);
 
   function clearNoteTimer(): void {
     if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
@@ -164,6 +173,63 @@ export function StepPanel({ goal, node, actions }: {
           Close
         </button>
       </div>
+
+      <section className="mt-[22px]">
+        <SectionLabel>Status</SectionLabel>
+        {isLeaf ? (
+          <>
+            <div role="radiogroup" aria-label="Status" className="flex gap-[4px]">
+              {STATUS_ORDER.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  role="radio"
+                  aria-checked={stepStatus(node) === s}
+                  onClick={() => {
+                    // Route 'done' through toggleLeaf so completing from the
+                    // panel arms the same "Completed X" undo the tree
+                    // checkbox does — same state change, same reversibility.
+                    // toggleLeaf TOGGLES, so it must only fire on the
+                    // transition INTO 'done'; clicking an already-done radio
+                    // would otherwise uncheck it. blockedOn is discarded by
+                    // toggleLeaf exactly as setNodeStatus('done', …) already
+                    // did, since neither passes a reason through on entering
+                    // 'done'.
+                    if (s === 'done') {
+                      if (stepStatus(node) !== 'done') actions.toggleLeaf(node.id);
+                      return;
+                    }
+                    actions.setNodeStatus(node.id, s, s === 'blocked' ? draftBlockedOn : undefined);
+                  }}
+                  className={`text-compact px-[9px] py-[5px] rounded-field border ${
+                    stepStatus(node) === s
+                      ? 'border-accent text-accent-deep bg-accent-tint'
+                      : 'border-line-2 text-ink-soft hover:bg-hover'
+                  }`}
+                >
+                  {STATUS_WORD[s]}
+                </button>
+              ))}
+            </div>
+            {stepStatus(node) === 'blocked' && (
+              <input
+                type="text"
+                value={draftBlockedOn}
+                onChange={(e) => setDraftBlockedOn(e.target.value)}
+                onBlur={() => {
+                  if (draftBlockedOn.trim() === (node.blockedOn ?? '').trim()) return;
+                  actions.setNodeStatus(node.id, 'blocked', draftBlockedOn);
+                }}
+                placeholder="Blocked on…"
+                aria-label="Blocked on"
+                className="mt-[8px] w-full text-ui px-[9px] py-[6px] rounded-field border border-line-2 bg-field text-ink placeholder:text-muted"
+              />
+            )}
+          </>
+        ) : (
+          <span className="text-ui text-ink-soft">{STATUS_WORD[containerStatus(node)]}</span>
+        )}
+      </section>
 
       <section className="mt-[22px]">
         <SectionLabel>Span</SectionLabel>

@@ -1,11 +1,21 @@
+export type StepStatus = 'todo' | 'doing' | 'blocked' | 'done';
+
 export interface GoalNode {
   id: string;
   title: string;
-  done?: boolean;       // present on LEAVES only
+  /**
+   * LEAVES only. Absent ⇒ 'todo'; 'todo' is never written. Scheduling
+   * metadata never affects the pct roll-up and neither does this: `pct.ts`
+   * counts 'done' and nothing else, so 'doing' and 'blocked' contribute
+   * zero, exactly as an unticked box always did.
+   */
+  status?: StepStatus;
+  /** Present only while status === 'blocked'. Cleared on any other transition. */
+  blockedOn?: string;
   doneAt?: string;      // local 'YYYY-MM-DD' completion date; optional for legacy data
   children?: GoalNode[]; // present on CONTAINERS only
   // INVARIANT: a node is a leaf XOR a container.
-  // Adding a child to a leaf deletes its `done` and `doneAt`.
+  // Adding a child to a leaf deletes its `status` and `doneAt`.
   // A node with children[].length > 0 is a container.
   start?: string;    // 'YYYY-MM-DD' — scheduling metadata only, never affects pct
   deadline?: string; // both present or both absent
@@ -26,7 +36,7 @@ export interface GoalNode {
    * Its date is its `deadline`; the migration writes `start === deadline`, so
    * a checkpoint is a zero-length span, which is what a marker is.
    *
-   * LEAVES ONLY. A container has no `done`, so a container checkpoint could
+   * LEAVES ONLY. A container has no `status`, so a container checkpoint could
    * never be reached — the same dead-marker problem. `toggleCheckpoint`
    * refuses containers and `addChild` drops the flag when it converts a leaf.
    */

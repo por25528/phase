@@ -66,17 +66,17 @@ const PROJECT: Goal = {
   title: '6.1200',
   column: 0,
   nodes: [
-    { id: 'a', title: 'Pset 6', done: false },
-    { id: 'b', title: 'Pset 7', done: false },
+    { id: 'a', title: 'Pset 6' },
+    { id: 'b', title: 'Pset 7' },
     {
       id: 'grp',
       title: 'Pset 8',
       children: [
-        { id: 'c1', title: 'Problems 1-3', done: false },
-        { id: 'c2', title: 'Problems 4-6', done: false },
+        { id: 'c1', title: 'Problems 1-3' },
+        { id: 'c2', title: 'Problems 4-6' },
       ],
     },
-    { id: 'd', title: 'Pset 9', done: false },
+    { id: 'd', title: 'Pset 9' },
   ],
 };
 
@@ -136,7 +136,7 @@ describe('building a selection', () => {
     expect(selectedIds()).toEqual(['b']);
     // The click selected — it did NOT tick the box.
     const { findInAll } = await import('../lib/tree');
-    expect(findInAll(store.getState().goals, 'b')?.done).toBe(false);
+    expect(findInAll(store.getState().goals, 'b')?.status).toBeUndefined();
 
     await user.keyboard('{Meta>}');
     await user.click(row('Pset 7'));
@@ -230,8 +230,8 @@ describe('acting on a selection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Complete' }));
 
-    expect(findInAll(store.getState().goals, 'c1')?.done).toBe(true);
-    expect(findInAll(store.getState().goals, 'c2')?.done).toBe(true);
+    expect(findInAll(store.getState().goals, 'c1')?.status).toBe('done');
+    expect(findInAll(store.getState().goals, 'c2')?.status).toBe('done');
     expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
     expect(selectedIds()).toEqual([]); // the bar retires with the selection
   });
@@ -281,8 +281,22 @@ describe('acting on a selection', () => {
 
     await user.keyboard(' ');
 
-    expect(findInAll(store.getState().goals, 'a')?.done).toBe(true);
-    expect(findInAll(store.getState().goals, 'b')?.done).toBe(true);
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('done');
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('done');
+  });
+
+  it('sets a whole selection to blocked in one undoable write', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}'); // a, b
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Set status' }), 'blocked');
+
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('blocked');
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('blocked');
+    expect(store.getState().pendingUndo?.label).toBe('Blocked 2 steps');
+    expect(selectedIds()).toEqual([]); // the bar retires with the selection, like Complete/Delete
   });
 });
 
@@ -316,7 +330,7 @@ describe('getting out of a selection', () => {
     await user.click(row('Pset 9'));
 
     expect(selectedIds()).toEqual([]);
-    expect(findInAll(store.getState().goals, 'd')?.done).toBe(false);
+    expect(findInAll(store.getState().goals, 'd')?.status).toBeUndefined();
   });
 
   it('leaves ordinary clicking alone when nothing is selected', async () => {
@@ -325,7 +339,7 @@ describe('getting out of a selection', () => {
 
     await user.click(row('Pset 9'));
 
-    expect(findInAll(store.getState().goals, 'd')?.done).toBe(true);
+    expect(findInAll(store.getState().goals, 'd')?.status).toBe('done');
   });
 
   it('drops ids that stop existing, so the bar cannot count ghosts', async () => {
@@ -374,6 +388,24 @@ describe('a refused bulk action', () => {
 
     expect(selectedIds()).toEqual(['a', 'b']);
     expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
+  });
+
+  it('keeps the selection when Set status is reapplied to an unchanged status', async () => {
+    const { store, user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Set status' }), 'blocked');
+    expect(selectedIds()).toEqual([]);
+    const before = store.getState().pendingUndo?.label;
+
+    // Select the same two again — both are already blocked, so setNodesStatus
+    // refuses and the bar must not report success on a no-op.
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Set status' }), 'blocked');
+
+    expect(selectedIds()).toEqual(['a', 'b']);
+    expect(store.getState().pendingUndo?.label).toBe(before); // unchanged — no new write happened
   });
 });
 

@@ -20,18 +20,18 @@ export const SAMPLE_PROJECT_TITLE = 'Finish Pset 7 (example)';
 export function sampleProject(today: string, makeId: () => string): Goal {
   const thisWeek = weekOf(today);
   const nodes: GoalNode[] = [
-    { id: makeId(), title: 'Problem 1: recursion', done: true, doneAt: addDays(today, -3) },
-    { id: makeId(), title: 'Problem 2: graph search', done: true, doneAt: addDays(today, -1) },
+    { id: makeId(), title: 'Problem 1: recursion', status: 'done', doneAt: addDays(today, -3) },
+    { id: makeId(), title: 'Problem 2: graph search', status: 'done', doneAt: addDays(today, -1) },
     {
       id: makeId(),
       title: 'Problem 3: dynamic programming',
       children: [
-        { id: makeId(), title: 'Write the recurrence', done: false, plannedWeek: thisWeek },
-        { id: makeId(), title: 'Implement + memoize', done: false },
-        { id: makeId(), title: 'Test against the provided cases', done: false },
+        { id: makeId(), title: 'Write the recurrence', plannedWeek: thisWeek },
+        { id: makeId(), title: 'Implement + memoize' },
+        { id: makeId(), title: 'Test against the provided cases' },
       ],
     },
-    { id: makeId(), title: 'Write up + submit', done: false },
+    { id: makeId(), title: 'Write up + submit' },
   ];
   return {
     id: makeId(),

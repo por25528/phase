@@ -74,9 +74,9 @@ describe('migrateSlots', () => {
   });
 
   it('leaves done steps untouched', () => {
-    const g = goal([{ id: 'n1', title: 'Done', done: true, plannedWeek: WEEK, plannedDay: WED }]);
+    const g = goal([{ id: 'n1', title: 'Done', status: 'done', plannedWeek: WEEK, plannedDay: WED }]);
     const { goals, report } = migrateSlots([g], [], WINDOWS, true);
-    expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Done', done: true, plannedWeek: WEEK, plannedDay: WED });
+    expect(goals[0].nodes[0]).toEqual({ id: 'n1', title: 'Done', status: 'done', plannedWeek: WEEK, plannedDay: WED });
     expect(report.scheduledSteps).toBe(0);
   });
 
@@ -286,12 +286,12 @@ describe('migrateSlots', () => {
 
     it('leaves a done leaf on an archived project untouched', () => {
       const g = goal(
-        [{ id: 'n1', title: 'Finished', done: true, plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540 }],
+        [{ id: 'n1', title: 'Finished', status: 'done', plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540 }],
         { completedAt: '2026-06-01' },
       );
       const { goals } = migrateSlots([g], [], WINDOWS, true);
       expect(goals[0].nodes[0]).toEqual(
-        { id: 'n1', title: 'Finished', done: true, plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540 },
+        { id: 'n1', title: 'Finished', status: 'done', plannedWeek: WEEK, plannedDay: WED, plannedStartMin: 540 },
       );
     });
   });

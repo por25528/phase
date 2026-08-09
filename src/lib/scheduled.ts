@@ -2,6 +2,7 @@ import type { Goal, Task } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { walkLeaves } from './plan';
 import { durationOf, type PlacedSpan } from './slot';
+import { isDone } from './status';
 
 /** One block on the grid, from either kind of commitment. */
 export interface ScheduledItem {
@@ -35,7 +36,7 @@ export function scheduledOn(goals: Goal[], tasks: Task[], date: string): Schedul
       const duration = durationOf(n.estimateMin);
       out.push({
         kind: 'step', id: n.id, goalId: g.id, goalTitle: g.title, title: n.title,
-        done: !!n.done, date, startMin: n.plannedStartMin,
+        done: isDone(n), date, startMin: n.plannedStartMin,
         endMin: n.plannedStartMin + duration,
         estimated: normalizeEstimate(n.estimateMin) !== undefined,
       });
@@ -85,7 +86,7 @@ export function scheduledByDate(
       const duration = durationOf(n.estimateMin);
       bucket.push({
         kind: 'step', id: n.id, goalId: g.id, goalTitle: g.title, title: n.title,
-        done: !!n.done, date: n.plannedDay, startMin: n.plannedStartMin,
+        done: isDone(n), date: n.plannedDay, startMin: n.plannedStartMin,
         endMin: n.plannedStartMin + duration,
         estimated: normalizeEstimate(n.estimateMin) !== undefined,
       });

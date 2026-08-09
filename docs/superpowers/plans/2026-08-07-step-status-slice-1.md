@@ -30,7 +30,7 @@ Reasons: `done` stays exclusively the checkbox's job, which keeps the invariant 
 
 Discoverability is covered by the `.quiet-control` button on the row, the `StepPanel` control, and a new line in `ShortcutsOverlay`.
 
-**If you disagree, stop and raise it before Task 8 — do not silently build the popover.**
+**RESOLVED 2026-08-07: the cycle governs.** The user was shown both options and chose the cycle over the specced popover. Build the cycle; do not build a popover, and do not stop to ask. The spec's "Setting `doing` and `blocked`" section is superseded on this one point only.
 
 ---
 
@@ -418,7 +418,6 @@ The exhaustive list of `GoalNode.done` READ sites in non-test source, with the e
 | `src/lib/dailyWork.ts:216` | `if (leaf.node.done === true && leaf.node.doneAt === today)` | `if (isDone(leaf.node) && leaf.node.doneAt === today)` |
 | `src/lib/scheduled.ts:38` | `done: !!n.done,` | `done: isDone(n),` |
 | `src/lib/scheduled.ts:88` | `done: !!n.done,` | `done: isDone(n),` |
-| `src/lib/capacity.ts:149` | `if (l.done) continue;` | `if (isDone(l)) continue;` |
 | `src/lib/checkpoints.ts:56` | `&& !node.done` | `&& !isDone(node)` |
 | `src/lib/checkpoints.ts:70` | `if (node.checkpoint && !node.done && ...)` | `if (node.checkpoint && !isDone(node) && ...)` |
 | `src/lib/search.ts:59` | `done: node.done === true,` | `done: isDone(node),` |
@@ -426,7 +425,6 @@ The exhaustive list of `GoalNode.done` READ sites in non-test source, with the e
 | `src/lib/velocity.ts:79` | `if (leaf.done) {` | `if (isDone(leaf)) {` |
 | `src/lib/actuals.ts:108` | `if (!leaf.done) return;` | `if (!isDone(leaf)) return;` |
 | `src/lib/roadmap.ts:33` | `return !n.done;` | `return !isDone(n);` |
-| `src/lib/unestimated.ts:51` | `if (leaf.done) continue;` | `if (isDone(leaf)) continue;` |
 | `src/lib/migrateSlots.ts:87` | `if (n.done \|\| !n.plannedWeek) return;` | `if (isDone(n) \|\| !n.plannedWeek) return;` |
 | `src/components/GoalTree.tsx:654` | `checked={!!n.done}` | `checked={isDone(n)}` |
 | `src/components/GoalTree.tsx:671` | `: n.done ? 'line-through text-faint'` | `: isDone(n) ? 'line-through text-faint'` |
@@ -436,7 +434,9 @@ The exhaustive list of `GoalNode.done` READ sites in non-test source, with the e
 **Do NOT touch these — they are `Task.done`, not `GoalNode.done`:**
 `backlog.ts:159`, `capacity.ts:155`, `dailyWork.ts:74,155,190,211`, `scheduled.ts:50,102`, `search.ts:95`, `migrateSlots.ts:142`, `store.ts:1467-1472`, `planner.ts:74,78,82`.
 
-**Also do not touch** `BoardCard.tsx:79`, `Stats.tsx:15`, `ProjectHeader.tsx:77`, `planner.ts:73`, `DayBlocks.tsx:79,108`, `EventBlock.tsx:108,142`, `CommandPalette.tsx:289`, `search.ts:185` — these read `.done` on `PlannedLeaf` / `ScheduledItem` / `SearchEntry`, derived structures that keep a plain boolean.
+**Also do not touch** `BoardCard.tsx:79`, `Stats.tsx:15`, `ProjectHeader.tsx:77`, `planner.ts:73`, `DayBlocks.tsx:79,108`, `EventBlock.tsx:108,142`, `CommandPalette.tsx:289`, `search.ts:185`, **`capacity.ts:149`**, **`unestimated.ts:51`** — these read `.done` on `PlannedLeaf` / `ScheduledItem` / `SearchEntry`, derived structures that keep a plain boolean.
+
+> **Corrected 2026-08-07, mid-execution.** `capacity.ts:149` and `unestimated.ts:51` were originally listed as sites to rewrite. That was wrong: `workloadOf` (`capacity.ts:144`) and `unestimatedCommitments` (`unestimated.ts:44`) both take `PlannedLeaf[]`, and `isDone()` accepts only a `GoalNode`, so the literal instruction would not have compiled. The Task 2 implementer traced the types, refused both, and was right to. `capacity.ts` and `unestimated.ts` end up with zero changes. Trust the declared parameter type over this table.
 
 - [ ] **Step 1: Add the import to each file**
 
@@ -940,10 +940,27 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 ### Task 6: Delete the legacy field
 
-**Files:** Modify `src/db/types.ts`, `src/lib/status.ts`
+**Files:** Modify `src/db/types.ts`, `src/lib/status.ts`, plus whatever `tsc` names.
 
 **Interfaces:**
 - Produces: `stepStatus` with no fallback. `GoalNode` no longer has `done`.
+
+**Carried forward from the Task 5 review — close these here, deliberately.**
+
+Deleting `done` from the type is what forces each of them open; do not let them close by accident and go unnoticed.
+
+1. **`writeStatus`'s key list.** `applyStatus` unconditionally does `delete out.done`, but `writeStatus` in `store.ts` only deletes `['status','blockedOn','doneAt']`. On a node still carrying `done: true`, un-ticking left `done` behind — and `stepStatus` reads exactly that when `status` is absent, so the step read as done again. Unreachable in the app (migration runs on load and import) and dissolved by this task. Confirm the key list needs no fourth entry once the field is gone, and that no `delete n.done` remains anywhere outside `migrateNodeStatus.ts`.
+
+2. **`migrateNodeStatus.ts` keeps reading `done`, and must.** It takes `Goal[]` but reaches for the legacy field via `Object.prototype.hasOwnProperty`. Once `done` is off the interface this still compiles, because `hasOwnProperty` does not require the key to be declared. Do NOT "fix" it by re-adding the field or by deleting the migration — raw stored JSON and old backups still carry `done`, and stripping it is this module's entire job.
+
+3. **Three tests are vacuous on the completion half** and this task forces them open. Each is titled as asserting that a leaf→container conversion clears completion, but its fixture is legacy-shaped, so `expect(x.status).toBeUndefined()` asserts something never set:
+   - `src/lib/tree.test.ts:195` — *"drops done, plannedWeek and plannedDay…"*
+   - `src/state/store.test.ts:466` — *"a planned leaf that gains a child loses done/plannedWeek/plannedDay"*
+   - `src/state/store.test.ts:2244` — the `addChildren` conversion case
+
+   Convert each fixture to `status: 'done'` so the assertion bites again. The neighbouring `tree.test.ts:169-182` test was already modernised this way — follow it. If converting a fixture makes a test fail, that is the test finally doing its job: report it, do not weaken it.
+
+4. **Rename `goalImport.test.ts:100`**, currently `it('turns a plain string into a leaf with done:false')`, which now asserts `status` is undefined. The name should describe the modern shape.
 
 - [ ] **Step 1: Remove the fallback and the field**
 

@@ -113,9 +113,9 @@ describe('store actions', () => {
     const gid = getState().goals[0].id;
     actions.addRootNode(gid, 'Step 1');
     const nid = getState().goals[0].nodes[0].id;
-    expect(getState().goals[0].nodes[0].done).toBe(false);
+    expect(getState().goals[0].nodes[0].status).toBeUndefined();
     actions.toggleLeaf(nid);
-    expect(getState().goals[0].nodes[0].done).toBe(true);
+    expect(getState().goals[0].nodes[0].status).toBe('done');
   });
 
   describe('persistent tasks', () => {
@@ -344,7 +344,7 @@ describe('store actions', () => {
     const nid = getState().goals[0].nodes[0].id;
     actions.addChild(nid, 'child');
     const node = getState().goals[0].nodes[0];
-    expect(node.done).toBeUndefined();
+    expect(node.status).toBeUndefined();
     expect(node.children).toHaveLength(1);
     expect(getState().expanded.has(nid)).toBe(true);
   });
@@ -447,25 +447,26 @@ describe('store actions', () => {
     actions.addChild(nid, 'child');
 
     const node = getState().goals[0].nodes[0];
-    expect(node.done).toBeUndefined();
+    expect(node.status).toBeUndefined();
     expect(node.doneAt).toBeUndefined();
   });
 
   describe('addChild clears planning fields', () => {
-    it('a planned leaf that gains a child loses done/plannedWeek/plannedDay', async () => {
+    it('a planned leaf that gains a child loses status/plannedWeek/plannedDay', async () => {
       const { actions, getState } = await freshStore();
       actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
-      // plan the leaf by hand — addChild's field-clearing is what's under test
-      // here, not scheduleNode's slot resolution.
+      // plan and complete the leaf by hand — addChild's field-clearing is what's
+      // under test here, not scheduleNode's slot resolution.
+      getState().goals[0].nodes[0].status = 'done';
       getState().goals[0].nodes[0].plannedWeek = '2026-07-13';
       getState().goals[0].nodes[0].plannedDay = '2026-07-15';
       actions.addChild(nid, 'child');
       const node = getState().goals[0].nodes[0];
       expect(node.children).toHaveLength(1);
-      expect(node.done).toBeUndefined();
+      expect(node.status).toBeUndefined();
       expect(node.plannedWeek).toBeUndefined();
       expect(node.plannedDay).toBeUndefined();
     });
@@ -750,7 +751,7 @@ describe('store actions', () => {
 
     const node = getState().goals[0].nodes[0];
     expect('notes' in node).toBe(false);
-    expect(node.done).toBe(before.done);
+    expect(node.status).toBe(before.status);
     expect(node.start).toBe(before.start);
     expect(node.deadline).toBe(before.deadline);
     expect(goalPct(getState().goals[0])).toBe(pctBefore);
@@ -859,10 +860,10 @@ describe('store actions', () => {
     const pctBefore = goalPct(getState().goals[0]);
     actions.setNodeDates(gid, nid, '2026-02-01', '2026-10-01');
     expect(goalPct(getState().goals[0])).toBe(pctBefore);
-    expect(getState().goals[0].nodes[0].done).toBe(true);
+    expect(getState().goals[0].nodes[0].status).toBe('done');
     actions.clearNodeDates(gid, nid);
     expect(goalPct(getState().goals[0])).toBe(pctBefore);
-    expect(getState().goals[0].nodes[0].done).toBe(true);
+    expect(getState().goals[0].nodes[0].status).toBe('done');
   });
 
   it('toggleHabit adds then removes a today check-in', async () => {
@@ -911,7 +912,7 @@ describe('store actions', () => {
         {
           id: 'gi_later', title: 'Imported later', start: '2026-07-05', deadline: '2026-12-31',
           column: 2,
-          nodes: [{ id: 'grp1', title: 'Group', children: [{ id: 'leaf1', title: 'Leaf', done: false }] }],
+          nodes: [{ id: 'grp1', title: 'Group', children: [{ id: 'leaf1', title: 'Leaf' }] }],
         },
         { id: 'gi_top', title: 'Imported top', start: '2026-07-05', deadline: '2026-12-31', column: 0, nodes: [] },
       ];
@@ -1324,12 +1325,12 @@ describe('store actions', () => {
 
       actions.toggleLeaf(nid);
       expect(getState().goals[0].nodes[0]).toMatchObject({
-        done: true,
+        status: 'done',
         doneAt: '2026-07-23',
       });
 
       actions.toggleLeaf(nid);
-      expect(getState().goals[0].nodes[0].done).toBe(false);
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
       expect(getState().goals[0].nodes[0].doneAt).toBeUndefined();
     });
 
@@ -1344,7 +1345,7 @@ describe('store actions', () => {
 
       actions.toggleLeaf(nid);
 
-      expect(getState().goals[0].nodes[0].done).toBeUndefined();
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
       expect(dbMocks.persist).not.toHaveBeenCalled();
     });
 
@@ -1354,19 +1355,19 @@ describe('store actions', () => {
       actions.addGoals([{
         id: 'g',
         title: 'G',
-        nodes: [{ id: 'leaf', title: 'Leaf', children: [], done: false }],
+        nodes: [{ id: 'leaf', title: 'Leaf', children: [] }],
       }]);
 
       actions.toggleLeaf('leaf');
       expect(getState().goals[0].nodes[0]).toMatchObject({
-        done: true,
+        status: 'done',
         doneAt: '2026-07-23',
         children: [],
       });
 
       actions.toggleLeaf('leaf');
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
       expect(getState().goals[0].nodes[0]).toMatchObject({
-        done: false,
         children: [],
       });
       expect(getState().goals[0].nodes[0].doneAt).toBeUndefined();
@@ -1380,10 +1381,10 @@ describe('store actions', () => {
       const nid = getState().goals[0].nodes[0].id;
 
       actions.toggleLeaf(nid);
-      expect(getState().goals[0].nodes[0].done).toBe(true);
+      expect(getState().goals[0].nodes[0].status).toBe('done');
       expect(getState().pendingUndo?.label).toBe('Completed "Draft introduction"');
       actions.undoLastDelete();
-      expect(getState().goals[0].nodes[0].done).toBe(false);
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
     });
 
     it('unchecking is direct — no undo toast', async () => {
@@ -1396,7 +1397,7 @@ describe('store actions', () => {
       actions.undoLastDelete();      // clear pending undo state
       actions.toggleLeaf(nid);       // done again
       actions.toggleLeaf(nid);       // uncheck
-      expect(getState().goals[0].nodes[0].done).toBe(false);
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
     });
   });
 
@@ -1438,7 +1439,7 @@ describe('store actions', () => {
       vi.mocked(loadState).mockResolvedValueOnce({
         goals: [{
           id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
-          nodes: [{ id: 'n1', title: 'Old commitment', done: false, plannedWeek: prevWeek }],
+          nodes: [{ id: 'n1', title: 'Old commitment', plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [],
       });
@@ -1473,7 +1474,7 @@ describe('store actions', () => {
       vi.mocked(loadState).mockResolvedValueOnce({
         goals: [{
           id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
-          nodes: [{ id: 'n1', title: 'leaf', done: false, plannedWeek: prevWeek }],
+          nodes: [{ id: 'n1', title: 'leaf', plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [],
       });
@@ -1495,7 +1496,7 @@ describe('store actions', () => {
       vi.mocked(loadState).mockResolvedValueOnce({
         goals: [{
           id: 'old-goal', title: 'Old goal', start: '2026-01-01', deadline: '2026-12-31', column: 0,
-          nodes: [{ id: 'old-node', title: 'Old commitment', done: false, plannedWeek: prevWeek }],
+          nodes: [{ id: 'old-node', title: 'Old commitment', plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [],
       });
@@ -1509,7 +1510,7 @@ describe('store actions', () => {
       vi.mocked(importStateFromFile).mockResolvedValueOnce({
         goals: [{
           id: 'new-goal', title: 'New goal', start: '2026-01-01', deadline: '2026-12-31', column: 0,
-          nodes: [{ id: 'new-node', title: 'New commitment', done: false, plannedWeek: prevWeek }],
+          nodes: [{ id: 'new-node', title: 'New commitment', plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [], pxPerDay: 40,
         availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
@@ -1545,7 +1546,9 @@ describe('store actions', () => {
           title: 'Legacy goal',
           start: '2026-01-01',
           deadline: '2026-12-31',
-          nodes: [{ id: 'legacy-leaf', title: 'Done before timestamps', done: true }],
+          // Simulates a raw stored row from before the status migration — `done`
+          // is off `GoalNode` now, but old IndexedDB rows still carry it.
+          nodes: [{ id: 'legacy-leaf', title: 'Done before timestamps', done: true } as unknown as GoalNode],
           column: 0,
         }],
         habits: [],
@@ -1664,7 +1667,7 @@ describe('store actions', () => {
           goals: [{
             id: 'g1', title: 'Real goal', column: 0,
             nodes: [{
-              id: 'leaf1', title: 'Real leaf', done: false,
+              id: 'leaf1', title: 'Real leaf',
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
             }],
           }],
@@ -1699,7 +1702,7 @@ describe('store actions', () => {
           goals: [{
             id: 'g1', title: 'Real goal', column: 0,
             nodes: [{
-              id: 'leaf1', title: 'Real leaf', done: false,
+              id: 'leaf1', title: 'Real leaf',
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
             }],
           }],
@@ -1736,7 +1739,7 @@ describe('store actions', () => {
           goals: [{
             id: 'g1', title: 'Real goal', column: 0,
             nodes: [{
-              id: 'leaf1', title: 'Real leaf', done: false,
+              id: 'leaf1', title: 'Real leaf',
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
             }],
           }],
@@ -2009,7 +2012,7 @@ describe('store actions', () => {
 
       // Frozen: nothing that changes progress or actionable structure.
       actions.toggleLeaf(nid);
-      expect(getState().goals[0].nodes[0].done).toBe(false);
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
       actions.addRootNode(gid, 'Another');
       expect(getState().goals[0].nodes).toHaveLength(1);
       actions.scheduleNode(gid, nid, '2026-07-13', 600);
@@ -2042,7 +2045,7 @@ describe('openProject node focus (T8)', () => {
     id: 'gp', title: 'Project', start: '2026-01-01', deadline: '2026-12-31', column: 0,
     nodes: [
       { id: 'root-a', title: 'Root A', children: [
-        { id: 'mid', title: 'Mid', children: [{ id: 'leaf', title: 'Leaf', done: false }] },
+        { id: 'mid', title: 'Mid', children: [{ id: 'leaf', title: 'Leaf' }] },
       ] },
     ],
   };
@@ -2234,7 +2237,7 @@ describe('openProject node focus (T8)', () => {
 describe('addChildren (AI daily subtasks)', () => {
   const withStep: Goal = {
     id: 'g', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
-    nodes: [{ id: 'n', title: 'Step', done: false, plannedWeek: '2026-07-13', plannedDay: '2026-07-15' }],
+    nodes: [{ id: 'n', title: 'Step', status: 'done', plannedWeek: '2026-07-13', plannedDay: '2026-07-15' }],
   };
 
   it('appends several children, converting a leaf to a container and clearing its plan fields', async () => {
@@ -2243,7 +2246,7 @@ describe('addChildren (AI daily subtasks)', () => {
     actions.addChildren('n', ['Sub A', '  Sub B  ', '', '   ']);
     const node = getState().goals[0].nodes[0];
     expect(node.children?.map((c) => c.title)).toEqual(['Sub A', 'Sub B']); // trimmed, blanks dropped
-    expect(node.done).toBeUndefined();
+    expect(node.status).toBeUndefined();
     expect(node.plannedWeek).toBeUndefined();
     expect(node.plannedDay).toBeUndefined();
     expect(getState().expanded.has('n')).toBe(true);
@@ -2253,13 +2256,13 @@ describe('addChildren (AI daily subtasks)', () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([{
       ...withStep,
-      nodes: [{ ...withStep.nodes[0], done: true, doneAt: '2026-07-22' }],
+      nodes: [{ ...withStep.nodes[0], status: 'done', doneAt: '2026-07-22' }],
     }]);
 
     actions.addChildren('n', ['Sub A']);
 
     const node = getState().goals[0].nodes[0];
-    expect(node.done).toBeUndefined();
+    expect(node.status).toBeUndefined();
     expect(node.doneAt).toBeUndefined();
   });
 
@@ -2289,7 +2292,7 @@ describe('addChildren (AI daily subtasks)', () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([{
       id: 'g', title: 'G', column: 0,
-      nodes: [{ id: 'n', title: 'Step', done: false }],
+      nodes: [{ id: 'n', title: 'Step' }],
     }]);
 
     actions.addChildren('n', ['Sub A']);
@@ -2580,7 +2583,7 @@ describe('estimates', () => {
   afterEach(() => vi.useRealTimers());
 
   const goalWithLeaf: Goal = {
-    id: 'g1', title: 'G', nodes: [{ id: 'n1', title: 'N', done: false }],
+    id: 'g1', title: 'G', nodes: [{ id: 'n1', title: 'N' }],
   };
 
   /**
@@ -2597,8 +2600,8 @@ describe('estimates', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'g9', title: '6.1200', nodes: [
-        { id: 'a', title: 'Pset', done: false, estimateMin: 30 },
-        { id: 'b', title: 'Recitation', done: false, estimateMin: 30 },
+        { id: 'a', title: 'Pset', estimateMin: 30 },
+        { id: 'b', title: 'Recitation', estimateMin: 30 },
       ],
     }]);
     store.actions.scheduleNode('g9', 'a', '2026-07-15', 540); // 09:00–09:30
@@ -2616,7 +2619,7 @@ describe('estimates', () => {
     const store = await freshStore();
     await store.initStore();
     store.actions.addGoals([{
-      id: 'g9', title: '6.1200', nodes: [{ id: 'a', title: 'Pset', done: false, estimateMin: 30 }],
+      id: 'g9', title: '6.1200', nodes: [{ id: 'a', title: 'Pset', estimateMin: 30 }],
     }]);
 
     store.actions.setNodeEstimate('a', 120); // unplaced — nothing to overflow
@@ -2668,7 +2671,7 @@ describe('estimates', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'g1', title: 'G',
-      nodes: [{ id: 'c1', title: 'C', children: [{ id: 'n1', title: 'N', done: false }] }],
+      nodes: [{ id: 'c1', title: 'C', children: [{ id: 'n1', title: 'N' }] }],
     }]);
 
     store.actions.setNodeEstimate('c1', 90);
@@ -2765,7 +2768,7 @@ describe('estimates', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'gf', title: 'Imported',
-      nodes: [{ id: 'nf', title: 'Step', done: false, estimateMin: 90.4 }],
+      nodes: [{ id: 'nf', title: 'Step', estimateMin: 90.4 }],
     }]);
 
     store.actions.setNodeEstimate('nf', 60);
@@ -2791,7 +2794,7 @@ describe('estimates', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'gi', title: 'Imported',
-      nodes: [{ id: 'ni', title: 'Step', done: false, estimateMin: 90.4 }],
+      nodes: [{ id: 'ni', title: 'Step', estimateMin: 90.4 }],
     }]);
 
     store.actions.setNodeEstimate('ni', 45.6);
@@ -2808,7 +2811,7 @@ describe('estimates', () => {
 describe('logging actual time', () => {
   const goalWithStep: Goal = {
     id: 'g1', title: 'P', column: 0,
-    nodes: [{ id: 'n1', title: 'Step', done: false, estimateMin: 60 }],
+    nodes: [{ id: 'n1', title: 'Step', estimateMin: 60 }],
   };
 
   it('records a session against a step', async () => {
@@ -2892,7 +2895,7 @@ describe('logging actual time', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'g2', title: 'G',
-      nodes: [{ id: 'c1', title: 'C', children: [{ id: 'k1', title: 'K', done: false }] }],
+      nodes: [{ id: 'c1', title: 'C', children: [{ id: 'k1', title: 'K' }] }],
     }]);
 
     expect(store.actions.logSession('step', 'c1', 60, '2026-07-28')).toBe(false);
@@ -3145,7 +3148,7 @@ describe('replanNode', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'g', title: '6.5840', column: 0,
-      nodes: [{ id: 'n', title: 'Part 2B', done: false, estimateMin: 60 }],
+      nodes: [{ id: 'n', title: 'Part 2B', estimateMin: 60 }],
     }]);
     return store;
   }
@@ -3180,7 +3183,7 @@ describe('replanNode', () => {
     store.actions.setAvailability([]); // no working hours at all
     store.actions.addGoals([{
       id: 'g', title: '6.5840', column: 0,
-      nodes: [{ id: 'n', title: 'Part 2B', done: false, estimateMin: 60 }],
+      nodes: [{ id: 'n', title: 'Part 2B', estimateMin: 60 }],
     }]);
 
     store.actions.replanNode('g', 'n');
@@ -3308,7 +3311,7 @@ describe('planNextStepFor', () => {
     const { actions, getState } = await freshStore();
     actions.addGoals([{
       id: 'g1', title: 'Done project', column: 0,
-      nodes: [{ id: 'n1', title: 'Finished', done: true }],
+      nodes: [{ id: 'n1', title: 'Finished', status: 'done' }],
     }]);
 
     actions.planNextStepFor('g1');
@@ -3406,8 +3409,8 @@ describe('insertSiblingAfter', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'g', title: '6.1200', column: 0, nodes: [
-        { id: 'a', title: 'Pset 1', done: false },
-        { id: 'b', title: 'Pset 2', done: false },
+        { id: 'a', title: 'Pset 1' },
+        { id: 'b', title: 'Pset 2' },
       ],
     }]);
     return store;
@@ -3458,13 +3461,13 @@ describe('bulk step operations', () => {
     await store.initStore();
     store.actions.addGoals([{
       id: 'g', title: '6.1200', column: 0, nodes: [
-        { id: 'a', title: 'Pset 6', done: true, doneAt: '2026-07-01' },
-        { id: 'b', title: 'Pset 7', done: false },
+        { id: 'a', title: 'Pset 6', status: 'done', doneAt: '2026-07-01' },
+        { id: 'b', title: 'Pset 7' },
         { id: 'grp', title: 'Pset 8', children: [
-          { id: 'c1', title: 'Problems 1-3', done: false },
-          { id: 'c2', title: 'Problems 4-6', done: false },
+          { id: 'c1', title: 'Problems 1-3' },
+          { id: 'c2', title: 'Problems 4-6' },
         ] },
-        { id: 'd', title: 'Pset 9', done: false },
+        { id: 'd', title: 'Pset 9' },
       ],
     }]);
     return store;
@@ -3526,11 +3529,11 @@ describe('bulk step operations', () => {
 
     actions.completeNodes(['grp', 'b']);
 
-    expect(findInAll(getState().goals, 'c1')?.done).toBe(true);
-    expect(findInAll(getState().goals, 'c2')?.done).toBe(true);
-    expect(findInAll(getState().goals, 'b')?.done).toBe(true);
+    expect(findInAll(getState().goals, 'c1')?.status).toBe('done');
+    expect(findInAll(getState().goals, 'c2')?.status).toBe('done');
+    expect(findInAll(getState().goals, 'b')?.status).toBe('done');
     // The container itself stays a container — its done-ness is derived.
-    expect(findInAll(getState().goals, 'grp')?.done).toBeUndefined();
+    expect(findInAll(getState().goals, 'grp')?.status).toBeUndefined();
     expect(getState().pendingUndo?.label).toBe('Completed 3 steps');
   });
 
@@ -3551,8 +3554,8 @@ describe('bulk step operations', () => {
     actions.completeNodes(['grp']);
     actions.undoLastDelete();
 
-    expect(findInAll(getState().goals, 'c1')?.done).toBe(false);
-    expect(findInAll(getState().goals, 'c2')?.done).toBe(false);
+    expect(findInAll(getState().goals, 'c1')?.status).toBeUndefined();
+    expect(findInAll(getState().goals, 'c2')?.status).toBeUndefined();
   });
 
   it('is a no-op on an empty or already-satisfied selection', async () => {
@@ -3575,7 +3578,7 @@ describe('bulk step operations', () => {
     actions.completeNodes(['b']);
 
     expect(getState().goals[0].nodes).toHaveLength(4);
-    expect(findInAll(getState().goals, 'b')?.done).toBe(false);
+    expect(findInAll(getState().goals, 'b')?.status).toBeUndefined();
     // Neither batch wrote, so neither displaced the offer already on screen.
     expect(getState().pendingUndo).toEqual(armed);
   });
@@ -3592,6 +3595,147 @@ describe('bulk step operations', () => {
   });
 });
 
+describe('setNodeStatus', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('marks a leaf in progress without moving the percentage', async () => {
+    const { actions, getState } = await freshStore();
+    const { findInAll } = await import('../lib/tree');
+    actions.addGoals([{ id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'a', title: 'A' }, { id: 'b', title: 'B' },
+    ] }]);
+    const before = goalPct(getState().goals[0]);
+
+    expect(actions.setNodeStatus('a', 'doing')).toBe(true);
+
+    expect(findInAll(getState().goals, 'a')?.status).toBe('doing');
+    expect(goalPct(getState().goals[0])).toBe(before);
+  });
+
+  it('keeps the reason a step is blocked, and drops it on the way out', async () => {
+    const { actions, getState } = await freshStore();
+    const { findInAll } = await import('../lib/tree');
+    actions.addGoals([{ id: 'g', title: 'G', column: 0, nodes: [{ id: 'a', title: 'A' }] }]);
+
+    actions.setNodeStatus('a', 'blocked', 'waiting on the grader');
+    expect(findInAll(getState().goals, 'a')?.blockedOn).toBe('waiting on the grader');
+
+    actions.setNodeStatus('a', 'doing');
+    expect(findInAll(getState().goals, 'a')?.blockedOn).toBeUndefined();
+  });
+
+  it('refuses a container and says so', async () => {
+    const { actions, getState } = await freshStore();
+    const { findInAll } = await import('../lib/tree');
+    actions.addGoals([{ id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'p', title: 'P', children: [{ id: 'c', title: 'C' }] },
+    ] }]);
+
+    expect(actions.setNodeStatus('p', 'doing')).toBe(false);
+    expect(findInAll(getState().goals, 'p')?.status).toBeUndefined();
+  });
+
+  it('refuses a frozen project', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Step');
+    const nid = getState().goals[0].nodes[0].id;
+    actions.completeGoal(gid);
+
+    expect(actions.setNodeStatus(nid, 'doing')).toBe(false);
+  });
+});
+
+describe('setNodesStatus', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // One write, one undo entry. A loop over setNodeStatus would arm an entry per
+  // node and each write's sweep would discard the ones before it.
+  it('sets a whole selection under a single undo', async () => {
+    const { actions, getState } = await freshStore();
+    const { findInAll } = await import('../lib/tree');
+    actions.addGoals([{ id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' },
+    ] }]);
+
+    expect(actions.setNodesStatus(['a', 'b'], 'doing')).toBe(true);
+    expect(getState().pendingUndo?.label).toBe('Marked 2 steps in progress');
+
+    actions.undoLastDelete();
+    expect(findInAll(getState().goals, 'a')?.status).toBeUndefined();
+    expect(findInAll(getState().goals, 'b')?.status).toBeUndefined();
+  });
+
+  it('reports a refusal rather than an empty success', async () => {
+    const { actions } = await freshStore();
+    expect(actions.setNodesStatus([], 'doing')).toBe(false);
+    expect(actions.setNodesStatus(['nope'], 'doing')).toBe(false);
+  });
+
+  /**
+   * A selected container id never matches inside `walkLeaves` (it only yields
+   * leaves), so matching ids directly made this a silent no-op on a container
+   * while `completeNodes` — which expands via `openLeavesUnder` — reached the
+   * same selection's children fine. Two adjacent bulk-bar controls must agree
+   * on what a container selection means.
+   *
+   * Unlike `completeNodes`, a done leaf under the selection is NOT skipped
+   * here — see the pair of tests below for why.
+   */
+  it('expands a selected container to all its leaves, like completeNodes does', async () => {
+    const { actions, getState } = await freshStore();
+    const { findInAll } = await import('../lib/tree');
+    actions.addGoals([{ id: 'g', title: 'G', column: 0, nodes: [
+      {
+        id: 'parent', title: 'Parent', children: [
+          { id: 'a', title: 'A' },
+          { id: 'b', title: 'B', status: 'done', doneAt: '2026-07-01' },
+        ],
+      },
+    ] }]);
+
+    expect(actions.setNodesStatus(['parent'], 'doing')).toBe(true);
+    expect(getState().pendingUndo?.label).toBe('Marked 2 steps in progress');
+    expect(findInAll(getState().goals, 'a')?.status).toBe('doing');
+    // A done leaf under the selection is a legitimate target too — see the
+    // 'todo' pair below.
+    expect(findInAll(getState().goals, 'b')?.status).toBe('doing');
+  });
+
+  /**
+   * The regression this bar existed to fix: the select offers 'to do'
+   * alongside 'doing'/'blocked'/'done', and before `allLeavesUnder` this
+   * silently no-opped whenever the whole selection was already done —
+   * `openLeavesUnder` filtered it out, `setNodesStatus` wrote nothing, and
+   * returned `false` with no selection cleared and no message shown.
+   */
+  it('moves a done leaf back to todo — the bar offers that option and must honour it', async () => {
+    const { actions, getState } = await freshStore();
+    const { findInAll } = await import('../lib/tree');
+    actions.addGoals([{ id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'a', title: 'A', status: 'done', doneAt: '2026-07-01' },
+    ] }]);
+
+    expect(actions.setNodesStatus(['a'], 'todo')).toBe(true);
+    expect(getState().pendingUndo?.label).toBe('Reset 1 step');
+    const a = findInAll(getState().goals, 'a');
+    expect(a?.status).toBeUndefined();
+    expect(a?.doneAt).toBeUndefined();
+  });
+
+  it('still refuses a genuine no-op — every leaf already at the target status', async () => {
+    const { actions } = await freshStore();
+    actions.addGoals([{ id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'a', title: 'A', status: 'done', doneAt: '2026-07-01' },
+    ] }]);
+
+    expect(actions.setNodesStatus(['a'], 'done')).toBe(false);
+  });
+});
+
 describe('restructuring a step tree', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -3601,8 +3745,8 @@ describe('restructuring a step tree', () => {
     vi.mocked(loadState).mockResolvedValueOnce({
       goals: [{
         id: 'g', title: '6.1200', column: 0, nodes: [
-          { id: 'a', title: 'Pset 3', done: true, doneAt: '2026-07-14', estimateMin: 90 },
-          { id: 'b', title: 'Pset 4', done: false },
+          { id: 'a', title: 'Pset 3', status: 'done', doneAt: '2026-07-14', estimateMin: 90 },
+          { id: 'b', title: 'Pset 4' },
         ],
       }],
       habits: [], tasks: [], sessions: [],
@@ -3627,14 +3771,14 @@ describe('restructuring a step tree', () => {
 
     const parent = getState().goals[0].nodes[0];
     expect(parent.children?.map((c) => c.id)).toEqual(['b']);
-    expect(parent.done).toBeUndefined();
+    expect(parent.status).toBeUndefined();
     expect(parent.estimateMin).toBeUndefined();
     expect(getState().pendingUndo?.label).toBe('Indented "Pset 4"');
 
     actions.undoLastDelete();
 
     const [a, b] = getState().goals[0].nodes;
-    expect(a).toMatchObject({ id: 'a', done: true, doneAt: '2026-07-14', estimateMin: 90 });
+    expect(a).toMatchObject({ id: 'a', status: 'done', doneAt: '2026-07-14', estimateMin: 90 });
     expect(b.id).toBe('b');
   });
 
@@ -3687,8 +3831,8 @@ describe('undo durability', () => {
       goals: [{
         id: 'g', title: '6.5840', column: 0, nodes: [
           { id: 'c', title: 'Part 2B', children: [
-            { id: 'a', title: 'A', done: false },
-            { id: 'b', title: 'B', done: false },
+            { id: 'a', title: 'A' },
+            { id: 'b', title: 'B' },
           ] },
         ],
       }],
@@ -3721,7 +3865,7 @@ describe('undo durability', () => {
     expect(getState().pendingUndo?.label).toBe('Completed "A step"');
 
     actions.undoLastDelete(); // walks back the completion
-    expect(getState().goals.find((x) => x.id === other)!.nodes[0].done).toBeFalsy();
+    expect(getState().goals.find((x) => x.id === other)!.nodes[0].status).toBeUndefined();
 
     actions.undoLastDelete(); // and then still reaches the project
     expect(getState().goals.some((x) => x.id === 'g')).toBe(true);

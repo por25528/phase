@@ -51,7 +51,7 @@ const PROJECT: Goal = {
   id: 'g',
   title: 'Project',
   column: 0,
-  nodes: [{ id: 'a', title: 'Alpha', done: false }],
+  nodes: [{ id: 'a', title: 'Alpha' }],
 };
 
 type Store = typeof import('../state/store');
@@ -78,13 +78,13 @@ afterEach(() => cleanup());
 describe('opening a step from its row', () => {
   it('the ◈ control selects that step and nothing else', async () => {
     const { store, user } = await mountTree();
-    const before = store.getState().goals[0].nodes[0].done;
+    const before = store.getState().goals[0].nodes[0].status;
 
     await user.click(screen.getByRole('button', { name: 'Open details for "Alpha"' }));
 
     expect(store.getState().openStepId).toBe('a');
     // The click must not have leaked to the row's toggle.
-    expect(store.getState().goals[0].nodes[0].done).toBe(before);
+    expect(store.getState().goals[0].nodes[0].status).toBe(before);
   });
 
   it('a plain row click still toggles done, not the panel', async () => {

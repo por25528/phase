@@ -25,6 +25,7 @@ import { EstimateControl } from './EstimateControl';
 import { LogTimeControl } from './LogTimeControl';
 import { loggedForNode } from '../lib/actuals';
 import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
+import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -45,50 +46,57 @@ function usePrefersReducedMotion(): boolean {
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
-function LeafCheckbox({
-  checked,
+// STATUS_WORD is imported from src/lib/status.ts — do NOT redeclare it here.
+// The tree label, the panel radio group and the board chip must name a state
+// the same way.
+const STATUS_BOX: Record<StepStatus, string> = {
+  todo: 'border-check group-hover/cb:border-muted',
+  doing: 'border-accent',
+  blocked: 'border-warn bg-warn-tint',
+  done: 'bg-accent border-accent',
+};
+
+function LeafStatusBox({
+  status,
   onToggle,
   label,
 }: {
-  checked: boolean;
+  status: StepStatus;
   onToggle: () => void;
   label: string;
 }) {
   return (
     // The 17px box sits inside a 24×24 button: WCAG 2.2 AA wants a 24px target,
-    // but a 24px box would overpower the row. `border-check` clears 1.4.11's
-    // 3:1 — `border-line-2` measured 1.55:1 dark / 1.31:1 light, which made the
-    // one action that moves every number in the app effectively invisible.
+    // but a 24px box would overpower the row. `border-check` clears 1.4.11's 3:1.
     <button
       type="button"
       role="checkbox"
-      aria-checked={checked}
-      aria-label={label}
+      aria-checked={status === 'done'}
+      aria-label={`${label} — ${STATUS_WORD[status]}`}
       // -1 like every other control on the row. It was the one tabbable child,
       // so focus landed on it between rows — and from there the row's
       // `e.target !== e.currentTarget` guard swallowed ↑/↓ and ⌘]/⌘[. The row
       // itself is the focusable unit and handles Space, so nothing is lost.
       tabIndex={-1}
       className="w-[24px] h-[24px] -m-[3px] flex-shrink-0 grid place-items-center group/cb"
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
     >
       <span
-        className={`w-[17px] h-[17px] border-[1.5px] rounded-[6px] grid place-items-center transition-all duration-100 ${
-          checked ? 'bg-accent border-accent' : 'border-check group-hover/cb:border-muted'
-        }`}
+        className={`w-[17px] h-[17px] border-[1.5px] rounded-[6px] grid place-items-center transition-all duration-100 ${STATUS_BOX[status]}`}
       >
-        <svg
-          viewBox="0 0 12 12"
-          className={`w-[11px] h-[11px] stroke-accent-contrast fill-none transition-opacity duration-100 ${
-            checked ? 'opacity-100' : 'opacity-0'
-          }`}
-          strokeWidth={2.4}
-        >
-          <path d="M2 6.2 4.6 9 10 3" />
-        </svg>
+        {status === 'done' && (
+          <svg viewBox="0 0 12 12" className="w-[11px] h-[11px] stroke-accent-contrast fill-none" strokeWidth={2.4}>
+            <path d="M2 6.2 4.6 9 10 3" />
+          </svg>
+        )}
+        {status === 'doing' && (
+          <span className="w-[7px] h-[7px] rounded-full bg-accent" aria-hidden="true" />
+        )}
+        {status === 'blocked' && (
+          <svg viewBox="0 0 12 12" className="w-[11px] h-[11px] stroke-warn fill-none" strokeWidth={2}>
+            <path d="M2.5 9.5 9.5 2.5" />
+          </svg>
+        )}
       </span>
     </button>
   );
@@ -175,11 +183,13 @@ export type SelectMode = 'toggle' | 'range' | 'clear';
 function SelectionBar({
   count,
   onComplete,
+  onSetStatus,
   onDelete,
   onClear,
 }: {
   count: number;
   onComplete: () => void;
+  onSetStatus: (next: StepStatus) => void;
   onDelete: () => void;
   onClear: () => void;
 }) {
@@ -216,6 +226,25 @@ function SelectionBar({
             >
               Complete
             </button>
+            {/* Native <select> — no outside-click/Escape wiring to duplicate,
+                and it applies the moment a status is picked. Resets to the
+                placeholder afterwards since the selection holds a mix of
+                statuses, not one shared value to keep shown as selected. */}
+            <select
+              value=""
+              onChange={(e) => {
+                const next = e.target.value as StepStatus;
+                if (next) onSetStatus(next);
+                e.target.value = '';
+              }}
+              aria-label="Set status"
+              className="text-compact font-medium text-ink-soft px-[8px] py-[4px] min-h-[24px] rounded-field border border-line-2 bg-transparent hover:bg-hover focus-visible:border-accent"
+            >
+              <option value="" disabled>Set status…</option>
+              {(['todo', 'doing', 'blocked', 'done'] as const).map((s) => (
+                <option key={s} value={s}>{STATUS_WORD[s]}</option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={onDelete}
@@ -303,6 +332,15 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
     if (wrote) clearSelection();
   }
 
+  function onSetStatus(next: StepStatus): void {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    // ONE write, ONE undo entry — setNodesStatus refuses (false) when nothing
+    // in the selection actually changes, same silent-refusal contract as
+    // complete/delete above.
+    if (actions.setNodesStatus(ids, next)) clearSelection();
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -326,6 +364,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
       <SelectionBar
         count={selected.size}
         onComplete={() => onBulk('complete')}
+        onSetStatus={onSetStatus}
         onDelete={() => onBulk('delete')}
         onClear={clearSelection}
       />
@@ -570,6 +609,15 @@ function GoalTreeNode({
       else actions.toggleLeaf(n.id);
       return;
     }
+    // S cycles a leaf's status: todo → doing → blocked → todo. `done` is
+    // deliberately unreachable from here — the checkbox is the only route to
+    // it, so ticking it remains the one action that moves the pct roll-up.
+    if (plain && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      if (hasKids) return; // a container's status is derived, never set
+      actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
+      return;
+    }
     // Enter → a new step directly below this one, opened ready to type.
     //
     // This used to be `addChild(parentId)`, which pushes onto the END of the
@@ -651,10 +699,11 @@ function GoalTreeNode({
           <span className="w-[14px] h-[14px] flex-shrink-0" aria-hidden="true" />
         )}
 
-        {/* Checkbox on leaves only */}
+        {/* Status box on leaves only. Click/Space still only toggle done — the
+            other two states are set via `S` or the hover control below. */}
         {!hasKids && (
-          <LeafCheckbox
-            checked={!!n.done}
+          <LeafStatusBox
+            status={stepStatus(n)}
             onToggle={() => actions.toggleLeaf(n.id)}
             label={`Mark "${n.title}" as done`}
           />
@@ -671,7 +720,7 @@ function GoalTreeNode({
           <InlineEdit
             value={n.title}
             className={`flex-1 text-lead ${
-              hasKids ? 'font-semibold text-ink' : n.done ? 'line-through text-faint' : 'text-ink-soft'
+              hasKids ? 'font-semibold text-ink' : isDone(n) ? 'line-through text-faint' : 'text-ink-soft'
             }`}
             onCommit={commitRename}
             onCancel={() => setEditing(false)}
@@ -697,7 +746,7 @@ function GoalTreeNode({
             className={`flex-1 text-lead select-none ${
               hasKids
                 ? 'font-semibold text-ink'
-                : n.done
+                : isDone(n)
                   ? 'line-through text-faint'
                   : 'text-ink-soft'
             }`}
@@ -708,11 +757,24 @@ function GoalTreeNode({
           </span>
         )}
 
+        {/* Why a blocked leaf is stuck — the status box already names "blocked"
+            in its label; this is the reason a person typed in. */}
+        {!hasKids && stepStatus(n) === 'blocked' && n.blockedOn && (
+          <span className="text-meta text-muted truncate max-w-[180px] flex-shrink" title={n.blockedOn}>
+            {n.blockedOn}
+          </span>
+        )}
+
         {/* Progress % (containers only) */}
         {hasKids && (
           <span className="text-compact text-muted tabular-nums flex-shrink-0">
             {Math.round(nodePct(n))}%
           </span>
+        )}
+
+        {/* A container's status is DERIVED, never stored — see containerStatus. */}
+        {hasKids && containerStatus(n) === 'blocked' && (
+          <span className="text-meta text-warn flex-shrink-0">blocked</span>
         )}
 
         {/* Estimate — LEAVES only, matching `setNodeEstimate`'s own guard: a
@@ -798,6 +860,23 @@ function GoalTreeNode({
         >
           + sub
         </button>
+
+        {/* Cycle status — leaves only, same rule as `S`: a container's status
+            is derived and never stored. */}
+        {!hasKids && (
+          <button
+            type="button"
+            tabIndex={-1}
+            className="quiet-control"
+            aria-label={`Change status of "${n.title}"`}
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
+            }}
+          >
+            ◐
+          </button>
+        )}
 
         {/* Delete */}
         <button

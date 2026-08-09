@@ -5,6 +5,7 @@ import {
   rangeBetween,
   topLevelSelection,
   openLeavesUnder,
+  allLeavesUnder,
   selectionRemovalCount,
   pruneSelection,
 } from './selection';
@@ -12,25 +13,25 @@ import {
 // A realistic shape: two flat steps, a group of three, and a group nested two
 // deep — the "6.1200 psets with sub-problems" case.
 const TREE: GoalNode[] = [
-  { id: 'a', title: 'Pset 6', done: true, doneAt: '2026-07-01' },
-  { id: 'b', title: 'Pset 7', done: false },
+  { id: 'a', title: 'Pset 6', status: 'done', doneAt: '2026-07-01' },
+  { id: 'b', title: 'Pset 7' },
   {
     id: 'g1',
     title: 'Pset 8',
     children: [
-      { id: 'g1a', title: 'Problems 1–3', done: false },
-      { id: 'g1b', title: 'Problems 4–6', done: true, doneAt: '2026-07-02' },
+      { id: 'g1a', title: 'Problems 1–3' },
+      { id: 'g1b', title: 'Problems 4–6', status: 'done', doneAt: '2026-07-02' },
       {
         id: 'g2',
         title: 'Writeup',
         children: [
-          { id: 'g2a', title: 'Draft', done: false },
-          { id: 'g2b', title: 'Proofread', done: false },
+          { id: 'g2a', title: 'Draft' },
+          { id: 'g2b', title: 'Proofread' },
         ],
       },
     ],
   },
-  { id: 'c', title: 'Pset 9', done: false },
+  { id: 'c', title: 'Pset 9' },
 ];
 
 const ALL_OPEN = new Set(['g1', 'g2']);
@@ -116,6 +117,27 @@ describe('openLeavesUnder', () => {
 
   it('returns nothing when the selection holds only finished work', () => {
     expect(openLeavesUnder(TREE, new Set(['a']))).toEqual([]);
+  });
+});
+
+describe('allLeavesUnder', () => {
+  // `setNodesStatus` uses this instead of `openLeavesUnder` because a done
+  // leaf moving back to 'todo' is a real, offered transition, not a no-op to
+  // filter away like it is for `completeNodes`.
+  it('includes an already-done leaf, unlike openLeavesUnder', () => {
+    expect(allLeavesUnder(TREE, new Set(['a']))).toEqual(['a']);
+  });
+
+  it('expands a selected container to ALL its leaves, done or not', () => {
+    expect(allLeavesUnder(TREE, new Set(['g1']))).toEqual(['g1a', 'g1b', 'g2a', 'g2b']);
+  });
+
+  it('counts a leaf once when its container is also selected', () => {
+    expect(allLeavesUnder(TREE, new Set(['g1', 'g1a', 'g2']))).toEqual(['g1a', 'g1b', 'g2a', 'g2b']);
+  });
+
+  it('reaches through two levels of nesting', () => {
+    expect(allLeavesUnder(TREE, new Set(['g2']))).toEqual(['g2a', 'g2b']);
   });
 });
 

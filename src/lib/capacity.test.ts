@@ -324,6 +324,13 @@ describe('weekCapacity', () => {
     expect(out.plannedMin).toBe(60); // still a commitment for this week
   });
 
+  // Blocked work leaves the QUEUE (backlogGroups), not the calendar. Capacity's
+  // independence from status is guaranteed upstream, by the GoalNode →
+  // PlannedLeaf projection dropping the field entirely (see
+  // 'GoalNode → PlannedLeaf projection' in plan.test.ts) — `PlannedLeaf` has no
+  // `status` property for `weekCapacity`/`workloadOf` to read here, so there is
+  // nothing for this suite itself to pin.
+
   it('lists both occurrences of a same-titled event at different start times', () => {
     const blocks = [
       block(TUE, 600, 660, '1:1'),

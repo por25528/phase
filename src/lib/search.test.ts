@@ -15,9 +15,9 @@ const RAFT: Goal = goal({
       id: 'n-container',
       title: 'Part 2B',
       children: [
-        { id: 'n-backup', title: 'Pass TestBackup2B', done: false },
-        { id: 'n-cutlass', title: 'Bisect the CUTLASS pipeline regression', done: false },
-        { id: 'n-done', title: 'Pass TestBasicAgree2B', done: true },
+        { id: 'n-backup', title: 'Pass TestBackup2B' },
+        { id: 'n-cutlass', title: 'Bisect the CUTLASS pipeline regression' },
+        { id: 'n-done', title: 'Pass TestBasicAgree2B', status: 'done' },
       ],
     },
   ],
@@ -27,7 +27,7 @@ const THEORY: Goal = goal({
   id: 'g-theory',
   title: '18.404 Theory of Computation — Pset 6',
   column: 1,
-  nodes: [{ id: 'n-pump', title: 'Write the pumping-lemma proof', done: false }],
+  nodes: [{ id: 'n-pump', title: 'Write the pumping-lemma proof' }],
 });
 
 // Titled to collide with the active Raft project on purpose, so ranking has to
@@ -36,7 +36,7 @@ const ARCHIVED: Goal = goal({
   id: 'g-old',
   title: 'Raft scratch experiments',
   completedAt: '2026-06-01',
-  nodes: [{ id: 'n-old', title: 'Old leaf', done: false }],
+  nodes: [{ id: 'n-old', title: 'Old leaf' }],
 });
 
 const TASKS: Task[] = [

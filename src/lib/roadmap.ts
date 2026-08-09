@@ -6,6 +6,7 @@ import {
 import { checkpointDates, checkpointWithin, CHECKPOINT_SOON_DAYS } from './checkpoints';
 import { deadlineBefore, hasUnplannedOpenLeafThisWeek } from './plan';
 import { hasGoalSpan, type GoalWithSpan } from './schedule';
+import { isDone } from './status';
 
 // Pure roadmap logic for the Timeline (spec §3.4 / §3.2). Warnings derive from a
 // project + today alone; the portfolio overlap is one sweep over the Now set;
@@ -30,7 +31,7 @@ const isScheduled = (n: GoalNode): boolean => !!(n.start && n.deadline);
 
 function subtreeIncomplete(n: GoalNode): boolean {
   if (n.children && n.children.length) return n.children.some(subtreeIncomplete);
-  return !n.done;
+  return !isDone(n);
 }
 
 const plural = (n: number): string => (n === 1 ? '' : 's');

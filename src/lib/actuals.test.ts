@@ -18,7 +18,7 @@ function calibratedProject(pairs: [estimate: number, actual: number][]): {
     id: 'g1',
     title: '6.5840',
     nodes: pairs.map(([estimateMin], i) => ({
-      id: `n${i}`, title: `Step ${i}`, done: true, estimateMin,
+      id: `n${i}`, title: `Step ${i}`, status: 'done' as const, estimateMin,
     })),
   };
   const sessions = pairs.map(([, actual], i) =>
@@ -127,7 +127,7 @@ describe('projectCalibration', () => {
     const { goal, sessions } = calibratedProject(
       Array.from({ length: MIN_CALIBRATION_SAMPLES }, () => [60, 90] as [number, number]),
     );
-    goal.nodes[0].done = false;
+    delete goal.nodes[0].status;
     // Work in progress has not yet revealed how long it takes; counting it
     // would make every active project look under-estimated.
     expect(projectCalibration(goal, sessions)).toBeNull();
@@ -148,7 +148,7 @@ describe('projectCalibration', () => {
       nodes: [{
         id: 'c1', title: 'Container',
         children: Array.from({ length: MIN_CALIBRATION_SAMPLES }, (_, i) => ({
-          id: `n${i}`, title: `S${i}`, done: true, estimateMin: 60,
+          id: `n${i}`, title: `S${i}`, status: 'done' as const, estimateMin: 60,
         })),
       }],
     };
@@ -168,8 +168,8 @@ describe('weekEffort', () => {
   const goals: Goal[] = [{
     id: 'g1', title: 'P',
     nodes: [
-      { id: 'n1', title: 'A', done: true, estimateMin: 60 },
-      { id: 'n2', title: 'B', done: false, estimateMin: 30 },
+      { id: 'n1', title: 'A', status: 'done', estimateMin: 60 },
+      { id: 'n2', title: 'B', estimateMin: 30 },
     ],
   }];
   const tasks: Task[] = [
@@ -211,7 +211,7 @@ describe('weekEffort', () => {
   });
 
   it('counts logged time against work carrying no estimate', () => {
-    const bare: Goal[] = [{ id: 'g2', title: 'Q', nodes: [{ id: 'x', title: 'X', done: true }] }];
+    const bare: Goal[] = [{ id: 'g2', title: 'Q', nodes: [{ id: 'x', title: 'X', status: 'done' }] }];
     const sessions = [session({ id: 'a', nodeId: 'x', minutes: 50, date: '2026-07-28' })];
     // The time was real. Reporting 0 estimated against 50 logged is honest;
     // silently dropping the session would understate the week.

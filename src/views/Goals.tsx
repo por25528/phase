@@ -163,6 +163,7 @@ export function Goals() {
       'needs-step': summary.needsFirstStep.goalIds,
       behind: summary.behind.goalIds,
       planned: summary.plannedRemaining.goalIds,
+      blocked: summary.blocked.goalIds,
     }[filter];
     return new Set(src);
   }, [filter, summary]);

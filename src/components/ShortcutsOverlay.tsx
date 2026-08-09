@@ -56,6 +56,7 @@ const TREE_KEYS: { keys: string[]; label: string }[] = [
   { keys: ['⌫'], label: 'Delete the selection' },
   { keys: ['→', '←'], label: 'Expand or collapse a step' },
   { keys: ['Space'], label: 'Check the focused step off' },
+  { keys: ['S'], label: 'Cycle a step: to do → in progress → blocked' },
   { keys: ['⌘', ']'], label: 'Indent — make it a sub-step' },
   { keys: ['⌘', '['], label: 'Outdent' },
 ];
