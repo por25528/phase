@@ -32,6 +32,7 @@ import {
   shouldLeaveProjectPage,
 } from './lib/appKeyboard';
 import { modalRegistry } from './lib/modalRegistry';
+import { addActionFor } from './lib/addAction';
 import {
   closeTaskCapture,
   requestTaskCaptureForCommand,
@@ -61,7 +62,7 @@ const NAV_TABS = [
 ] as const;
 
 export function App() {
-  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, actions } = useAppStore();
+  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -95,6 +96,26 @@ export function App() {
     hydration,
     modalRegistry.hasOpenModal(),
   ));
+
+  /**
+   * `+ Add`, and `⌘N`, resolved against the surface underneath.
+   *
+   * The two share one resolver deliberately: a shortcut that did something
+   * other than the button advertising it would be worse than either alone.
+   */
+  const addAction = addActionFor(view, openGoalId !== null);
+  const runAddAction = () => {
+    if (addAction.intent === 'goal') { actions.setGoalModal('new'); return; }
+    // Straight onto the tree, ready to type — an empty title arms `newNodeId`,
+    // so the row mounts into its editor rather than as a node called "New task".
+    if (addAction.intent === 'node' && openGoalId) { actions.addRootNode(openGoalId, ''); return; }
+    openTaskCapture();
+  };
+  // The key handler is bound once and would otherwise close over the first
+  // render's view. A ref keeps ⌘N and the button on the same resolver without
+  // re-binding the listener on every navigation.
+  const runAddActionRef = useRef(runAddAction);
+  runAddActionRef.current = runAddAction;
 
   useEffect(() => {
     initStore();
@@ -148,7 +169,7 @@ export function App() {
         return;
       }
       if (command === 'capture-task') {
-        openTaskCapture();
+        runAddActionRef.current();
         return;
       }
       if (command === 'blur-target') {
@@ -162,7 +183,16 @@ export function App() {
       }
       // Escape on the project page goes back to the board. `close-drawer` is
       // the command's historical name; the drawer it referred to is gone.
-      if (shouldLeaveProjectPage(command, view, modalRegistry.hasOpenModal(), openStepId !== null)) actions.closeProject();
+      //
+      // A milestone workspace is one more layer between the two, so it peels
+      // off first: Escape out of it lands on the goal that contains it, and a
+      // second Escape leaves for the board. Skipping straight past the goal
+      // would be the "dump users back at a generic screen" the whole
+      // preserve-context rule exists to prevent.
+      if (shouldLeaveProjectPage(command, view, modalRegistry.hasOpenModal(), openStepId !== null)) {
+        if (openAreaId !== null) actions.closeArea();
+        else actions.closeProject();
+      }
       // View/navigation shortcuts must not fire underneath an open dialog — inside
       // a dialog, 1–7 mean "plan this step on that weekday", not "switch view".
       if (modalRegistry.hasOpenModal()) return;
@@ -172,7 +202,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [actions, hydration, openStepId, showShortcuts, view]);
+  }, [actions, hydration, openAreaId, openStepId, showShortcuts, view]);
 
 
   /**
@@ -302,14 +332,14 @@ export function App() {
 
         <button
           type="button"
-          onClick={openTaskCapture}
+          onClick={runAddAction}
           disabled={hydration !== 'ready'}
-          aria-label="Add a task (⌘N)"
-          title="Add a task (⌘N)"
+          aria-label={addAction.title}
+          title={addAction.title}
           className="flex-none flex items-center gap-[7px] rounded-field bg-ink text-paper text-ui font-semibold px-[9px] sm:pl-[12px] sm:pr-[10px] py-[6px] hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
         >
           <IconPlus />
-          <span className="hidden sm:inline">Add</span>
+          <span className="hidden sm:inline whitespace-nowrap">{addAction.label}</span>
           <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
         </button>
 
@@ -420,22 +450,22 @@ export function App() {
             <div className="text-lead text-muted">Opening your local database…</div>
           </div>
         ) : view === 'today' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[28px]">
+          <div className="w-full px-[16px] sm:px-[36px] py-[22px]">
             <Today onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         ) : view === 'plan' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[24px]">
+          <div className="w-full px-[16px] sm:px-[36px] py-[18px]">
             <Plan onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         ) : view === 'project' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[28px] pb-[90px]">
+          <div className="w-full px-[16px] sm:px-[36px] py-[20px] pb-[90px]">
             <Project />
           </div>
         ) : (
           // Full-bleed on purpose: Goals owns its own measure, because the
           // timeline it now contains needs the whole viewport to scroll a
           // semester across, and the board does not.
-          <div className="w-full px-[16px] sm:px-[36px] py-[42px] pb-[90px]">
+          <div className="w-full px-[16px] sm:px-[36px] py-[28px] pb-[90px]">
             <Goals />
           </div>
         )}
