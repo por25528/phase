@@ -137,16 +137,44 @@ describe('store actions', () => {
       expect(getState().tasks[0].id).toBeTruthy();
     });
 
-    it('defaults to today and no project', async () => {
+    /**
+     * Unscheduled, not today. The default used to be today because the only
+     * caller was a modal whose date pills could not say "not yet" — so every
+     * thought captured on a Tuesday became a Tuesday commitment, and the day
+     * filled with work nobody had decided to do.
+     */
+    it('captures unscheduled and unattached by default', async () => {
       vi.setSystemTime(new Date(2026, 6, 23, 12));
       const { actions, getState } = await freshStore();
 
       actions.addTask('Draft outline');
 
+      const task = getState().tasks[0];
+      expect(task).toMatchObject({ title: 'Draft outline', goalId: null });
+      expect(task.date).toBeUndefined();
+    });
+
+    it('takes a date, a goal and an estimate when the capture parsed them', async () => {
+      const { actions, getState } = await freshStore();
+
+      actions.addTask('Problems 1–15', '2026-07-24', null, 90);
+
       expect(getState().tasks[0]).toMatchObject({
-        date: '2026-07-23',
-        goalId: null,
+        date: '2026-07-24',
+        estimateMin: 90,
       });
+    });
+
+    /**
+     * A caller that miscomputed a date must not have it quietly corrected into
+     * a commitment — the refusal is visible, the substitution would not be.
+     */
+    it('refuses an invalid date rather than falling back to today', async () => {
+      const { actions, getState } = await freshStore();
+
+      actions.addTask('Broken', 'not-a-date');
+
+      expect(getState().tasks).toHaveLength(0);
     });
 
     it('ignores an empty task title', async () => {

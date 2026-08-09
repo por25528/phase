@@ -3,7 +3,7 @@ import { useAppStore, initStore, VIEW_LABELS } from './state/store';
 import { Goals } from './views/Goals';
 import { Plan } from './views/Plan';
 import { Project } from './views/Project';
-import { TaskCaptureModal } from './components/TaskCaptureModal';
+import { QuickAdd } from './components/QuickAdd';
 import { ConfirmImportModal } from './components/ConfirmImportModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { useLocalDate } from './hooks/useLocalDate';
@@ -231,7 +231,7 @@ export function App() {
           className="flex-none flex items-center gap-[7px] rounded-field bg-ink text-paper text-ui font-semibold px-[9px] sm:pl-[12px] sm:pr-[10px] py-[6px] hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
         >
           <IconPlus />
-          <span className="hidden sm:inline">Task</span>
+          <span className="hidden sm:inline">Add</span>
           <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
         </button>
 
@@ -384,7 +384,7 @@ export function App() {
         })}
       </nav>
 
-      <TaskCaptureModal
+      <QuickAdd
         open={taskCapture.open}
         focusRequest={taskCapture.focusRequest}
         enabled={hydration === 'ready'}

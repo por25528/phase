@@ -1553,10 +1553,32 @@ export const actions = {
     return true;
   },
 
-  addTask(title: string, date = todayStr(), goalId: string | null = null): void {
+  /**
+   * Capture a loose task.
+   *
+   * `date` defaults to NULL, not today. It used to default to today because the
+   * only caller was a modal whose date pills could not express "not yet" —
+   * so every thought captured on a Tuesday silently became a Tuesday
+   * commitment, and the day filled with work nobody had decided to do.
+   * `Task.date` has always been optional and the backlog rail lists a dateless
+   * task under its goal, so an unscheduled capture is fully reachable.
+   *
+   * An invalid date string is refused rather than swapped for today: a caller
+   * that miscomputed a date must not have it quietly corrected into a
+   * commitment.
+   */
+  addTask(
+    title: string,
+    date: string | null = null,
+    goalId: string | null = null,
+    estimateMin?: number,
+  ): void {
     const trimmed = title.trim();
-    if (!trimmed || !isValidLocalDate(date)) return;
-    const task: Task = { id: uid(), title: trimmed, date, done: false, goalId };
+    if (!trimmed) return;
+    if (date !== null && !isValidLocalDate(date)) return;
+    const task: Task = { id: uid(), title: trimmed, done: false, goalId };
+    if (date !== null) task.date = date;
+    if (estimateMin !== undefined) task.estimateMin = estimateMin;
     setAndPersist({ tasks: [...state.tasks, task] });
   },
 

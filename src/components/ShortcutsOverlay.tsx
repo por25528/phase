@@ -15,6 +15,7 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   // app-level binding that used to sit here set a `selDate` nothing reads.
   { keys: ['⌘', 'K'], label: 'Search everything' },
   { keys: ['⌘', 'N'], label: 'Add a task' },
+  { keys: ['⌘', '↵'], label: 'Add it and keep the composer open' },
   { keys: ['⌘', 'Z'], label: 'Undo the last change' },
   { keys: ['?'], label: 'This cheat sheet' },
   { keys: ['Esc'], label: 'Close drawer or dialog' },
