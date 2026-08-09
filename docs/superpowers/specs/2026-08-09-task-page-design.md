@@ -140,6 +140,18 @@ Note saving is already correct for this. Departure flushes — `blur`, navigatio
 and unmount all save regardless of a live `pendingUndo`; only the debounce timer
 is held. Escaping mid-sentence back to the tree keeps the typing.
 
+### The breakdown proposal moves with the leaf
+
+`StepsTab` gates "Break *X* into subtasks" on `openNode && !openNode.children?.length` —
+it is **leaf-only**. If leaves stop opening in `StepsTab`, the feature becomes
+unreachable, so `ProposalPanel` and its trigger move onto `TaskPage`. That is
+where `ProposalPanel`'s own docstring already says it belongs: "attached to the
+task it belongs to… the control for it belongs beside the subject."
+
+Accepting a proposal gives the leaf children, so the render-time branch flips to
+the container inspector on the very next paint. That is the conversion rule
+working, not an edge case needing code.
+
 ### Edges
 
 - **Leaf ⇄ container conversion needs no special case.** The branch is computed
@@ -157,8 +169,10 @@ is held. Escaping mid-sentence back to the tree keeps the typing.
 
 | File | Change |
 | --- | --- |
+| `src/components/useNoteDraft.ts` + test | new — the note draft, debounce and departure flush, extracted from `NotesTab` and `StepPanel` before a third copy is written. The rule it holds (a timer never spends an undo; a departure always saves) is an invariant, and three copies would be three chances to break it. |
 | `src/views/project/TaskPage.tsx` | new |
-| `src/views/project/TaskPage.test.tsx` | new — chips, Done arms undo, blocked reason outside the popover, note flushes on navigate-away, `⋯` verbs |
+| `src/views/project/TaskPage.test.tsx` | new — chips, Done arms undo, blocked reason outside the popover, estimate, scheduling, `⋯` verbs, breakdown offer |
+| `src/views/project/TaskPage.routing.test.tsx` | new — the leaf/container branch: page for a leaf, docked panel for a container, `closeStep` returns to the tree, milestone named in the breadcrumb |
 | `src/views/project/StepPanel.tsx` | sheds the leaf-only half (~250 lines), keeps the container half |
 | `src/views/project/StepPanel.test.tsx` | leaf cases move to `TaskPage.test.tsx`; container cases stay |
 | `src/views/Project.tsx` | second branch, beside `AreaPage` |
