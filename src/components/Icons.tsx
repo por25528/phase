@@ -166,6 +166,16 @@ export function IconArrowUp(p: IconProps) {
   return <Icon {...p}><path d="M12 19.5v-14M5.5 12L12 5.5 18.5 12" /></Icon>;
 }
 
+/** Reopen — undo a completion, put the goal back in play. */
+export function IconRotate(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5" />
+      <path d="M4.2 4.6v4.2h4.2" />
+    </Icon>
+  );
+}
+
 // ── Indicators ────────────────────────────────────────────────────────────────
 
 /**

@@ -61,21 +61,17 @@ export function Project() {
 
   return (
     <div className="max-w-[1100px] mx-auto">
-      <button
-        type="button"
-        onClick={() => actions.closeProject()}
-        aria-label={`Back to ${returnLabel}`}
-        className="text-meta text-muted hover:text-ink px-[7px] py-[4px] -ml-[7px] min-h-[24px] inline-flex items-center gap-[6px] rounded-[6px] hover:bg-hover"
-      >
-        <span aria-hidden="true">‹</span> {returnLabel}
-      </button>
-
-      <ProjectHeader goal={goal} actions={actions} />
+      <ProjectHeader
+        goal={goal}
+        actions={actions}
+        backLabel={returnLabel}
+        onBack={() => actions.closeProject()}
+      />
 
       <div
         role="tablist"
         aria-label="Goal sections"
-        className="flex gap-[2px] mt-[18px] border-b border-line"
+        className="flex gap-[2px] mt-[6px] border-b border-line"
         onKeyDown={(e) => {
           const index = TABS.findIndex(([key]) => key === projectTab);
           let nextIndex: number | null = null;
@@ -102,7 +98,7 @@ export function Project() {
             tabIndex={projectTab === key ? 0 : -1}
             ref={(element) => { tabRefs.current[key] = element; }}
             onClick={() => actions.setProjectTab(key)}
-            className={`text-ui px-[12px] py-[7px] -mb-px border-b-2 ${
+            className={`text-ui px-[12px] py-[6px] -mb-px border-b-2 ${
               projectTab === key
                 ? 'text-ink font-semibold border-accent'
                 : 'text-muted font-medium border-transparent hover:text-ink'
@@ -117,7 +113,7 @@ export function Project() {
         id="projectBody"
         role="tabpanel"
         aria-labelledby={`project-tab-${projectTab}`}
-        className="pt-[22px] pb-[60px]"
+        className="pt-[14px] pb-[60px]"
       >
         {projectTab === 'steps' ? (
           <StepsTab

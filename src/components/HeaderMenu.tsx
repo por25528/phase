@@ -17,10 +17,13 @@ import { IconDots } from './Icons';
 export function HeaderMenu({
   open,
   onOpenChange,
+  label = 'Settings and data',
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** What this particular `⋯` opens — the goal header reuses the component. */
+  label?: string;
   children: React.ReactNode;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -48,7 +51,7 @@ export function HeaderMenu({
     <div ref={wrapRef} className="relative flex-none">
       <button
         type="button"
-        aria-label="Settings and data"
+        aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}

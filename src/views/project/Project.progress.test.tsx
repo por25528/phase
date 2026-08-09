@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Goal, GoalNode, Session } from '../../db/types';
+import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -10,7 +10,7 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async () => []),
+  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
@@ -93,10 +93,10 @@ async function mountGoal(goal: Goal, sessions: Session[] = []): Promise<Store> {
 }
 
 describe('Project page', () => {
-  it('renders the project title and its progress', async () => {
+  it('renders the goal title and a compact progress read', async () => {
     await mountPage();
     expect(screen.getByRole('button', { name: /Rename goal "Studying Roblox"/ })).toBeTruthy();
-    expect(screen.getByText('0%')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Goal status and dates' }).textContent).toMatch(/0%/);
   });
 
   it('exposes the project title as the page heading', async () => {
@@ -283,14 +283,18 @@ describe('Project page', () => {
 });
 
 /**
- * What the project's progress strip says, driven through the real DOM.
+ * What the goal's status says, driven through the real DOM.
  *
- * Three things converge on this one line and each of them used to be silent or
- * misleading:
- *   - a project with no deadline rendered the literal "No project schedule",
- *   - the percentage never disclosed whether it was weighted by estimate,
- *   - logged time had no producer, so no calibration could ever be shown.
+ * All of it used to sit in the header, at the same weight as everything else,
+ * on every visit. It is one click away now — so each of these opens the status
+ * popover first, and that click is part of what is being asserted: a detail
+ * that is unreachable is worse than a detail that is loud.
  */
+
+/** Open the header's status cluster, where the arithmetic lives. */
+function openStatus(): void {
+  fireEvent.click(screen.getByRole('button', { name: 'Goal status and dates' }));
+}
 
 const openLeaf = (id: string, estimateMin?: number): GoalNode => ({
   id, title: id, ...(estimateMin ? { estimateMin } : {}),
@@ -316,6 +320,7 @@ describe('a project with no schedule', () => {
       ],
     });
 
+    openStatus();
     expect(screen.queryByText(/No project schedule/)).toBeNull();
     expect(screen.getByText(/3 done in 14 days · 3 left/)).toBeTruthy();
   });
@@ -328,6 +333,7 @@ describe('a project with no schedule', () => {
         openLeaf('b'), openLeaf('c'),
       ],
     });
+    openStatus();
     expect(screen.getByText(/nothing finished in 14 days · 2 tasks open/)).toBeTruthy();
   });
 
@@ -341,13 +347,16 @@ describe('a project with no schedule', () => {
         openLeaf('d', 120), openLeaf('e', 90),
       ],
     });
+    openStatus();
     expect(screen.getByText(/~3\.5h of work/)).toBeTruthy();
   });
 
-  it('falls back to a useful message when the project has no steps at all', async () => {
+  it('says there is nothing to forecast when the goal has no tasks at all', async () => {
     await mountGoal({ id: 'g', title: 'Empty', nodes: [] });
-    expect(screen.queryByText(/No project schedule/)).toBeNull();
-    expect(screen.getByText(/no tasks yet/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Goal status and dates' }).textContent)
+      .toContain('No forecast');
+    openStatus();
+    expect(screen.getByText(/No tasks yet — break the goal into actions/)).toBeTruthy();
   });
 });
 
@@ -359,9 +368,9 @@ describe('disclosing how the percentage was computed', () => {
         openLeaf('b', 360),
       ],
     });
+    expect(screen.getByRole('button', { name: 'Goal status and dates' }).textContent).toMatch(/5%/);
+    openStatus();
     expect(screen.getByText(/1\/2 tasks, weighted by estimate/)).toBeTruthy();
-    // 20 of 380 minutes, not the 50% an equal-weight mean would report.
-    expect(screen.getByText('5%')).toBeTruthy();
   });
 
   it('shows a bare step count when the roll-up fell back to equal weight', async () => {
@@ -371,9 +380,11 @@ describe('disclosing how the percentage was computed', () => {
         openLeaf('b'),
       ],
     });
+    expect(screen.getByRole('button', { name: 'Goal status and dates' }).textContent).toMatch(/50%/);
+    openStatus();
     const counter = screen.getByText(/1\/2 tasks/);
     expect(counter.textContent).not.toMatch(/weighted/);
-    expect(screen.getByText('50%')).toBeTruthy();
+    expect(counter.textContent).toMatch(/each counting equally/);
   });
 });
 
@@ -391,11 +402,13 @@ describe('estimate calibration', () => {
 
   it('reports how estimates have compared to logged time', async () => {
     await mountGoal(calibrated, sessionsFor(90));
+    openStatus();
     expect(screen.getByText(/estimates run about 1\.5× short/)).toBeTruthy();
   });
 
   it('stays silent without enough history', async () => {
     await mountGoal(calibrated, sessionsFor(90).slice(0, 2));
+    openStatus();
     expect(screen.queryByText(/estimates run about/)).toBeNull();
   });
 
@@ -406,5 +419,86 @@ describe('estimate calibration', () => {
     for (const node of store.getState().goals[0].nodes) {
       expect(node.estimateMin).toBe(60);
     }
+  });
+});
+
+/**
+ * The header's whole job is to stop being the page.
+ *
+ * The old one put two date fields, Confirm, Clear dates, a page-wide bar and
+ * five sentences of prose above the tree, so a 13-inch laptop showed status
+ * where it should have shown work. These assert the split: three answers on the
+ * line, everything else behind one click, and nothing lost in the move.
+ */
+describe('the compact goal header', () => {
+  /**
+   * A real date inside the forecast horizon: past `MAX_FORECAST_DAYS` the
+   * honest verdict is "No forecast", which is a different test.
+   */
+  async function withDeadline(): Promise<Goal> {
+    const { todayStr, addDays } = await import('../../lib/dates');
+    return {
+      id: 'g',
+      title: 'Physics Final',
+      start: todayStr(),
+      deadline: addDays(todayStr(), 30),
+      datesConfirmed: true,
+      nodes: [openLeaf('a', 60), { id: 'b', title: 'b', status: 'done', estimateMin: 60 }],
+    };
+  }
+
+  /** Mon–Fri 09:00–17:00, so the forecast has real hours to divide into. */
+  const WORKING_HOURS = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 }));
+
+  it('states health, deadline and remaining effort, and nothing else', async () => {
+    dbMocks.loadAvailability.mockResolvedValueOnce(WORKING_HOURS);
+    await mountGoal(await withDeadline());
+    const cluster = screen.getByRole('button', { name: 'Goal status and dates' });
+
+    expect(cluster.textContent).toContain('On track');
+    expect(cluster.textContent).toMatch(/Due/);
+    expect(cluster.textContent).toContain('1h left');
+  });
+
+  it('keeps the date fields and the clear/confirm controls out of the header', async () => {
+    await mountGoal(await withDeadline());
+    expect(screen.queryByLabelText('Start date')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Clear dates' })).toBeNull();
+
+    openStatus();
+    expect(screen.getByLabelText('Start date')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Clear dates' })).toBeTruthy();
+  });
+
+  it('explains the verdict rather than just labelling it', async () => {
+    dbMocks.loadAvailability.mockResolvedValueOnce(WORKING_HOURS);
+    await mountGoal(await withDeadline());
+    openStatus();
+    expect(screen.getByText(/of work fits in/)).toBeTruthy();
+  });
+
+  /**
+   * Completing a goal is one of the rarest actions on the page and used to own
+   * the loudest control on it — a full-width accent button under the header.
+   */
+  it('puts the lifecycle in the overflow menu, not on the page', async () => {
+    const store = await mountGoal({
+      id: 'g', title: 'Done soon', nodes: [{ id: 'a', title: 'a', status: 'done' }],
+    });
+    expect(screen.queryByRole('button', { name: 'Complete goal' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Goal actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Complete goal' }));
+
+    expect(store.getState().goals[0].completedAt).toBeTruthy();
+  });
+
+  it('offers Reopen once a goal is completed', async () => {
+    await mountGoal({
+      id: 'g', title: 'Archived', completedAt: '2026-08-01',
+      nodes: [{ id: 'a', title: 'a', status: 'done' }],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Goal actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Reopen goal' })).toBeTruthy();
   });
 });

@@ -4,12 +4,11 @@ import type { Goal } from '../../db/types';
 import { GoalTree } from '../../components/GoalTree';
 import { IconSparkle } from '../../components/Icons';
 import { SubtaskAiModal } from '../../components/SubtaskAiModal';
-import { leafCount } from '../../lib/board';
 import { findNode } from '../../lib/tree';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { StepPanel } from './StepPanel';
 
-// ── Steps column (the working area) ───────────────────────────────────────────
+// ── Work (the working area) ───────────────────────────────────────────────────
 export function StepsTab({
   goal: g,
   actions,
@@ -24,26 +23,22 @@ export function StepsTab({
   const [subtaskOpen, setSubtaskOpen] = useState(false);
   const isCompleted = !!g.completedAt;
   const hasSteps = g.nodes.length > 0;
-  const { total, done } = leafCount(g.nodes);
   const wide = useMediaQuery('(min-width: 768px)');
   const openNode = openStepId ? findNode(g.nodes, openStepId) : null;
 
   return (
     <section>
-      <div className="flex items-baseline justify-between mb-[9px]">
-        <div className="text-meta font-[550] uppercase tracking-[0.08em] text-muted">Tasks</div>
-        {total > 0 && (
-          <span className="font-mono text-badge text-muted tabular-nums">{done}/{total} done</span>
-        )}
-      </div>
+      {/* No "TASKS" eyebrow and no counter. The tab above already says Work,
+          the header states `8 of 14 tasks`, and a label that repeats its own
+          tab is a line of chrome between the reader and the first row.
 
+          The empty state is one sentence, not a dashed bordered card: a dashed
+          border is the app's drop-target signal, and spending it on "there is
+          nothing here yet" is how it stops meaning anything. */}
       {!hasSteps && (
-        <div className="rounded-card border border-dashed border-line-2 px-[14px] py-[16px] text-center mb-[8px]">
-          <div className="text-body text-ink-soft">No tasks yet</div>
-          <div className="text-compact text-muted mt-[3px] leading-[1.5]">
-            Break this goal into the actions that move it forward.
-          </div>
-        </div>
+        <p className="text-ui text-muted mb-[6px] px-[6px]">
+          Break this goal into the actions that move it forward.
+        </p>
       )}
 
       <div className={isCompleted ? 'opacity-70 pointer-events-none' : ''} aria-disabled={isCompleted}>

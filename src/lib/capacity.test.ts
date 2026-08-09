@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { BusyBlock, AvailabilityWindow, Task } from '../db/types';
 import type { PlannedLeaf } from './plan';
-import { freeMinutes, mergeIntervals, workloadOf, weekCapacity, normalizeEstimate, type Now } from './capacity';
+import { capacityBefore, freeMinutes, MAX_FORECAST_DAYS, mergeIntervals, workloadOf, weekCapacity, normalizeEstimate, type Now } from './capacity';
 
 // Mon–Fri 09:00–18:00 (540 min window), weekend off.
 const WINDOWS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({
@@ -501,5 +501,50 @@ describe('normalizeEstimate', () => {
     expect(workloadOf([leaf({ estimateMin: 0.4 })], [])).toEqual({
       plannedMin: 0, unestimated: 1,
     });
+  });
+});
+
+/**
+ * The denominator behind a goal's forecast: how many working minutes actually
+ * exist between now and a date. An upper bound by construction — busy blocks
+ * are a cache of whatever range was last fetched — so the health verdict built
+ * on it has to be conservative in the same direction.
+ */
+describe('capacityBefore', () => {
+  it('sums the free minutes of every day up to and including the deadline', () => {
+    // Mon 00:00 → deadline Tue. Two full 540-minute windows.
+    expect(capacityBefore(TUE, WINDOWS, [], EARLY, true)).toBe(1080);
+  });
+
+  it('counts only what is left of today', () => {
+    const noon: Now = { date: MON, minute: 720 };
+    // Monday 12:00–18:00 is 360, plus Tuesday's whole 540.
+    expect(capacityBefore(TUE, WINDOWS, [], noon, true)).toBe(900);
+  });
+
+  it('skips days with no availability window at all', () => {
+    // Sat and Sun are off, so a Saturday deadline adds nothing after Friday.
+    expect(capacityBefore(SAT, WINDOWS, [], EARLY, true))
+      .toBe(capacityBefore('2026-07-31', WINDOWS, [], EARLY, true));
+  });
+
+  it('deducts meetings, like every other capacity figure', () => {
+    expect(capacityBefore(MON, WINDOWS, [block(MON, 600, 660)], EARLY, true)).toBe(480);
+  });
+
+  it('reports a passed deadline as no capacity rather than as negative time', () => {
+    expect(capacityBefore('2026-07-01', WINDOWS, [], EARLY, true)).toBe(0);
+  });
+
+  /**
+   * Past the horizon the sum is so large that every goal is trivially fine,
+   * which is arithmetic with no opinion rather than a forecast. `null` lets
+   * `goalHealth` say "too far out" instead of "on track".
+   */
+  it('refuses a deadline past the forecast horizon', () => {
+    const far = new Date(Date.UTC(2026, 6, 27));
+    far.setUTCDate(far.getUTCDate() + MAX_FORECAST_DAYS + 1);
+    const iso = far.toISOString().slice(0, 10);
+    expect(capacityBefore(iso, WINDOWS, [], EARLY, true)).toBeNull();
   });
 });

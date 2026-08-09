@@ -1,7 +1,7 @@
 import type { AvailabilityWindow, BusyBlock, Task } from '../db/types';
 import { windowForDate } from './availability';
 import type { PlannedLeaf } from './plan';
-import { weekDates } from './dates';
+import { addDays, weekDates } from './dates';
 
 /**
  * The current moment, injected. Capacity is measured from here forward, so this
@@ -95,6 +95,41 @@ export function freeMinutes(
   }, 0);
 
   return Math.max(0, (win.endMin - win.startMin) - busy);
+}
+
+/**
+ * How much working time is left between `now` and `deadline`, inclusive.
+ *
+ * This is the denominator behind a goal's feasibility: remaining effort is only
+ * meaningful against the hours that actually exist before the date. It is an
+ * UPPER BOUND, and deliberately so — `blocks` is a device-local cache covering
+ * whatever range was last fetched, so meetings beyond it are unknown and the
+ * figure can only shrink as they arrive. A forecast built on it must therefore
+ * be conservative in the same direction: see `goalHealth`.
+ *
+ * Capped at `MAX_FORECAST_DAYS`. A deadline two years out produces a capacity
+ * number so large that every goal is trivially "on track", which is not a
+ * forecast, it is arithmetic with no opinion; past the cap the honest answer is
+ * that nobody is planning that far and health says `no-forecast`.
+ */
+export const MAX_FORECAST_DAYS = 180;
+
+export function capacityBefore(
+  deadline: string,
+  windows: AvailabilityWindow[],
+  blocks: BusyBlock[],
+  now: Now,
+  allDayBlocks: boolean,
+): number | null {
+  if (deadline < now.date) return 0; // the date has been and gone
+  let total = 0;
+  let date = now.date;
+  for (let i = 0; i <= MAX_FORECAST_DAYS; i += 1) {
+    total += freeMinutes(date, windows, blocks, now, allDayBlocks);
+    if (date === deadline) return total;
+    date = addDays(date, 1);
+  }
+  return null; // past the forecast horizon
 }
 
 export interface Workload {
