@@ -234,6 +234,12 @@ export function App() {
         if (isNode) actions.unscheduleNode(entry.goalId!, entry.nodeId!);
         else if (entry.kind === 'task') actions.unscheduleTask(entry.id);
         return;
+      case 'plan-next':
+        if (entry.goalId) actions.planNextStepFor(entry.goalId);
+        return;
+      case 'complete-goal':
+        if (entry.goalId) actions.completeGoal(entry.goalId);
+        return;
     }
   }
 

@@ -216,8 +216,10 @@ describe('type roles', () => {
    * brand mark now and nothing else.
    */
   it('keeps the display serif out of the working UI', () => {
-    const hits = offenders(/font-disp/g);
-    expect(hits).toEqual(['App.tsx:257 font-disp']);
+    // The file, not the line: pinning a line number makes an unrelated import
+    // above it fail this test, which teaches people to edit the assertion.
+    const files = offenders(/font-disp/g).map((h) => h.split(':')[0]);
+    expect(files).toEqual(['App.tsx']);
   });
 
   /**

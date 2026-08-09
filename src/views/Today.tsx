@@ -203,7 +203,7 @@ export function Today() {
               <li key={a.id}>
                 <button
                   type="button"
-                  onClick={() => (a.goalId ? actions.openProject(a.goalId) : actions.setView('plan'))}
+                  onClick={() => (a.goalId ? actions.openProject(a.goalId, a.nodeId) : actions.setView('plan'))}
                   className="w-full text-left flex items-center gap-[8px] px-[8px] py-[7px] rounded-field hover:bg-hover"
                 >
                   <span className="text-warn flex-none inline-flex" aria-hidden="true">

@@ -2,21 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Goal } from '../../db/types';
-import { ProgressBar } from '../../components/ProgressBar';
 import { IconDots } from '../../components/Icons';
-import { goalPct } from '../../lib/pct';
 import { fmtD } from '../../lib/dates';
-import { leafCount, blockedLeafCount, firstBlockedLeaf } from '../../lib/board';
+import { blockedLeafCount, firstBlockedLeaf } from '../../lib/board';
+import { fmtMinutes, goalEffort } from '../../lib/effort';
 import {
   nearestMeaningfulDate,
-  nextOpenAction,
   attentionBadge,
-  cardPrimaryAction,
-  plannedLeaves,
-  weekOf,
   type AttentionBadge,
 } from '../../lib/plan';
-import { isValidLocalDate, needsDateConfirmation, projectDateError } from '../../lib/schedule';
+import { isValidLocalDate, needsDateConfirmation } from '../../lib/schedule';
 import { HORIZON_LABELS } from './styles';
 import { containerDragAttributes } from '../../lib/dragAttributes';
 
@@ -30,13 +25,6 @@ const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
 
 /** Roughly the menu's own height — enough to decide which way it fits. */
 const MENU_HEIGHT_PX = 210;
-
-const PRIMARY_LABEL: Record<'plan' | 'define' | 'complete' | 'unblock', string> = {
-  plan: 'Plan next task',
-  define: 'Define first task',
-  complete: 'Complete goal',
-  unblock: 'Unblock',
-};
 
 export function storedDateRangeLabel(goal: Pick<Goal, 'start' | 'deadline'>): string {
   if (
@@ -68,17 +56,11 @@ function CardFace({
    */
   suppressDateBadge?: boolean;
 }) {
-  const leaves = leafCount(goal.nodes);
-  const hasLeaves = leaves.total > 0;
-  const pct = Math.round(goalPct(goal));
+  const effort = goalEffort(goal);
   const dateInfo = nearestMeaningfulDate(goal, today);
-  const action = nextOpenAction(goal, today);
   const badge = suppressDateBadge && needsDateConfirmation(goal)
     ? null
     : attentionBadge(goal, today);
-  const isNow = (goal.column ?? 0) === 0;
-  const wk = isNow ? plannedLeaves([goal], weekOf(today)) : [];
-  const wkDone = wk.filter((l) => l.done).length;
   const blocked = blockedLeafCount(goal.nodes);
   const blockedReason = blocked > 0 ? firstBlockedLeaf(goal.nodes)?.blockedOn : undefined;
 
@@ -87,7 +69,7 @@ function CardFace({
       <div className="flex items-start gap-[8px]">
         <h3
           title={goal.title}
-          // Three lines, not two: course projects are "<course> — <assignment>"
+          // Three lines, not two: course goals are "<course> — <assignment>"
           // and two lines clipped at "…— Pse…", losing the only thing that
           // distinguishes Pset 6 from Pset 7.
           className="text-title font-semibold tracking-[-0.01em] leading-[1.24] flex-1 min-w-0 line-clamp-3"
@@ -96,7 +78,7 @@ function CardFace({
         </h3>
         {dateInfo && (
           <span
-            className={`font-mono text-tiny tracking-[.02em] px-[6px] py-[3px] rounded-[6px] whitespace-nowrap tabular-nums flex-none mt-[1px] ${
+            className={`text-meta px-[6px] py-[3px] rounded-[6px] whitespace-nowrap tabular-nums flex-none mt-[1px] ${
               dateInfo.past ? 'text-warn bg-warn-tint' : 'text-chip-ink bg-chip'
             }`}
           >
@@ -105,42 +87,23 @@ function CardFace({
         )}
       </div>
 
-      <p
-        title={action.title}
-        className={`text-compact overflow-hidden text-ellipsis whitespace-nowrap ${
-          action.kind === 'needs-breakdown' ? 'text-muted italic' : 'text-ink-soft'
-        }`}
-      >
-        {action.kind === 'needs-breakdown' ? (
-          action.title
-        ) : (
-          <>
-            <span className="text-muted">Next · </span>
-            {action.title}
-          </>
-        )}
-      </p>
-
-      {isNow && (
-        // `muted` in both states. The empty case used to drop to `faint`, which
-        // index.css reserves for decorative marks and placeholders — but
-        // "Nothing planned this week" is the single most actionable sentence on
-        // the card, and 3.17:1 is not a contrast to say it at.
-        <p className="font-mono text-badge tabular-nums tracking-[.01em] text-muted">
-          {wk.length > 0
-            ? `${wkDone} of ${wk.length} planned tasks done`
-            : hasLeaves
-              ? 'Nothing planned this week'
-              : 'Nothing to plan yet'}
+      {/*
+        ONE line of remaining work, where a percentage, a full progress bar, a
+        "Next · …" line and a weekly planned sentence used to stack. The bar in
+        particular claimed to be the card's primary object while measuring a
+        figure that silently changes basis; minutes have one meaning and are
+        what a person plans against.
+      */}
+      {effort.total > 0 && (
+        <p className="text-compact text-ink-soft tabular-nums">
+          {effort.done === effort.total
+            ? 'Every task done'
+            : `${fmtMinutes(effort.remainingMin)} left · ${effort.done}/${effort.total}`}
+          {effort.unestimated > 0 && (
+            <span className="text-muted"> · {effort.unestimated} unestimated</span>
+          )}
         </p>
       )}
-
-      <div className="flex items-center gap-[8px]">
-        <span className="text-ui font-semibold tabular-nums text-ink-soft min-w-[30px]">
-          {hasLeaves ? `${pct}%` : '—'}
-        </span>
-        <ProgressBar pct={hasLeaves ? pct : 0} />
-      </div>
 
       {(badge || blocked > 0) && (
         <div className="flex flex-wrap items-center gap-[5px]">
@@ -153,10 +116,9 @@ function CardFace({
             </span>
           )}
           {blocked > 0 && (
-            // "steps", not the bare count the Focus bar's "Blocked projects"
-            // signal counts — this is a step tally, and the two must not read
-            // as the same quantity (a card showing this can still be dimmed
-            // by that signal without contradicting itself).
+            // "tasks", not the bare count the filter row's "Blocked goals"
+            // signal counts — this is a task tally, and the two must not read
+            // as the same quantity.
             <span className="text-meta text-warn whitespace-nowrap">{blocked} task{blocked === 1 ? '' : 's'} blocked</span>
           )}
           {blockedReason && (
@@ -192,14 +154,9 @@ export function BoardCard({
   goal,
   today,
   onOpen,
-  onPlan,
-  onDefine,
-  onComplete,
   onMove,
   onRank,
   onDelete,
-  onConfirmDates,
-  onEditDates,
   reducedMotion,
   dimmed,
   matched,
@@ -207,22 +164,13 @@ export function BoardCard({
 }: {
   goal: Goal;
   today: string;
-  /**
-   * Open the project, optionally deep-linked to one node — "Unblock" reuses
-   * this to land on the blocked step instead of merely opening the project,
-   * exactly as `openProject(goalId, nodeId)` already does for the command
-   * palette.
-   */
-  onOpen: (id: string, nodeId?: string) => void;
-  onPlan: (id: string) => void;
-  onDefine: (id: string) => void;
-  onComplete: (id: string) => void;
+  /** Open the goal. The card body is the only route: the footer that used to
+   *  duplicate it is gone. */
+  onOpen: (id: string) => void;
   onMove: (id: string, column: number) => void;
   /** Re-rank within the current horizon: -1 up, +1 down. */
   onRank: (id: string, delta: number) => void;
   onDelete: (id: string) => void;
-  onConfirmDates: (id: string) => void;
-  onEditDates: (id: string) => void;
   reducedMotion: boolean;
   dimmed: boolean;
   matched: boolean;
@@ -261,15 +209,7 @@ export function BoardCard({
     opacity: isDragging ? 0.35 : dimmed ? 0.32 : undefined,
   };
 
-  const primary = cardPrimaryAction(goal, today);
-  // Only needed for 'unblock', but cheap and 'unblock' implies at least one
-  // blocked leaf exists (cardPrimaryAction only returns it when the project
-  // is fully blocked), so this is never null when the button below uses it.
-  const blockedStepId = primary === 'unblock' ? firstBlockedLeaf(goal.nodes)?.id : undefined;
   const currentCol = goal.column ?? 0;
-  const datesUnconfirmed = needsDateConfirmation(goal);
-  const storedDateError = projectDateError(goal.start, goal.deadline);
-  const storedRange = storedDateRangeLabel(goal);
 
   // Action buttons live inside the drag activator, so each swallows the pointer
   // (no drag) and the click (no drawer-open) before running its own handler.
@@ -327,64 +267,20 @@ export function BoardCard({
     >
       <CardFace goal={goal} today={today} suppressDateBadge />
 
-      {datesUnconfirmed && (
-        <div className="flex flex-col gap-[5px] rounded-field bg-warn-tint px-[8px] py-[6px]">
-          <span className="text-badge text-warn">
-            Dates unconfirmed · <span className="tabular-nums">{storedRange}</span>
-          </span>
-          <div className="flex items-center gap-[4px] -mx-[6px]">
-          <button
-            type="button"
-            disabled={storedDateError !== null}
-            title={storedDateError ?? undefined}
-            onPointerDown={stopPointer}
-            onClick={act(() => onConfirmDates(goal.id))}
-            className="text-meta font-semibold text-warn px-[6px] min-h-[24px] rounded-[6px] hover:bg-panel disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Confirm
-          </button>
-          <button
-            type="button"
-            onPointerDown={stopPointer}
-            onClick={act(() => onEditDates(goal.id))}
-            className="text-meta font-medium text-ink-soft px-[6px] min-h-[24px] rounded-[6px] hover:bg-panel"
-          >
-            Edit
-          </button>
-          </div>
-        </div>
-      )}
+      {/*
+        No action footer, and no date-confirmation sub-card.
 
-      {/* Actions */}
-      <div className="flex items-center gap-[4px] mt-[2px] pt-[9px] border-t border-line-soft">
-        {primary !== 'none' && (
-          <button
-            type="button"
-            onPointerDown={stopPointer}
-            onClick={act(() =>
-              primary === 'complete'
-                ? onComplete(goal.id)
-                : primary === 'define'
-                  ? onDefine(goal.id)
-                  : primary === 'unblock'
-                    ? onOpen(goal.id, blockedStepId)
-                    : onPlan(goal.id),
-            )}
-            className="text-compact font-semibold text-accent-deep px-[8px] py-[4px] rounded-field hover:bg-accent-tint"
-          >
-            {PRIMARY_LABEL[primary]}
-          </button>
-        )}
-        <button
-          type="button"
-          onPointerDown={stopPointer}
-          onClick={act(() => onOpen(goal.id))}
-          className="text-compact font-medium text-muted px-[8px] py-[4px] rounded-field hover:bg-hover hover:text-ink"
-        >
-          Open goal
-        </button>
+        `Plan next task` and `Open goal` both duplicated what clicking the card
+        already does, so a card offered three overlapping entry paths to the
+        same place — and the confirmation panel turned data hygiene into the
+        board's dominant visual state, one tinted sub-card per card. The batch
+        review banner above the board does that job once, for all of them, and
+        the badge still says "Dates unconfirmed" here.
 
-        <div className="relative ml-auto" ref={menuRef}>
+        What is left is the overflow, revealed on hover in the corner, holding
+        the two things the card body cannot do: move it, and delete it.
+      */}
+      <div className="absolute top-[7px] right-[7px]" ref={menuRef}>
           <button
             type="button"
             aria-label="More actions"
@@ -395,12 +291,12 @@ export function BoardCard({
               // Flip below the trigger when there is room; the menu was
               // unconditionally anchored above, so on any card but the first it
               // opened over its NEIGHBOUR — ambiguous ownership on a menu whose
-              // last item is "Delete project".
+              // last item is "Delete goal".
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               setMenuUp(window.innerHeight - rect.bottom < MENU_HEIGHT_PX);
               setMenuOpen((v) => !v);
             })}
-            className="text-faint px-[8px] py-[2px] min-h-[24px] inline-flex items-center rounded-field hover:bg-hover hover:text-ink"
+            className={`quiet-control text-faint px-[6px] min-h-[24px] inline-flex items-center rounded-field bg-panel hover:bg-hover hover:text-ink ${menuOpen ? 'opacity-100' : ''}`}
           >
             <IconDots />
           </button>
@@ -445,7 +341,6 @@ export function BoardCard({
               </button>
             </div>
           )}
-        </div>
       </div>
     </div>
   );

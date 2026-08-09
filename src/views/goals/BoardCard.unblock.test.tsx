@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal } from '../../db/types';
 
@@ -77,20 +77,40 @@ async function mountBoard(goal: Goal) {
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => cleanup());
 
-describe('Unblock deep-links to the blocked step', () => {
-  it('opens the project focused on the first blocked leaf, in document order', async () => {
-    const store = await mountBoard(fullyBlocked);
+/**
+ * The deep link into a blocked task used to be an `Unblock` button in the
+ * card's action footer — one of three overlapping routes to the same place,
+ * beside `Open goal` and the card body itself. The footer is gone; the link
+ * lives on Today, where exceptions belong, and `attentionItems` carries the
+ * node id so it lands on the reason rather than at the top of the tree.
+ */
+describe('a fully blocked goal', () => {
+  it('offers no footer button duplicating the card body', async () => {
+    await mountBoard(fullyBlocked);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Unblock' }));
-
-    const s = store.getState();
-    expect(s.view).toBe('project');
-    expect(s.openGoalId).toBe('g1');
-    expect(s.focusNodeId).toBe('n1');
-    expect(s.openStepId).toBe('n1');
+    expect(screen.queryByRole('button', { name: 'Unblock' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open goal' })).toBeNull();
   });
 
-  it('shows the blocked step count and its reason on the card', async () => {
+  it('opens on its first blocked task from Today’s Attention row', async () => {
+    const store = await mountBoard(fullyBlocked);
+    const { attentionItems } = await import('../../lib/todaySurface');
+
+    const [exception] = attentionItems(
+      store.getState().goals,
+      { commitments: [], carryOvers: [], completedToday: [] },
+      '2026-06-01',
+      [{ dow: 0, startMin: 540, endMin: 1020 }],
+      [],
+      true,
+    );
+
+    expect(exception).toMatchObject({ kind: 'blocked', goalId: 'g1', nodeId: 'n1' });
+    store.actions.openProject(exception.goalId!, exception.nodeId);
+    expect(store.getState().openStepId).toBe('n1');
+  });
+
+  it('shows the blocked task count and its reason on the card', async () => {
     await mountBoard(fullyBlocked);
 
     const card = screen.getByRole('group', { name: /^Blocked Project —/ });

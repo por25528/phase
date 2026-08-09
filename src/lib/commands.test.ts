@@ -73,8 +73,21 @@ describe('actionsFor', () => {
     expect(actionsFor(entry({ done: true })).map((a) => a.id)).toEqual(['open', 'reopen']);
   });
 
-  it('has only one honest verb for a goal', () => {
+  /**
+   * The board card used to render this verdict as a footer button — one of
+   * three overlapping routes to the same goal. The verdict is still the right
+   * answer to "what does this goal need"; the palette is where it is spent now.
+   */
+  it('offers a goal what it most needs, beside opening it', () => {
+    expect(actionsFor(entry({ kind: 'project' }), 'plan').map((a) => a.id))
+      .toEqual(['open', 'plan-next']);
+    expect(actionsFor(entry({ kind: 'project' }), 'complete').map((a) => a.id))
+      .toEqual(['open', 'complete-goal']);
+  });
+
+  it('offers a goal nothing extra when there is nothing extra to offer', () => {
     expect(actionsFor(entry({ kind: 'project' })).map((a) => a.id)).toEqual(['open']);
+    expect(actionsFor(entry({ kind: 'project' }), 'none').map((a) => a.id)).toEqual(['open']);
   });
 
   it('sends a habit to the day it is checked off on', () => {

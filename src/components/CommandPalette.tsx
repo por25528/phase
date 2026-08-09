@@ -10,6 +10,8 @@ import {
   type ObjectAction,
   type ObjectActionId,
 } from '../lib/commands';
+import { cardPrimaryAction } from '../lib/plan';
+import { todayStr } from '../lib/dates';
 import type { Goal, Habit, Task } from '../db/types';
 
 /**
@@ -92,7 +94,11 @@ export function CommandPalette({
 
   const rows: Row[] = useMemo(() => {
     if (subject) {
-      return actionsFor(subject).map((action) => ({ type: 'action' as const, action }));
+      const goal = subject.kind === 'project'
+        ? goals.find((g) => g.id === subject.goalId)
+        : undefined;
+      const verdict = goal ? cardPrimaryAction(goal, todayStr()) : undefined;
+      return actionsFor(subject, verdict).map((action) => ({ type: 'action' as const, action }));
     }
     const commandOnly = commandModeQuery(query);
     if (commandOnly !== null) {
@@ -105,7 +111,7 @@ export function CommandPalette({
     // to be what you meant than a verb that happens to share its letters.
     const hits = searchEntries(index, trimmed).map((hit) => ({ type: 'hit' as const, hit }));
     return [...hits, ...commands];
-  }, [query, index, subject]);
+  }, [query, index, subject, goals]);
 
   // Any change to the result set invalidates the cursor.
   useEffect(() => setActive(0), [query, subject]);

@@ -3,6 +3,7 @@ import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
 import { goalEffort } from './effort';
 import { goalHealth, type Health } from './health';
 import { fmtD } from './dates';
+import { firstBlockedLeaf } from './board';
 
 /**
  * What Today puts in front of you, and what it refuses to.
@@ -73,6 +74,15 @@ export interface AttentionItem {
   text: string;
   /** The goal to open, where the exception belongs to one. */
   goalId?: string;
+  /**
+   * The exact task to land on.
+   *
+   * A blocked goal opens ON its first blocked task rather than at the top of
+   * its tree, because "nothing here can be started" is only actionable next to
+   * the reason — and the board card that used to carry this deep link had it as
+   * a footer button duplicating the card's own click target.
+   */
+  nodeId?: string;
 }
 
 /**
@@ -134,6 +144,7 @@ export function attentionItems(
       id: `blocked:${goal.id}`,
       kind: 'blocked',
       goalId: goal.id,
+      ...(firstBlockedLeaf(goal.nodes) ? { nodeId: firstBlockedLeaf(goal.nodes)!.id } : {}),
       text: `${goal.title} has nothing that can be started`,
     });
   }

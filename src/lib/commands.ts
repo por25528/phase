@@ -106,16 +106,32 @@ export type ObjectActionId =
   | 'reopen'
   | 'schedule-today'
   | 'schedule-tomorrow'
-  | 'unschedule';
+  | 'unschedule'
+  | 'plan-next'
+  | 'complete-goal';
 
 export interface ObjectAction {
   id: ObjectActionId;
   label: string;
 }
 
-export function actionsFor(entry: SearchEntry): ObjectAction[] {
+/**
+ * @param goalAction What this goal most needs, from `cardPrimaryAction`.
+ *
+ * The board card used to render that verdict as a footer button, which was one
+ * of three overlapping routes to the same goal. The verdict is still the right
+ * answer to "what does this goal need"; the palette is a better place to spend
+ * it than a permanent control on every card.
+ */
+export function actionsFor(
+  entry: SearchEntry,
+  goalAction?: 'plan' | 'define' | 'complete' | 'unblock' | 'none',
+): ObjectAction[] {
   if (entry.kind === 'project') {
-    return [{ id: 'open', label: 'Open goal' }];
+    const out: ObjectAction[] = [{ id: 'open', label: 'Open goal' }];
+    if (goalAction === 'plan') out.push({ id: 'plan-next', label: 'Plan its next task' });
+    if (goalAction === 'complete') out.push({ id: 'complete-goal', label: 'Complete goal' });
+    return out;
   }
   // A container has no status and no estimate — there is nothing to complete
   // and nothing to place on a calendar. Offering the verbs anyway would mean

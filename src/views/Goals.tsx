@@ -232,7 +232,6 @@ export function Goals() {
   // switch view, leaving the project to be found by hand in a rail holding a
   // dozen others. `cardPrimaryAction` returns 'plan' for nearly every healthy
   // project, so that was the default action on most cards.
-  const onPlan = actions.planNextStepFor;
 
   /**
    * Walk the unconfirmed projects, one per click.
@@ -295,12 +294,6 @@ export function Goals() {
     return () => { cancelAnimationFrame(raf); clearTimeout(t); };
   }, [highlight, reducedMotion]);
 
-  function confirmDatesFromCard(goalId: string) {
-    actions.confirmGoalDates(goalId);
-    requestAnimationFrame(() => {
-      document.getElementById(`goal-card-${goalId}`)?.focus();
-    });
-  }
 
   const timeline = goalsMode === 'timeline';
 
@@ -470,14 +463,9 @@ export function Goals() {
                       goal={g}
                       today={currentDate}
                       onOpen={actions.openProject}
-                      onPlan={onPlan}
-                      onDefine={actions.openProject}
-                      onComplete={actions.completeGoal}
                       onMove={moveToHorizon}
                       onRank={moveRank}
                       onDelete={actions.removeGoal}
-                      onConfirmDates={confirmDatesFromCard}
-                      onEditDates={actions.openProject}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}
