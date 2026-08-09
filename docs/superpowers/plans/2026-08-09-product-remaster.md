@@ -34,7 +34,7 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 
 ## M2 — workspace and command layer
 
-- [ ] **S6 Real `Cmd+K` (change 4).** Verbs, not just navigation: create,
+- [x] **S6 Real `Cmd+K` (change 4).** Verbs, not just navigation: create,
       complete, schedule, set status, move, open settings, export.
 - [ ] **S7 Goal tabs (change 6).** Work / Board / Calendar / Notes over one task
       store, never duplicated arrays.
