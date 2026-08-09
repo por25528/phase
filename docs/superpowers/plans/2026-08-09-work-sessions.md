@@ -1,9 +1,10 @@
-# Multiple work sessions per task — the plan, not the change
+# Multiple work sessions per task — BUILT
 
-This is the one slice of the remaster (`ideas/PRODUCT_REMASTER.md`, change 11)
-that is specified and **not built**. It is written down rather than attempted
-because it is a migration of the scheduling model, in a local-first app, where
-the failure mode is a real person's calendar quietly rearranging itself.
+This was written as a plan for the one slice of the remaster
+(`ideas/PRODUCT_REMASTER.md`, change 11) that had not been attempted. It has
+since been built, and the notes below turned out to be the shape it took —
+kept as the record of why, with the two places reality differed marked
+inline.
 
 ## What is missing
 
@@ -48,11 +49,13 @@ duration, not the Task estimate" only has somewhere to live if a block owns its
 own length, and the discrepancy indicator ("planned sessions exceed the
 estimate") is then a comparison between two real numbers rather than a guess.
 
-Where it lives is the first decision to make. `AppState.blocks` as a fifth slice
-is the honest home — a block is app data, it must round-trip through backup, and
-`withUndoSlices` (added for the replan) already makes a multi-table undoable
-write expressible. Hanging blocks off the node would keep the tree the single
-source of truth but makes every calendar read a full tree walk.
+**Where it lives — decided differently.** The plan leaned toward
+`AppState.blocks` as a fifth slice and worried that hanging blocks off the node
+"makes every calendar read a full tree walk". Reading `scheduledOn` settled it:
+that walk ALREADY happens, once per calendar read, so the table bought nothing —
+and it would have introduced a dangling-reference class that `Session` is only
+allowed to have because a stray session is inert. A stray block would draw
+itself on a Tuesday. Blocks live inside the node or task.
 
 ## The order it has to happen in
 
@@ -72,13 +75,13 @@ source of truth but makes every calendar read a full tree walk.
    "Mark session done, keep task open" — which is the point of the whole slice
    and cannot be built before the model holds it.
 
-## The Calendar tab depends on this
+## The Calendar tab depended on this
 
-The goal workspace's fourth tab is deliberately absent for the same reason. A
-goal-scoped calendar that cannot express two sittings would have to be built
-against the single-block model and then rebuilt, and a second calendar rendering
-the same week from a second code path is how two surfaces start disagreeing
-about a Tuesday. It belongs in step 4 above.
+It shipped in the same pass, and reused Plan's `WeekGrid`, `DayBlocks` and
+`aimMinuteFor` rather than growing a second copy — which was the actual risk,
+not the tab itself. Its rail places by button rather than by drag for the same
+reason: duplicating the pointer maths is how two calendars start disagreeing
+about a Tuesday.
 
 ## What NOT to do
 

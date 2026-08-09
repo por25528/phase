@@ -3,11 +3,13 @@ import { useAppStore, VIEW_LABELS, type ProjectTab } from '../state/store';
 import { ProjectHeader } from './project/ProjectHeader';
 import { StepsTab } from './project/StepsTab';
 import { BoardTab } from './project/BoardTab';
+import { CalendarTab } from './project/CalendarTab';
 import { NotesTab } from './project/NotesTab';
 
 const TABS: ReadonlyArray<readonly [ProjectTab, string]> = [
   ['steps', 'Work'],
   ['board', 'Board'],
+  ['calendar', 'Calendar'],
   ['notes', 'Notes'],
 ];
 
@@ -20,7 +22,7 @@ const TABS: ReadonlyArray<readonly [ProjectTab, string]> = [
  */
 export function Project() {
   const { goals, openGoalId, projectReturnView, projectTab, focusNodeId, openStepId, actions } = useAppStore();
-  const tabRefs = useRef<Record<ProjectTab, HTMLButtonElement | null>>({ steps: null, board: null, notes: null });
+  const tabRefs = useRef<Record<ProjectTab, HTMLButtonElement | null>>({ steps: null, board: null, calendar: null, notes: null });
   const goal = openGoalId ? goals.find((g) => g.id === openGoalId) : null;
   const returnView = projectReturnView === 'project' ? 'goals' : projectReturnView;
   const returnLabel = VIEW_LABELS[returnView];
@@ -126,6 +128,8 @@ export function Project() {
           />
         ) : projectTab === 'board' ? (
           <BoardTab goal={goal} actions={actions} onUseWork={() => actions.setProjectTab('steps')} />
+        ) : projectTab === 'calendar' ? (
+          <CalendarTab goal={goal} />
         ) : (
           <NotesTab goal={goal} actions={actions} />
         )}

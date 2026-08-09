@@ -36,11 +36,10 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 
 - [x] **S6 Real `Cmd+K` (change 4).** Verbs, not just navigation: create,
       complete, schedule, set status, move, open settings, export.
-- [x] **S7 Goal tabs (change 6).** Work / Board / Notes over one task store,
-      never duplicated arrays. The Calendar tab is deliberately NOT here: it
-      needs the same capacity and drop machinery Plan owns, and building a
-      second copy of it before S11 reworks that view is how two calendars end
-      up disagreeing. It ships with S12.
+- [x] **S7 Goal tabs (change 6).** Work / Board / Calendar / Notes over one task
+      store, never duplicated arrays. The Calendar tab waited for S12's
+      `WorkBlock` and then reused Plan's own `WeekGrid`, `DayBlocks` and
+      `aimMinuteFor` rather than growing a second copy of them.
 - [x] **S8 Remaining effort and health (change 9).** `12h 30m remaining · 8 of 14
       tasks · On track`, with the estimate-coverage qualifier stated. Landed
       with S3, which could not state a compact header without them.
@@ -56,8 +55,8 @@ sibling test, thin views, `npm test` and `npx tsc -b` green, one commit.
 - [x] **S12 Multiple work sessions per task (change 11).** `WorkBlock`, moved not
       added: `plannedDay`/`plannedStartMin` and `Task.startMin` became a list of
       sittings held inside the node or task. 37 production files and 703
-      assertions moved with them. The Calendar tab is still open — it is a
-      surface, not a model change, and the model it needed is now here.
+      assertions moved with them, and the goal workspace's Calendar tab landed
+      on top of it.
 
 ## M4 — creation, markers, AI, polish
 

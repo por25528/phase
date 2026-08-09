@@ -242,6 +242,9 @@ describe('Project page', () => {
     expect(document.activeElement).toBe(board);
 
     fireEvent.keyDown(board, { key: 'ArrowRight' });
+    expect(store.getState().projectTab).toBe('calendar');
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Calendar' }), { key: 'ArrowRight' });
     expect(store.getState().projectTab).toBe('notes');
 
     fireEvent.keyDown(notes, { key: 'ArrowRight' });

@@ -96,7 +96,7 @@ export type GoalModal = 'new' | 'import' | null;
  * `'steps'` keeps its stored name so no persisted or in-flight value has to be
  * migrated for a rename; it is labelled Work.
  */
-export type ProjectTab = 'steps' | 'board' | 'notes';
+export type ProjectTab = 'steps' | 'board' | 'calendar' | 'notes';
 
 interface UIState {
   view: ViewName;
