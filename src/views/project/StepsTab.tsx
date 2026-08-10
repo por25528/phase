@@ -1,9 +1,7 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useAppStore } from '../../state/store';
 import type { Goal } from '../../db/types';
 import { GoalTree } from '../../components/GoalTree';
-import { IconSparkle } from '../../components/Icons';
-import { ProposalPanel } from './ProposalPanel';
 import { findNode } from '../../lib/tree';
 import { TEMPLATES, inferGoalType } from '../../lib/goalType';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -21,11 +19,13 @@ export function StepsTab({
   openStepId?: string | null;
 }) {
   const addRootRef = useRef<HTMLInputElement>(null);
-  const [proposing, setProposing] = useState(false);
   const isCompleted = !!g.completedAt;
   const hasSteps = g.nodes.length > 0;
   const wide = useMediaQuery('(min-width: 768px)');
-  const openNode = openStepId ? findNode(g.nodes, openStepId) : null;
+  // Container-only: `Project` returns `TaskPage` before this renders when the
+  // open node is a leaf, so a leaf never reaches the docked panel.
+  const found = openStepId ? findNode(g.nodes, openStepId) : null;
+  const openNode = found && found.children?.length ? found : null;
   const goalType = g.type ?? inferGoalType(g.title);
 
   return (
@@ -54,15 +54,6 @@ export function StepsTab({
             Start with {TEMPLATES[goalType].areas.join(' · ')}
           </button>
         </div>
-      )}
-
-      {proposing && openNode && (
-        <ProposalPanel
-          goal={g}
-          node={openNode}
-          actions={actions}
-          onClose={() => setProposing(false)}
-        />
       )}
 
       <div className={isCompleted ? 'opacity-70 pointer-events-none' : ''} aria-disabled={isCompleted}>
@@ -98,21 +89,6 @@ export function StepsTab({
               }
             }}
           />
-          {/* Attached to the SELECTED task, and absent without one.
-              The dialog this replaced opened from here with a dropdown asking
-              which task you meant — about a task you had usually just clicked.
-              A proposal has a subject; the control for it belongs beside the
-              subject. */}
-          {openNode && !openNode.children?.length && !proposing && (
-            <button
-              type="button"
-              onClick={() => setProposing(true)}
-              className="mt-[8px] inline-flex items-center gap-[6px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[1px]"
-            >
-              <IconSparkle size={12} />
-              Break “{openNode.title}” into subtasks
-            </button>
-          )}
         </div>
       )}
 

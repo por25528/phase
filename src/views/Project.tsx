@@ -7,6 +7,7 @@ import { BoardTab } from './project/BoardTab';
 import { CalendarTab } from './project/CalendarTab';
 import { NotesTab } from './project/NotesTab';
 import { AreaPage } from './project/AreaPage';
+import { TaskPage } from './project/TaskPage';
 import { findNode } from '../lib/tree';
 
 /**
@@ -90,6 +91,26 @@ export function Project() {
     return (
       <div className="max-w-[1100px] mx-auto">
         <AreaPage goal={goal} node={area} />
+      </div>
+    );
+  }
+
+  // A leaf opens as its own page — the second lens on the goal, beside the
+  // milestone workspace above. Computed at render, so a task that gains
+  // children (indent, an accepted breakdown) becomes a container on the very
+  // next paint with no special case here.
+  const openNode = openStepId ? findNode(goal.nodes, openStepId) : null;
+  const openLeaf = openNode && !openNode.children?.length ? openNode : null;
+
+  if (openLeaf) {
+    return (
+      <div className="max-w-[1100px] mx-auto">
+        <TaskPage
+          goal={goal}
+          node={openLeaf}
+          backLabel={goal.title}
+          onBack={() => actions.closeStep()}
+        />
       </div>
     );
   }

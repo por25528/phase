@@ -111,12 +111,15 @@ describe('Project page', () => {
     expect(screen.getByText('Define the topics')).toBeTruthy();
   });
 
-  it('shows the step panel when a step is open, and the tree stays visible', async () => {
+  it('opens a leaf step as its own page, replacing the tree', async () => {
     const store = await mountPage();
     store.actions.openStep('n1');
 
+    // A leaf routes to `TaskPage` now (`Project.tsx`'s render-time branch),
+    // not the docked panel beside the tree — so the tree, and its other rows,
+    // are off-screen while the page is open.
     expect(await screen.findByRole('heading', { name: 'Define the topics' })).toBeTruthy();
-    expect(screen.getByText('Order the topics')).toBeTruthy();
+    expect(screen.queryByText('Order the topics')).toBeNull();
   });
 
   it('hides the panel when the step is closed', async () => {
@@ -154,8 +157,13 @@ describe('Project page', () => {
        * The leading `✦` is an aria-hidden icon, so the accessible name is the
        * words alone; it used to be a bare text node and screen readers read the
        * decoration out.
+       *
+       * `n2` is a leaf, so it now opens as `TaskPage`, whose own "Break …"
+       * trigger uses straight quotes (its docstring: chips are stated as
+       * readouts, not a second property list) rather than the docked panel's
+       * curly ones.
        */
-      const breakdown = screen.getByRole('button', { name: /^Break “/ });
+      const breakdown = screen.getByRole('button', { name: /^Break "/ });
       expect(breakdown.textContent).toContain('Order the topics');
       fireEvent.click(breakdown);
       expect(screen.getByRole('heading', { name: /Break down/ })).toBeTruthy();

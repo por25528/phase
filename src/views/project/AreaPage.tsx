@@ -3,6 +3,7 @@ import type { Goal, GoalNode } from '../../db/types';
 import { useAppStore, type AreaTab } from '../../state/store';
 import { GoalTree } from '../../components/GoalTree';
 import { StepPanel } from './StepPanel';
+import { TaskPage } from './TaskPage';
 import { NoteEditor } from '../../components/NoteEditor';
 import { InlineEdit } from '../../components/InlineEdit';
 import { ProgressBar } from '../../components/ProgressBar';
@@ -44,10 +45,26 @@ export function AreaPage({ goal: g, node }: { goal: Goal; node: GoalNode }) {
   });
   const [editingTitle, setEditingTitle] = useState(false);
   const wide = useMediaQuery('(min-width: 768px)');
-  const openNode = openStepId ? findNode(node.children ?? [], openStepId) : null;
+  const found = openStepId ? findNode(node.children ?? [], openStepId) : null;
+  const openLeaf = found && !found.children?.length ? found : null;
+  // The docked inspector is container-only now.
+  const openNode = found && !openLeaf ? found : null;
   const children = node.children ?? [];
   const done = children.filter((c) => isDone(c)).length;
   const pct = Math.round(nodePct(node));
+
+  // Back from a task inside a milestone lands on the MILESTONE, not the goal:
+  // `closeStep` leaves `openAreaId` set, so one Escape is one step up.
+  if (openLeaf) {
+    return (
+      <TaskPage
+        goal={g}
+        node={openLeaf}
+        backLabel={node.title}
+        onBack={() => actions.closeStep()}
+      />
+    );
+  }
 
   return (
     <div>
