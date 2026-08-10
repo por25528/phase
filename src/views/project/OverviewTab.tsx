@@ -1,6 +1,8 @@
 import type { Goal } from '../../db/types';
 import { useAppStore } from '../../state/store';
+import { Popover } from '../../components/Popover';
 import { ProgressBar } from '../../components/ProgressBar';
+import { ScheduleMenu } from '../../components/SchedulePopover';
 import { IconCircle, IconDiamond, IconWarning } from '../../components/Icons';
 import { goalOverview, overviewIsEmpty, goalWeekLoad } from '../../lib/overview';
 import { goalHealth, HEALTH_WORD } from '../../lib/health';
@@ -10,6 +12,7 @@ import { fmtMinutes } from '../../lib/effort';
 import { formatEstimateValue } from '../../lib/estimateInput';
 import { fmtD, todayStr } from '../../lib/dates';
 import { goalPct } from '../../lib/pct';
+import { findNode } from '../../lib/tree';
 
 /**
  * The goal's first answer: what next, how much is left, what is coming.
@@ -19,8 +22,9 @@ import { goalPct } from '../../lib/pct';
  * them would be a number the user cannot act on, on the screen they opened to
  * decide what to do in the next hour.
  *
- * It writes nothing and stores nothing. Clicking a row selects that task in the
- * tree, which is a jump to the Tasks tab, not a second place to edit it.
+ * The readouts remain derived and the tab stores no local state. Clicking a row
+ * selects that task in the tree, which is a jump to the Tasks tab; the lead item
+ * delegates scheduling to the shared ScheduleMenu and store action.
  */
 export function OverviewTab({ goal: g }: { goal: Goal }) {
   const { availability, allDayBlocks, actions } = useAppStore();
@@ -63,7 +67,39 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
           </p>
         ) : (
           <div className="-mx-[6px]">
-            {o.next.map((item) => (
+            {(() => {
+              const lead = o.next[0]!;
+              const leadNode = findNode(g.nodes, lead.id);
+              return (
+                <div className="flex items-center gap-[8px] px-[6px] py-[5px]">
+                  <button
+                    type="button"
+                    onClick={() => actions.openProject(g.id, lead.id)}
+                    className="flex-1 min-w-0 text-left rounded-[6px] hover:bg-hover px-[4px] py-[3px] -mx-[4px]"
+                  >
+                    <span className="block truncate text-lead text-ink">{lead.title}</span>
+                    <span className="block text-meta text-muted">
+                      {lead.parentTitle && <>{lead.parentTitle}</>}
+                      {lead.parentTitle && lead.estimateMin !== undefined && ' · '}
+                      {lead.estimateMin !== undefined && (
+                        <span className="tabular-nums">{fmtMinutes(lead.estimateMin)}</span>
+                      )}
+                    </span>
+                  </button>
+                  {leadNode && (
+                    <Popover
+                      label="Schedule"
+                      role="menu"
+                      triggerClassName="flex-none text-meta font-semibold text-accent-deep px-[8px] py-[5px] rounded-[6px] hover:bg-accent-tint"
+                      trigger={<span>Schedule</span>}
+                    >
+                      {(close) => <ScheduleMenu goalId={g.id} node={leadNode} close={close} />}
+                    </Popover>
+                  )}
+                </div>
+              );
+            })()}
+            {o.next.slice(1).map((item) => (
               <button
                 key={item.id}
                 type="button"

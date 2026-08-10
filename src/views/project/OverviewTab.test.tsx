@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
 import { goalEffort, fmtMinutes } from '../../lib/effort';
@@ -94,6 +94,54 @@ function section(name: string): HTMLElement {
 }
 
 describe('OverviewTab forecast and week load', () => {
+  it('offers Schedule for the lead Next item and opens the schedule menu', async () => {
+    const goal = datedGoal([
+      leaf('lead', { title: 'Lead task', estimateMin: 30 }),
+      leaf('later', { title: 'Later task', estimateMin: 15 }),
+    ]);
+    await mountOverview(goal);
+
+    const schedule = screen.getByRole('button', { name: 'Schedule' });
+    expect(schedule).toBeTruthy();
+    fireEvent.click(schedule);
+
+    expect(screen.getByRole('menuitem', { name: 'Today' })).toBeTruthy();
+  });
+
+  it('keeps the Schedule control outside the lead task button', async () => {
+    const goal = datedGoal([
+      leaf('lead', { title: 'Lead task', estimateMin: 30 }),
+      leaf('later', { title: 'Later task', estimateMin: 15 }),
+    ]);
+    await mountOverview(goal);
+
+    const openButton = screen.getByRole('button', { name: /Lead task/ });
+    const scheduleButton = screen.getByRole('button', { name: 'Schedule' });
+
+    expect(openButton.contains(scheduleButton)).toBe(false);
+  });
+
+  it('schedules the lead Next item for today from the menu', async () => {
+    vi.setSystemTime(new Date(2026, 7, 11, 8));
+    try {
+      const goal = datedGoal([leaf('lead', { title: 'Lead task', estimateMin: 30 })]);
+      const store = await mountOverview(goal, WORKING_HOURS);
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Today' }));
+      });
+
+      const node = store.getState().goals[0].nodes.find((item) => item.id === 'lead')!;
+      expect(node.blocks?.[0]?.date).toBe(todayStr());
+      expect(typeof node.blocks?.[0]?.startMin).toBe('number');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('states the health verdict with its reason sentence', async () => {
     vi.setSystemTime(new Date(2026, 7, 11, 12));
     try {
