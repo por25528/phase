@@ -109,9 +109,6 @@ export function TaskPage({
   const parent = findParentList(goals, node.id);
   const path = findNodePath(goals, node.id);
   const menuGroups = taskPageActionGroups({
-    isContainer: false,
-    isDone: status === 'done',
-    isMilestone: node.checkpoint === true,
     canIndent: parent !== null && parent.index > 0,
     canOutdent: path !== null && path.length > 1,
   });

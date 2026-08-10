@@ -97,8 +97,8 @@ export function rowActions(ctx: RowActionContext): RowAction[] {
 /**
  * Split a verb list into the runs a separator falls between.
  *
- * Shared by the row's menu and the page's. The grouping is asserted once, so a
- * surface that grouped by eye cannot drift the first time a verb moves.
+ * Shared by the row's menu and the page's. The grouping is asserted once here,
+ * so a surface that grouped by eye cannot drift the first time a verb moves.
  */
 function groupByRun(actions: RowAction[]): RowAction[][] {
   const groups: RowAction[][] = [];
@@ -110,12 +110,7 @@ function groupByRun(actions: RowAction[]): RowAction[][] {
   return groups;
 }
 
-/**
- * The same list, split into the runs a separator falls between.
- *
- * Done here rather than in the menu so the grouping is asserted once. A view
- * that grouped by eye would drift the first time a verb moved.
- */
+/** The same list, split into the runs a separator falls between. */
 export function rowActionGroups(ctx: RowActionContext): RowAction[][] {
   return groupByRun(rowActions(ctx));
 }
@@ -136,8 +131,14 @@ export function rowActionGroups(ctx: RowActionContext): RowAction[][] {
  *
  * `open` is absent because a leaf has nothing behind it, which is exactly the
  * rule `rowActions` already applies.
+ *
+ * Takes only `canIndent`/`canOutdent` — a leaf's page always passes
+ * `isContainer: false`, and `isDone`/`isMilestone` don't gate anything here
+ * (see the docstring above: Schedule/Estimate/Milestone are absent regardless,
+ * because the page already shows them as chips). The full `RowActionContext`
+ * would let a caller satisfy the type with values that are never read.
  */
-export function taskPageActions(ctx: RowActionContext): RowAction[] {
+export function taskPageActions(ctx: Pick<RowActionContext, 'canIndent' | 'canOutdent'>): RowAction[] {
   const out: RowAction[] = [];
   out.push({ id: 'rename', label: 'Rename', hint: '↵', group: 0 });
   if (ctx.canIndent) out.push({ id: 'indent', label: 'Indent', hint: '⌘]', group: 2 });
@@ -147,6 +148,6 @@ export function taskPageActions(ctx: RowActionContext): RowAction[] {
 }
 
 /** The same list, split into the runs a separator falls between. */
-export function taskPageActionGroups(ctx: RowActionContext): RowAction[][] {
+export function taskPageActionGroups(ctx: Pick<RowActionContext, 'canIndent' | 'canOutdent'>): RowAction[][] {
   return groupByRun(taskPageActions(ctx));
 }

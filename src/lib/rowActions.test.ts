@@ -110,13 +110,7 @@ describe('rowActionGroups', () => {
 });
 
 describe('taskPageActions', () => {
-  const leaf: RowActionContext = {
-    isContainer: false,
-    isDone: false,
-    isMilestone: false,
-    canIndent: true,
-    canOutdent: true,
-  };
+  const leaf = { canIndent: true, canOutdent: true };
 
   it('offers rename, indent, outdent and delete', () => {
     expect(taskPageActions(leaf).map((a) => a.id)).toEqual([
