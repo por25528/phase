@@ -67,12 +67,17 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
   );
 
   const open = sections.commitments.filter((i) => !i.done);
-  const divider = nowDividerIndex(open, nowMinute);
-  // One left edge for every title. The cell is reserved for the whole list as
-  // soon as ANY row carries a clock — a row without one still gets the empty
-  // cell, so the column does not go ragged — and costs nothing when no row does.
-  const anyTimed = open.some((i) => i.startMin !== undefined);
+  // "Rest of today" means the REST. The Next block above it is already showing
+  // `focus.item`; listing it again put the same task on screen twice, and the
+  // section's own name promised otherwise.
+  const rest = focus ? open.filter((i) => i.key !== focus.item.key) : open;
+  // Indexed against the list it is drawn in, not the one it was derived from.
+  const divider = nowDividerIndex(rest, nowMinute);
   const doneCount = sections.completedToday.length;
+  // One clock column for every row on the page, Next included.
+  const anyTimed = open.some((i) => i.startMin !== undefined);
+  // What the page is already saying, so the offer below does not repeat it.
+  const shown = useMemo(() => new Set(open.map((i) => i.key)), [open]);
 
   // What to do with the time that is still free — the answer this surface used
   // to withhold on exactly the day it mattered most.
@@ -80,8 +85,9 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
     () => todayPlan({
       goals, tasks, availability, blocks: [], allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute },
+      exclude: shown,
     }),
-    [goals, tasks, availability, allDayBlocks, today, nowMinute],
+    [goals, tasks, availability, allDayBlocks, today, nowMinute, shown],
   );
 
   function complete(item: DailyWorkItem): void {
@@ -145,43 +151,39 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       {(focus || offer.kind !== 'offer') && (
       <section aria-label="Now" className="mb-[24px]">
         {focus ? (
-          <div className="border border-line-2 rounded-card p-[14px] bg-panel">
-            <div className="flex items-center gap-[8px] text-meta text-muted mb-[6px]">
-              <span className="font-semibold text-ink-soft">{focus.current ? 'Now' : 'Next'}</span>
-              {focus.item.startMin !== undefined && (
-                <span className="tabular-nums">{clockLabel(focus.item.startMin)}</span>
-              )}
-              {focus.item.estimateMin !== undefined && (
-                <span className="tabular-nums">{fmtMinutes(focus.item.estimateMin)}</span>
-              )}
+          <>
+            {/* The label is the emphasis now. The row below carries the clock,
+                the estimate and the title exactly as every other row does, so
+                the one thing worth doing sits on the same axis as the rest. */}
+            <div className="px-[8px] mb-[2px] text-meta font-semibold text-ink-soft">
+              {focus.current ? 'Now' : 'Next'}
             </div>
-            <div className="flex items-start gap-[10px]">
-              <span className="pt-[2px]">
+            <TaskRow
+              title={focus.item.title}
+              subtitle={focus.item.goalTitle}
+              emphasis
+              time={
+                anyTimed
+                  ? (focus.item.startMin === undefined ? '' : clockLabel(focus.item.startMin))
+                  : undefined
+              }
+              onOpen={() => openItem(focus.item)}
+              lead={
                 <TodayCheckbox
                   checked={false}
                   onToggle={() => complete(focus.item)}
                   ariaLabel={`Mark "${focus.item.title}" as done`}
                 />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-lead text-ink">{focus.item.title}</div>
-                {/* Why this matters, in the one place it is being asked. */}
-                {focus.item.goalTitle && (
-                  <div className="text-meta text-muted mt-[2px] truncate">{focus.item.goalTitle}</div>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => openItem(focus.item)}
-                aria-label={`Open "${focus.item.title}"`}
-                className="flex-none text-meta text-muted hover:text-ink px-[8px] py-[5px] rounded-field hover:bg-hover inline-flex items-center gap-[5px]"
-              >
-                Open <IconArrowRight size={12} />
-              </button>
-            </div>
-          </div>
+              }
+              meta={
+                focus.item.estimateMin === undefined ? undefined : (
+                  <span className="tabular-nums">{fmtMinutes(focus.item.estimateMin)}</span>
+                )
+              }
+            />
+          </>
         ) : (
-          <p className="text-ui text-muted">
+          <p className="px-[8px] text-ui text-muted">
             {doneCount > 0
               ? `Nothing left today — ${doneCount} done.`
               : 'Nothing committed to today. Plan a task, or capture one with ⌘N.'}
@@ -195,11 +197,11 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           item. `nowFocus` deliberately returns null once everything timed is
           behind us, so a bare `> 1` dropped a single unticked 10:00 standup off
           the page entirely at six in the evening. */}
-      {open.length > (focus ? 1 : 0) && (
+      {rest.length > 0 && (
         <section aria-label="Today’s plan" className="mb-[24px]">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
           <ul>
-            {open.map((item, i) => (
+            {rest.map((item, i) => (
               <li key={item.key}>
                 {/* Where the day turns from behind you to ahead, and says when. */}
                 {i === divider && i > 0 && <NowDivider nowMinute={nowMinute} />}
@@ -271,6 +273,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
                   <TaskRow
                     title={row.title}
                     subtitle={row.goalTitle}
+                    reserveLead
                     onOpen={() => place(row, offer.date, offer.today)}
                     ariaLabel={`Plan “${row.title}” ${dayLabel(offer.date, today)}`}
                     meta={
