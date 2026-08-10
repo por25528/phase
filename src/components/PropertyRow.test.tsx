@@ -9,7 +9,6 @@ import {
   PropertyOption,
   PropertyRow,
   PropertyStatic,
-  PropertyToggle,
 } from './PropertyRow';
 
 /**
@@ -114,38 +113,6 @@ describe('PropertyRow', () => {
       }),
     );
     await user.click(screen.getByRole('button'));
-    expect(screen.queryByRole('menu')).toBeNull();
-  });
-});
-
-describe('PropertyToggle', () => {
-  it('is a switch that reports its state', () => {
-    render(
-      createElement(PropertyToggle, {
-        label: 'Milestone',
-        icon,
-        on: true,
-        onToggle: () => {},
-        children: 'Milestone',
-      }),
-    );
-    expect(screen.getByRole('switch', { name: 'Milestone' }).getAttribute('aria-checked')).toBe('true');
-  });
-
-  it('commits on click without opening a panel', async () => {
-    const user = userEvent.setup();
-    const onToggle = vi.fn();
-    render(
-      createElement(PropertyToggle, {
-        label: 'Milestone',
-        icon,
-        on: false,
-        onToggle,
-        children: 'Not a milestone',
-      }),
-    );
-    await user.click(screen.getByRole('switch'));
-    expect(onToggle).toHaveBeenCalledOnce();
     expect(screen.queryByRole('menu')).toBeNull();
   });
 });

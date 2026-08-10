@@ -71,46 +71,6 @@ export function PropertyRow({
 }
 
 /**
- * A property that is a yes/no rather than a choice — Milestone, today.
- *
- * A popover holding two options would be a menu asking a question its own
- * trigger already answers, so this commits on click and styles the `on` state
- * in the accent rather than opening anything.
- */
-export function PropertyToggle({
-  label,
-  icon,
-  on,
-  onToggle,
-  disabled,
-  children,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  on: boolean;
-  onToggle: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onToggle}
-      className={`w-full flex items-center gap-[8px] px-[6px] py-[5px] rounded-[6px] text-ui text-left hover:bg-hover disabled:opacity-40 disabled:pointer-events-none ${
-        on ? 'text-accent-deep' : 'text-muted'
-      }`}
-    >
-      <span className={`flex-none inline-flex ${on ? 'text-accent' : 'text-faint'}`}>{icon}</span>
-      <span className="flex-1 min-w-0 truncate">{children}</span>
-    </button>
-  );
-}
-
-/**
  * A property with nothing behind it — a container's derived status, which is
  * computed from its descendants and cannot be set here.
  *
