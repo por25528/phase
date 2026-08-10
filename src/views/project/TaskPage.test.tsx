@@ -295,7 +295,7 @@ describe('TaskPage', () => {
   it('offers to break the task into subtasks, since no tree row can here', async () => {
     await mountTask('n1');
 
-    expect(screen.getByRole('button', { name: /Break .* into subtasks/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Break into smaller steps' })).toBeTruthy();
   });
 
   it('edits the estimate in place, without a popover', async () => {

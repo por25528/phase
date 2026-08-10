@@ -2,10 +2,12 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { Goal, GoalNode } from '../../db/types';
 import type { useAppStore } from '../../state/store';
 import { IconSparkle, IconX } from '../../components/Icons';
+import { fmtMinutes } from '../../lib/effort';
 import { buildSubtaskPrompt } from '../../lib/goalImport';
 import { acceptedRows, parseProposal, type ProposalRow } from '../../lib/proposal';
 import { formatEstimateValue, parseEstimateInput } from '../../lib/estimateInput';
 import { todayStr } from '../../lib/dates';
+import { dayLabel } from '../../lib/todayPlan';
 
 /**
  * A proposed breakdown, inline, under the task it belongs to.
@@ -29,11 +31,17 @@ export function ProposalPanel({
   goal,
   node,
   actions,
+  freeDay,
   onClose,
 }: {
   goal: Goal;
   node: GoalNode;
   actions: ReturnType<typeof useAppStore>['actions'];
+  /**
+   * The next day with unbooked time, for pricing the breakdown against reality.
+   * Absent when no availability is set — say nothing rather than guess.
+   */
+  freeDay?: { date: string; freeMin: number };
   onClose: () => void;
 }) {
   const [raw, setRaw] = useState('');
@@ -80,7 +88,12 @@ export function ProposalPanel({
     onClose();
   }
 
-  const taking = acceptedRows(rows ?? []).length;
+  const accepted = acceptedRows(rows ?? []);
+  const taking = accepted.length;
+  // Only what is actually priced. Summing an unestimated row as zero would
+  // make four steps look free.
+  const takingMin = accepted.reduce((n, r) => n + (r.estimateMin ?? 0), 0);
+  const unpriced = accepted.filter((r) => r.estimateMin === undefined).length;
 
   return (
     <div className="mt-[8px] mb-[10px] border border-line-2 rounded-card bg-panel p-[12px]">
@@ -195,6 +208,24 @@ export function ProposalPanel({
               </li>
             ))}
           </ul>
+          {/* What this will cost, beside where it could go. Stated BEFORE the
+              write, because after it the leaf becomes a container and this
+              panel is gone. */}
+          {taking > 0 && (takingMin > 0 || freeDay) && (
+            <p className="mt-[8px] text-meta text-muted">
+              {takingMin > 0 && (
+                <span className="tabular-nums">{fmtMinutes(takingMin)}</span>
+              )}
+              {takingMin > 0 && unpriced > 0 && ` · ${unpriced} unestimated`}
+              {takingMin > 0 && freeDay && ' · '}
+              {freeDay && (
+                <>
+                  {dayLabel(freeDay.date, todayStr())} has{' '}
+                  <span className="tabular-nums">{fmtMinutes(freeDay.freeMin)}</span> free
+                </>
+              )}
+            </p>
+          )}
           <div className="flex items-center gap-[8px] mt-[10px]">
             <button
               type="button"

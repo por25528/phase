@@ -166,8 +166,8 @@ describe('Project page', () => {
        * uses the same typographic curly quotes as the rest of the app's locked
        * visual identity.
        */
-      const breakdown = screen.getByRole('button', { name: /^Break “/ });
-      expect(breakdown.textContent).toContain('Order the topics');
+      const breakdown = screen.getByRole('button', { name: 'Break into smaller steps' });
+      expect(breakdown.textContent).toBe('Break into smaller steps');
       fireEvent.click(breakdown);
       expect(screen.getByRole('heading', { name: /Break down/ })).toBeTruthy();
     } finally {

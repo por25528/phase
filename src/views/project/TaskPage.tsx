@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import type { Goal, GoalNode, StepStatus } from '../../db/types';
 import { useAppStore } from '../../state/store';
 import { DateField } from '../../components/DateField';
@@ -31,10 +31,12 @@ import { planVsEstimate, sortedBlocks } from '../../lib/blocks';
 import { clockLabel } from '../../lib/clock';
 import { fmtD, todayStr } from '../../lib/dates';
 import { fmtMinutes } from '../../lib/effort';
+import { looksOversized } from '../../lib/proposal';
 import { STATUS_WORD, stepStatus } from '../../lib/status';
 import { taskPageActionGroups, type RowActionId } from '../../lib/rowActions';
 import { dayLabel, nextSitting } from '../../lib/rowSchedule';
 import { findNodePath, findParentList } from '../../lib/tree';
+import { nextFreeDay, dayLabel as planDayLabel } from '../../lib/todayPlan';
 
 const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
 
@@ -67,7 +69,9 @@ export function TaskPage({
   backLabel: string;
   onBack: () => void;
 }): JSX.Element {
-  const { goals, sessions, actions } = useAppStore();
+  const { goals, tasks, sessions, availability, allDayBlocks, actions } = useAppStore();
+  void tasks;
+  void planDayLabel;
   const [editingTitle, setEditingTitle] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [draftStart, setDraftStart] = useState(node.start ?? '');
@@ -132,6 +136,13 @@ export function TaskPage({
   // already states the deadline, so repeating it in this chip would be the
   // same fact twice under two different labels.
   const today = todayStr();
+  // Priced against the first day that actually has room, so "add four steps"
+  // can be weighed against somewhere to put them. Null when no availability is
+  // set — the panel then says nothing rather than inventing a day.
+  const freeDay = useMemo(
+    () => nextFreeDay(today, availability, [], allDayBlocks, { date: today, minute: 0 }),
+    [today, availability, allDayBlocks],
+  );
   const next = nextSitting(node, today);
   const whenValue = next
     ? `${dayLabel(next.date, today)} · ${clockLabel(next.startMin)}${
@@ -397,17 +408,35 @@ export function TaskPage({
               goal={goal}
               node={node}
               actions={actions}
+              {...(freeDay ? { freeDay } : {})}
               onClose={() => setProposing(false)}
             />
+          </div>
+        ) : looksOversized(node) ? (
+          /* An invitation, not a button. It appears only when the estimate says
+             this will not fit one sitting — everywhere else the same action is
+             available, quietly, below. */
+          <div className="mt-[14px]">
+            <p className="text-ui text-ink-soft">
+              This looks larger than one focused work session.
+            </p>
+            <button
+              type="button"
+              onClick={() => setProposing(true)}
+              className="mt-[4px] inline-flex items-center gap-[6px] text-ui font-semibold text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[8px]"
+            >
+              <IconSparkle size={12} />
+              Break into smaller steps
+            </button>
           </div>
         ) : (
           <button
             type="button"
             onClick={() => setProposing(true)}
-            className="mt-[14px] inline-flex items-center gap-[6px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[1px]"
+            className="mt-[14px] inline-flex items-center gap-[6px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[8px]"
           >
             <IconSparkle size={12} />
-            Break “{node.title}” into subtasks
+            Break into smaller steps
           </button>
         )}
 
