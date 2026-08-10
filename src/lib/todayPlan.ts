@@ -115,10 +115,11 @@ export function proposalRows(
   tasks: Task[],
   week: string,
   today: string,
+  exclude: ReadonlySet<string> = new Set(),
 ): ProposalRow[] {
   const firsts: { item: BacklogItem; goalTitle: string }[] = [];
   for (const group of backlogGroups(goals, tasks, week, today)) {
-    const item = group.items[0];
+    const item = group.items.find((i) => !exclude.has(`${i.kind}:${i.id}`));
     if (item) firsts.push({ item, goalTitle: group.goalTitle });
   }
   const ordered = sortByDue(firsts.map((f) => f.item), today);
@@ -165,15 +166,17 @@ export interface TodayPlanInput {
   today: string;
   week: string;
   now: Now;
+  /** Keys (`${kind}:${id}`) the caller is already showing. */
+  exclude?: ReadonlySet<string>;
 }
 
 export function todayPlan(input: TodayPlanInput): TodayPlan {
-  const { goals, tasks, availability, blocks, allDayBlocks, today, week, now } = input;
+  const { goals, tasks, availability, blocks, allDayBlocks, today, week, now, exclude } = input;
   // Checked before the candidates: with no hours set there is nothing useful to
   // say about having nothing to do, and one of the two answers is actionable.
   if (availability.length === 0) return { kind: 'no-hours' };
 
-  const rows = proposalRows(goals, tasks, week, today);
+  const rows = proposalRows(goals, tasks, week, today, exclude);
   if (rows.length === 0) return { kind: 'none' };
 
   const day = nextFreeDay(today, availability, blocks, allDayBlocks, now);

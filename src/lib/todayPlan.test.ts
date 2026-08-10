@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, Goal, Task } from '../db/types';
-import { PLAN_DAY_HORIZON, PROPOSAL_MAX, nextFreeDay, offerHeading, todayPlan } from './todayPlan';
+import { PLAN_DAY_HORIZON, PROPOSAL_MAX, nextFreeDay, offerHeading, proposalRows, todayPlan } from './todayPlan';
 import { makeBlock } from './blocks';
 
 // Wednesday. weekDates() orders dow 0 = Mon, so Wednesday is dow 2.
@@ -201,6 +201,50 @@ describe('todayPlan', () => {
   it('leaves out work that is already on the calendar', () => {
     const g = goal({ nodes: [{ id: 'n1', title: 'Draft', blocks: [makeBlock(TODAY, 9 * 60, 60)] }] });
     expect(plan({ goals: [g] })).toEqual({ kind: 'none' });
+  });
+});
+
+describe('todayPlan exclusions', () => {
+  const baseInput = {
+    goals: [goal({ nodes: [{ id: 'n1', title: 'Draft' }] })],
+    tasks: [],
+    availability: ALWAYS,
+    blocks: [],
+    allDayBlocks: false,
+    today: TODAY,
+    week: WEEK,
+    now: { date: TODAY, minute: 10 * 60 },
+  };
+
+  it('drops a row the caller says is already on the page', () => {
+    const rows = proposalRows(baseInput.goals, baseInput.tasks, WEEK, TODAY);
+    expect(rows.length).toBeGreaterThan(0);
+    const first = rows[0];
+    const after = proposalRows(baseInput.goals, baseInput.tasks, WEEK, TODAY, new Set([first.key]));
+    expect(after.map((r) => r.key)).not.toContain(first.key);
+  });
+
+  it('falls through to the next item in the same project', () => {
+    const goals = [goal({
+      nodes: [
+        { id: 'n1', title: 'Draft' },
+        { id: 'n2', title: 'Revise' },
+      ],
+    })];
+    const all = proposalRows(goals, [], WEEK, TODAY);
+    const target = all[0];
+    const after = proposalRows(goals, [], WEEK, TODAY, new Set([target.key]));
+    const sameProject = after.find((r) => r.goalTitle === target.goalTitle);
+    expect(sameProject).toBeTruthy();
+    expect(sameProject!.key).not.toBe(target.key);
+  });
+
+  it('threads the exclusion through todayPlan', () => {
+    const open = todayPlan({ ...baseInput });
+    expect(open.kind).toBe('offer');
+    const keys = open.kind === 'offer' ? open.rows.map((r) => r.key) : [];
+    const filtered = todayPlan({ ...baseInput, exclude: new Set(keys) });
+    expect(filtered.kind).toBe('none');
   });
 });
 
