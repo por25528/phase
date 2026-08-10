@@ -403,8 +403,10 @@ export interface NextAction {
 // The single "what's next" line: a leaf already planned for this week wins, then
 // the first workable leaf (a 'doing' one preferred over 'todo'), then the
 // breakdown/complete prompts. Preference order mirrors how the planner surfaces
-// work, and blocked leaves are excluded exactly as `firstOpenLeaf` (tree.ts)
-// excludes them — two functions answering "what's next" must not disagree.
+// work. Both functions exclude blocked leaves, so neither will name one, but
+// their preferences diverge: `nextOpenAction` additionally prefers a leaf
+// committed to this week, while `firstOpenLeaf` stays doing-then-todo in tree
+// order.
 export function nextOpenAction(g: Goal, today: string): NextAction {
   const leaves = leafCount(g.nodes);
   if (leaves.total === 0) return { kind: 'needs-breakdown', title: 'No tasks yet — break the goal into actions' };

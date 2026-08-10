@@ -154,7 +154,7 @@ export function EventBlock({
           // need — noise on a surface whose whole job is to be scannable. A
           // DONE block keeps it visible: that tick is state, not an offer.
           className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent ${
-            block.done ? 'opacity-100' : 'quiet-control'
+            block.done ? 'opacity-100 transition-opacity duration-150' : 'quiet-control'
           } ${
             compact ? 'top-1/2 -translate-y-1/2 right-[22px] bg-panel/90 rounded-[4px]' : 'top-0 right-[20px]'
           }`}

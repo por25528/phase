@@ -90,11 +90,16 @@ function CardFace({
       </div>
 
       {/*
-        ONE line of remaining work, where a percentage, a full progress bar, a
-        "Next · …" line and a weekly planned sentence used to stack. The bar in
-        particular claimed to be the card's primary object while measuring a
-        figure that silently changes basis; minutes have one meaning and are
-        what a person plans against.
+        The old card deliberately consolidated an unconditional "Next · …" line
+        with a due chip, percentage, full progress bar and weekly planned
+        sentence. Its three state fallbacks — "All tasks complete", "All open
+        tasks are blocked" and "No tasks yet" — duplicated what the badge,
+        effort line and blocked indicator already said. This conditional line
+        names a real next task only, so it is one actionable sentence in the
+        card's title/effort/next/badge shape, not a return to the dashboard
+        stack. The bar in particular claimed to be the card's primary object
+        while measuring a figure that silently changes basis; minutes have one
+        meaning and are what a person plans against.
       */}
       {effort.total > 0 && (
         <p className="text-compact text-ink-soft tabular-nums">
