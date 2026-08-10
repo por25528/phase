@@ -296,3 +296,32 @@ describe('the notes editor', () => {
     expect(/\.note-prose:focus-within\s*\{[^}]*border-line\b[^}]*\}/.test(css)).toBe(true);
   });
 });
+
+/**
+ * Motion is restrained by agreement, not by taste: 120–200ms for hover, menus,
+ * property changes, selection, expansion and completion. Anything longer reads
+ * as the interface thinking about it.
+ *
+ * Deliberately NOT covered: the focus pulse in `Project.tsx`, which is a Web
+ * Animations call rather than a CSS class, is 1400ms on purpose, and already
+ * checks `prefers-reduced-motion` itself.
+ */
+describe('motion', () => {
+  const inBand = (ms: number) => ms >= 120 && ms <= 200;
+
+  it('keeps every CSS duration between 120ms and 200ms', () => {
+    const bad = offenders(/duration-\[(\d+)ms\]/g)
+      .filter((hit) => {
+        const ms = /duration-\[(\d+)ms\]/.exec(hit)?.[1];
+        return ms != null && !inBand(Number(ms));
+      });
+    expect(bad).toEqual([]);
+  });
+
+  it('keeps the stylesheet transitions in band', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const ms = [...css.matchAll(/transition:[^;]*?(\d+)ms/g)].map((m) => Number(m[1]));
+    const s = [...css.matchAll(/transition:[^;]*?(\d*\.?\d+)s\b/g)].map((m) => Number(m[1]) * 1000);
+    expect([...ms, ...s].filter((v) => !inBand(v))).toEqual([]);
+  });
+});

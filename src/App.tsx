@@ -531,7 +531,7 @@ export function App() {
       <div
         role="status"
         aria-live="polite"
-        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[220ms] flex items-center gap-[12px] whitespace-nowrap ${
+        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[200ms] flex items-center gap-[12px] whitespace-nowrap ${
           pendingUndo
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-[20px] pointer-events-none'
@@ -557,7 +557,7 @@ export function App() {
       <div
         role="status"
         aria-live="polite"
-        className={`fixed left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[220ms] ${
+        className={`fixed left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[200ms] ${
           pendingUndo ? 'bottom-[68px]' : 'bottom-[20px]'
         } ${
           toast
