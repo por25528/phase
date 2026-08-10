@@ -78,10 +78,10 @@ export function StepPanel({ goal, node, actions }: {
 
   return (
     <div className="px-[14px] py-[12px]">
-      {/* Header. The title carries the panel; the two verbs beside it are
-          icon-sized because they are the same two verbs on every task, and a
-          word-width `Close` next to a word-width `Milestone` made the header
-          read as a toolbar with a heading in it. */}
+      {/* Header. The title carries the panel; the two verbs beside it —
+          Open and Close — are icon-sized because they are the same two verbs
+          on every container, and spelling them out in words would make the
+          header read as a toolbar with a heading in it. */}
       <div className="flex items-start gap-[6px]">
         <h2 aria-label={node.title} className="m-0 flex-1 min-w-0">
           {editingTitle ? (
@@ -129,9 +129,10 @@ export function StepPanel({ goal, node, actions }: {
         </button>
       </div>
 
-      {/* Properties. Four short facts that used to cost four labelled sections
-          and ~240 vertical pixels; the editors are one click behind the values
-          they edit. */}
+      {/* Properties. A derived status (read-only — a container carries no
+          status of its own) and a date span, in the place that used to cost
+          labelled sections and ~240 vertical pixels; the span's editor is one
+          click behind the value it edits. */}
       <div className="mt-[10px] -mx-[6px]">
         <PropertyStatic icon={<StatusMark status={containerStatus(node)} />}>
           {STATUS_WORD[containerStatus(node)]}

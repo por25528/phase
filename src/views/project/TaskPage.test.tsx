@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, Session } from '../../db/types';
 import { makeBlock } from '../../lib/blocks';
@@ -183,6 +183,90 @@ describe('TaskPage', () => {
     });
 
     expect(store.getState().goals[0].nodes[0].status).toBe('done');
+  });
+
+  it('lists the four statuses in order, with the current one checked', async () => {
+    await mountTask('n1');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Status: / }));
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitemradio');
+
+    expect(items.map((r) => r.textContent)).toEqual(['to do', 'in progress', 'blocked', 'done']);
+    expect(items[0].getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('moves a task to a non-done status through the popover, not just done', async () => {
+    const store = await mountTask('n1');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Status: / }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitemradio', { name: /^in progress$/i }));
+    });
+
+    expect(store.getState().goals[0].nodes[0].status).toBe('doing');
+    expect(screen.getByRole('button', { name: 'Status: in progress' })).toBeTruthy();
+  });
+
+  it('has no Blocked field for a task that is not blocked', async () => {
+    await mountTask('n1');
+
+    expect(screen.queryByLabelText('Blocked on')).toBeNull();
+  });
+
+  it('shows the Blocked field once set to blocked from the popover, and drops it on leaving blocked', async () => {
+    const store = await mountTask('n1');
+
+    fireEvent.click(screen.getByRole('button', { name: /^Status: / }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitemradio', { name: /^blocked$/i }));
+    });
+    expect(store.getState().goals[0].nodes[0].status).toBe('blocked');
+    expect(screen.getByLabelText('Blocked on')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Status: / }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitemradio', { name: /^to do$/i }));
+    });
+
+    // 'todo' is never written — absent IS 'todo' (CLAUDE.md).
+    expect(store.getState().goals[0].nodes[0].status).toBeUndefined();
+    expect(screen.queryByLabelText('Blocked on')).toBeNull();
+  });
+
+  it('makes a task a milestone from its chip, and back', async () => {
+    const store = await mountTask('n1');
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Make "Run 5k" a milestone' }));
+
+    expect(store.getState().goals[0].nodes[0].checkpoint).toBe(true);
+    const toggledOn = screen.getByRole('switch', { name: 'Stop treating "Run 5k" as a milestone' });
+    expect(toggledOn).toBeTruthy();
+    expect(toggledOn.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(toggledOn);
+
+    expect(store.getState().goals[0].nodes[0].checkpoint).toBeUndefined();
+    const toggledOff = screen.getByRole('switch', { name: 'Make "Run 5k" a milestone' });
+    expect(toggledOff.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('schedules an unplanned task onto today from the Schedule chip', async () => {
+    vi.setSystemTime(new Date(2026, 6, 27, 8));
+    dbMocks.loadAvailability.mockResolvedValueOnce(
+      [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 })),
+    );
+    const store = await mountTask('n2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule: Not scheduled' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Today' }));
+    });
+
+    const node = store.getState().goals[0].nodes[1];
+    expect(node.blocks?.[0].date).toBe('2026-07-27');
+    expect(typeof node.blocks?.[0].startMin).toBe('number');
+
+    vi.useRealTimers();
   });
 
   it('offers rename and delete for a top-level leaf, and not the chip verbs', async () => {

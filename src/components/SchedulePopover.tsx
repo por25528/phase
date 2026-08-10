@@ -31,10 +31,9 @@ export function ScheduleMenu({
   const { actions } = useAppStore();
   const placed = isPlaced(node);
   // A week commitment with no sitting yet (`plannedWeek` set, no `blocks`) is
-  // still something to clear — `StepPanel`'s old "not placed on a day" row had
-  // its own Clear button for exactly this, and this menu is meant to be the
-  // one place both surfaces get scheduling from. Gating on `placed` alone left
-  // that commitment unclearable from here.
+  // still something to clear. `TaskPage`'s Schedule chip is the only surface
+  // that opens this menu, so it is the one place that commitment can be
+  // cleared from — gating on `placed` alone would leave it unclearable.
   const committed = placed || node.plannedWeek !== undefined;
 
   return (

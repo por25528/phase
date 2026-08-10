@@ -116,9 +116,10 @@ async function preparePanel(goal: Goal, sessions: Session[] = []): Promise<Store
 /**
  * Open one property's popover.
  *
- * The panel states four short facts and keeps their editors one click behind
- * the value each edits, so a test that wants an editor has to ask for it the
- * way a person does. The trigger's accessible name is `<Property>: <value>`.
+ * The panel states a derived status and a date span, and keeps the span's
+ * editor one click behind the value it edits, so a test that wants the editor
+ * has to ask for it the way a person does. The trigger's accessible name is
+ * `<Property>: <value>`.
  */
 function openProperty(name: string): void {
   fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}: `) }));
@@ -270,6 +271,19 @@ describe('StepPanel', () => {
     expect(store.getState().openStepId).toBeNull();
   });
 
+  it('renders the container\'s notes', async () => {
+    const notedContainer: Goal = {
+      id: 'g1', title: 'Project',
+      nodes: [{
+        id: 'n1', title: 'Auth work', notes: 'Note A',
+        children: [{ id: 'n2', title: 'Configure provider' }],
+      }],
+    };
+    await mountPanel(notedContainer);
+
+    expect(screen.getByLabelText('Task notes').textContent).toContain('Note A');
+  });
+
   it('routes a cleared span date through clearNodeDates', async () => {
     const store = await mountPanel(containerNode);
     openProperty('Dates');
@@ -287,10 +301,12 @@ describe('StepPanel', () => {
 
 describe('ScheduleMenu', () => {
   /**
-   * `StepPanel`'s own "not placed on a day" row has its own hardcoded Clear
-   * button for a `plannedWeek`-only commitment, so mounting `StepPanel` on
-   * `committedLeaf` never opens `ScheduleMenu` at all — this renders the menu
-   * directly, the same shape `TaskPage` opens it in, where the hole actually is.
+   * `StepPanel` no longer carries a WHEN cell at all — a leaf opens as its own
+   * `TaskPage` now, and `TaskPage` is the only surface left that opens
+   * `ScheduleMenu`, from its Schedule chip. This renders the menu directly,
+   * against the same goal fixtures `StepPanel`'s own tests use, so the
+   * `plannedWeek`-only commitment case stays covered without re-mounting
+   * `TaskPage` just to reach it.
    */
   async function mountMenu(goal: Goal): Promise<Store> {
     const store = await preparePanel(goal);
