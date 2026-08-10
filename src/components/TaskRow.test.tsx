@@ -38,6 +38,7 @@ describe('TaskRow', () => {
     const lead = screen.getByRole('button', { name: 'Mark done' });
     expect(rowButton.contains(lead)).toBe(false);
     expect(lead.parentElement?.className).toContain('z-10');
+    expect(lead.parentElement?.className).toContain('relative');
   });
 
   it('stretches the row overlay across the button', () => {
@@ -47,6 +48,15 @@ describe('TaskRow', () => {
     expect(overlay).not.toBe(null);
     expect(overlay?.className).toContain('absolute');
     expect(overlay?.className).toContain('inset-0');
+  });
+
+  it('draws the focus ring on the stretched overlay', () => {
+    render(<TaskRow title="Read chapter 1" onOpen={() => {}} />);
+    const rowButton = screen.getByRole('button', { name: 'Read chapter 1' });
+    const overlay = rowButton.querySelector('[aria-hidden="true"]');
+    expect(rowButton.className).toContain('group');
+    expect(overlay?.className).toContain('group-focus-visible:ring-2');
+    expect(overlay?.className).toContain('group-focus-visible:ring-accent');
   });
 
   it('does not open the row when the lead control is clicked', () => {
@@ -84,6 +94,7 @@ describe('TaskRow', () => {
     const { container: withTime } = render(<TaskRow title="A" time="14:00" />);
     expect(withTime.textContent).toContain('14:00');
     expect(withTime.querySelector('[data-row-time]')?.className).toContain('w-[48px]');
+    expect(withTime.querySelector('[data-row-time]')?.className).not.toContain('z-10');
     cleanup();
     const { container: without } = render(<TaskRow title="A" />);
     expect(without.querySelector('[data-row-time]')).toBe(null);

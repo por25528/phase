@@ -28,7 +28,8 @@ export interface TaskRowProps {
  * invalid — it swallows the inner control's accessible name. So the title is
  * the ONLY button and it carries an absolutely-positioned overlay stretched
  * across the row; the lead control is a sibling raised above that overlay.
- * Two separate focusable elements, a full-row target, no nesting.
+ * One guaranteed focusable element (the title button), with a second permitted
+ * when a caller supplies an interactive lead, a full-row target, no nesting.
  *
  * Focus lands on the title button, while the overlay draws the ring at row
  * scale: a ring around 14px of text inside a 720px row reads as a bug.
@@ -72,8 +73,9 @@ export function TaskRow({
             aria-label={ariaLabel}
             className="group block w-full text-left focus:outline-none"
           >
-            {/* The stretched target. `aria-hidden` because the button already
-                has its name, and an empty span would otherwise be announced. */}
+            {/* The stretched target. `aria-hidden` because the button's
+                accessible name comes from its title/subtitle content (or an
+                explicit ariaLabel), while this empty span is purely visual. */}
             <span
               aria-hidden="true"
               className="absolute inset-0 rounded-[6px] group-focus-visible:ring-2 group-focus-visible:ring-accent"
