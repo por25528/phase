@@ -207,8 +207,15 @@
 
   /* Markdown notes use the app's type and colour tokens rather than Tiptap's
      stylesheet. The editor content is the direct child of this wrapper. */
+  /* The border exists at rest and is simply not painted, so nothing moves when
+     it appears — an empty note reads as page, and the box arrives only once
+     you are actually writing in it. */
   .note-prose {
-    @apply w-full border border-line rounded-[6px] bg-transparent px-[9px] py-[7px] text-body leading-[1.6] text-ink;
+    @apply w-full border border-transparent rounded-[6px] bg-transparent px-[9px] py-[7px] text-body leading-[1.6] text-ink;
+    transition: border-color .15s;
+  }
+  .note-prose:focus-within {
+    @apply border-line;
   }
   .note-prose > div {
     @apply min-h-[120px] outline-none;

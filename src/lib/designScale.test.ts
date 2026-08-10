@@ -255,3 +255,26 @@ describe('dashed borders', () => {
     ]);
   });
 });
+
+/**
+ * An empty note should read as empty page, not as an empty form field.
+ *
+ * `.note-prose` is the only large outlined box left on a task page, and it is
+ * outlined even when it holds nothing — which is what made a task detail feel
+ * like a form rather than a document. The border still EXISTS at rest, so the
+ * text does not shift by a pixel when it appears; it is simply transparent
+ * until the editor has focus.
+ */
+describe('the notes editor', () => {
+  const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+  const rule = /\.note-prose\s*\{[^}]*\}/.exec(css)?.[0] ?? '';
+
+  it('keeps its border transparent at rest', () => {
+    expect(rule).toContain('border-transparent');
+    expect(/border-line\b/.test(rule)).toBe(false);
+  });
+
+  it('paints that border only while it is focused', () => {
+    expect(/\.note-prose:focus-within\s*\{[^}]*border-line\b[^}]*\}/.test(css)).toBe(true);
+  });
+});
