@@ -117,4 +117,42 @@ describe('a leaf opens as a page', () => {
     expect(screen.getByRole('heading', { name: 'Read the notes' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Chapter 2/ })).toBeTruthy();
   });
+
+  /**
+   * `openProject(goalId, nodeId)` — the ⌘K/Today/RecapPanel/NodeLane arrival,
+   * not `openStep` — is what sets `focusNodeId` in the first place. `#projectBody`
+   * (the pulse effect's target) only exists on the tabs branch, so while a
+   * leaf's page is open the effect must hold the pointer rather than fire into
+   * an element that was never rendered and consume it for nothing. Final review
+   * fix #1: this used to fire anyway, at `#projectBody [data-node-id=…]`, found
+   * nothing, and cleared `focusNodeId` after 70ms — so Back landed on a tree
+   * with no row highlighted for the task the user had just come from.
+   */
+  it('holds the pulse pointer while a leaf page is open, and fires it once Back closes the page', async () => {
+    vi.useFakeTimers();
+    try {
+      HTMLElement.prototype.scrollIntoView = vi.fn();
+      vi.resetModules();
+      dbMocks.loadState.mockResolvedValueOnce({
+        goals: [structuredClone(seed)], habits: [], tasks: [], sessions: [],
+      });
+      const store = await import('../../state/store');
+      await store.initStore();
+      store.actions.openProject('g1', 'n1');
+      const { Project } = await import('../Project');
+      const Host = () => { store.useAppStore(); return createElement(Project); };
+      render(createElement(Host));
+
+      expect(store.getState().focusNodeId).toBe('n1');
+      await act(async () => { vi.advanceTimersByTime(70); });
+      expect(store.getState().focusNodeId).toBe('n1');
+
+      await act(async () => { store.actions.closeStep(); });
+      await act(async () => { vi.advanceTimersByTime(70); });
+
+      expect(store.getState().focusNodeId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

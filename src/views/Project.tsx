@@ -45,6 +45,17 @@ export function Project() {
   const returnView = projectReturnView === 'project' ? 'goals' : projectReturnView;
   const returnLabel = VIEW_LABELS[returnView];
 
+  // A leaf opens as its own page — the second lens on the goal, beside the
+  // milestone workspace above. Computed at render, so a task that gains
+  // children (indent, an accepted breakdown) becomes a container on the very
+  // next paint with no special case here. Hoisted above the effects (rather
+  // than left by the `if (!goal)` guard below, where it used to live) because
+  // the focus effect below needs it: `#projectBody` only exists on the tabs
+  // branch, so a focus arriving while a leaf's page is open must wait rather
+  // than fire into an element that was never rendered.
+  const openNode = goal && openStepId ? findNode(goal.nodes, openStepId) : null;
+  const openLeaf = openNode && !openNode.children?.length ? openNode : null;
+
   // A project deleted while its page is open (undo toast, another surface)
   // leaves nothing to render. Go back rather than showing an empty shell.
   useEffect(() => {
@@ -53,7 +64,15 @@ export function Project() {
 
   // Scroll a focused row into view and pulse it. Done through the DOM so the
   // shared GoalTree needs no focus-aware prop, exactly as the drawer did.
+  //
+  // While a leaf's own page is open, `#projectBody` (the tabs branch below)
+  // isn't rendered at all — querying for the row would find nothing and still
+  // consume `focusNodeId` via `clearFocusNode()`, so Back would land on a tree
+  // with nothing pointing at the row the user came from. Waiting for the page
+  // to close (`openLeaf` in the dependency array) lets the pulse fire then,
+  // instead of being silently swallowed while it is open.
   useEffect(() => {
+    if (openLeaf) return;
     if (!focusNodeId || projectTab !== 'steps') return;
     const reduced =
       typeof window !== 'undefined' &&
@@ -77,7 +96,7 @@ export function Project() {
       actions.clearFocusNode();
     }, 70); // let expand/fade-in settle before measuring
     return () => clearTimeout(t);
-  }, [focusNodeId, projectTab, actions]);
+  }, [focusNodeId, projectTab, openLeaf, actions]);
 
   // A container that stopped being one — deleted, or emptied by an undo —
   // cannot host a workspace. Fall back to the goal rather than to nothing.
@@ -94,13 +113,6 @@ export function Project() {
       </div>
     );
   }
-
-  // A leaf opens as its own page — the second lens on the goal, beside the
-  // milestone workspace above. Computed at render, so a task that gains
-  // children (indent, an accepted breakdown) becomes a container on the very
-  // next paint with no special case here.
-  const openNode = openStepId ? findNode(goal.nodes, openStepId) : null;
-  const openLeaf = openNode && !openNode.children?.length ? openNode : null;
 
   if (openLeaf) {
     return (

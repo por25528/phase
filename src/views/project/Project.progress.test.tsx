@@ -139,14 +139,18 @@ describe('Project page', () => {
     expect(screen.queryByRole('button', { name: 'Close task details' })).toBeNull();
   });
 
-  it('keeps the navigated step selected after the pulse pointer clears', async () => {
+  it('keeps the navigated step selected, and holds the pulse pointer while its page is open', async () => {
     vi.useFakeTimers();
     try {
       HTMLElement.prototype.scrollIntoView = vi.fn();
       const store = await mountPage('n2');
 
+      // `n2` is a leaf, so `TaskPage` renders instead of `#projectBody` — the
+      // pulse effect has nowhere to scroll to and must not fire, or it would
+      // consume `focusNodeId` for a highlight nobody sees (final-review fix
+      // #1). The pointer stays live so Back can still pulse the row.
       act(() => { vi.advanceTimersByTime(70); });
-      expect(store.getState().focusNodeId).toBeNull();
+      expect(store.getState().focusNodeId).toBe('n2');
       expect(store.getState().openStepId).toBe('n2');
 
       /*
