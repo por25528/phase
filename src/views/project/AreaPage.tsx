@@ -10,7 +10,7 @@ import { InlineEdit } from '../../components/InlineEdit';
 import { ProgressBar } from '../../components/ProgressBar';
 import { IconCircle, IconPlus } from '../../components/Icons';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { findNode } from '../../lib/tree';
+import { findNode, isLeafNode } from '../../lib/tree';
 import { isDone, stepStatus } from '../../lib/status';
 import { nodePct } from '../../lib/pct';
 import { formatEstimateValue } from '../../lib/estimateInput';
@@ -47,7 +47,7 @@ export function AreaPage({ goal: g, node }: { goal: Goal; node: GoalNode }) {
   const [editingTitle, setEditingTitle] = useState(false);
   const wide = useMediaQuery('(min-width: 768px)');
   const found = openStepId ? findNode(node.children ?? [], openStepId) : null;
-  const openLeaf = found && !found.children?.length ? found : null;
+  const openLeaf = found && isLeafNode(found) ? found : null;
   // The docked inspector is container-only now.
   const openNode = found && !openLeaf ? found : null;
   const children = node.children ?? [];

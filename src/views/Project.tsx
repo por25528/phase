@@ -8,7 +8,7 @@ import { CalendarTab } from './project/CalendarTab';
 import { NotesTab } from './project/NotesTab';
 import { AreaPage } from './project/AreaPage';
 import { TaskPage } from './project/TaskPage';
-import { findNode } from '../lib/tree';
+import { findNode, isLeafNode } from '../lib/tree';
 
 /**
  * Five views over one task store.
@@ -54,7 +54,7 @@ export function Project() {
   // branch, so a focus arriving while a leaf's page is open must wait rather
   // than fire into an element that was never rendered.
   const openNode = goal && openStepId ? findNode(goal.nodes, openStepId) : null;
-  const openLeaf = openNode && !openNode.children?.length ? openNode : null;
+  const openLeaf = openNode && isLeafNode(openNode) ? openNode : null;
 
   // A project deleted while its page is open (undo toast, another surface)
   // leaves nothing to render. Go back rather than showing an empty shell.

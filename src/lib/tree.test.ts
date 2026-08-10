@@ -10,6 +10,8 @@ import {
   firstOpenLeaf,
   insertSiblingAfter,
   findInAll,
+  isLeafNode,
+  isContainerNode,
 } from './tree';
 import { goalPct } from './pct';
 import type { Goal, GoalNode, StepStatus } from '../db/types';
@@ -28,6 +30,28 @@ function container(id: string, children: GoalNode[]): GoalNode {
 function makeGoal(id: string, nodes: GoalNode[]): Goal {
   return { id, title: id, start: '2026-01-01', deadline: '2026-12-31', nodes };
 }
+
+// ---- isLeafNode / isContainerNode ----
+
+describe('isLeafNode', () => {
+  it('is true when the node has no children key', () => {
+    const node: GoalNode = { id: 'a', title: 'a' };
+    expect(isLeafNode(node)).toBe(true);
+    expect(isContainerNode(node)).toBe(false);
+  });
+
+  it('is true when children is an empty array', () => {
+    const node: GoalNode = { id: 'a', title: 'a', children: [] };
+    expect(isLeafNode(node)).toBe(true);
+    expect(isContainerNode(node)).toBe(false);
+  });
+
+  it('is false when children is populated', () => {
+    const node: GoalNode = { id: 'a', title: 'a', children: [leaf('b', false)] };
+    expect(isLeafNode(node)).toBe(false);
+    expect(isContainerNode(node)).toBe(true);
+  });
+});
 
 // ---- cloneGoals ----
 

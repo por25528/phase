@@ -24,6 +24,21 @@ export function findInAll(goals: Goal[], id: string): GoalNode | null {
   return null;
 }
 
+/**
+ * A leaf carries no `children` key, or an empty one — the same ambiguity
+ * `blocks` deliberately avoids by staying absent (see CLAUDE.md). Here it is
+ * unavoidable: `addChild` and `indentNode` both leave a container with an
+ * empty array mid-edit, so "no key" and "empty array" have to mean the same
+ * thing, unlike `blocks` where an empty array would be a real state to distinguish.
+ */
+export function isLeafNode(node: GoalNode): boolean {
+  return !node.children?.length;
+}
+
+export function isContainerNode(node: GoalNode): boolean {
+  return !isLeafNode(node);
+}
+
 // Mutating removal — mirrors prototype's removeNode exactly
 export function removeNode(nodes: GoalNode[], id: string): boolean {
   for (let i = 0; i < nodes.length; i++) {

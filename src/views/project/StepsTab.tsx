@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useAppStore } from '../../state/store';
 import type { Goal } from '../../db/types';
 import { GoalTree } from '../../components/GoalTree';
-import { findNode } from '../../lib/tree';
+import { findNode, isContainerNode } from '../../lib/tree';
 import { TEMPLATES, inferGoalType } from '../../lib/goalType';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { StepPanel } from './StepPanel';
@@ -22,10 +22,12 @@ export function StepsTab({
   const isCompleted = !!g.completedAt;
   const hasSteps = g.nodes.length > 0;
   const wide = useMediaQuery('(min-width: 768px)');
-  // Container-only: `Project` returns `TaskPage` before this renders when the
-  // open node is a leaf, so a leaf never reaches the docked panel.
+  // Belt-and-braces: `Project` already returns `TaskPage` before this renders
+  // when the open node is a leaf, so this narrowing is unreachable today. Kept
+  // anyway because the guard is one expression on a component that must never
+  // receive a leaf — cheap insurance, not a dead rendering branch.
   const found = openStepId ? findNode(g.nodes, openStepId) : null;
-  const openNode = found && found.children?.length ? found : null;
+  const openNode = found && isContainerNode(found) ? found : null;
   const goalType = g.type ?? inferGoalType(g.title);
 
   return (
