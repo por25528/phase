@@ -2,7 +2,10 @@ import type { Goal } from '../../db/types';
 import { useAppStore } from '../../state/store';
 import { ProgressBar } from '../../components/ProgressBar';
 import { IconCircle, IconDiamond, IconWarning } from '../../components/Icons';
-import { goalOverview, overviewIsEmpty } from '../../lib/overview';
+import { goalOverview, overviewIsEmpty, goalWeekLoad } from '../../lib/overview';
+import { goalHealth, HEALTH_WORD } from '../../lib/health';
+import { describeVelocity, projectVelocity } from '../../lib/velocity';
+import { weekOf } from '../../lib/plan';
 import { fmtMinutes } from '../../lib/effort';
 import { formatEstimateValue } from '../../lib/estimateInput';
 import { fmtD, todayStr } from '../../lib/dates';
@@ -20,8 +23,9 @@ import { goalPct } from '../../lib/pct';
  * tree, which is a jump to the Tasks tab, not a second place to edit it.
  */
 export function OverviewTab({ goal: g }: { goal: Goal }) {
-  const { actions } = useAppStore();
-  const o = goalOverview(g, todayStr());
+  const { availability, allDayBlocks, actions } = useAppStore();
+  const today = todayStr();
+  const o = goalOverview(g, today);
 
   // An empty goal is served by the Tasks tab's own "break this down" offer.
   // Three empty sections over a 0% bar would say less than one sentence does.
@@ -34,6 +38,18 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
   }
 
   const pct = Math.round(goalPct(g));
+
+  /*
+   * `blocks` is empty because no calendar is connected in this build — the same
+   * argument `ProjectHeader` passes, for the same reason: when one lands the
+   * figure only shrinks, which is the direction `goalHealth` is already
+   * conservative in.
+   */
+  const verdict = goalHealth({
+    goal: g, effort: o.effort, today, windows: availability, blocks: [], allDayBlocks,
+  });
+  const pace = describeVelocity(projectVelocity(g, today));
+  const week = goalWeekLoad(g, weekOf(today));
 
   return (
     <div className="max-w-[620px] flex flex-col gap-[22px]">
@@ -102,6 +118,50 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
           <p className="m-0 mt-[4px] px-[6px] text-meta text-warn inline-flex items-center gap-[5px]">
             <IconWarning size={12} />
             {o.blocked} blocked
+          </p>
+        )}
+      </section>
+
+      <section>
+        <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">Forecast</h3>
+        <p className="m-0 px-[6px] text-ui text-ink-soft">
+          <span
+            className={
+              verdict.health === 'at-risk' || verdict.health === 'blocked'
+                ? 'font-semibold text-warn'
+                : 'font-semibold text-ink'
+            }
+          >
+            {HEALTH_WORD[verdict.health]}
+          </span>
+          {' — '}
+          {verdict.reason}
+        </p>
+        {/* The observed rate and runway, never a predicted finish date:
+            `describeVelocity` refuses to name one from a trailing average, and
+            this surface is not the place to overrule it. */}
+        {pace && <p className="m-0 mt-[4px] px-[6px] text-meta text-muted">{pace}</p>}
+      </section>
+
+      <section>
+        <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">This week</h3>
+        {week.total === 0 ? (
+          <p className="m-0 px-[6px] text-ui text-muted">
+            Nothing committed to this week yet.
+          </p>
+        ) : (
+          <p className="m-0 px-[6px] text-ui text-ink-soft">
+            <span className="tabular-nums">{week.total}</span>
+            {week.total === 1 ? ' task' : ' tasks'}
+            {week.minutes > 0 && (
+              <> · <span className="tabular-nums">{fmtMinutes(week.minutes)}</span></>
+            )}
+            {week.unestimated > 0 && (
+              <span className="text-muted"> · {week.unestimated} unestimated</span>
+            )}
+            {week.done > 0 && (
+              <span className="text-muted"> · <span className="tabular-nums">{week.done}</span> done</span>
+            )}
           </p>
         )}
       </section>
