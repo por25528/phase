@@ -58,7 +58,7 @@ one place the product's own slogan should land.
 (`EstimateControl` at `Backlog.tsx:114`) — only the group aggregate is missing.
 
 ### A4. Goal card hides the next action — brief §11
-`nextOpenAction()` (`lib/plan.ts:391`) computes it; `BoardCard.tsx` shows only
+`nextOpenAction()` (`lib/plan.ts:401`) computes it; `BoardCard.tsx` shows only
 the effort line. One quiet `Next: …` line is the card's largest momentum win.
 No progress bar (see rejected).
 
@@ -70,7 +70,7 @@ No progress bar (see rejected).
 only on drag-over, grip on hover.
 
 ### B2. The notes editor is a permanent outlined box
-`.note-prose` (`index.css:211`) carries `border border-line` always, plus
+`.note-prose` (`index.css:210`) carries `border border-line` always, plus
 `min-h-[120px]`. Brief §15 wants it to disappear until focused.
 
 ### B3. The Plan hint has no dismissal

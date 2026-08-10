@@ -19,9 +19,10 @@ export interface TaskRowProps {
 /**
  * One list row, for every surface that lists work.
  *
- * Today alone hand-rolled three of these — a commitment row, an offer row and
- * the card in `Now` — which is how the same page ended up with a hover
- * background on one list and none on the list above it.
+ * Today had three hand-rolled versions of these — a commitment row, an offer
+ * row and the card in `Now`. The two lists are now unified here; the `Now`
+ * card deliberately remains its own shape, which is how the same page ended
+ * up with a hover background on one list and none on the list above it.
  *
  * The shape is dictated by one constraint: a row needs an interactive leading
  * control AND a full-row click target, and `<button>` inside `<button>` is
@@ -30,6 +31,10 @@ export interface TaskRowProps {
  * across the row; the lead control is a sibling raised above that overlay.
  * One guaranteed focusable element (the title button), with a second permitted
  * when a caller supplies an interactive lead, a full-row target, no nesting.
+ * Both the row and title button carry `group` for different reasons: the row
+ * lets `.quiet-control` descendants passed through `lead` or `meta` resolve
+ * the hover gate, while the button's `group` drives its focus ring; the row
+ * div is never `:focus-visible`.
  *
  * Focus lands on the title button, while the overlay draws the ring at row
  * scale: a ring around 14px of text inside a 720px row reads as a bug.
@@ -50,7 +55,7 @@ export function TaskRow({
 
   return (
     <div
-      className={`relative flex items-center gap-[8px] px-[8px] py-[6px] rounded-[6px] transition-colors duration-150 ${
+      className={`group relative flex items-center gap-[8px] px-[8px] py-[6px] rounded-[6px] transition-colors duration-150 ${
         onOpen ? 'hover:bg-hover' : ''
       }`}
     >

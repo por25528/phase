@@ -84,6 +84,11 @@ describe('TaskRow', () => {
     expect(screen.queryByRole('button')).toBe(null);
   });
 
+  it('gives the row root a group for quiet controls in sibling slots', () => {
+    const { container } = render(<TaskRow title="Read chapter 1" />);
+    expect(container.firstElementChild?.className).toContain('group');
+  });
+
   it('marks a completed row without hiding its text', () => {
     render(<TaskRow title="Read chapter 1" completed />);
     const title = screen.getByText('Read chapter 1');

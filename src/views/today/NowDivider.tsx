@@ -13,7 +13,7 @@ export function NowDivider({ nowMinute }: { nowMinute: number }) {
     <div
       role="separator"
       aria-label={`Now, ${label}`}
-      className="flex items-center gap-[8px] my-[4px]"
+      className="flex items-center gap-[8px] px-[8px] my-[4px]"
     >
       <span className="text-meta font-semibold text-accent tabular-nums">{label}</span>
       <span aria-hidden="true" className="flex-1 h-px bg-accent" />
