@@ -111,4 +111,35 @@ describe('TaskRow', () => {
     expect(rowButton.getAttribute('aria-label')).toBe(null);
     expect(rowButton.textContent).toContain('CS:APP');
   });
+
+  it('reserves the lead column when asked, with nothing in it', () => {
+    render(<TaskRow title="A" reserveLead />);
+    const spacer = document.querySelector('[data-row-lead]');
+    expect(spacer).toBeTruthy();
+    expect(spacer!.className).toContain('w-[22px]');
+    expect(spacer!.getAttribute('aria-hidden')).toBe('true');
+    // A reserved column is empty by definition — it must not be focusable.
+    expect(spacer!.querySelector('button')).toBe(null);
+  });
+
+  it('does not double up the lead column when a control is given', () => {
+    render(
+      <TaskRow title="A" reserveLead lead={<button type="button" aria-label="Mark done" />} />,
+    );
+    expect(document.querySelectorAll('[data-row-lead]').length).toBe(1);
+    expect(screen.getByRole('button', { name: 'Mark done' })).toBeTruthy();
+  });
+
+  it('reserves nothing by default', () => {
+    render(<TaskRow title="A" />);
+    expect(document.querySelector('[data-row-lead]')).toBe(null);
+  });
+
+  it('sets the title one step up under emphasis', () => {
+    render(<TaskRow title="A" emphasis />);
+    expect(screen.getByText('A').className).toContain('text-lead');
+    cleanup();
+    render(<TaskRow title="A" />);
+    expect(screen.getByText('A').className).toContain('text-ui');
+  });
 });

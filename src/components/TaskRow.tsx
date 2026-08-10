@@ -14,6 +14,14 @@ export interface TaskRowProps {
   /** Accessible name for the row button, when provided. */
   ariaLabel?: string;
   completed?: boolean;
+  /**
+   * Keep the leading control's column with no control in it, so a list whose
+   * rows have no checkbox still shares a left edge with one whose rows do.
+   * Ignored when `lead` is given — that already occupies the column.
+   */
+  reserveLead?: boolean;
+  /** The one row on the page that is the answer. Sets the title one step up. */
+  emphasis?: boolean;
 }
 
 /**
@@ -48,8 +56,10 @@ export function TaskRow({
   onOpen,
   ariaLabel,
   completed = false,
+  reserveLead,
+  emphasis,
 }: TaskRowProps) {
-  const titleCls = `block truncate text-ui ${
+  const titleCls = `block truncate ${emphasis ? 'text-lead' : 'text-ui'} ${
     completed ? 'line-through text-muted' : 'text-ink-soft'
   }`;
 
@@ -59,7 +69,11 @@ export function TaskRow({
         onOpen ? 'hover:bg-hover' : ''
       }`}
     >
-      {lead && <span className="relative z-10 flex-none">{lead}</span>}
+      {lead && <span data-row-lead className="relative z-10 flex-none">{lead}</span>}
+      {!lead && reserveLead && (
+        /* The reserved column stays below the overlay: it has no control to raise, and raising an empty span would carve a dead patch out of the row's own click target. */
+        <span data-row-lead aria-hidden="true" className="w-[22px] flex-none" />
+      )}
 
       {time !== undefined && (
         <span
