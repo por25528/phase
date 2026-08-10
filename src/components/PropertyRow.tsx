@@ -174,3 +174,111 @@ export function PropertyOption({
     </button>
   );
 }
+
+/**
+ * The same property, laid out inline instead of stacked.
+ *
+ * A task's page states its facts in a row under the title, where the inspector
+ * states them in a column. Only the metrics differ: the trigger opens the SAME
+ * `Popover` with the SAME children, which is what stops the page and the panel
+ * drifting about what scheduling or status offers.
+ *
+ * `rounded-field`, not a pill. The chip is one of this app's controls wearing
+ * this app's control shape; a borrowed pill would be a second visual language
+ * for a job the existing one already does.
+ */
+const CHIP_CLASS =
+  'inline-flex items-center gap-[6px] min-h-[28px] px-[9px] py-[3px] rounded-field border border-line text-ui';
+
+export function PropertyChip({
+  label,
+  icon,
+  value,
+  placeholder,
+  panelWidth = 232,
+  panelRole = 'menu',
+  children,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: string | null;
+  placeholder: string;
+  panelWidth?: number;
+  /** `dialog` whenever the panel holds a textbox — a `menu` may not contain one. */
+  panelRole?: 'menu' | 'dialog';
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const filled = value !== null;
+  return (
+    <Popover
+      label={`${label}: ${value ?? placeholder}`}
+      align="start"
+      role={panelRole}
+      panelWidth={panelWidth}
+      panelClassName="px-[5px]"
+      triggerClassName={`${CHIP_CLASS} hover:bg-hover ${
+        filled ? 'text-ink-soft' : 'text-muted'
+      }`}
+      trigger={
+        <>
+          <span className="flex-none inline-flex text-faint">{icon}</span>
+          <span className="truncate max-w-[220px]">{value ?? placeholder}</span>
+        </>
+      }
+    >
+      {children}
+    </Popover>
+  );
+}
+
+/** A chip that is a yes/no rather than a choice — Milestone. */
+export function PropertyChipToggle({
+  label,
+  icon,
+  on,
+  onToggle,
+  children,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  on: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onToggle}
+      className={`${CHIP_CLASS} hover:bg-hover ${
+        on ? 'text-accent-deep border-accent' : 'text-muted'
+      }`}
+    >
+      <span className={`flex-none inline-flex ${on ? 'text-accent' : 'text-faint'}`}>{icon}</span>
+      <span className="truncate max-w-[220px]">{children}</span>
+    </button>
+  );
+}
+
+/**
+ * A chip wrapping a control that already owns its own badge→field swap —
+ * `EstimateControl`, `LogTimeControl`. They borrow the metrics and keep their
+ * behaviour: putting either behind a popover would nest a disclosure inside a
+ * disclosure.
+ */
+export function PropertyChipInline({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className={`${CHIP_CLASS} text-ink-soft`}>
+      <span className="flex-none inline-flex text-faint">{icon}</span>
+      {children}
+    </span>
+  );
+}

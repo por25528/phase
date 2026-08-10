@@ -4,6 +4,8 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  PropertyChip,
+  PropertyChipToggle,
   PropertyOption,
   PropertyRow,
   PropertyStatic,
@@ -179,5 +181,50 @@ describe('PropertyOption', () => {
     await user.click(screen.getByRole('menuitemradio'));
     expect(onSelect).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
+  });
+});
+
+describe('PropertyChip', () => {
+  it('names the property when it has no value, and never prints a zero', () => {
+    render(
+      createElement(PropertyChip, {
+        label: 'Estimate',
+        icon: null,
+        value: null,
+        placeholder: 'No estimate',
+        children: () => null,
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'Estimate: No estimate' })).toBeTruthy();
+    expect(screen.queryByText('0m')).toBeNull();
+  });
+
+  it('opens the same popover children a PropertyRow would', async () => {
+    const user = userEvent.setup();
+    render(
+      createElement(PropertyChip, {
+        label: 'Status',
+        icon: null,
+        value: 'Doing',
+        placeholder: 'Todo',
+        children: () => createElement('button', { type: 'button' }, 'Blocked'),
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Status: Doing' }));
+    expect(screen.getByText('Blocked')).toBeTruthy();
+  });
+
+  it('renders a toggle as a switch that reports its state', () => {
+    render(
+      createElement(PropertyChipToggle, {
+        label: 'Make a milestone',
+        icon: null,
+        on: true,
+        onToggle: () => {},
+        children: 'Milestone',
+      }),
+    );
+    const chip = screen.getByRole('switch', { name: 'Make a milestone' });
+    expect(chip.getAttribute('aria-checked')).toBe('true');
   });
 });
