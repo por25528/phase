@@ -3,6 +3,9 @@ import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalNode, Session } from '../../db/types';
+import { addDays, todayStr } from '../../lib/dates';
+import { fmtMinutes } from '../../lib/effort';
+import { dayLabel } from '../../lib/todayPlan';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -48,7 +51,7 @@ beforeAll(() => {
 const NODE: GoalNode = { id: 'n1', title: 'Implement parser' };
 const GOAL: Goal = { id: 'g', title: '6.1200', nodes: [NODE] };
 
-async function mount() {
+async function mount(freeDay?: { date: string; freeMin: number }) {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
     goals: [structuredClone(GOAL)], habits: [], tasks: [], sessions: [],
@@ -59,7 +62,10 @@ async function mount() {
   const onClose = vi.fn();
   const Host = () => {
     const { goals, actions } = store.useAppStore();
-    return createElement(ProposalPanel, { goal: goals[0], node: goals[0].nodes[0], actions, onClose });
+    return createElement(ProposalPanel, {
+      goal: goals[0], node: goals[0].nodes[0], actions, onClose,
+      ...(freeDay ? { freeDay } : {}),
+    });
   };
   render(createElement(Host));
   return { store, onClose };
@@ -91,6 +97,33 @@ describe('the breakdown proposal', () => {
     paste('Read the spec — 45m\nWrite the lexer — 1h\nWrite the parser');
 
     expect(screen.getAllByRole('textbox', { name: 'Proposed task' })).toHaveLength(3);
+  });
+
+  it('quotes priced work and the next free day separately', async () => {
+    const today = todayStr();
+    const tomorrow = addDays(today, 1);
+    await mount({ date: tomorrow, freeMin: 85 });
+
+    paste('Read chapter 7 — 45m\nProblems 1–15 — 1h\nMock quiz');
+
+    const estimate = fmtMinutes(45 + 60);
+    const day = dayLabel(tomorrow, today);
+    const free = fmtMinutes(85);
+    const line = screen.getByText(new RegExp(`${day} has`));
+    expect(line.textContent).toBe(`${estimate} · 1 unestimated · ${day} has ${free} free`);
+    expect(line.textContent).not.toBe(`${estimate} · ${day} has ${free} free`);
+  });
+
+  it('omits the free-day half when no free day is supplied', async () => {
+    const today = todayStr();
+    const day = dayLabel(addDays(today, 1), today);
+    await mount();
+
+    paste('Read chapter 7 — 45m\nProblems 1–15 — 1h\nMock quiz');
+
+    const estimate = fmtMinutes(45 + 60);
+    expect(screen.getByText(estimate).textContent).toBe(estimate);
+    expect(screen.queryByText(new RegExp(`${day} has`))).toBeNull();
   });
 
   it('brings the durations through priced', async () => {

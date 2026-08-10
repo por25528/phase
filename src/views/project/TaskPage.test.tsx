@@ -76,6 +76,7 @@ const goalSeed: Goal = {
         { id: 'n6', title: 'Second nested step' },
       ],
     },
+    { id: 'n7', title: 'Plan marathon training', estimateMin: 180 },
   ],
 };
 
@@ -296,6 +297,20 @@ describe('TaskPage', () => {
     await mountTask('n1');
 
     expect(screen.getByRole('button', { name: 'Break into smaller steps' })).toBeTruthy();
+  });
+
+  it('invites an oversized task to break into smaller steps', async () => {
+    await mountTask('n7');
+
+    expect(screen.getByText('This looks larger than one focused work session.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Break into smaller steps' })).toBeTruthy();
+  });
+
+  it('does not show the oversized invitation for a small task', async () => {
+    await mountTask('n1');
+
+    expect(screen.getByRole('button', { name: 'Break into smaller steps' })).toBeTruthy();
+    expect(screen.queryByText('This looks larger than one focused work session.')).toBeNull();
   });
 
   it('edits the estimate in place, without a popover', async () => {

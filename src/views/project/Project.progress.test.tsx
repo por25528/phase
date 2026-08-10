@@ -162,9 +162,8 @@ describe('Project page', () => {
        * words alone; it used to be a bare text node and screen readers read the
        * decoration out.
        *
-       * `n2` is a leaf, so it now opens as `TaskPage`, whose "Break …" trigger
-       * uses the same typographic curly quotes as the rest of the app's locked
-       * visual identity.
+       * `n2` is a leaf, so it now opens as `TaskPage`, whose trigger uses the
+       * shared invitation label without repeating the task title.
        */
       const breakdown = screen.getByRole('button', { name: 'Break into smaller steps' });
       expect(breakdown.textContent).toBe('Break into smaller steps');
