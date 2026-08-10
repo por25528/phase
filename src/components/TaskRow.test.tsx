@@ -37,6 +37,16 @@ describe('TaskRow', () => {
     const rowButton = screen.getByRole('button', { name: 'Read chapter 1' });
     const lead = screen.getByRole('button', { name: 'Mark done' });
     expect(rowButton.contains(lead)).toBe(false);
+    expect(lead.parentElement?.className).toContain('z-10');
+  });
+
+  it('stretches the row overlay across the button', () => {
+    render(<TaskRow title="Read chapter 1" onOpen={() => {}} />);
+    const rowButton = screen.getByRole('button', { name: 'Read chapter 1' });
+    const overlay = rowButton.querySelector('[aria-hidden="true"]');
+    expect(overlay).not.toBe(null);
+    expect(overlay?.className).toContain('absolute');
+    expect(overlay?.className).toContain('inset-0');
   });
 
   it('does not open the row when the lead control is clicked', () => {
@@ -73,8 +83,16 @@ describe('TaskRow', () => {
   it('reserves the time cell only when a time is given', () => {
     const { container: withTime } = render(<TaskRow title="A" time="14:00" />);
     expect(withTime.textContent).toContain('14:00');
+    expect(withTime.querySelector('[data-row-time]')?.className).toContain('w-[48px]');
     cleanup();
     const { container: without } = render(<TaskRow title="A" />);
     expect(without.querySelector('[data-row-time]')).toBe(null);
+  });
+
+  it('keeps the subtitle in the button name when no ariaLabel is given', () => {
+    render(<TaskRow title="Read chapter 1" subtitle="CS:APP" onOpen={() => {}} />);
+    const rowButton = screen.getByRole('button');
+    expect(rowButton.getAttribute('aria-label')).toBe(null);
+    expect(rowButton.textContent).toContain('CS:APP');
   });
 });

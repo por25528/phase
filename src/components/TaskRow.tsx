@@ -11,7 +11,7 @@ export interface TaskRowProps {
   meta?: ReactNode;
   /** Activates the row. Renders the title as a button stretched across the row. */
   onOpen?: () => void;
-  /** Accessible name for the row button. Defaults to `title`. */
+  /** Accessible name for the row button, when provided. */
   ariaLabel?: string;
   completed?: boolean;
 }
@@ -28,10 +28,10 @@ export interface TaskRowProps {
  * invalid — it swallows the inner control's accessible name. So the title is
  * the ONLY button and it carries an absolutely-positioned overlay stretched
  * across the row; the lead control is a sibling raised above that overlay.
- * One focusable element, a full-row target, no nesting.
+ * Two separate focusable elements, a full-row target, no nesting.
  *
- * Focus lands on the row rather than the title because `focus-within` is on
- * the shell: a ring around 14px of text inside a 720px row reads as a bug.
+ * Focus lands on the title button, while the overlay draws the ring at row
+ * scale: a ring around 14px of text inside a 720px row reads as a bug.
  */
 export function TaskRow({
   title,
@@ -49,7 +49,7 @@ export function TaskRow({
 
   return (
     <div
-      className={`relative flex items-center gap-[8px] px-[8px] py-[6px] rounded-[6px] transition-colors duration-150 focus-within:ring-2 focus-within:ring-accent ${
+      className={`relative flex items-center gap-[8px] px-[8px] py-[6px] rounded-[6px] transition-colors duration-150 ${
         onOpen ? 'hover:bg-hover' : ''
       }`}
     >
@@ -58,7 +58,7 @@ export function TaskRow({
       {time !== undefined && (
         <span
           data-row-time
-          className="relative z-10 w-[48px] flex-none text-meta text-muted tabular-nums"
+          className="w-[48px] flex-none text-meta text-muted tabular-nums"
         >
           {time}
         </span>
@@ -69,12 +69,15 @@ export function TaskRow({
           <button
             type="button"
             onClick={onOpen}
-            aria-label={ariaLabel ?? title}
-            className="block w-full text-left focus:outline-none"
+            aria-label={ariaLabel}
+            className="group block w-full text-left focus:outline-none"
           >
             {/* The stretched target. `aria-hidden` because the button already
                 has its name, and an empty span would otherwise be announced. */}
-            <span aria-hidden="true" className="absolute inset-0 rounded-[6px]" />
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 rounded-[6px] group-focus-visible:ring-2 group-focus-visible:ring-accent"
+            />
             <span className={titleCls}>{title}</span>
             {subtitle && <span className="block truncate text-meta text-muted">{subtitle}</span>}
           </button>
@@ -87,7 +90,7 @@ export function TaskRow({
       </span>
 
       {meta && (
-        <span className="relative z-10 flex-none flex items-center gap-[8px] text-meta text-muted">
+        <span className="flex-none flex items-center gap-[8px] text-meta text-muted">
           {meta}
         </span>
       )}
