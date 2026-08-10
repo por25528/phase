@@ -155,4 +155,33 @@ describe('a leaf opens as a page', () => {
       vi.useRealTimers();
     }
   });
+
+  /**
+   * The branch that picks `TaskPage` vs. the docked inspector is computed at
+   * RENDER time (`openLeaf` in `Project.tsx`), from live `goal.nodes`, rather
+   * than stored anywhere — the whole reason being that a leaf gaining or
+   * losing children flips it with no special case. Nothing exercised either
+   * direction before this; a future effect or memo that cached the branch
+   * would pass every other test in this file and still be wrong.
+   */
+  it('switches from the page to the docked inspector when a leaf gains a child', async () => {
+    const store = await mountGoal();
+    await act(async () => { store.actions.openStep('n1'); });
+    expect(screen.queryByRole('button', { name: 'Close task details' })).toBeNull();
+
+    await act(async () => { store.actions.addChild('n1'); });
+
+    expect(screen.getByRole('button', { name: 'Close task details' })).toBeTruthy();
+  });
+
+  it('switches from the docked inspector to the page when a container loses its last child', async () => {
+    const store = await mountGoal();
+    await act(async () => { store.actions.openStep('n2'); });
+    expect(screen.getByRole('button', { name: 'Close task details' })).toBeTruthy();
+
+    await act(async () => { store.actions.removeNode('n3'); });
+
+    expect(screen.queryByRole('button', { name: 'Close task details' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 1, name: 'Chapter 2' })).toBeTruthy();
+  });
 });
