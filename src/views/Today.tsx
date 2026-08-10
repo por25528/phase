@@ -68,6 +68,10 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   const open = sections.commitments.filter((i) => !i.done);
   const divider = nowDividerIndex(open, nowMinute);
+  // One left edge for every title. The cell is reserved for the whole list as
+  // soon as ANY row carries a clock — a row without one still gets the empty
+  // cell, so the column does not go ragged — and costs nothing when no row does.
+  const anyTimed = open.some((i) => i.startMin !== undefined);
   const doneCount = sections.completedToday.length;
 
   // What to do with the time that is still free — the answer this surface used
@@ -139,7 +143,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           say what to do with the day. Two messages both saying "nothing" is how
           this page became apologetic in the first place. */}
       {(focus || offer.kind !== 'offer') && (
-      <section aria-label="Now" className="mb-[22px]">
+      <section aria-label="Now" className="mb-[24px]">
         {focus ? (
           <div className="border border-line-2 rounded-card p-[14px] bg-panel">
             <div className="flex items-center gap-[8px] text-meta text-muted mb-[6px]">
@@ -192,17 +196,21 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           behind us, so a bare `> 1` dropped a single unticked 10:00 standup off
           the page entirely at six in the evening. */}
       {open.length > (focus ? 1 : 0) && (
-        <section aria-label="Today’s plan" className="mb-[22px]">
+        <section aria-label="Today’s plan" className="mb-[24px]">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
           <ul>
             {open.map((item, i) => (
               <li key={item.key}>
-                {/* One rule, where the day turns from behind you to ahead. */}
+                {/* Where the day turns from behind you to ahead, and says when. */}
                 {i === divider && i > 0 && <NowDivider nowMinute={nowMinute} />}
                 <TaskRow
                   title={item.title}
                   subtitle={item.goalTitle}
-                  time={item.startMin === undefined ? undefined : clockLabel(item.startMin)}
+                  time={
+                    anyTimed
+                      ? (item.startMin === undefined ? '' : clockLabel(item.startMin))
+                      : undefined
+                  }
                   onOpen={() => openItem(item)}
                   lead={
                     <TodayCheckbox
@@ -234,7 +242,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           between commitments, and the moment it lists everything open it is a
           second backlog rail on a page that is not the backlog. */}
       {offer.kind === 'no-hours' && (
-        <section aria-label="Free time" className="mb-[22px]">
+        <section aria-label="Free time" className="mb-[24px]">
           <div className="px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
             {/* "Nobody told me when you work" and "you are out of time" are
                 different sentences, and only one of them is true here. */}
@@ -251,7 +259,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
 
       {offer.kind === 'offer' && (
-        <section aria-label="Free time" className="mb-[22px]">
+        <section aria-label="Free time" className="mb-[24px]">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">
             {offerHeading(offer, today)}
           </h2>
@@ -287,13 +295,13 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       {attention.length > 0 && (
         <section aria-label="Attention">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">Attention</h2>
-          <ul className="flex flex-col gap-[2px]">
+          <ul>
             {attention.map((a) => (
               <li key={a.id}>
                 <button
                   type="button"
                   onClick={() => (a.goalId ? actions.openProject(a.goalId, a.nodeId) : actions.setView('plan'))}
-                  className="w-full text-left flex items-center gap-[8px] px-[8px] py-[7px] rounded-field hover:bg-hover"
+                  className="w-full text-left flex items-center gap-[8px] px-[8px] py-[6px] rounded-[6px] transition-colors duration-150 hover:bg-hover"
                 >
                   <span className="text-warn flex-none inline-flex" aria-hidden="true">
                     <IconWarning size={13} />
@@ -310,7 +318,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
 
       {doneCount > 0 && (
-        <p className="mt-[22px] text-meta text-muted">
+        <p className="mt-[24px] text-meta text-muted">
           {doneCount} finished today.
         </p>
       )}
