@@ -404,7 +404,7 @@ export function NowDivider({ nowMinute }: { nowMinute: number }) {
 Run: `npx vitest run src/views/today/NowDivider.test.tsx`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 npx tsc -b && npm test
@@ -536,11 +536,51 @@ git commit -m "refactor(today): both task lists are the same row"
 
 **The deliberate call in this task:** per-row `border-b` hairlines are gone (Task 3 already dropped them with the `<ul>` rewrite). Rows are separated by hover, rhythm and alignment instead — brief §6 asks for ~30% less chrome, and the offer list already worked this way, so the two lists now agree. Section spacing moves from `mb-[22px]` to `mb-[24px]`, which is a real step on the 4/8/12/16/24/32 scale.
 
-- [ ] **Step 1: Put section rhythm on the scale**
+- [ ] **Step 1: Give the time column back its reservation**
+
+Task 3's review found a real regression. The old markup ALWAYS rendered the
+time span — holding `''` when a row had no `startMin` — so every title in the
+list shared one left edge. `TaskRow` renders the cell only when `time !==
+undefined`, so a list mixing timed and untimed commitments now has a ~56px
+ragged margin.
+
+Restore the shared edge, but only pay for it when the list actually has clocks
+in it — the old markup reserved the column even when nothing was timed, which
+is 56px of dead gutter. In `src/views/Today.tsx`, above the `open.map(...)` in
+the "Rest of today" section, add:
+
+```tsx
+// One left edge for every title. The cell is reserved for the whole list as
+// soon as ANY row carries a clock — a row without one still gets the empty
+// cell, so the column does not go ragged — and costs nothing when no row does.
+const anyTimed = open.some((i) => i.startMin !== undefined);
+```
+
+Then change the `time` prop on the commitment `TaskRow` to:
+
+```tsx
+                  time={
+                    anyTimed
+                      ? (item.startMin === undefined ? '' : clockLabel(item.startMin))
+                      : undefined
+                  }
+```
+
+- [ ] **Step 2: Correct the stale divider comment**
+
+`src/views/Today.tsx` — the comment above `NowDivider` reads "One rule, where
+the day turns from behind you to ahead." It is no longer a rule; it is a
+labelled separator that names the minute. Change it to:
+
+```tsx
+                {/* Where the day turns from behind you to ahead, and says when. */}
+```
+
+- [ ] **Step 3: Put section rhythm on the scale**
 
 In `src/views/Today.tsx`, replace every `mb-[22px]` on a `<section>` (lines 140, 193, 244, 261 in the pre-Task-3 file) with `mb-[24px]`, and the trailing `mt-[22px]` on the done-count paragraph (line 325) with `mt-[24px]`.
 
-- [ ] **Step 2: Align the Attention rows with the task lists**
+- [ ] **Step 4: Align the Attention rows with the task lists**
 
 Replace the `Attention` list at `src/views/Today.tsx` (the `<ul className="flex flex-col gap-[2px]">` block) with:
 
@@ -568,17 +608,17 @@ Replace the `Attention` list at `src/views/Today.tsx` (the `<ul className="flex 
 
 This matches `TaskRow`'s metrics exactly (`gap-[8px] px-[8px] py-[6px] rounded-[6px]`) without pretending an alert is a task — it has no checkbox, no time and no estimate, so it does not take the primitive.
 
-- [ ] **Step 3: Verify nothing regressed**
+- [ ] **Step 5: Verify nothing regressed**
 
 Run: `npx tsc -b && npm test`
 Expected: all tests passing.
 
-- [ ] **Step 4: Confirm the design guards still hold**
+- [ ] **Step 6: Confirm the design guards still hold**
 
 Run: `npx vitest run src/lib/designScale.test.ts`
 Expected: PASS — in particular "uses only the five agreed corner radii" and "declares no arbitrary font sizes".
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/views/Today.tsx
