@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { acceptedRows, parseProposal, splitEstimate } from './proposal';
+import { acceptedRows, looksOversized, parseProposal, SESSION_MIN, splitEstimate } from './proposal';
+import type { GoalNode } from '../db/types';
 
 const id = (i: number) => `r${i}`;
 const parse = (raw: string) => parseProposal(raw, id);
@@ -83,5 +84,40 @@ describe('acceptedRows', () => {
    */
   it('drops a row whose title has been emptied', () => {
     expect(acceptedRows([row({ title: '   ' })])).toEqual([]);
+  });
+});
+
+describe('looksOversized', () => {
+  const leaf = (over: Partial<GoalNode> = {}): GoalNode => ({ id: 'n', title: 'T', ...over });
+
+  it('is true for a leaf estimated past one sitting', () => {
+    expect(looksOversized(leaf({ estimateMin: SESSION_MIN + 1 }))).toBe(true);
+  });
+
+  it('is false exactly at the threshold — a sitting is not oversized', () => {
+    expect(looksOversized(leaf({ estimateMin: SESSION_MIN }))).toBe(false);
+  });
+
+  /**
+   * An unestimated task is UNKNOWN, not big. Suggesting a breakdown for
+   * everything nobody has priced yet would put the invitation on most of the
+   * app, which is how a contextual prompt becomes chrome.
+   */
+  it('is false for a leaf with no estimate', () => {
+    expect(looksOversized(leaf())).toBe(false);
+  });
+
+  /** A container is already broken down. */
+  it('is false for a node with children', () => {
+    expect(looksOversized(leaf({
+      estimateMin: SESSION_MIN * 3,
+      children: [{ id: 'c', title: 'C' }],
+    }))).toBe(false);
+  });
+
+  it('is TRUE for a node whose children array is present but empty', () => {
+    // `children: []` is the legacy-leaf ambiguity CLAUDE.md names. An empty
+    // array is not a breakdown, so the node is still a leaf and still oversized.
+    expect(looksOversized(leaf({ estimateMin: SESSION_MIN * 2, children: [] }))).toBe(true);
   });
 });

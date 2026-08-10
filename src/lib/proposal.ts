@@ -1,5 +1,28 @@
 import { parseEstimateInput } from './estimateInput';
 import { parseSubtasks } from './goalImport';
+import type { GoalNode } from '../db/types';
+
+/**
+ * Minutes past which a task is more than one focused sitting.
+ *
+ * Ninety minutes is the point at which the work stops fitting into an
+ * uninterrupted block most people actually get, so it is where "should I break
+ * this up?" becomes a real question rather than a nag. It is a suggestion
+ * threshold and nothing else — no roll-up, no capacity maths reads it.
+ */
+export const SESSION_MIN = 90;
+
+/**
+ * Whether a leaf is big enough that breaking it down is worth suggesting.
+ *
+ * A container is already broken down, and an unestimated leaf is UNKNOWN
+ * rather than big — offering to decompose everything nobody has priced yet is
+ * how a contextual invitation turns into permanent chrome.
+ */
+export function looksOversized(node: GoalNode): boolean {
+  if (node.children && node.children.length > 0) return false;
+  return node.estimateMin !== undefined && node.estimateMin > SESSION_MIN;
+}
 
 /**
  * A proposed breakdown, before any of it is real.
