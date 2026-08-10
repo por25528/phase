@@ -1,8 +1,8 @@
-import type { GoalNode } from '../db/types';
+import type { GoalNode, WorkBlock } from '../db/types';
 import { clockLabel } from './clock';
 import { addDays, fmtD, parseD } from './dates';
 import { isDone } from './status';
-import { sortedBlocks } from './blocks';
+import { sortedBlocks, type Placeable } from './blocks';
 import { weekOf } from './plan';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -37,23 +37,38 @@ export function dayLabel(date: string, today: string): string {
   return fmtD(date);
 }
 
+/**
+ * The one sitting that represents a task, when it has any.
+ *
+ * A task can be sat several times, so "when" is a run of dates. This picks the
+ * next one still ahead — including today — and falls back to the last overdue
+ * sitting only once every sitting is in the past, so a task done last week and
+ * booked again for Tuesday reads as Tuesday, not as its own history.
+ *
+ * `scheduleCell` (the tree row) and `TaskPage` (the leaf's own page) both need
+ * this exact choice; they differ only in what they do once nothing is booked —
+ * the row falls back to `plannedWeek` and then `deadline`, the page stops here
+ * because it already shows the deadline as its own chip. Keeping the picker
+ * itself shared is what stops the two surfaces from disagreeing about a task
+ * that has both a past and a future sitting.
+ */
+export function nextSitting(item: Placeable, today: string): WorkBlock | null {
+  const blocks = sortedBlocks(item);
+  if (blocks.length === 0) return null;
+  const overdue = blocks.filter((b) => b.date < today);
+  return blocks.find((b) => b.date >= today) ?? overdue[overdue.length - 1];
+}
+
 export function scheduleCell(n: GoalNode, today: string): ScheduleCell | null {
   // A finished task's schedule is history. Showing "Tue 14:00" beside a ticked
   // box reads as work still to come, on the one row that has none left.
   if (isDone(n)) return null;
 
-  /*
-   * The NEXT sitting, and how many more there are.
-   *
-   * A task can be sat several times, so "when" is a run of dates. Naming the
-   * next one and counting the rest is the only version of that which fits a
-   * row: `Tue 14:00 +2` says the same thing as three chips and leaves the
-   * column a column.
-   */
+  // The NEXT sitting, and how many more there are: `Tue 14:00 +2` says the
+  // same thing as three chips and leaves the column a column.
   const blocks = sortedBlocks(n);
-  if (blocks.length > 0) {
-    const overdue = blocks.filter((b) => b.date < today);
-    const next = blocks.find((b) => b.date >= today) ?? overdue[overdue.length - 1];
+  const next = nextSitting(n, today);
+  if (next) {
     const late = next.date < today;
     const more = blocks.length - 1;
     const time = ` ${clockLabel(next.startMin)}`;

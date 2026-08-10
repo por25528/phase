@@ -33,6 +33,7 @@ import { fmtD, todayStr } from '../../lib/dates';
 import { fmtMinutes } from '../../lib/effort';
 import { STATUS_WORD, stepStatus } from '../../lib/status';
 import { taskPageActionGroups, type RowActionId } from '../../lib/rowActions';
+import { dayLabel, nextSitting } from '../../lib/rowSchedule';
 import { findNodePath, findParentList } from '../../lib/tree';
 
 const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
@@ -128,14 +129,20 @@ export function TaskPage({
     }
   }
 
-  const whenValue =
-    sittings.length > 0
-      ? `${fmtD(sittings[0].date)} · ${clockLabel(sittings[0].startMin)}${
-          sittings.length > 1 ? ` +${sittings.length - 1}` : ''
-        }`
-      : node.plannedWeek
-        ? `Week of ${fmtD(node.plannedWeek)}`
-        : null;
+  // The same sitting `scheduleCell` names on the tree row — NOT `sittings[0]`,
+  // which is the earliest chronologically and would show a past sitting after
+  // a task got booked again. No deadline fallback here: the Dates chip above
+  // already states the deadline, so repeating it in this chip would be the
+  // same fact twice under two different labels.
+  const today = todayStr();
+  const next = nextSitting(node, today);
+  const whenValue = next
+    ? `${dayLabel(next.date, today)} · ${clockLabel(next.startMin)}${
+        sittings.length > 1 ? ` +${sittings.length - 1}` : ''
+      }`
+    : node.plannedWeek
+      ? `Week of ${fmtD(node.plannedWeek)}`
+      : null;
 
   return (
     <div>

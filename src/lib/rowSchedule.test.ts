@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GoalNode } from '../db/types';
-import { dayLabel, scheduleCell } from './rowSchedule';
+import { dayLabel, nextSitting, scheduleCell } from './rowSchedule';
 import { makeBlock } from './blocks';
 
 // 2026-08-12 is a Wednesday; its Monday is 2026-08-10.
@@ -25,6 +25,31 @@ describe('dayLabel', () => {
    */
   it('stops using weekday names once they stop being unambiguous', () => {
     expect(dayLabel('2026-08-19', TODAY)).toBe('Aug 19');
+  });
+});
+
+describe('nextSitting', () => {
+  it('picks the future sitting over a past one, regardless of stored order', () => {
+    const past = makeBlock('2026-08-01', 540, 60);
+    const future = makeBlock('2026-08-20', 540, 60);
+    // A leaf whose past sitting was ADDED after its future one — `sortedBlocks`
+    // sorts by date, so an implementation that trusted array order (`[0]`)
+    // would pick the past one here and this test would fail.
+    expect(nextSitting(leaf({ blocks: [future, past] }), TODAY)?.date).toBe('2026-08-20');
+  });
+
+  it('falls back to the last overdue sitting once everything is in the past', () => {
+    const older = makeBlock('2026-08-01', 540, 60);
+    const mostRecent = makeBlock('2026-08-10', 540, 60);
+    expect(nextSitting(leaf({ blocks: [older, mostRecent] }), TODAY)?.date).toBe('2026-08-10');
+  });
+
+  it('treats today as a future sitting, not an overdue one', () => {
+    expect(nextSitting(leaf({ blocks: [makeBlock(TODAY, 600, 30)] }), TODAY)?.date).toBe(TODAY);
+  });
+
+  it('returns null when the task has no sittings at all', () => {
+    expect(nextSitting(leaf({ deadline: '2026-08-24' }), TODAY)).toBeNull();
   });
 });
 

@@ -359,5 +359,32 @@ describe('TaskPage', () => {
 
       vi.useRealTimers();
     });
+
+    /**
+     * `sittings[0]` (chronological order) would show the past sitting here —
+     * exactly the bug `nextSitting` exists to fix. The tree row (`scheduleCell`)
+     * already picks the future one; this pins the page to the same rule.
+     */
+    it('shows the future sitting in the Schedule chip, not the past one', async () => {
+      vi.setSystemTime(new Date(2026, 7, 12, 8)); // 2026-08-12
+      dbMocks.loadAvailability.mockResolvedValueOnce(
+        [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 })),
+      );
+      const store = await mountTask('n1');
+      await act(async () => {
+        // Booked in this order because `scheduleNode` refuses a fresh sitting
+        // in the past — the future one goes first so the node is already
+        // `isPlaced`, which is what lets the second call (`add`, a past date)
+        // through as a rearrangement rather than a brand-new past booking.
+        store.actions.scheduleNode('g1', 'n1', '2026-08-20', 540, { mode: 'add' });
+        store.actions.scheduleNode('g1', 'n1', '2026-08-05', 540, { mode: 'add' });
+      });
+
+      const chip = screen.getByRole('button', { name: /^Schedule: / });
+      expect(chip.textContent).toContain('Aug 20');
+      expect(chip.textContent).not.toContain('Aug 5');
+
+      vi.useRealTimers();
+    });
   });
 });
