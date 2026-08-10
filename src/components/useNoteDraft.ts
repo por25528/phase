@@ -5,12 +5,13 @@ import { NOTE_SAVE_DEBOUNCE_MS, shouldFlushNoteSave } from '../lib/noteAutosave'
 /**
  * One note editor's draft, its debounce, and its departure flush.
  *
- * Extracted because three surfaces need it — the goal's Notes tab, the
- * container inspector, and a task's page — and what it encodes is an invariant,
- * not a convenience: a debounce timer must never spend a pending undo, while an
- * explicit departure (blur, subject switch, unmount) always saves, because
- * losing typing is worse than losing an undo nobody used. Three copies of that
- * rule would be three chances to get it wrong.
+ * Extracted because four surfaces need it — the goal's Notes tab, the
+ * container inspector, a task's page, and a milestone's own Notes tab — and
+ * what it encodes is an invariant, not a convenience: a debounce timer must
+ * never spend a pending undo, while an explicit departure (blur, subject
+ * switch, unmount) always saves, because losing typing is worse than losing
+ * an undo nobody used. Four copies of that rule would be four chances to get
+ * it wrong.
  *
  * `save` receives the subject id the text was typed against, not the current
  * one. Switching subjects flushes the OLD draft before reseeding, and passing

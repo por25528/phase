@@ -5,6 +5,7 @@ import { GoalTree } from '../../components/GoalTree';
 import { StepPanel } from './StepPanel';
 import { TaskPage } from './TaskPage';
 import { NoteEditor } from '../../components/NoteEditor';
+import { useNoteDraft } from '../../components/useNoteDraft';
 import { InlineEdit } from '../../components/InlineEdit';
 import { ProgressBar } from '../../components/ProgressBar';
 import { IconCircle, IconPlus } from '../../components/Icons';
@@ -52,6 +53,9 @@ export function AreaPage({ goal: g, node }: { goal: Goal; node: GoalNode }) {
   const children = node.children ?? [];
   const done = children.filter((c) => isDone(c)).length;
   const pct = Math.round(nodePct(node));
+  const notesDraft = useNoteDraft(node.id, node.notes ?? '', (id, markdown) =>
+    actions.setNodeNotes(id, markdown),
+  );
 
   // Back from a task inside a milestone lands on the MILESTONE, not the goal:
   // `closeStep` leaves `openAreaId` set, so one Escape is one step up.
@@ -218,11 +222,11 @@ export function AreaPage({ goal: g, node }: { goal: Goal; node: GoalNode }) {
             )}
           </div>
         ) : (
-          <div className="max-w-[720px]">
+          <div className="max-w-[720px]" onBlur={notesDraft.onBlur}>
             <NoteEditor
               docKey={node.id}
-              value={node.notes ?? ''}
-              onChange={(markdown) => actions.setNodeNotes(node.id, markdown)}
+              value={notesDraft.value}
+              onChange={notesDraft.onChange}
               placeholder="Notes for this milestone…"
               ariaLabel="Milestone notes"
             />
