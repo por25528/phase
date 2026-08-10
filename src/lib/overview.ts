@@ -2,6 +2,7 @@ import type { Goal, GoalNode } from '../db/types';
 import { goalEffort, type GoalEffort } from './effort';
 import { checkpointMarkers } from './checkpoints';
 import { stepStatus } from './status';
+import { plannedLeaves } from './plan';
 
 /**
  * What a goal's Overview tab answers, and nothing more.
@@ -44,6 +45,41 @@ export interface GoalOverview {
   effort: GoalEffort;
   /** Open leaves whose status is `blocked` — the count, not the rows. */
   blocked: number;
+}
+
+export interface GoalWeekLoad {
+  /** Leaves planned into this week, done or not. */
+  total: number;
+  done: number;
+  /** Σ estimates of the OPEN ones. Priced work only. */
+  minutes: number;
+  /** Open ones carrying no estimate — the reason `minutes` is a floor. */
+  unestimated: number;
+}
+
+/**
+ * What this goal has committed to the week.
+ *
+ * Membership is `plannedLeaves`' rule and nothing else — a leaf belongs to the
+ * week when it carries `plannedWeek` or has a sitting landing inside it — so
+ * this figure cannot start disagreeing with the Plan rail about what "this
+ * week" means.
+ *
+ * `minutes` counts only OPEN, PRICED leaves: a finished task is not work left,
+ * and an unpriced one is unknown rather than free, which is why the count of
+ * those is reported beside it instead of being folded in as zero.
+ */
+export function goalWeekLoad(goal: Goal, week: string): GoalWeekLoad {
+  const leaves = plannedLeaves([goal], week);
+  let done = 0;
+  let minutes = 0;
+  let unestimated = 0;
+  for (const leaf of leaves) {
+    if (leaf.done) { done += 1; continue; }
+    if (leaf.estimateMin === undefined) unestimated += 1;
+    else minutes += leaf.estimateMin;
+  }
+  return { total: leaves.length, done, minutes, unestimated };
 }
 
 /**

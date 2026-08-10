@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode } from '../db/types';
 import { firstOpenLeaf } from './tree';
+import { weekOf } from './plan';
 import {
   OVERVIEW_NEXT_MAX,
   OVERVIEW_UPCOMING_MAX,
+  goalWeekLoad,
   goalOverview,
   overviewIsEmpty,
 } from './overview';
@@ -171,5 +173,60 @@ describe('overviewIsEmpty', () => {
   it('is not empty when the only open work is blocked', () => {
     const g = goal([leaf('a', { status: 'blocked' })]);
     expect(overviewIsEmpty(goalOverview(g, TODAY))).toBe(false);
+  });
+});
+
+describe('goalWeekLoad', () => {
+  const WEEK = weekOf('2026-08-12');
+
+  it('counts leaves committed to the week and prices the open ones', () => {
+    const g = goal([
+      leaf('a', { plannedWeek: WEEK, estimateMin: 60 }),
+      leaf('b', { plannedWeek: WEEK, estimateMin: 30 }),
+    ]);
+    const load = goalWeekLoad(g, WEEK);
+    expect(load.total).toBe(2);
+    expect(load.done).toBe(0);
+    expect(load.minutes).toBe(90);
+    expect(load.unestimated).toBe(0);
+  });
+
+  /** A finished task is still planned this week; it is just not work left. */
+  it('counts a done leaf in total but not in minutes', () => {
+    const g = goal([
+      leaf('a', { plannedWeek: WEEK, estimateMin: 60, status: 'done' }),
+      leaf('b', { plannedWeek: WEEK, estimateMin: 30 }),
+    ]);
+    const load = goalWeekLoad(g, WEEK);
+    expect(load.total).toBe(2);
+    expect(load.done).toBe(1);
+    expect(load.minutes).toBe(30);
+  });
+
+  /**
+   * An unpriced open leaf must not read as free. `minutes` stays a floor and
+   * the count says why — the same split `GoalEffort.unestimated` exists for.
+   */
+  it('reports unpriced open work separately rather than as zero minutes', () => {
+    const g = goal([
+      leaf('a', { plannedWeek: WEEK, estimateMin: 45 }),
+      leaf('b', { plannedWeek: WEEK }),
+    ]);
+    const load = goalWeekLoad(g, WEEK);
+    expect(load.minutes).toBe(45);
+    expect(load.unestimated).toBe(1);
+  });
+
+  it('ignores leaves committed to a different week', () => {
+    const g = goal([
+      leaf('a', { plannedWeek: WEEK, estimateMin: 45 }),
+      leaf('b', { plannedWeek: weekOf('2026-09-30'), estimateMin: 45 }),
+    ]);
+    expect(goalWeekLoad(g, WEEK).total).toBe(1);
+  });
+
+  it('is all zeroes for a goal with nothing planned', () => {
+    const load = goalWeekLoad(goal([leaf('a')]), WEEK);
+    expect(load).toEqual({ total: 0, done: 0, minutes: 0, unestimated: 0 });
   });
 });

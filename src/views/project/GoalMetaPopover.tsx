@@ -6,7 +6,8 @@ import { IconArrowRight } from '../../components/Icons';
 import { firstOpenLeaf } from '../../lib/tree';
 import { goalPctBasis } from '../../lib/pct';
 import { todayStr, daysLeftLabel } from '../../lib/dates';
-import { plannedLeaves, weekOf } from '../../lib/plan';
+import { weekOf } from '../../lib/plan';
+import { goalWeekLoad } from '../../lib/overview';
 import { projectVelocity, describeVelocity } from '../../lib/velocity';
 import { projectCalibration, describeCalibration } from '../../lib/actuals';
 import type { GoalEffort } from '../../lib/effort';
@@ -80,8 +81,7 @@ export function GoalMetaPopover({
   const storedDateError = projectDateError(g.start, g.deadline);
   const datesUnconfirmed = needsDateConfirmation(g);
   const basis = goalPctBasis(g);
-  const wk = plannedLeaves([g], weekOf(today));
-  const wkDone = wk.filter((l) => l.done).length;
+  const wk = goalWeekLoad(g, weekOf(today));
   const next = firstOpenLeaf(g.nodes);
   const velocity = describeVelocity(projectVelocity(g, today));
   const calibration = describeCalibration(projectCalibration(g, sessions));
@@ -168,10 +168,10 @@ export function GoalMetaPopover({
           {effort.done}/{effort.total} tasks
           {effort.total > 0 && (basis === 'weighted' ? ', weighted by estimate' : ', each counting equally')}
         </dd>
-        {wk.length > 0 && (
+        {wk.total > 0 && (
           <>
             <dt className="text-muted">This week</dt>
-            <dd className="text-ink-soft tabular-nums m-0">{wkDone}/{wk.length} planned</dd>
+            <dd className="text-ink-soft tabular-nums m-0">{wk.done}/{wk.total} planned</dd>
           </>
         )}
         {next && !g.completedAt && (
