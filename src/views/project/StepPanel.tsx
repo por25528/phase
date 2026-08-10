@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FocusEvent, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import type { Goal, GoalNode } from '../../db/types';
-import { registerPendingNoteFlush, useAppStore } from '../../state/store';
+import { useAppStore } from '../../state/store';
 import { DateField } from '../../components/DateField';
 import {
   IconArrowRight,
@@ -18,6 +18,7 @@ import { EstimateControl } from '../../components/EstimateControl';
 import { InlineEdit } from '../../components/InlineEdit';
 import { LogTimeControl } from '../../components/LogTimeControl';
 import { NoteEditor } from '../../components/NoteEditor';
+import { useNoteDraft } from '../../components/useNoteDraft';
 import {
   PropertyOption,
   PropertyRow,
@@ -25,7 +26,6 @@ import {
   PropertyToggle,
 } from '../../components/PropertyRow';
 import { loggedForNode } from '../../lib/actuals';
-import { NOTE_SAVE_DEBOUNCE_MS, shouldFlushNoteSave } from '../../lib/noteAutosave';
 import { fmtD, todayStr } from '../../lib/dates';
 import { containerStatus, isDone, STATUS_WORD, stepStatus } from '../../lib/status';
 import { clockLabel } from '../../lib/clock';
@@ -95,21 +95,14 @@ export function StepPanel({ goal, node, actions }: {
   node: GoalNode;
   actions: ReturnType<typeof useAppStore>['actions'];
 }): JSX.Element {
-  const { sessions, pendingUndo } = useAppStore();
+  const { sessions } = useAppStore();
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftStart, setDraftStart] = useState(node.start ?? '');
   const [draftDeadline, setDraftDeadline] = useState(node.deadline ?? '');
   const [draftBlockedOn, setDraftBlockedOn] = useState(node.blockedOn ?? '');
-  const initialNotes = node.notes ?? '';
-  const [draftNotes, setDraftNotes] = useState(initialNotes);
-  const draftNotesRef = useRef(initialNotes);
-  const savedNotesRef = useRef(initialNotes);
-  const noteSubjectRef = useRef(node.id);
-  const pendingUndoRef = useRef(pendingUndo);
-  const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
-  pendingUndoRef.current = pendingUndo;
+  const noteDraft = useNoteDraft(node.id, node.notes ?? '', (id, markdown) =>
+    actions.setNodeNotes(id, markdown),
+  );
   const isLeaf = !node.children || node.children.length === 0;
   const children = node.children ?? [];
   // Counts DIRECT children, matching the list rendered beside it. `nodePct`
@@ -131,56 +124,6 @@ export function StepPanel({ goal, node, actions }: {
   useEffect(() => {
     setDraftBlockedOn(node.blockedOn ?? '');
   }, [node.id, node.blockedOn]);
-
-  function clearNoteTimer(): void {
-    if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
-    noteTimerRef.current = null;
-  }
-
-  function flushNotes(reason: 'debounce' | 'blur' | 'unmount'): void {
-    if (!shouldFlushNoteSave(pendingUndoRef.current !== null, reason)) return;
-    if (draftNotesRef.current === savedNotesRef.current) return;
-    clearNoteTimer();
-    const markdown = draftNotesRef.current;
-    savedNotesRef.current = markdown;
-    actionsRef.current.setNodeNotes(noteSubjectRef.current, markdown);
-  }
-
-  const flushNotesRef = useRef(flushNotes);
-  flushNotesRef.current = flushNotes;
-
-  useEffect(() => registerPendingNoteFlush(() => flushNotesRef.current('unmount')), []);
-
-  // The editor is intentionally reused across steps, so reset the draft when
-  // its subject changes instead of relying on a remount.
-  useEffect(() => {
-    if (noteSubjectRef.current === node.id) return;
-    flushNotesRef.current('unmount');
-    clearNoteTimer();
-    noteSubjectRef.current = node.id;
-    const next = node.notes ?? '';
-    draftNotesRef.current = next;
-    savedNotesRef.current = next;
-    setDraftNotes(next);
-  }, [node.id]);
-
-  useEffect(() => {
-    if (draftNotesRef.current === savedNotesRef.current) return;
-    clearNoteTimer();
-    noteTimerRef.current = setTimeout(() => {
-      noteTimerRef.current = null;
-      flushNotesRef.current('debounce');
-    }, NOTE_SAVE_DEBOUNCE_MS);
-    return clearNoteTimer;
-  }, [draftNotes, pendingUndo]);
-
-  useEffect(() => () => flushNotesRef.current('unmount'), []);
-
-  function handleNotesBlur(event: FocusEvent<HTMLDivElement>): void {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      flushNotesRef.current('blur');
-    }
-  }
 
   function commitDates(start: string, deadline: string): void {
     setDraftStart(start);
@@ -550,14 +493,11 @@ export function StepPanel({ goal, node, actions }: {
 
       <section>
         <SectionLabel>Notes</SectionLabel>
-        <div onBlur={handleNotesBlur}>
+        <div onBlur={noteDraft.onBlur}>
           <NoteEditor
             docKey={node.id}
-            value={noteSubjectRef.current === node.id ? draftNotes : initialNotes}
-            onChange={(markdown) => {
-              draftNotesRef.current = markdown;
-              setDraftNotes(markdown);
-            }}
+            value={noteDraft.value}
+            onChange={noteDraft.onChange}
             placeholder="What actually happened?"
             ariaLabel="Task notes"
           />
