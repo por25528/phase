@@ -4,9 +4,10 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
 import { goalEffort, fmtMinutes } from '../../lib/effort';
-import { todayStr } from '../../lib/dates';
+import { addDays, fmtD, todayStr } from '../../lib/dates';
 import { goalHealth, HEALTH_WORD } from '../../lib/health';
 import { weekOf } from '../../lib/plan';
+import { MIN_VELOCITY_SAMPLES, VELOCITY_WINDOW_DAYS } from '../../lib/velocity';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -96,16 +97,39 @@ function section(name: string): HTMLElement {
 describe('OverviewTab forecast and week load', () => {
   it('offers Schedule for the lead Next item and opens the schedule menu', async () => {
     const goal = datedGoal([
-      leaf('lead', { title: 'Lead task', estimateMin: 30 }),
+      leaf('lead', { title: 'Lead task', estimateMin: 90 }),
       leaf('later', { title: 'Later task', estimateMin: 15 }),
     ]);
     await mountOverview(goal);
 
     const schedule = screen.getByRole('button', { name: 'Schedule' });
     expect(schedule).toBeTruthy();
+    expect(schedule.className).not.toContain('flex-none');
     fireEvent.click(schedule);
 
+    const menu = screen.getByRole('menu', { name: 'Schedule' });
+    expect(menu.style.width).toBe('188px');
+    expect(menu.className).toContain('right-0');
     expect(screen.getByRole('menuitem', { name: 'Today' })).toBeTruthy();
+  });
+
+  it('marks the promoted Next item and uses the compact estimate format', async () => {
+    const goal = datedGoal([
+      leaf('lead', { title: 'Lead task', status: 'doing', estimateMin: 90 }),
+      leaf('later', { title: 'Later task', estimateMin: 15 }),
+    ]);
+    await mountOverview(goal);
+
+    const next = section('Next');
+    const markers = next.querySelectorAll('svg');
+    expect(markers).toHaveLength(2);
+    expect(Array.from(markers).every((marker) => (
+      marker.getAttribute('width') === '13' && marker.querySelector('circle') !== null
+    ))).toBe(true);
+    expect(markers[0]?.parentElement?.className).toContain('text-accent');
+    expect(markers[1]?.parentElement?.className).toContain('text-faint');
+    expect(next.textContent).toContain('1h30');
+    expect(next.textContent).not.toContain('1h 30m');
   });
 
   it('keeps the Schedule control outside the lead task button', async () => {
@@ -172,12 +196,15 @@ describe('OverviewTab forecast and week load', () => {
       const goal = datedGoal([
         leaf('a', { plannedWeek: week, estimateMin: 60 }),
         leaf('b', { plannedWeek: week, estimateMin: 30 }),
+        leaf('c', { estimateMin: 15 }),
       ]);
       await mountOverview(goal);
 
       const thisWeek = section('This week');
       expect(thisWeek.textContent).toContain('2 tasks');
       expect(thisWeek.textContent).toContain(fmtMinutes(90));
+      expect(thisWeek.textContent).not.toContain('3 tasks');
+      expect(thisWeek.textContent).not.toContain(fmtMinutes(105));
     } finally {
       vi.useRealTimers();
     }
@@ -192,7 +219,9 @@ describe('OverviewTab forecast and week load', () => {
       expect(thisWeek.textContent).toContain('Nothing committed to this week yet.');
       expect(thisWeek.textContent).not.toContain('0 tasks');
       expect(thisWeek.textContent).not.toContain('0m');
-      expect(section('Forecast').textContent).toContain('No forecast');
+      const forecast = section('Forecast');
+      expect(forecast.textContent).toContain('No forecast · No working hours set — set them in Plan to forecast against real time');
+      expect(forecast.querySelector('span')?.className).toContain('text-muted');
     } finally {
       vi.useRealTimers();
     }
@@ -201,10 +230,19 @@ describe('OverviewTab forecast and week load', () => {
   it('does not claim a predicted finish date at the current pace', async () => {
     vi.setSystemTime(new Date(2026, 7, 11, 12));
     try {
-      const goal = datedGoal([leaf('a', { estimateMin: 60 })]);
+      const recentDone = Array.from({ length: MIN_VELOCITY_SAMPLES }, (_, index) => leaf(`done-${index}`, {
+        status: 'done',
+        doneAt: addDays(todayStr(), -Math.min(index + 1, VELOCITY_WINDOW_DAYS - 1)),
+        estimateMin: 30,
+      }));
+      const goal = datedGoal([...recentDone, leaf('open', { estimateMin: 60 })]);
       await mountOverview(goal, WORKING_HOURS);
 
-      expect(section('Forecast').textContent).not.toMatch(/at current pace/i);
+      const forecast = section('Forecast');
+      const text = forecast.textContent ?? '';
+      expect(text).toContain('at this rate');
+      expect(text).not.toContain(fmtD(goal.deadline!));
+      expect(text).not.toMatch(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s?\d{1,2}\b/);
     } finally {
       vi.useRealTimers();
     }

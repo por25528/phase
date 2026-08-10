@@ -7,23 +7,8 @@ import { InlineEdit } from '../../components/InlineEdit';
 import { goalPct } from '../../lib/pct';
 import { todayStr, fmtD } from '../../lib/dates';
 import { fmtMinutes, goalEffort } from '../../lib/effort';
-import { goalHealth, HEALTH_WORD, type Health } from '../../lib/health';
+import { goalHealth, HEALTH_TONE, HEALTH_WORD } from '../../lib/health';
 import { GoalMetaPopover } from './GoalMetaPopover';
-
-/**
- * How loud each verdict is allowed to be.
- *
- * Only the two that need acting on carry colour. "On track" in green on every
- * healthy goal is decoration — it trains the eye to stop reading the cluster,
- * which is exactly when the one that matters gets missed.
- */
-const HEALTH_TONE: Record<Health, string> = {
-  'on-track': 'text-ink-soft',
-  tight: 'text-ink-soft',
-  'at-risk': 'text-warn',
-  blocked: 'text-warn',
-  'no-forecast': 'text-muted',
-};
 
 // ── Header ────────────────────────────────────────────────────────────────────
 /**

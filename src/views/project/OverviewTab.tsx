@@ -5,7 +5,7 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { ScheduleMenu } from '../../components/SchedulePopover';
 import { IconCircle, IconDiamond, IconWarning } from '../../components/Icons';
 import { goalOverview, overviewIsEmpty, goalWeekLoad } from '../../lib/overview';
-import { goalHealth, HEALTH_WORD } from '../../lib/health';
+import { goalHealth, HEALTH_TONE, HEALTH_WORD } from '../../lib/health';
 import { describeVelocity, projectVelocity } from '../../lib/velocity';
 import { weekOf } from '../../lib/plan';
 import { fmtMinutes } from '../../lib/effort';
@@ -72,6 +72,9 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
               const leadNode = findNode(g.nodes, lead.id);
               return (
                 <div className="flex items-center gap-[8px] px-[6px] py-[5px]">
+                  <span className={`flex-none inline-flex self-center ${lead.started ? 'text-accent' : 'text-faint'}`}>
+                    <IconCircle size={13} />
+                  </span>
                   <button
                     type="button"
                     onClick={() => actions.openProject(g.id, lead.id)}
@@ -82,7 +85,7 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
                       {lead.parentTitle && <>{lead.parentTitle}</>}
                       {lead.parentTitle && lead.estimateMin !== undefined && ' · '}
                       {lead.estimateMin !== undefined && (
-                        <span className="tabular-nums">{fmtMinutes(lead.estimateMin)}</span>
+                        <span className="tabular-nums">{formatEstimateValue(lead.estimateMin)}</span>
                       )}
                     </span>
                   </button>
@@ -90,7 +93,9 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
                     <Popover
                       label="Schedule"
                       role="menu"
-                      triggerClassName="flex-none text-meta font-semibold text-accent-deep px-[8px] py-[5px] rounded-[6px] hover:bg-accent-tint"
+                      align="end"
+                      panelWidth={188}
+                      triggerClassName="text-meta font-semibold text-accent-deep px-[8px] py-[5px] rounded-[6px] hover:bg-accent-tint"
                       trigger={<span>Schedule</span>}
                     >
                       {(close) => <ScheduleMenu goalId={g.id} node={leadNode} close={close} />}
@@ -162,16 +167,12 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
         <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">Forecast</h3>
         <p className="m-0 px-[6px] text-ui text-ink-soft">
           <span
-            className={
-              verdict.health === 'at-risk' || verdict.health === 'blocked'
-                ? 'font-semibold text-warn'
-                : 'font-semibold text-ink'
-            }
+            className={`font-semibold ${HEALTH_TONE[verdict.health]}`}
           >
             {HEALTH_WORD[verdict.health]}
           </span>
-          {' — '}
-          {verdict.reason}
+          {' · '}
+          <span className="text-muted">{verdict.reason}</span>
         </p>
         {/* The observed rate and runway, never a predicted finish date:
             `describeVelocity` refuses to name one from a trailing average, and

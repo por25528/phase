@@ -34,6 +34,15 @@ export const HEALTH_WORD: Record<Health, string> = {
   'no-forecast': 'No forecast',
 };
 
+/** Shared presentation tone for a health verdict across project surfaces. */
+export const HEALTH_TONE: Record<Health, string> = {
+  'on-track': 'text-ink-soft',
+  tight: 'text-ink-soft',
+  'at-risk': 'text-warn',
+  blocked: 'text-warn',
+  'no-forecast': 'text-muted',
+};
+
 /**
  * The buffer below which "it fits" stops being reassuring. 15% of the work
  * remaining, per spec §8 — an estimate that is 15% optimistic is an ordinary
