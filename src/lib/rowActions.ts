@@ -95,17 +95,58 @@ export function rowActions(ctx: RowActionContext): RowAction[] {
 }
 
 /**
+ * Split a verb list into the runs a separator falls between.
+ *
+ * Shared by the row's menu and the page's. The grouping is asserted once, so a
+ * surface that grouped by eye cannot drift the first time a verb moves.
+ */
+function groupByRun(actions: RowAction[]): RowAction[][] {
+  const groups: RowAction[][] = [];
+  for (const action of actions) {
+    const last = groups.at(-1);
+    if (last && last[0].group === action.group) last.push(action);
+    else groups.push([action]);
+  }
+  return groups;
+}
+
+/**
  * The same list, split into the runs a separator falls between.
  *
  * Done here rather than in the menu so the grouping is asserted once. A view
  * that grouped by eye would drift the first time a verb moved.
  */
 export function rowActionGroups(ctx: RowActionContext): RowAction[][] {
-  const groups: RowAction[][] = [];
-  for (const action of rowActions(ctx)) {
-    const last = groups.at(-1);
-    if (last && last[0].group === action.group) last.push(action);
-    else groups.push([action]);
-  }
-  return groups;
+  return groupByRun(rowActions(ctx));
+}
+
+/**
+ * What a task PAGE's `⋯` offers — a strict subset of the row's menu.
+ *
+ * Schedule, Estimate and Milestone are absent because the page renders them as
+ * chips under the title: a menu item duplicating a control two inches above it
+ * is the row's old ten-control problem moved indoors.
+ *
+ * Add task is absent for a stronger reason. It converts the leaf into a
+ * container, and the page only exists for leaves — so the one gesture would
+ * eject the reader from the page they are on. Converting a task into a group
+ * stays a tree operation. The sanctioned route from a page is "Break into
+ * subtasks", which ends in the same conversion but shows what it is about to
+ * create first.
+ *
+ * `open` is absent because a leaf has nothing behind it, which is exactly the
+ * rule `rowActions` already applies.
+ */
+export function taskPageActions(ctx: RowActionContext): RowAction[] {
+  const out: RowAction[] = [];
+  out.push({ id: 'rename', label: 'Rename', hint: '↵', group: 0 });
+  if (ctx.canIndent) out.push({ id: 'indent', label: 'Indent', hint: '⌘]', group: 2 });
+  if (ctx.canOutdent) out.push({ id: 'outdent', label: 'Outdent', hint: '⌘[', group: 2 });
+  out.push({ id: 'delete', label: 'Delete', hint: '⌫', tone: 'danger', group: 3 });
+  return out;
+}
+
+/** The same list, split into the runs a separator falls between. */
+export function taskPageActionGroups(ctx: RowActionContext): RowAction[][] {
+  return groupByRun(taskPageActions(ctx));
 }

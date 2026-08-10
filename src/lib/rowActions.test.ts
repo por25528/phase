@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rowActionGroups, rowActions, type RowActionContext } from './rowActions';
+import { rowActionGroups, rowActions, taskPageActions, taskPageActionGroups, type RowActionContext } from './rowActions';
 
 const ctx = (over: Partial<RowActionContext> = {}): RowActionContext => ({
   isContainer: false,
@@ -106,5 +106,43 @@ describe('rowActionGroups', () => {
   it('isolates Delete in its own run', () => {
     const last = rowActionGroups(ctx()).at(-1);
     expect(last?.map((a) => a.id)).toEqual(['delete']);
+  });
+});
+
+describe('taskPageActions', () => {
+  const leaf: RowActionContext = {
+    isContainer: false,
+    isDone: false,
+    isMilestone: false,
+    canIndent: true,
+    canOutdent: true,
+  };
+
+  it('offers rename, indent, outdent and delete', () => {
+    expect(taskPageActions(leaf).map((a) => a.id)).toEqual([
+      'rename', 'indent', 'outdent', 'delete',
+    ]);
+  });
+
+  it('omits the verbs the page already shows as chips', () => {
+    const ids = taskPageActions(leaf).map((a) => a.id);
+    expect(ids).not.toContain('schedule');
+    expect(ids).not.toContain('estimate');
+    expect(ids).not.toContain('milestone');
+  });
+
+  it('omits add-task: converting a task into a group would eject the page', () => {
+    expect(taskPageActions(leaf).map((a) => a.id)).not.toContain('add-task');
+  });
+
+  it('drops indent for a first sibling and outdent at the root', () => {
+    const stuck = { ...leaf, canIndent: false, canOutdent: false };
+    expect(taskPageActions(stuck).map((a) => a.id)).toEqual(['rename', 'delete']);
+  });
+
+  it('groups rename apart from the move verbs and from delete', () => {
+    expect(taskPageActionGroups(leaf).map((g) => g.map((a) => a.id))).toEqual([
+      ['rename'], ['indent', 'outdent'], ['delete'],
+    ]);
   });
 });
