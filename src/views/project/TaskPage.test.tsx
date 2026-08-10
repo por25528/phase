@@ -4,6 +4,9 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, Session } from '../../db/types';
 import { makeBlock } from '../../lib/blocks';
+import { addDays, todayStr } from '../../lib/dates';
+import { fmtMinutes } from '../../lib/effort';
+import { dayLabel } from '../../lib/todayPlan';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -88,11 +91,12 @@ type Store = typeof import('../../state/store');
  * uses in StepPanel.test.tsx, so an action's effect is readable through
  * `store.getState()`.
  */
-async function mountTask(nodeId: string): Promise<Store> {
+async function mountTask(nodeId: string, availability?: AvailabilityWindow[]): Promise<Store> {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
     goals: [structuredClone(goalSeed)], habits: [], tasks: [], sessions: [],
   });
+  if (availability !== undefined) dbMocks.loadAvailability.mockResolvedValueOnce(availability);
   const store = await import('../../state/store');
   await store.initStore();
   store.actions.openProject('g1');
@@ -303,7 +307,31 @@ describe('TaskPage', () => {
     await mountTask('n7');
 
     expect(screen.getByText('This looks larger than one focused work session.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Break into smaller steps' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Break into smaller steps' }));
+    expect(screen.getByRole('heading', { name: /Break down/ })).toBeTruthy();
+  });
+
+  it('passes the live remaining time into the breakdown price', async () => {
+    vi.setSystemTime(new Date(2026, 7, 10, 20, 0));
+    try {
+      const today = todayStr();
+      const tomorrow = addDays(today, 1);
+      await mountTask('n1', [0, 1, 2, 3, 4].map((dow) => ({
+        dow, startMin: 540, endMin: 1020,
+      })));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Break into smaller steps' }));
+      const box = screen.getByRole('textbox', { name: 'Paste the reply' });
+      fireEvent.paste(box, { clipboardData: { getData: () => 'Read the spec — 45m' } });
+
+      const day = dayLabel(tomorrow, today);
+      const line = screen.queryByText((_, element) =>
+        element?.tagName === 'P' && (element.textContent ?? '').includes(`${day} has`));
+      expect(line).not.toBeNull();
+      expect(line?.textContent).toContain(`${day} has ${fmtMinutes(480)} free`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not show the oversized invitation for a small task', async () => {

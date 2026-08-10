@@ -36,7 +36,7 @@ import { STATUS_WORD, stepStatus } from '../../lib/status';
 import { taskPageActionGroups, type RowActionId } from '../../lib/rowActions';
 import { dayLabel, nextSitting } from '../../lib/rowSchedule';
 import { findNodePath, findParentList } from '../../lib/tree';
-import { nextFreeDay, dayLabel as planDayLabel } from '../../lib/todayPlan';
+import { nextFreeDay } from '../../lib/todayPlan';
 
 const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
 
@@ -69,9 +69,11 @@ export function TaskPage({
   backLabel: string;
   onBack: () => void;
 }): JSX.Element {
-  const { goals, tasks, sessions, availability, allDayBlocks, actions } = useAppStore();
-  void tasks;
-  void planDayLabel;
+  const { goals, sessions, availability, allDayBlocks, actions } = useAppStore();
+  const [nowMinute, setNowMinute] = useState(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  });
   const [editingTitle, setEditingTitle] = useState(false);
   const [proposing, setProposing] = useState(false);
   const [draftStart, setDraftStart] = useState(node.start ?? '');
@@ -99,6 +101,14 @@ export function TaskPage({
   useEffect(() => {
     setDraftBlockedOn(node.blockedOn ?? '');
   }, [node.id, node.blockedOn]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const d = new Date();
+      setNowMinute(d.getHours() * 60 + d.getMinutes());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   function commitDates(start: string, deadline: string): void {
     setDraftStart(start);
@@ -140,8 +150,8 @@ export function TaskPage({
   // can be weighed against somewhere to put them. Null when no availability is
   // set — the panel then says nothing rather than inventing a day.
   const freeDay = useMemo(
-    () => nextFreeDay(today, availability, [], allDayBlocks, { date: today, minute: 0 }),
-    [today, availability, allDayBlocks],
+    () => nextFreeDay(today, availability, [], allDayBlocks, { date: today, minute: nowMinute }),
+    [today, availability, allDayBlocks, nowMinute],
   );
   const next = nextSitting(node, today);
   const whenValue = next

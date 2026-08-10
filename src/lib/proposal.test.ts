@@ -120,4 +120,8 @@ describe('looksOversized', () => {
     // array is not a breakdown, so the node is still a leaf and still oversized.
     expect(looksOversized(leaf({ estimateMin: SESSION_MIN * 2, children: [] }))).toBe(true);
   });
+
+  it('is false for an oversized milestone because it is a marker, not work', () => {
+    expect(looksOversized(leaf({ estimateMin: SESSION_MIN * 2, checkpoint: true }))).toBe(false);
+  });
 });

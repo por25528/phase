@@ -111,7 +111,19 @@ describe('the breakdown proposal', () => {
     const free = fmtMinutes(85);
     const line = screen.getByText(new RegExp(`${day} has`));
     expect(line.textContent).toBe(`${estimate} · 1 unestimated · ${day} has ${free} free`);
-    expect(line.textContent).not.toBe(`${estimate} · ${day} has ${free} free`);
+    expect(line.textContent).toContain('· 1 unestimated');
+  });
+
+  it('discloses unestimated rows when only free time is priced', async () => {
+    const today = todayStr();
+    const tomorrow = addDays(today, 1);
+    await mount({ date: tomorrow, freeMin: 85 });
+
+    paste('Read the spec\nWrite the lexer');
+
+    const day = dayLabel(tomorrow, today);
+    const line = screen.getByText(new RegExp(`${day} has`));
+    expect(line.textContent).toContain(`2 unestimated`);
   });
 
   it('omits the free-day half when no free day is supplied', async () => {
@@ -122,7 +134,8 @@ describe('the breakdown proposal', () => {
     paste('Read chapter 7 — 45m\nProblems 1–15 — 1h\nMock quiz');
 
     const estimate = fmtMinutes(45 + 60);
-    expect(screen.getByText(estimate).textContent).toBe(estimate);
+    const estimateSpan = screen.getByText(estimate);
+    expect(estimateSpan.parentElement?.textContent).toBe(`${estimate} · 1 unestimated`);
     expect(screen.queryByText(new RegExp(`${day} has`))).toBeNull();
   });
 

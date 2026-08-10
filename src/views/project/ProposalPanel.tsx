@@ -90,8 +90,8 @@ export function ProposalPanel({
 
   const accepted = acceptedRows(rows ?? []);
   const taking = accepted.length;
-  // Only what is actually priced. Summing an unestimated row as zero would
-  // make four steps look free.
+  // Unestimated rows count as zero in the total; disclosing their count beside
+  // it makes clear what the total does not capture.
   const takingMin = accepted.reduce((n, r) => n + (r.estimateMin ?? 0), 0);
   const unpriced = accepted.filter((r) => r.estimateMin === undefined).length;
 
@@ -211,13 +211,13 @@ export function ProposalPanel({
           {/* What this will cost, beside where it could go. Stated BEFORE the
               write, because after it the leaf becomes a container and this
               panel is gone. */}
-          {taking > 0 && (takingMin > 0 || freeDay) && (
+          {taking > 0 && (
             <p className="mt-[8px] text-meta text-muted">
               {takingMin > 0 && (
                 <span className="tabular-nums">{fmtMinutes(takingMin)}</span>
               )}
-              {takingMin > 0 && unpriced > 0 && ` · ${unpriced} unestimated`}
-              {takingMin > 0 && freeDay && ' · '}
+              {unpriced > 0 && `${takingMin > 0 ? ' · ' : ''}${unpriced} unestimated`}
+              {freeDay && (takingMin > 0 || unpriced > 0) && ' · '}
               {freeDay && (
                 <>
                   {dayLabel(freeDay.date, todayStr())} has{' '}

@@ -1,6 +1,7 @@
 import { parseEstimateInput } from './estimateInput';
 import { parseSubtasks } from './goalImport';
 import type { GoalNode } from '../db/types';
+import { isLeafNode } from './tree';
 
 /**
  * Minutes past which a task is more than one focused sitting.
@@ -20,7 +21,10 @@ export const SESSION_MIN = 90;
  * how a contextual invitation turns into permanent chrome.
  */
 export function looksOversized(node: GoalNode): boolean {
-  if (node.children && node.children.length > 0) return false;
+  if (!isLeafNode(node)) return false;
+  // A milestone is a marker rather than work; breaking it down removes the
+  // checkpoint flag in addChildren and silently destroys that marker.
+  if (node.checkpoint === true) return false;
   return node.estimateMin !== undefined && node.estimateMin > SESSION_MIN;
 }
 
