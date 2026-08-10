@@ -391,6 +391,13 @@ export function nearestMeaningfulDate(g: Goal, today: string): MeaningfulDate | 
 export interface NextAction {
   kind: 'planned' | 'open' | 'needs-breakdown' | 'complete';
   title: string;
+  /**
+   * The leaf this names, when it names one. Absent for the three sentences
+   * that describe a STATE rather than a task — no tasks yet, all complete,
+   * everything blocked — which is what lets a caller show the line only when
+   * there is something to point at.
+   */
+  nodeId?: string;
 }
 
 // The single "what's next" line: a leaf already planned for this week wins, then
@@ -421,7 +428,7 @@ export function nextOpenAction(g: Goal, today: string): NextAction {
   }
   const planned = workable.find((n) => n.plannedWeek === week);
   const pick = planned ?? doing[0] ?? todo[0];
-  return { kind: planned ? 'planned' : 'open', title: pick.title };
+  return { kind: planned ? 'planned' : 'open', title: pick.title, nodeId: pick.id };
 }
 
 export interface AttentionBadge {

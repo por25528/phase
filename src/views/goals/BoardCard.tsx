@@ -9,6 +9,7 @@ import { fmtMinutes, goalEffort } from '../../lib/effort';
 import {
   nearestMeaningfulDate,
   attentionBadge,
+  nextOpenAction,
   type AttentionBadge,
 } from '../../lib/plan';
 import { isValidLocalDate, needsDateConfirmation } from '../../lib/schedule';
@@ -57,6 +58,7 @@ function CardFace({
   suppressDateBadge?: boolean;
 }) {
   const effort = goalEffort(goal);
+  const next = nextOpenAction(goal, today);
   const dateInfo = nearestMeaningfulDate(goal, today);
   const badge = suppressDateBadge && needsDateConfirmation(goal)
     ? null
@@ -111,6 +113,16 @@ function CardFace({
           {effort.unestimated > 0 && (
             <span className="text-muted"> · {effort.unestimated} unestimated</span>
           )}
+        </p>
+      )}
+
+      {/* Only when it names a real task. The three state sentences this can
+          return — no tasks yet, all complete, everything blocked — are already
+          said by the badge, the effort line and the blocked indicator, and
+          repeating them here would be the card arguing with itself. */}
+      {next.nodeId && (
+        <p className="text-compact text-muted truncate">
+          <span className="text-ink-soft">Next</span> {next.title}
         </p>
       )}
 

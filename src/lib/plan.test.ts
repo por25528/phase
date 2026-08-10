@@ -543,7 +543,7 @@ describe('nextOpenAction', () => {
       { id: 'a', title: 'A' },
       { id: 'b', title: 'B', plannedWeek: WEEK },
     ]});
-    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'planned', title: 'B' });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'planned', title: 'B', nodeId: 'b' });
   });
 
   it('falls back to the first open leaf when nothing is planned this week', () => {
@@ -552,7 +552,7 @@ describe('nextOpenAction', () => {
       { id: 'b', title: 'B' },
       { id: 'c', title: 'C' },
     ]});
-    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'B' });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'B', nodeId: 'b' });
   });
 
   it('prefers a doing leaf over an earlier todo leaf', () => {
@@ -560,7 +560,7 @@ describe('nextOpenAction', () => {
       { id: 'a', title: 'A' },
       { id: 'b', title: 'B', status: 'doing' },
     ]});
-    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'B' });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'B', nodeId: 'b' });
   });
 
   it('never names a blocked leaf', () => {
@@ -568,7 +568,7 @@ describe('nextOpenAction', () => {
       { id: 'a', title: 'A', status: 'blocked' },
       { id: 'b', title: 'B' },
     ]});
-    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'B' });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'B', nodeId: 'b' });
   });
 
   it('names the all-blocked verdict, not a step, when every open leaf is blocked', () => {
@@ -584,7 +584,27 @@ describe('nextOpenAction', () => {
       { id: 'a', title: 'A', status: 'doing' },
       { id: 'b', title: 'B', plannedWeek: WEEK },
     ]});
-    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'planned', title: 'B' });
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'planned', title: 'B', nodeId: 'b' });
+  });
+
+  it('names the node it picked, so a caller can point at it', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', status: 'done' },
+      { id: 'b', title: 'B' },
+    ] });
+    expect(nextOpenAction(g, TODAY).nodeId).toBe('b');
+  });
+
+  /**
+   * The three state sentences name no task, and a caller must be able to tell:
+   * the card already says all three of these things by other means.
+   */
+  it('names no node for a state sentence', () => {
+    expect(nextOpenAction(goal({ nodes: [] }), TODAY).nodeId).toBeUndefined();
+    const done = goal({ nodes: [{ id: 'a', title: 'A', status: 'done' }] });
+    expect(nextOpenAction(done, TODAY).nodeId).toBeUndefined();
+    const blocked = goal({ nodes: [{ id: 'a', title: 'A', status: 'blocked', blockedOn: 'x' }] });
+    expect(nextOpenAction(blocked, TODAY).nodeId).toBeUndefined();
   });
 });
 
