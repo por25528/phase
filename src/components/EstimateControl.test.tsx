@@ -104,10 +104,10 @@ async function mountTree(): Promise<{ store: Store; user: ReturnType<typeof user
 /**
  * Mount the task inspector over one node.
  *
- * Logging actual time moved off the tree row and into here. The row carried
- * ten controls to manipulate one task; the ledger is the least frequently
- * touched of them, and it is one click from every row via the inspector that
- * row already opens. The assertions in the block below are the SAME ones that
+ * Logging actual time moved off the tree row and into the inspector, then a
+ * leaf's inspector moved again to its own page (`TaskPage`) — a container
+ * still docks `StepPanel`, which is why `nodeId: 'grp'` is the one caller that
+ * asks for it below. The assertions in the block below are the SAME ones that
  * ran against the row — same control, same accessible names, same store writes
  * — only the host changed.
  */
@@ -121,7 +121,6 @@ async function mountInspector(
   const store = await import('../state/store');
   await store.initStore();
   store.actions.openProject('g');
-  const { StepPanel } = await import('../views/project/StepPanel');
   const pick = (nodes: Goal['nodes']): Goal['nodes'][number] | null => {
     for (const n of nodes) {
       if (n.id === nodeId) return n;
@@ -132,16 +131,33 @@ async function mountInspector(
     }
     return null;
   };
-  const PanelHost = () => {
-    const current = store.useAppStore();
-    const goal = current.goals[0];
-    return createElement(StepPanel, {
-      goal,
-      node: pick(goal.nodes)!,
-      actions: current.actions,
-    });
-  };
-  render(createElement(PanelHost));
+  const isContainer = !!pick(PROJECT.nodes)?.children?.length;
+  if (isContainer) {
+    const { StepPanel } = await import('../views/project/StepPanel');
+    const PanelHost = () => {
+      const current = store.useAppStore();
+      const goal = current.goals[0];
+      return createElement(StepPanel, {
+        goal,
+        node: pick(goal.nodes)!,
+        actions: current.actions,
+      });
+    };
+    render(createElement(PanelHost));
+  } else {
+    const { TaskPage } = await import('../views/project/TaskPage');
+    const PageHost = () => {
+      const current = store.useAppStore();
+      const goal = current.goals[0];
+      return createElement(TaskPage, {
+        goal,
+        node: pick(goal.nodes)!,
+        backLabel: goal.title,
+        onBack: () => current.actions.closeStep(),
+      });
+    };
+    render(createElement(PageHost));
+  }
   return { store, user: userEvent.setup() };
 }
 

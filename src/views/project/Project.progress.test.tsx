@@ -158,12 +158,11 @@ describe('Project page', () => {
        * words alone; it used to be a bare text node and screen readers read the
        * decoration out.
        *
-       * `n2` is a leaf, so it now opens as `TaskPage`, whose own "Break …"
-       * trigger uses straight quotes (its docstring: chips are stated as
-       * readouts, not a second property list) rather than the docked panel's
-       * curly ones.
+       * `n2` is a leaf, so it now opens as `TaskPage`, whose "Break …" trigger
+       * uses the same typographic curly quotes as the rest of the app's locked
+       * visual identity.
        */
-      const breakdown = screen.getByRole('button', { name: /^Break "/ });
+      const breakdown = screen.getByRole('button', { name: /^Break “/ });
       expect(breakdown.textContent).toContain('Order the topics');
       fireEvent.click(breakdown);
       expect(screen.getByRole('heading', { name: /Break down/ })).toBeTruthy();

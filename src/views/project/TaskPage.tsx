@@ -403,7 +403,7 @@ export function TaskPage({
             className="mt-[14px] inline-flex items-center gap-[6px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[1px]"
           >
             <IconSparkle size={12} />
-            Break "{node.title}" into subtasks
+            Break “{node.title}” into subtasks
           </button>
         )}
 
