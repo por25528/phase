@@ -570,6 +570,52 @@ describe('store actions', () => {
     expect(getState().pendingUndo).toBeNull();
   });
 
+  // A destructive delete snapshots for undo BEFORE it removes anything, so the
+  // mounted note editor must flush into that snapshot first — otherwise the
+  // undo restores a note that predates what was actually being typed. Asserting
+  // only that the flush ran would still pass if it fired AFTER the snapshot;
+  // asserting the note survives the round trip through undo is what pins the
+  // ordering (CLAUDE.md: "Note autosave is held while pendingUndo is live").
+  it('flushes the mounted note editor before snapshotting a delete', async () => {
+    const { actions, getState, registerPendingNoteFlush } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Step 1');
+    const nid = getState().goals[0].nodes[0].id;
+    registerPendingNoteFlush(() => actions.setNodeNotes(nid, 'Typed before delete'));
+
+    actions.removeNode(nid);
+    actions.undoLastDelete();
+
+    expect(getState().goals[0].nodes[0].notes).toBe('Typed before delete');
+  });
+
+  it('removeNodes flushes the mounted note editor before snapshotting a bulk delete', async () => {
+    const { actions, getState, registerPendingNoteFlush } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    actions.addRootNode(gid, 'Step 1');
+    const nid = getState().goals[0].nodes[0].id;
+    registerPendingNoteFlush(() => actions.setNodeNotes(nid, 'Typed before bulk delete'));
+
+    actions.removeNodes([nid]);
+    actions.undoLastDelete();
+
+    expect(getState().goals[0].nodes[0].notes).toBe('Typed before bulk delete');
+  });
+
+  it('removeGoal flushes the mounted note editor before snapshotting a delete', async () => {
+    const { actions, getState, registerPendingNoteFlush } = await freshStore();
+    actions.addGoal('G');
+    const gid = getState().goals[0].id;
+    registerPendingNoteFlush(() => actions.setGoalNotes(gid, 'Typed before delete'));
+
+    actions.removeGoal(gid);
+    actions.undoLastDelete();
+
+    expect(getState().goals[0].notes).toBe('Typed before delete');
+  });
+
   // The timer now hides the toast rather than throwing the restore away. Five
   // seconds is below the time it takes to notice a misclick, so the undo
   // outlives its own toast and ⌘Z can still reach it.
