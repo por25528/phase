@@ -68,6 +68,12 @@ const unplannedLeaf: Goal = {
   nodes: [{ id: 'n1', title: 'Wire up auth' }],
 };
 
+/** A week commitment with nothing placed on a day yet — `plannedWeek` with no `blocks`. */
+const committedLeaf: Goal = {
+  id: 'g1', title: 'Project',
+  nodes: [{ id: 'n1', title: 'Wire up auth', plannedWeek: '2026-07-27' }],
+};
+
 const checkpointLeaf: Goal = {
   id: 'g1', title: 'Project',
   nodes: [{ id: 'n1', title: 'Wire up auth', checkpoint: true }],
@@ -587,5 +593,61 @@ describe('StepPanel', () => {
       expect(store.getState().goals[0].nodes[0].status).toBe('done');
       expect(store.getState().goals[0].nodes[0].doneAt).toBe(doneAt);
     });
+  });
+});
+
+describe('ScheduleMenu', () => {
+  /**
+   * `StepPanel`'s own "not placed on a day" row has its own hardcoded Clear
+   * button for a `plannedWeek`-only commitment, so mounting `StepPanel` on
+   * `committedLeaf` never opens `ScheduleMenu` at all — this renders the menu
+   * directly, the same shape `TaskPage` opens it in, where the hole actually is.
+   */
+  async function mountMenu(goal: Goal): Promise<Store> {
+    const store = await preparePanel(goal);
+    const { ScheduleMenu } = await import('../../components/SchedulePopover');
+    const Host = () => {
+      const current = store.useAppStore();
+      const liveGoal = current.goals.find((g) => g.id === goal.id)!;
+      const liveNode = liveGoal.nodes.find((n) => n.id === goal.nodes[0].id)!;
+      return createElement(ScheduleMenu, {
+        goalId: liveGoal.id,
+        node: liveNode,
+        close: () => {},
+      });
+    };
+    render(createElement(Host));
+    return store;
+  }
+
+  it('offers no Clear item for a task with neither a sitting nor a week commitment', async () => {
+    await mountMenu(unplannedLeaf);
+
+    expect(screen.queryByRole('menuitem', { name: /Clear schedule/ })).toBeNull();
+  });
+
+  it('offers Clear for a placed sitting, and it clears the whole placement', async () => {
+    const store = await mountMenu(plannedLeaf);
+
+    expect(screen.getByRole('menuitem', { name: 'Sit again today' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Clear schedule' }));
+
+    const node = store.getState().goals[0].nodes[0];
+    expect(node.blocks).toBeUndefined();
+    expect(node.plannedWeek).toBeUndefined();
+  });
+
+  it('offers Clear for a week commitment with nothing placed on a day yet', async () => {
+    const store = await mountMenu(committedLeaf);
+
+    // "Sit again today" only makes sense once something is already sitting
+    // somewhere — a bare week commitment has nothing to "sit again" from.
+    expect(screen.queryByRole('menuitem', { name: 'Sit again today' })).toBeNull();
+    const clearItem = screen.getByRole('menuitem', { name: 'Clear schedule' });
+    expect(clearItem).toBeTruthy();
+
+    fireEvent.click(clearItem);
+
+    expect(store.getState().goals[0].nodes[0].plannedWeek).toBeUndefined();
   });
 });

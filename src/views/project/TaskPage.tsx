@@ -152,7 +152,7 @@ export function TaskPage({
 
       <div className="max-w-[720px]">
         <div className="flex items-start gap-[10px] py-[4px]">
-          <h1 aria-label={node.title} className="m-0 min-w-0 flex-1">
+          <h1 className="m-0 min-w-0 flex-1">
             {editingTitle ? (
               <InlineEdit
                 value={node.title}
@@ -212,7 +212,7 @@ export function TaskPage({
             label="Status"
             icon={<StatusMark status={status} />}
             value={STATUS_WORD[status]}
-            placeholder="Todo"
+            placeholder={STATUS_WORD.todo}
             panelWidth={188}
           >
             {(close) => (

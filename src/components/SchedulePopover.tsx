@@ -30,6 +30,12 @@ export function ScheduleMenu({
 }) {
   const { actions } = useAppStore();
   const placed = isPlaced(node);
+  // A week commitment with no sitting yet (`plannedWeek` set, no `blocks`) is
+  // still something to clear — `StepPanel`'s old "not placed on a day" row had
+  // its own Clear button for exactly this, and this menu is meant to be the
+  // one place both surfaces get scheduling from. Gating on `placed` alone left
+  // that commitment unclearable from here.
+  const committed = placed || node.plannedWeek !== undefined;
 
   return (
     <>
@@ -46,16 +52,20 @@ export function ScheduleMenu({
         Next free slot
       </PopoverItem>
       {placed && (
+        <PopoverItem
+          close={close}
+          onSelect={() => actions.scheduleNode(goalId, node.id, todayStr(), 0, { mode: 'add' })}
+        >
+          Sit again today
+        </PopoverItem>
+      )}
+      {committed && (
         <>
           <PopoverSeparator />
-          <PopoverItem
-            close={close}
-            onSelect={() => actions.scheduleNode(goalId, node.id, todayStr(), 0, { mode: 'add' })}
-          >
-            Sit again today
-          </PopoverItem>
-          {/* Unschedule with no block id clears EVERY sitting — the same "all
-              of them" this menu's own summary counts. */}
+          {/* Unschedule with no block id clears EVERY sitting AND the week
+              commitment itself — the same "all of them" this menu's own
+              summary counts, and the only thing to clear when there is no
+              sitting yet. */}
           <PopoverItem close={close} tone="danger" onSelect={() => actions.unscheduleNode(goalId, node.id)}>
             Clear schedule
           </PopoverItem>

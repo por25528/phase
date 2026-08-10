@@ -185,7 +185,7 @@ export function StepPanel({ goal, node, actions }: {
             label="Status"
             icon={<StatusMark status={stepStatus(node)} />}
             value={STATUS_WORD[stepStatus(node)]}
-            placeholder="Todo"
+            placeholder={STATUS_WORD.todo}
             panelWidth={188}
           >
             {(close) => (
