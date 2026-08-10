@@ -66,7 +66,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
     [replanOpen, goals, tasks, today, availability, allDayBlocks, nowMinute],
   );
 
-  const open = sections.commitments.filter((i) => !i.done);
+  const open = useMemo(() => sections.commitments.filter((i) => !i.done), [sections]);
   // "Rest of today" means the REST. The Next block above it is already showing
   // `focus.item`; listing it again put the same task on screen twice, and the
   // section's own name promised otherwise.
@@ -74,7 +74,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
   // Indexed against the list it is drawn in, not the one it was derived from.
   const divider = nowDividerIndex(rest, nowMinute);
   const doneCount = sections.completedToday.length;
-  // One clock column for every row on the page, Next included.
+  // Reserve one clock column for every task row whenever any commitment carries a clock.
   const anyTimed = open.some((i) => i.startMin !== undefined);
   // What the page is already saying, so the offer below does not repeat it.
   const shown = useMemo(() => new Set(open.map((i) => i.key)), [open]);
@@ -193,10 +193,10 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
 
       {/* ── Today's plan ──
-          Hidden only when the Now card is ALREADY showing the day's one open
-          item. `nowFocus` deliberately returns null once everything timed is
-          behind us, so a bare `> 1` dropped a single unticked 10:00 standup off
-          the page entirely at six in the evening. */}
+          Shown whenever an open commitment remains after the Next item is
+          removed. `nowFocus` deliberately returns null once everything timed
+          is behind us, so the remaining list still shows a single unticked
+          10:00 standup at six in the evening. */}
       {rest.length > 0 && (
         <section aria-label="Today’s plan" className="mb-[24px]">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
@@ -274,6 +274,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
                     title={row.title}
                     subtitle={row.goalTitle}
                     reserveLead
+                    time={anyTimed ? '' : undefined}
                     onOpen={() => place(row, offer.date, offer.today)}
                     ariaLabel={`Plan “${row.title}” ${dayLabel(offer.date, today)}`}
                     meta={

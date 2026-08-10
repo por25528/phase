@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, Goal, Task } from '../db/types';
 import { PLAN_DAY_HORIZON, PROPOSAL_MAX, nextFreeDay, offerHeading, proposalRows, todayPlan } from './todayPlan';
+import { backlogGroups } from './backlog';
 import { makeBlock } from './blocks';
 
 // Wednesday. weekDates() orders dow 0 = Mon, so Wednesday is dow 2.
@@ -234,9 +235,20 @@ describe('todayPlan exclusions', () => {
     const all = proposalRows(goals, [], WEEK, TODAY);
     const target = all[0];
     const after = proposalRows(goals, [], WEEK, TODAY, new Set([target.key]));
+    const next = backlogGroups(goals, [], WEEK, TODAY)[0].items[1];
     const sameProject = after.find((r) => r.goalTitle === target.goalTitle);
     expect(sameProject).toBeTruthy();
-    expect(sameProject!.key).not.toBe(target.key);
+    expect(sameProject!.key).toBe(`${next.kind}:${next.id}`);
+  });
+
+  it('fills the proposal cap after excluding a project’s top item', () => {
+    const goals = Array.from({ length: PROPOSAL_MAX + 1 }, (_, i) => goal({
+      id: `g${i}`, title: `Project ${i}`, nodes: [{ id: `n${i}`, title: `Step ${i}` }],
+    }));
+    const after = proposalRows(goals, [], WEEK, TODAY, new Set(['step:n0']));
+
+    expect(after).toHaveLength(PROPOSAL_MAX);
+    expect(after[0].key).toBe('step:n1');
   });
 
   it('threads the exclusion through todayPlan', () => {

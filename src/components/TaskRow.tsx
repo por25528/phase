@@ -28,9 +28,8 @@ export interface TaskRowProps {
  * One list row, for every surface that lists work.
  *
  * Today had three hand-rolled versions of these — a commitment row, an offer
- * row and the card in `Now`. The two lists are now unified here; the `Now`
- * card deliberately remains its own shape, which is how the same page ended
- * up with a hover background on one list and none on the list above it.
+ * row and the card in `Now`. The work lists and the `Now` card now share this
+ * shape, so every task row keeps the same alignment and hover treatment.
  *
  * The shape is dictated by one constraint: a row needs an interactive leading
  * control AND a full-row click target, and `<button>` inside `<button>` is
@@ -60,7 +59,7 @@ export function TaskRow({
   emphasis,
 }: TaskRowProps) {
   const titleCls = `block truncate ${emphasis ? 'text-lead' : 'text-ui'} ${
-    completed ? 'line-through text-muted' : 'text-ink-soft'
+    completed ? 'line-through text-muted' : emphasis ? 'text-ink' : 'text-ink-soft'
   }`;
 
   return (

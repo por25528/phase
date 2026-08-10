@@ -95,6 +95,23 @@ afterEach(() => {
 });
 
 describe('the free-time offer', () => {
+  it('shows committed work once even when it is also eligible for the offer', async () => {
+    await mountToday({
+      goals: [{
+        id: 'g1', title: 'Thesis', column: 0,
+        nodes: [
+          { id: 'n1', title: 'Draft the intro', plannedWeek: '2026-07-13' },
+          { id: 'n2', title: 'Revise the intro', plannedWeek: '2026-07-13' },
+        ],
+      }],
+    });
+
+    const countTitle = (title: string) => [...document.querySelectorAll('span')]
+      .filter((span) => span.textContent === title).length;
+    expect(countTitle('Draft the intro')).toBe(1);
+    expect(countTitle('Revise the intro')).toBe(1);
+  });
+
   it('offers a project’s next action when the day is uncommitted', async () => {
     await mountToday();
 

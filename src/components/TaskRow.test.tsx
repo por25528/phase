@@ -138,6 +138,7 @@ describe('TaskRow', () => {
   it('sets the title one step up under emphasis', () => {
     render(<TaskRow title="A" emphasis />);
     expect(screen.getByText('A').className).toContain('text-lead');
+    expect(screen.getByText('A').classList.contains('text-ink')).toBe(true);
     cleanup();
     render(<TaskRow title="A" />);
     expect(screen.getByText('A').className).toContain('text-ui');
