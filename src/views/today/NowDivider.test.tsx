@@ -41,4 +41,13 @@ describe('NowDivider', () => {
     render(<NowDivider nowMinute={9 * 60} />);
     expect(vi.mocked(clockLabel).mock.calls.some((c) => c[0] === 540)).toBe(true);
   });
+
+  it('aligns the label with the row clock column', () => {
+    const { container } = render(<NowDivider nowMinute={14 * 60 + 32} />);
+    const separator = container.firstElementChild;
+    const spacer = separator?.firstElementChild;
+    const label = spacer?.nextElementSibling;
+    expect(spacer?.className).toContain('w-[22px]');
+    expect(label?.className).toContain('w-[48px]');
+  });
 });

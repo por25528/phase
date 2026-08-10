@@ -19,7 +19,7 @@ export function TodayCheckbox({
       disabled={disabled}
       onClick={disabled ? undefined : onToggle}
       className={`w-[22px] h-[22px] border-[1.5px] rounded-[6px] flex-shrink-0 grid place-items-center transition-colors duration-100 ${
-        checked ? 'bg-accent border-accent' : 'bg-field border-line-2 hover:border-muted'
+        checked ? 'bg-accent border-accent' : 'bg-field border-check hover:border-muted'
       } ${disabled ? 'cursor-default opacity-70' : ''}`}
     >
       <svg
