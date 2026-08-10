@@ -268,6 +268,36 @@ git add src/components/TaskRow.tsx src/components/TaskRow.test.tsx
 git commit -m "feat(ui): one list row, with a target the whole row can carry"
 ```
 
+> **Amended after review — the Step 3 source above is superseded.** Review of
+> `815d7d0` found three defects in it, all authored here rather than by the
+> implementer. `TaskRowProps` is unchanged, so this section's contract still
+> governs Tasks 3 and 4; only the internals moved.
+>
+> 1. `time` and `meta` carried `relative z-10`. Both are non-interactive, so
+>    raising them above the stretched overlay made the time cell and the
+>    trailing estimate **dead click targets** on a row advertising a full-width
+>    hover — the exact combination Task 3 renders. `z-10` now stays on `lead`
+>    alone.
+> 2. `aria-label={ariaLabel ?? title}` overrode the button's subtree, so an
+>    interactive row announced its title and swallowed its subtitle. Task 3
+>    passes `subtitle={item.goalTitle}` with `onOpen`, so screen-reader users
+>    would have lost the project name that sighted users get. It is now
+>    `aria-label={ariaLabel}` — unset unless a caller passes one, letting the
+>    content name the button.
+> 3. The ring used `focus-within`, which matches plain `:focus` and therefore
+>    stayed drawn after a mouse click. The repo gates on `focus-visible`
+>    everywhere else (`GoalTree.tsx:711`, `BoardCard.tsx:273`). The button now
+>    carries `group` and the overlay `group-focus-visible:ring-2
+>    group-focus-visible:ring-accent` — which also gives the overlay's
+>    `rounded-[6px]` a job it previously did not have.
+>
+> A fourth finding was that none of this was testable: jsdom does no layout or
+> hit-testing, so every "shape" assertion passed with the load-bearing classes
+> deleted. The suite now pins `relative z-10` on the lead, the two
+> `group-focus-visible:` utilities, and the ABSENCE of `z-10` on the time cell.
+> All three were verified by mutation — delete the class, watch a named test
+> fail, restore, watch it pass.
+
 ---
 
 ### Task 2: `NowDivider` — the boundary, said out loud
