@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
+import { TaskRow } from '../components/TaskRow';
+import { NowDivider } from './today/NowDivider';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
 import { attentionItems, nowFocus, surfaceReason } from '../lib/todaySurface';
@@ -192,44 +194,35 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       {open.length > (focus ? 1 : 0) && (
         <section aria-label="Today’s plan" className="mb-[22px]">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
-          <ul className="border-t border-line">
+          <ul>
             {open.map((item, i) => (
               <li key={item.key}>
                 {/* One rule, where the day turns from behind you to ahead. */}
-                {i === divider && i > 0 && (
-                  <div aria-hidden="true" className="h-px bg-accent my-[2px]" />
-                )}
-                <div className="flex items-center gap-[9px] py-[7px] border-b border-line group">
-                  <TodayCheckbox
-                    checked={false}
-                    onToggle={() => complete(item)}
-                    ariaLabel={`Mark "${item.title}" as done`}
-                  />
-                  <span className="w-[54px] flex-none text-meta text-muted tabular-nums">
-                    {item.startMin === undefined ? '' : clockLabel(item.startMin)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => openItem(item)}
-                    className="flex-1 min-w-0 text-left"
-                  >
-                    <span className="block truncate text-ui text-ink-soft">{item.title}</span>
-                    {item.goalTitle && (
-                      <span className="block truncate text-meta text-muted">{item.goalTitle}</span>
-                    )}
-                  </button>
-                  {/* Why this row is here at all. Absent where the row already
-                      says it — a block at 14:00 does not need a chip reading
-                      "placed today". */}
-                  {surfaceReason(item) && (
-                    <span className="flex-none text-meta text-muted">{surfaceReason(item)}</span>
-                  )}
-                  {item.estimateMin !== undefined && (
-                    <span className="flex-none text-meta text-muted tabular-nums">
-                      {fmtMinutes(item.estimateMin)}
-                    </span>
-                  )}
-                </div>
+                {i === divider && i > 0 && <NowDivider nowMinute={nowMinute} />}
+                <TaskRow
+                  title={item.title}
+                  subtitle={item.goalTitle}
+                  time={item.startMin === undefined ? undefined : clockLabel(item.startMin)}
+                  onOpen={() => openItem(item)}
+                  lead={
+                    <TodayCheckbox
+                      checked={false}
+                      onToggle={() => complete(item)}
+                      ariaLabel={`Mark "${item.title}" as done`}
+                    />
+                  }
+                  meta={
+                    <>
+                      {/* Why this row is here at all. Absent where the row
+                          already says it — a block at 14:00 does not need a
+                          chip reading "placed today". */}
+                      {surfaceReason(item) && <span>{surfaceReason(item)}</span>}
+                      {item.estimateMin !== undefined && (
+                        <span className="tabular-nums">{fmtMinutes(item.estimateMin)}</span>
+                      )}
+                    </>
+                  }
+                />
               </li>
             ))}
           </ul>
@@ -262,32 +255,27 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           <h2 className="text-meta font-semibold text-muted mb-[6px]">
             {offerHeading(offer, today)}
           </h2>
-          <ul className="border-t border-line">
+          <ul>
             {offer.rows.map((row) => {
               const chip = dueChip(row.due, today);
               return (
                 <li key={row.key}>
-                  <button
-                    type="button"
-                    onClick={() => place(row, offer.date, offer.today)}
-                    aria-label={`Plan “${row.title}” ${dayLabel(offer.date, today)}`}
-                    className="w-full text-left flex items-center gap-[9px] py-[7px] border-b border-line hover:bg-hover"
-                  >
-                    <span className="flex-1 min-w-0">
-                      <span className="block truncate text-ui text-ink-soft">{row.title}</span>
-                      <span className="block truncate text-meta text-muted">{row.goalTitle}</span>
-                    </span>
-                    {chip && (
-                      <span className={`flex-none text-meta ${chip.overdue ? 'text-warn' : 'text-muted'}`}>
-                        {chip.text}
-                      </span>
-                    )}
-                    {row.estimateMin !== undefined && (
-                      <span className="flex-none text-meta text-muted tabular-nums">
-                        {fmtMinutes(row.estimateMin)}
-                      </span>
-                    )}
-                  </button>
+                  <TaskRow
+                    title={row.title}
+                    subtitle={row.goalTitle}
+                    onOpen={() => place(row, offer.date, offer.today)}
+                    ariaLabel={`Plan “${row.title}” ${dayLabel(offer.date, today)}`}
+                    meta={
+                      <>
+                        {chip && (
+                          <span className={chip.overdue ? 'text-warn' : undefined}>{chip.text}</span>
+                        )}
+                        {row.estimateMin !== undefined && (
+                          <span className="tabular-nums">{fmtMinutes(row.estimateMin)}</span>
+                        )}
+                      </>
+                    }
+                  />
                 </li>
               );
             })}
