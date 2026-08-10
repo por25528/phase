@@ -302,11 +302,11 @@ describe('StepPanel', () => {
 describe('ScheduleMenu', () => {
   /**
    * `StepPanel` no longer carries a WHEN cell at all — a leaf opens as its own
-   * `TaskPage` now, and `TaskPage` is the only surface left that opens
-   * `ScheduleMenu`, from its Schedule chip. This renders the menu directly,
-   * against the same goal fixtures `StepPanel`'s own tests use, so the
-   * `plannedWeek`-only commitment case stays covered without re-mounting
-   * `TaskPage` just to reach it.
+   * `TaskPage` now. Two surfaces still open `ScheduleMenu`: a leaf row's WHEN
+   * cell in `GoalTree`, and `TaskPage`'s Schedule chip. This renders the menu
+   * directly, against the same goal fixtures `StepPanel`'s own tests use, so
+   * the `plannedWeek`-only commitment case stays covered once, rather than
+   * twice over through whichever surface happens to reach it.
    */
   async function mountMenu(goal: Goal): Promise<Store> {
     const store = await preparePanel(goal);
