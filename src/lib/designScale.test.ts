@@ -239,6 +239,24 @@ describe('type roles', () => {
 });
 
 /**
+ * `.quiet-control` is the one hover-reveal for a CONTROL, because it carries
+ * the `@media (hover: hover)` gate. A hand-rolled `opacity-0 group-hover:`
+ * has no such gate, so on a touch device the control never appears at all —
+ * it is not "subtle", it is missing. Two calendar buttons shipped that way.
+ *
+ * The survivor is a decorative drag hint: `pointer-events-none`, nothing to
+ * click, and giving it `.quiet-control` would impose a 24px interactive
+ * target on something that is not interactive.
+ */
+describe('hover-revealed controls', () => {
+  it('use .quiet-control rather than a hand-rolled reveal', () => {
+    const hits = offenders(/opacity-0 group-hover[^\s"'`]*:opacity-100/g)
+      .map((h) => h.split(':')[0]);
+    expect([...new Set(hits)].sort()).toEqual(['views/plan/sidebar/Habits.tsx']);
+  });
+});
+
+/**
  * A dashed border is the app's DROP-TARGET signal — what a day column draws
  * while something is in the air. Spending it on ordinary empty states, in four
  * board columns at once, is how it stops meaning anything.
