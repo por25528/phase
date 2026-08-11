@@ -213,6 +213,45 @@ describe('store actions', () => {
       expect(getState().tasks[0].doneAt).toBeUndefined();
     });
 
+    /*
+     * On Today the row and its checkbox sit side by side. Booking the row can
+     * be taken back; ticking the box could not, though completion is the edit
+     * that makes the row vanish. `toggleLeaf` has armed an undo for the goal
+     * side of this all along — this is the task twin of that.
+     */
+    it('arms an undo when a task is completed', async () => {
+      vi.setSystemTime(new Date(2026, 6, 23, 12));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Watch roblox');
+      const taskId = getState().tasks[0].id;
+
+      actions.toggleTask(taskId);
+      expect(getState().pendingUndo?.label).toBe('Completed "Watch roblox"');
+
+      actions.undoLastDelete();
+      expect(getState().tasks[0].done).toBe(false);
+      expect(getState().tasks[0].doneAt).toBeUndefined();
+    });
+
+    /*
+     * Unticking is itself the recovery, and the row stays visible either way,
+     * so it stays silent — exactly as `toggleLeaf` does when it lands on 'todo'.
+     */
+    it('stays silent when a task is reopened', async () => {
+      vi.setSystemTime(new Date(2026, 6, 23, 12));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Watch roblox');
+      const taskId = getState().tasks[0].id;
+      actions.toggleTask(taskId);
+      actions.rescheduleTask(taskId, '2026-07-24'); // ordinary write; its sweep retires the completion's entry
+      expect(getState().pendingUndo).toBeNull();
+
+      actions.toggleTask(taskId);
+
+      expect(getState().tasks[0].done).toBe(false);
+      expect(getState().pendingUndo).toBeNull();
+    });
+
     it('reschedules a task', async () => {
       const { actions, getState } = await freshStore();
       actions.addTask('File notes', '2026-07-23');
