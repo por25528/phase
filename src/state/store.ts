@@ -2052,7 +2052,20 @@ export const actions = {
     } else {
       setPlannedSlot(node, day, startMin, durationMin);
     }
-    setAndPersist({ goals });
+    /*
+     * A drag of one existing bar is DIRECT MANIPULATION: you watched it land and
+     * you can drag it back, which is why `resizeNode` is silent too. Every other
+     * route here books from a distance — Today's proposal row, the backlog's
+     * `1`-`7` keypress, `ScheduleMenu`, TaskPage's add-a-sitting — and on Today
+     * the row IS the button, so there is no way to touch that zone without
+     * booking something. A press you did not mean must have a way back.
+     *
+     * The snapshot is the whole slice on purpose: this write sets the block AND
+     * the `plannedWeek` commitment above it, and a surgical undo would have to
+     * remember both, then drift the first time a third field joined them.
+     */
+    if (opts.blockId) setAndPersist({ goals });
+    else withUndo(`Scheduled "${sourceNode.title}"`, 'goals', goals);
     return true;
   },
 

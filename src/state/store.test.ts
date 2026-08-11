@@ -1054,6 +1054,83 @@ describe('store actions', () => {
       expect(getState().toast).toBe('No 10h gap left that day — longest free stretch is 9h');
     });
 
+    it('arms an undo when a booking did not come from moving a bar', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'Watch roblox');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
+      expect(getState().pendingUndo?.label).toBe('Scheduled "Watch roblox"');
+
+      actions.undoLastDelete();
+
+      // The whole-slice snapshot reverses the commitment too, not just the block.
+      const back = getState().goals[0].nodes[0];
+      expect(back.plannedWeek).toBeUndefined();
+      expect(back.blocks).toBeUndefined();
+    });
+
+    it('stays silent when a drag moves one existing bar', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.setNodeEstimate(nid, 60);
+      actions.scheduleNode(gid, nid, '2026-07-15', 600);
+      const blockId = getState().goals[0].nodes[0].blocks![0].id;
+
+      actions.scheduleNode(gid, nid, '2026-07-15', 660, { blockId });
+
+      expect(getState().goals[0].nodes[0].blocks![0].startMin).toBe(660);
+      // The placement's own entry was swept by this ordinary write, and the
+      // move armed nothing of its own — so there is no button left to press.
+      expect(getState().pendingUndo).toBeNull();
+    });
+
+    it('arms nothing when the day has no room', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.setNodeEstimate(nid, 600); // longer than the whole 09:00-18:00 window
+      // setNodeEstimate arms an undo of its own. An ordinary write sweeps it, so
+      // the assertion below is about scheduleNode and nothing else.
+      actions.renameGoal(gid, 'G');
+      expect(getState().pendingUndo).toBeNull();
+
+      expect(actions.scheduleNode(gid, nid, '2026-07-15', 600)).toBe(false);
+
+      // A visible Undo over a write that never happened is worse than no button.
+      expect(getState().pendingUndo).toBeNull();
+    });
+
+    it("undoing a mode:'add' sitting removes only the one it added", async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.setNodeEstimate(nid, 60);
+      actions.scheduleNode(gid, nid, '2026-07-15', 540);
+
+      actions.scheduleNode(gid, nid, '2026-07-15', 700, { mode: 'add' });
+      expect(getState().goals[0].nodes[0].blocks).toHaveLength(2);
+
+      actions.undoLastDelete();
+
+      const left = getState().goals[0].nodes[0].blocks!;
+      expect(left).toHaveLength(1);
+      expect(left[0].startMin).toBe(540);
+    });
+
     it('unscheduleNode clears all three fields with an undo window', async () => {
       vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
