@@ -102,6 +102,24 @@ export interface PlanReview {
   reviewed: boolean;
 }
 
+/**
+ * One of the handful of lives a person is living at once — "MIT", "Startup".
+ *
+ * A life is an ORGANISING dimension, not a container: it groups goals and (in
+ * slice 2) takes a share of the week's hours. It is deliberately NOT
+ * `Goal.type`, which is a template deciding what an empty workspace offers on
+ * first visit — welding them would mean a study-shaped goal could never sit on
+ * the startup board.
+ *
+ * Capped at `MAX_LIVES` (3). Scarcity is how this product thinks, and four
+ * lives is not a life, it is a tag system.
+ */
+export interface Life {
+  id: string;
+  title: string;
+  order: number; // ascending display order; ties broken by array position
+}
+
 export interface Goal {
   id: string;
   title: string;
@@ -111,6 +129,16 @@ export interface Goal {
   nodes: GoalNode[];
   notes?: string;           // free-form working notes — rides along in the goal object
   column?: number;          // commitment-horizon column, 0 = Now … 3 = Someday. Absent ⇒ 0.
+  /**
+   * The life this goal belongs to. Absent ⇒ unassigned, which is a REAL,
+   * permanent state, not a migration gap — an errand belongs to no life.
+   *
+   * The reference MAY DANGLE, exactly as `Session.nodeId` may. Deleting a life
+   * leaves its goals pointing at nothing and they read as unassigned; `lifeOf`
+   * resolves that at read time. This is what lets `removeLife` avoid rewriting
+   * every goal it touched, and what keeps its undo honest.
+   */
+  lifeId?: string;
   /**
    * Study / Project / General — a TEMPLATE, not a second object model. All
    * three share the same Areas, Tasks and schedule; the type only decides what
@@ -205,6 +233,7 @@ export interface AppState {
   habits: Habit[];
   tasks: Task[];
   sessions: Session[];
+  lives: Life[];
 }
 
 export interface Asset {
