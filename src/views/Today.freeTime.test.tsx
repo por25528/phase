@@ -137,6 +137,27 @@ describe('the free-time offer', () => {
     expect(screen.getByText('Draft the intro')).toBeTruthy();
   });
 
+  /**
+   * The row IS the button, so there is no way to touch this zone without
+   * booking something. A press you did not mean used to cost a trip to Plan.
+   */
+  it('a booking made by accident can be taken back', async () => {
+    const store = await mountToday();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Plan “Draft the intro” today' }).click();
+    });
+    expect(store.getState().pendingUndo?.label).toBe('Scheduled "Draft the intro"');
+
+    await act(async () => {
+      store.actions.undoLastDelete();
+    });
+
+    // Unplaced again, so `backlogGroups` re-includes it and the offer returns.
+    expect(blocksOf(store.getState().goals[0].nodes[0])).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Plan “Draft the intro” today' })).toBeTruthy();
+  });
+
   it('books a loose task too', async () => {
     const store = await mountToday({
       goals: [],
