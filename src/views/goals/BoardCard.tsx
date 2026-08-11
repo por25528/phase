@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Goal } from '../../db/types';
+import type { Goal, Life } from '../../db/types';
 import { IconDots } from '../../components/Icons';
 import { fmtD } from '../../lib/dates';
 import { blockedLeafCount, firstBlockedLeaf } from '../../lib/board';
@@ -15,6 +15,7 @@ import {
 import { isValidLocalDate, needsDateConfirmation } from '../../lib/schedule';
 import { HORIZON_LABELS } from './styles';
 import { containerDragAttributes } from '../../lib/dragAttributes';
+import { lifeOf, sortedLives } from '../../lib/lives';
 
 const BADGE_TONE: Record<AttentionBadge['tone'], string> = {
   warn: 'text-warn bg-warn-tint',
@@ -47,6 +48,7 @@ function CardFace({
   goal,
   today,
   suppressDateBadge = false,
+  life,
 }: {
   goal: Goal;
   today: string;
@@ -56,6 +58,8 @@ function CardFace({
    * together, stacking the identical phrase twice on one card by construction.
    */
   suppressDateBadge?: boolean;
+  /** The life the goal belongs to, or null/unassigned — printed as nothing. */
+  life?: Life | null;
 }) {
   const effort = goalEffort(goal);
   const next = nextOpenAction(goal, today);
@@ -131,7 +135,7 @@ function CardFace({
         </p>
       )}
 
-      {(badge || blocked > 0) && (
+      {(badge || blocked > 0 || life != null) && (
         <div className="flex flex-wrap items-center gap-[5px]">
           {badge && (
             <span
@@ -141,6 +145,7 @@ function CardFace({
               {badge.label}
             </span>
           )}
+          {life && <span className="text-meta text-muted whitespace-nowrap">{life.title}</span>}
           {blocked > 0 && (
             // "tasks", not the bare count the filter row's "Blocked goals"
             // signal counts — this is a task tally, and the two must not read
@@ -187,6 +192,8 @@ export function BoardCard({
   dimmed,
   matched,
   highlighted = false,
+  lives,
+  onSetLife,
 }: {
   goal: Goal;
   today: string;
@@ -206,6 +213,8 @@ export function BoardCard({
    * `:focus-visible` deliberately does not match.
    */
   highlighted?: boolean;
+  lives: Life[];
+  onSetLife: (goalId: string, lifeId: string | null) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: goal.id });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -236,6 +245,7 @@ export function BoardCard({
   };
 
   const currentCol = goal.column ?? 0;
+  const life = lifeOf(goal, lives);
 
   // Action buttons live inside the drag activator, so each swallows the pointer
   // (no drag) and the click (no drawer-open) before running its own handler.
@@ -291,7 +301,7 @@ export function BoardCard({
         matched ? 'shadow-today' : 'shadow-card hover:shadow-today'
       } ${highlighted ? 'ring-2 ring-accent' : ''}`}
     >
-      <CardFace goal={goal} today={today} suppressDateBadge />
+      <CardFace goal={goal} today={today} suppressDateBadge life={life} />
 
       {/*
         No action footer, and no date-confirmation sub-card.
@@ -337,22 +347,58 @@ export function BoardCard({
               <div className="px-[11px] py-[3px] text-meta text-muted">
                 Move to
               </div>
-              {HORIZON_LABELS.map((label, i) => (
-                <button
-                  key={label}
-                  type="button"
-                  role="menuitem"
-                  disabled={i === currentCol}
-                  onClick={act(() => {
-                    onMove(goal.id, i);
-                    setMenuOpen(false);
-                  })}
-                  className="w-full text-left text-ui px-[11px] py-[5px] text-ink-soft hover:bg-hover disabled:text-faint disabled:hover:bg-transparent disabled:cursor-default"
-                >
-                  {label}
-                  {i === currentCol && <span className="text-faint text-meta"> · current</span>}
-                </button>
-              ))}
+                  {HORIZON_LABELS.map((label, i) => (
+                    <button
+                      key={label}
+                      type="button"
+                      role="menuitem"
+                      disabled={i === currentCol}
+                      onClick={act(() => {
+                        onMove(goal.id, i);
+                        setMenuOpen(false);
+                      })}
+                      className="w-full text-left text-ui px-[11px] py-[5px] text-ink-soft hover:bg-hover disabled:text-faint disabled:hover:bg-transparent disabled:cursor-default"
+                    >
+                      {label}
+                      {i === currentCol && <span className="text-faint text-meta"> · current</span>}
+                    </button>
+                  ))}
+              {lives.length > 0 && (
+                <>
+                  <div className="border-t border-line-soft my-[4px]" />
+                  <div className="px-[11px] py-[3px] text-meta text-muted">
+                    Life
+                  </div>
+                  {sortedLives(lives).map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      role="menuitem"
+                      disabled={l.id === life?.id}
+                      onClick={act(() => {
+                        onSetLife(goal.id, l.id);
+                        setMenuOpen(false);
+                      })}
+                      className="w-full text-left text-ui px-[11px] py-[5px] text-ink-soft hover:bg-hover disabled:text-faint disabled:hover:bg-transparent disabled:cursor-default"
+                    >
+                      {l.title}
+                      {l.id === life?.id && <span className="text-faint text-meta"> · current</span>}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={life === null}
+                    onClick={act(() => {
+                      onSetLife(goal.id, null);
+                      setMenuOpen(false);
+                    })}
+                    className="w-full text-left text-ui px-[11px] py-[5px] text-ink-soft hover:bg-hover disabled:text-faint disabled:hover:bg-transparent disabled:cursor-default"
+                  >
+                    None
+                  </button>
+                </>
+              )}
               <div className="border-t border-line-soft my-[4px]" />
               <button
                 type="button"
