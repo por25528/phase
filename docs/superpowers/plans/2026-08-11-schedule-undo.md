@@ -83,6 +83,13 @@ Add these four tests to `src/state/store.test.ts`, directly after the test named
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
       actions.setNodeEstimate(nid, 600); // longer than the whole 09:00-18:00 window
+      // setNodeEstimate arms an undo of its own (`store.ts:1172`). An ordinary
+      // write sweeps it — `renameGoal` (`store.ts:1410`) is a plain
+      // `setAndPersist` — so the assertion below is about `scheduleNode` and
+      // nothing else. Without this the test can never pass, because the refusal
+      // returns before any write and so sweeps nothing.
+      actions.renameGoal(gid, 'G');
+      expect(getState().pendingUndo).toBeNull();
 
       expect(actions.scheduleNode(gid, nid, '2026-07-15', 600)).toBe(false);
 
