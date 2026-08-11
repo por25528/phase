@@ -325,6 +325,13 @@ Two honest costs, both with existing answers:
   [UX-11](ux-ui.md) already found on the calendar, so it takes the same answer: a
   minimum card height, and the proportionality is honest above it.
 
+  **This cost was underestimated, and it is what sank the first build.** A
+  calendar block can be 20px and still say what it is; a board card carries a
+  title, an effort figure, a next step and a schedule state, and needs ~240px to
+  do it. A minimum tall enough for the card is tall enough to flatten the whole
+  stack. See open question 3 — a compact card is now a precondition of D-16, not
+  a refinement of it.
+
 **Unassigned goals get a group too**, after the named lives, and its line is the
 remainder. One rule holds across the whole board: every group has a budget line,
 and the leftover is a group like any other. This also matches how the rail
@@ -492,11 +499,34 @@ genuinely unknown, and none of them are answerable by deciding harder.
    iCloud — but nothing needs to be committed until the log exists.
 2. **Whether the ritual sticks.** The behavioural bet under pillar two. Not a
    design question; a three-week experiment.
-3. **Whether D-16 works when rendered.** A budget line through proportionally
-   sized cards is right on paper. Boards with one enormous goal and four tiny
-   ones are where it will either hold or obviously fail, and no amount of
-   reasoning settles that before it is on screen. It is a layout, not a schema,
-   so it is the cheapest thing here to be wrong about.
+3. ~~**Whether D-16 works when rendered.**~~ **ANSWERED 2026-08-12 — it does
+   not, as specified.** Built as slice 2a and driven in a browser against
+   exactly the predicted case: one 10h goal and four 20m goals in one life.
+
+   The line itself is vindicated. Placement is exact — it lands inside the goal
+   that crosses the budget, to the pixel — and heights are honestly proportional
+   above the floor. What fails is everything around it.
+
+   **Proportional height is incompatible with the current card.** `BoardCard`
+   needs 197–238px to render its title, effort, next step and schedule state.
+   Every card on the board clipped, including the tallest at 132px. For nothing
+   to clip the floor would have to be ~240px — at which point a goal needs 15h
+   before proportionality engages, almost every card sits at the floor, the
+   stack is uniform, and the line becomes decorative. **The floor that makes
+   small cards readable is the floor that makes the idea meaningless.** That is
+   structural, not a tuning error.
+
+   **Splitting Now inside the four-column grid does not fit** either: each life
+   got 93px of a 307px cell while three empty horizons kept 307px each.
+
+   So D-16 survives only with a **compact card** for budgeted columns — title
+   and one figure, nothing else — or a geometry where Now claims width in
+   proportion to what it holds. Both are real design decisions and want their
+   own spec; neither should be improvised on top of a failed layout.
+
+   The bet cost exactly what this entry predicted: one layout, no schema. The
+   arithmetic survives it — see
+   `docs/superpowers/specs/2026-08-11-lives-budget-line-design.md`.
 
 ---
 
