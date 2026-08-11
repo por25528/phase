@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset } from '../db/types';
+import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset, Life } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
@@ -57,6 +57,7 @@ import {
   insertSiblingAfter as treeInsertSiblingAfter,
 } from '../lib/tree';
 import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status';
+import { canAddLife, nextLifeOrder } from '../lib/lives';
 
 /**
  * Write a status onto a node of an already-cloned tree.
@@ -174,6 +175,7 @@ let state: FullState = {
   habits: [],
   tasks: [],
   sessions: [],
+  lives: [],
   view: 'today',
   projectReturnView: 'goals',
   selDate: todayStr(),
@@ -470,7 +472,7 @@ function setAndPersist(patch: Partial<AppState>, uiPatch?: Partial<UIState>) {
    * transactions, so "the most recent write landed" is the true state of the
    * database, not a guess.
    */
-  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks, sessions: next.sessions }).then(
+  persist({ goals: next.goals, habits: next.habits, tasks: next.tasks, sessions: next.sessions, lives: next.lives }).then(
     () => {
       if (state.persistFailed) set({ persistFailed: false });
     },
@@ -1295,6 +1297,64 @@ export const actions = {
     const trimmed = title.trim();
     if (!trimmed) return;
     actions.addGoals([{ id: uid(), title: trimmed, nodes: [], column: 0, datesConfirmed: true }]);
+  },
+
+  /**
+   * Create a life. Returns false when refused, so a caller never reports
+   * success on a refusal — the same contract the bulk edits already keep.
+   */
+  addLife(title: string): boolean {
+    const clean = title.trim();
+    if (clean === '') return false;
+    if (!canAddLife(state.lives)) return false;
+    const life: Life = { id: uid(), title: clean, order: nextLifeOrder(state.lives) };
+    setAndPersist({ lives: [...state.lives, life] });
+    return true;
+  },
+
+  renameLife(id: string, title: string) {
+    const clean = title.trim();
+    if (clean === '') return;
+    if (!state.lives.some((l) => l.id === id)) return;
+    setAndPersist({ lives: state.lives.map((l) => (l.id === id ? { ...l, title: clean } : l)) });
+  },
+
+  /**
+   * Delete a life WITHOUT touching the goals in it.
+   *
+   * Their `lifeId` is left pointing at the deleted row; `lifeOf` reads that
+   * as unassigned. Undo then restores the life and every goal is back in
+   * it, because no goal was ever rewritten. The snapshot still spans both
+   * slices so the guarantee does not depend on a reader proving `goals` was
+   * untouched.
+   */
+  removeLife(id: string) {
+    const life = state.lives.find((l) => l.id === id);
+    if (!life) return;
+    withUndoSlices(
+      `Deleted "${life.title}"`,
+      { lives: state.lives.filter((l) => l.id !== id), goals: state.goals },
+      DESTRUCTIVE_UNDO_MS,
+    );
+  },
+
+  setGoalLife(goalId: string, lifeId: string | null) {
+    const goal = state.goals.find((g) => g.id === goalId);
+    if (!goal) return;
+    if (lifeId !== null && !state.lives.some((l) => l.id === lifeId)) return;
+    setAndPersist({
+      goals: state.goals.map((g) => {
+        if (g.id !== goalId) return g;
+        if (lifeId === null) {
+          // Absent, never `undefined` left in place — the field's absence IS
+          // "unassigned", and a key holding undefined survives structuredClone
+          // into the undo snapshot as a difference nobody asked for.
+          const { lifeId: _drop, ...rest } = g;
+          return rest;
+        }
+        return { ...g, lifeId };
+      }),
+    });
   },
 
   // Priority board: commit an entire column layout. `columns[c]` is the ordered
@@ -2666,7 +2726,7 @@ export const actions = {
     const preCheckpointMigrationSnapshot = await loadCheckpointMigrationSnapshot().catch(() => null);
     try {
       await exportState(
-        { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions },
+        { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions, lives: state.lives },
         state.pxPerDay,
         state.planReview,
         state.availability,

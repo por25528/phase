@@ -7,7 +7,7 @@ import { DEFAULT_AVAILABILITY } from '../lib/availability';
 import { makeBlock } from '../lib/blocks';
 
 const dbMocks = vi.hoisted(() => ({
-  loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [] })),
+  loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [], lives: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
   loadAvailability: vi.fn(async () => [
@@ -90,7 +90,7 @@ async function freshStoreWithLegacyData() {
     week: addDays(weekOf(todayStr()), -7), entries: [], reviewed: true,
   };
   vi.mocked(loadState).mockResolvedValueOnce({
-    goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
+    goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession], lives: [],
   });
   vi.mocked(loadPlanReview).mockResolvedValueOnce(planReview);
   const store = await freshStore();
@@ -657,7 +657,7 @@ describe('store actions', () => {
           nodes: [],
         },
       ],
-      habits: [], tasks: [], sessions: [],
+      habits: [], tasks: [], sessions: [], lives: [],
     });
     const store = await freshStore();
     await store.initStore();
@@ -677,7 +677,7 @@ describe('store actions', () => {
         id: 'bad', title: 'Bad legacy dates', start: '2026-12-31', deadline: '2026-01-01',
         nodes: [],
       }],
-      habits: [], tasks: [], sessions: [],
+      habits: [], tasks: [], sessions: [], lives: [],
     });
     const store = await freshStore();
     await store.initStore();
@@ -1550,7 +1550,7 @@ describe('store actions', () => {
           id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
           nodes: [{ id: 'n1', title: 'Old commitment', plannedWeek: prevWeek }],
         }],
-        habits: [], tasks: [], sessions: [],
+        habits: [], tasks: [], sessions: [], lives: [],
       });
       vi.mocked(loadPlanReview).mockResolvedValueOnce({ week: '2020-01-06', entries: [], reviewed: true });
       const store = await freshStore();
@@ -1585,7 +1585,7 @@ describe('store actions', () => {
           id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31', column: 0,
           nodes: [{ id: 'n1', title: 'leaf', plannedWeek: prevWeek }],
         }],
-        habits: [], tasks: [], sessions: [],
+        habits: [], tasks: [], sessions: [], lives: [],
       });
       vi.mocked(loadPlanReview).mockResolvedValueOnce(null);
       const store = await freshStore();
@@ -1607,7 +1607,7 @@ describe('store actions', () => {
           id: 'old-goal', title: 'Old goal', start: '2026-01-01', deadline: '2026-12-31', column: 0,
           nodes: [{ id: 'old-node', title: 'Old commitment', plannedWeek: prevWeek }],
         }],
-        habits: [], tasks: [], sessions: [],
+        habits: [], tasks: [], sessions: [], lives: [],
       });
       vi.mocked(loadPlanReview)
         .mockResolvedValueOnce({
@@ -1621,7 +1621,7 @@ describe('store actions', () => {
           id: 'new-goal', title: 'New goal', start: '2026-01-01', deadline: '2026-12-31', column: 0,
           nodes: [{ id: 'new-node', title: 'New commitment', plannedWeek: prevWeek }],
         }],
-        habits: [], tasks: [], sessions: [], pxPerDay: 40,
+        habits: [], tasks: [], sessions: [], lives: [], pxPerDay: 40,
         availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
       });
 
@@ -1669,6 +1669,7 @@ describe('store actions', () => {
           goalId: null,
         }],
         sessions: [],
+        lives: [],
       });
 
       const store = await freshStore();
@@ -1723,7 +1724,7 @@ describe('store actions', () => {
         const dbMod = await import('../db/db');
         vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
         vi.mocked(dbMod.loadState).mockResolvedValueOnce({
-          goals: [], habits: [], tasks: [], sessions: [],
+          goals: [], habits: [], tasks: [], sessions: [], lives: [],
         });
 
         const calls: string[] = [];
@@ -1748,7 +1749,7 @@ describe('store actions', () => {
         const dbMod = await import('../db/db');
         vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
         vi.mocked(dbMod.loadState).mockResolvedValueOnce({
-          goals: [], habits: [], tasks: [], sessions: [],
+          goals: [], habits: [], tasks: [], sessions: [], lives: [],
         });
         vi.mocked(dbMod.persist).mockRejectedValueOnce(new Error('write failed'));
 
@@ -1780,7 +1781,7 @@ describe('store actions', () => {
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
             }] as unknown as GoalNode[],
           }],
-          habits: [], tasks: [], sessions: [],
+          habits: [], tasks: [], sessions: [], lives: [],
         });
         vi.mocked(dbMod.markSlotMigrationDone).mockRejectedValueOnce(new Error('flag write failed'));
 
@@ -1815,7 +1816,7 @@ describe('store actions', () => {
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
             }] as unknown as GoalNode[],
           }],
-          habits: [], tasks: [], sessions: [],
+          habits: [], tasks: [], sessions: [], lives: [],
         });
 
         await store.initStore();
@@ -1856,7 +1857,7 @@ describe('store actions', () => {
               plannedWeek: '2026-07-13', plannedDay: '2026-07-15',
             }] as unknown as GoalNode[],
           }],
-          habits: [], tasks: [], sessions: [],
+          habits: [], tasks: [], sessions: [], lives: [],
         });
 
         await store.initStore();
@@ -1869,7 +1870,7 @@ describe('store actions', () => {
         const dbMod = await import('../db/db');
         vi.mocked(dbMod.isSlotMigrationDone).mockResolvedValueOnce(false);
         vi.mocked(dbMod.loadState).mockResolvedValueOnce({
-          goals: [], habits: [], tasks: [], sessions: [],
+          goals: [], habits: [], tasks: [], sessions: [], lives: [],
         });
         // Assert on the mechanism, not just the resulting state: `toast` is
         // already null before initStore runs, so replacing the
@@ -1920,7 +1921,7 @@ describe('store actions', () => {
         };
         vi.mocked(dbMod.isCheckpointMigrationDone).mockResolvedValueOnce(false);
         vi.mocked(dbMod.loadState).mockResolvedValueOnce({
-          goals: [legacyGoal as unknown as Goal], habits: [], tasks: [], sessions: [],
+          goals: [legacyGoal as unknown as Goal], habits: [], tasks: [], sessions: [], lives: [],
         });
 
         const calls: string[] = [];
@@ -2046,7 +2047,7 @@ describe('store actions', () => {
 
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith({
-        goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession],
+        goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession], lives: [],
       }, 13, planReview, store.getState().availability, store.getState().allDayBlocks,
        store.getState().sidebarPanels, null, null);
     });
@@ -2640,6 +2641,7 @@ describe('toggleHabitOn (backfill)', () => {
         id: 'h', title: 'Read', cadence: 'daily', weeklyTarget: 4,
         goalId: null, checkins: [], createdAt: '2026-07-01',
       }],
+      lives: [],
     });
     const store = await freshStore();
     await store.initStore();
@@ -3966,7 +3968,7 @@ describe('restructuring a step tree', () => {
           { id: 'b', title: 'Pset 4' },
         ],
       }],
-      habits: [], tasks: [], sessions: [],
+      habits: [], tasks: [], sessions: [], lives: [],
     });
     const store = await freshStore();
     await store.initStore();
@@ -4053,7 +4055,7 @@ describe('undo durability', () => {
           ] },
         ],
       }],
-      habits: [], tasks: [], sessions: [],
+      habits: [], tasks: [], sessions: [], lives: [],
     });
     const store = await freshStore();
     await store.initStore();
@@ -4195,7 +4197,7 @@ describe('undo durability', () => {
 
     vi.mocked(importStateFromFile).mockResolvedValueOnce({
       goals: [{ id: 'imported', title: 'Restored project', column: 0, nodes: [] }],
-      habits: [], tasks: [], sessions: [],
+      habits: [], tasks: [], sessions: [], lives: [],
       pxPerDay: 13, availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
     });
     await actions.importBackup(new File([''], 'backup.json'));
@@ -4250,7 +4252,7 @@ describe('undo durability', () => {
 
     vi.mocked(importStateFromFile).mockResolvedValueOnce({
       goals: [{ id: 'g', title: 'Same id, new generation', column: 0, nodes: [] }],
-      habits: [], tasks: [], sessions: [],
+      habits: [], tasks: [], sessions: [], lives: [],
       pxPerDay: 13, availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
     });
     await actions.importBackup(new File([''], 'backup.json'));
@@ -4415,5 +4417,83 @@ describe('several sittings for one task', () => {
 
     expect(node().blocks?.map((b) => b.minutes)).toEqual([90, 240]);
     expect(node().estimateMin).toBe(240);
+  });
+});
+
+describe('lives', () => {
+  const psets = { id: 'g1', title: 'Psets', nodes: [] };
+
+  it('adds a life, refuses a blank title, and refuses a fourth', async () => {
+    const { actions, getState } = await freshStore();
+
+    expect(actions.addLife('MIT')).toBe(true);
+    expect(actions.addLife('   ')).toBe(false);
+    expect(actions.addLife('Startup')).toBe(true);
+    expect(actions.addLife('Music')).toBe(true);
+    expect(actions.addLife('Fourth')).toBe(false);
+
+    expect(getState().lives.map((l) => l.title)).toEqual(['MIT', 'Startup', 'Music']);
+    expect(getState().lives.map((l) => l.order)).toEqual([0, 1, 2]);
+  });
+
+  it('trims the title it stores', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addLife('  MIT  ');
+    expect(getState().lives[0].title).toBe('MIT');
+  });
+
+  it('renames a life and ignores a blank rename', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addLife('MIT');
+    const id = getState().lives[0].id;
+
+    actions.renameLife(id, 'Course 6');
+    expect(getState().lives[0].title).toBe('Course 6');
+
+    actions.renameLife(id, '  ');
+    expect(getState().lives[0].title).toBe('Course 6');
+  });
+
+  it('assigns a goal to a life and back to unassigned', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addLife('MIT');
+    const lifeId = getState().lives[0].id;
+    actions.addGoals([psets]);
+
+    actions.setGoalLife('g1', lifeId);
+    expect(getState().goals[0].lifeId).toBe(lifeId);
+
+    actions.setGoalLife('g1', null);
+    expect(getState().goals[0].lifeId).toBeUndefined();
+    expect('lifeId' in getState().goals[0]).toBe(false);
+  });
+
+  // The dangling reference is the whole design: deleting a life writes one
+  // slice, and the goals it held are read as unassigned without being touched.
+  it('deleting a life leaves its goals alone, and undo restores the assignment', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addLife('MIT');
+    const lifeId = getState().lives[0].id;
+    actions.addGoals([psets]);
+    actions.setGoalLife('g1', lifeId);
+
+    actions.removeLife(lifeId);
+    expect(getState().lives).toEqual([]);
+    expect(getState().goals[0].lifeId).toBe(lifeId);
+    expect(getState().pendingUndo?.label).toBe('Deleted "MIT"');
+
+    actions.undoLastDelete();
+    expect(getState().lives.map((l) => l.id)).toEqual([lifeId]);
+    expect(getState().goals[0].lifeId).toBe(lifeId);
+  });
+
+  it('deleting an unknown life writes nothing', async () => {
+    const { actions, getState } = await freshStore();
+    actions.addLife('MIT');
+    const before = getState().lives;
+
+    actions.removeLife('nope');
+
+    expect(getState().lives).toBe(before);
   });
 });
