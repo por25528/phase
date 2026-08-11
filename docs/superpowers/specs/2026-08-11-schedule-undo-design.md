@@ -12,8 +12,8 @@ way to touch that zone without booking something. A stray press schedules
 Plan, finding the block, and clearing it.
 
 Every other write on Today can be taken back. Completing a step arms an undo
-(`store.ts:909`), applying a replan arms one across both slices
-(`store.ts:2313`), and *un*scheduling arms one (`store.ts:2336`, `2377`).
+(`store.ts:907`), applying a replan arms one across both slices
+(`store.ts:2253`), and *un*scheduling arms one (`store.ts:2276`, `2316`).
 `scheduleNode` and `scheduleTask` are the only ones that write straight
 through `setAndPersist`.
 
@@ -28,14 +28,14 @@ Direct manipulation of a bar you can see is silent and self-reversing. A
 booking made from a distance gets an undo.
 
 The app already keeps the first half: `resizeNode` and `resizeTask`
-(`store.ts:2390`, `2416`) persist without arming anything, because you dragged
+(`store.ts:2330`, `2357`) persist without arming anything, because you dragged
 an edge and can drag it back. This spec adds the second half.
 
 `opts.blockId` is where the line falls. It names WHICH sitting is being moved,
 so its presence means a drag of one existing bar. Its absence means "put this
 here" — the Today proposal, the backlog weekday keypress, the schedule
 popover's Today/Tomorrow, TaskPage's add-a-sitting. The store already splits on
-nearly this same line at `store.ts:2086`, where a move is an ADJUSTMENT rather
+nearly this same line at `store.ts:2026`, where a move is an ADJUSTMENT rather
 than a fresh booking against the clock.
 
 ## The change
@@ -56,18 +56,18 @@ ordinary edit sweeps — the same lifecycle as `toggleLeaf` and the
 `unschedule*` pair, and `⌘Z` reaches it through `undoLastDelete` unaided.
 
 **The whole-slice snapshot is the load-bearing choice.** A single write sets
-both the block and the `plannedWeek` commitment beside it (`store.ts:2108`); a
+both the block and the `plannedWeek` commitment beside it (`store.ts:2048`); a
 surgical undo would have to remember both, and would drift the first time the
 write learned to touch a third field. The snapshot reverses whatever happened.
 
-**The refusal path needs no work.** `scheduleNode` returns at `store.ts:2102`,
+**The refusal path needs no work.** `scheduleNode` returns at `store.ts:2042`,
 before the clone, so a `describeNoRoom` toast arms nothing. That is already
 true and only needs pinning — an Undo button over a write that never happened
 is exactly the failure CLAUDE.md names when it says a visible Undo that does
 nothing is worse than no button.
 
 **Label:** `Scheduled "Watch roblox"`, pairing with the existing
-`Unscheduled "X"`. It collides with `setNodeDates`'s label at `store.ts:2019`,
+`Unscheduled "X"`. It collides with `setNodeDates`'s label at `store.ts:1959`,
 which is deliberate and harmless: that is the date-span editor in `StepPanel`,
 a different surface that cannot raise its toast in the same breath. The pairing
 is worth more than the uniqueness.
@@ -94,7 +94,7 @@ is worth more than the uniqueness.
 - `mode: 'add'` arms one entry, and undoing it removes only the added sitting
 - the `scheduleTask` twin of each
 
-`Today.test.tsx`:
+`Today.freeTime.test.tsx`:
 
 - clicking a proposal row raises the undo toast
 - pressing Undo returns the row to the offer list — free, because
