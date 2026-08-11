@@ -2102,16 +2102,18 @@ export const actions = {
       return false;
     }
 
-    setAndPersist({
-      tasks: state.tasks.map((t) => {
-        if (t.id !== taskId) return t;
-        const next = { ...t, date };
-        if (opts.blockId) replaceBlock(next, opts.blockId, { date, startMin });
-        else if (opts.mode === 'add') addBlock(next, makeBlock(date, startMin, durationMin));
-        else setOnlyBlock(next, makeBlock(date, startMin, durationMin));
-        return next;
-      }),
+    const tasks = state.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const next = { ...t, date };
+      if (opts.blockId) replaceBlock(next, opts.blockId, { date, startMin });
+      else if (opts.mode === 'add') addBlock(next, makeBlock(date, startMin, durationMin));
+      else setOnlyBlock(next, makeBlock(date, startMin, durationMin));
+      return next;
     });
+    // See `scheduleNode`: a drag of one bar is direct manipulation and stays
+    // silent; every other route books from a distance and gets a way back.
+    if (opts.blockId) setAndPersist({ tasks });
+    else withUndo(`Scheduled "${task.title}"`, 'tasks', tasks);
     return true;
   },
 

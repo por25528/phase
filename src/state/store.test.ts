@@ -1131,6 +1131,34 @@ describe('store actions', () => {
       expect(left[0].startMin).toBe(540);
     });
 
+    it('scheduleTask arms an undo for a booking with no blockId', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('Watch roblox');
+      const id = getState().tasks[0].id;
+
+      actions.scheduleTask(id, '2026-07-15', 600);
+      expect(getState().pendingUndo?.label).toBe('Scheduled "Watch roblox"');
+
+      actions.undoLastDelete();
+
+      expect(getState().tasks[0].blocks).toBeUndefined();
+    });
+
+    it('scheduleTask stays silent when a drag moves one existing bar', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addTask('T', null, null, 60);
+      const id = getState().tasks[0].id;
+      actions.scheduleTask(id, '2026-07-15', 600);
+      const blockId = getState().tasks[0].blocks![0].id;
+
+      actions.scheduleTask(id, '2026-07-15', 660, { blockId });
+
+      expect(getState().tasks[0].blocks![0].startMin).toBe(660);
+      expect(getState().pendingUndo).toBeNull();
+    });
+
     it('unscheduleNode clears all three fields with an undo window', async () => {
       vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
