@@ -71,9 +71,13 @@ A `Free time` section, between "Rest of today" and "Attention".
   toast `describeNoRoom` when an item will not fit contiguously — a 90-minute
   step against three 30-minute gaps already says so, in words the app already
   owns. There is no optimistic UI to roll back.
-- Success needs no toast. The item leaves the proposal (it is placed, so
+- Success needs no ANNOUNCEMENT. The item leaves the proposal (it is placed, so
   `backlogGroups` drops it) and reappears above in Now or Rest of today. The
   movement up the page is the feedback.
+- **Amended 2026-08-11** (see `2026-08-11-schedule-undo-design.md`): a toast does
+  appear, carrying Undo. Because the whole row is the button, there is no way to
+  touch this zone without booking something, so the press needs a way back. The
+  toast is the handle, not the announcement.
 - `no-hours` renders one line and a route into the existing availability
   settings.
 - When today is empty AND an offer exists, the Now zone renders nothing. The

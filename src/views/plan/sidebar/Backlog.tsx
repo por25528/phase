@@ -80,8 +80,9 @@ function BacklogRow({
       // `:focus-visible` on a tabIndex div focused by pointer, so the app's
       // global focus ring (index.css) never shows. Without this the user sits
       // in an invisible mode where `2` schedules onto Tuesday instead of
-      // switching to Goals, and `scheduleNode` has no undo. The mode has to be
-      // visible for as long as it is active.
+      // switching to Goals. That arms an undo now, but a mode still has to be
+      // visible for as long as it is active — an undo is a way back, not a
+      // warning, and it expires.
       className={`group flex items-center gap-[6px] text-ui text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       } ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
