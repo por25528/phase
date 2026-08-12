@@ -12,6 +12,7 @@ const { normalizeEvents } = require('./busyBlocks.cjs')
 const { createCalendarHandlers, registerCalendarIpc } = require('./calendarIpc.cjs')
 const { createAssistantIpc } = require('./assistantIpc.cjs')
 const { createAssistantShortcut } = require('./assistantShortcut.cjs')
+const { assistantWindowOptions, assistantEntry } = require('./assistantWindow.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
@@ -189,6 +190,34 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    // The overlay is a satellite of the main window, not a reason for the
+    // process to live. Destroying it here keeps window-all-closed → quit true.
+    if (assistantWindow && !assistantWindow.isDestroyed()) assistantWindow.destroy()
+  })
+}
+
+function createAssistantWindow() {
+  assistantWindow = new BrowserWindow(
+    assistantWindowOptions(path.join(__dirname, 'assistantPreload.cjs')),
+  )
+
+  // A floating helper that lost focus is a helper the user is done with.
+  // Hidden, not destroyed: the running session's view survives to the next
+  // Command+Space, and showing again is instant.
+  assistantWindow.on('blur', () => {
+    if (assistantWindow && !assistantWindow.isDestroyed()) assistantWindow.hide()
+  })
+
+  // The overlay renders trusted snapshot data only, and no snapshot carries a
+  // URL — but defence in depth is cheap: nothing may open a window from here.
+  assistantWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+  const entry = assistantEntry(devServerUrl)
+  if (entry.kind === 'url') assistantWindow.loadURL(entry.target)
+  else assistantWindow.loadFile(entry.target)
+
+  assistantWindow.on('closed', () => {
+    assistantWindow = null
   })
 }
 
@@ -210,10 +239,16 @@ app.whenReady().then(() => {
     console.error('[phase-assistant] IPC registration failed', err)
   }
   createWindow()
+  // Hidden at birth, after the main window so it can never be the app's only
+  // window. It shows on the global shortcut and hides on blur/Escape.
+  createAssistantWindow()
 
-  // macOS: re-create a window when the dock icon is clicked and none are open.
+  // macOS: re-create the windows when the dock icon is clicked and none are open.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+      createAssistantWindow()
+    }
   })
 })
 

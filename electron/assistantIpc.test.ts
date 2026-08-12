@@ -288,3 +288,47 @@ describe('set-shortcut', () => {
     expect(setShortcut).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Overlay window lifecycle, pinned through the pure options module plus the
+ * same source-reading technique the preload checks use.
+ */
+describe('overlay window lifecycle', () => {
+  const windowModule = nativeRequire('./assistantWindow.cjs') as typeof import('./assistantWindow.cjs');
+  const main = readFileSync(new URL('./main.cjs', import.meta.url), 'utf8');
+
+  it('builds a hidden, frameless, taskbar-free window on the dedicated preload', () => {
+    const options = windowModule.assistantWindowOptions('/x/assistantPreload.cjs');
+    expect(options.frame).toBe(false);
+    expect(options.show).toBe(false);
+    expect(options.skipTaskbar).toBe(true);
+    expect(options.webPreferences.contextIsolation).toBe(true);
+    expect(options.webPreferences.nodeIntegration).toBe(false);
+    expect(options.webPreferences.preload).toBe('/x/assistantPreload.cjs');
+    expect(options.maxHeight).toBeGreaterThanOrEqual(options.height);
+  });
+
+  it('loads assistant.html in both dev and production, never index.html', () => {
+    expect(windowModule.assistantEntry('http://localhost:5173/')).toEqual({
+      kind: 'url', target: 'http://localhost:5173/assistant.html',
+    });
+    const prod = windowModule.assistantEntry(undefined);
+    expect(prod.kind).toBe('file');
+    expect(prod.target.endsWith('assistant.html')).toBe(true);
+    expect(prod.target).not.toContain('index.html');
+  });
+
+  it('showing the overlay requests a fresh snapshot first', () => {
+    expect(main).toMatch(/assistantIpc\.requestSnapshot\(\)[\s\S]{0,120}assistantWindow\.show\(\)/);
+  });
+
+  it('closing the main window destroys the overlay, keeping full-quit true', () => {
+    expect(main).toMatch(/mainWindow\.on\('closed'[\s\S]{0,500}assistantWindow\.destroy\(\)/);
+    expect(main).toMatch(/window-all-closed[\s\S]{0,80}app\.quit\(\)/);
+  });
+
+  it('hides on blur instead of dying, and denies external URL opens', () => {
+    expect(main).toMatch(/assistantWindow\.on\('blur'/);
+    expect(main).toMatch(/assistantWindow\.webContents\.setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
+  });
+});
