@@ -10,6 +10,7 @@ const { createOAuth } = require('./oauth.cjs')
 const { createGoogleClient } = require('./googleClient.cjs')
 const { normalizeEvents } = require('./busyBlocks.cjs')
 const { createCalendarHandlers, registerCalendarIpc } = require('./calendarIpc.cjs')
+const { createAssistantIpc } = require('./assistantIpc.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
@@ -17,6 +18,20 @@ const devServerUrl = process.env.VITE_DEV_SERVER_URL
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null
+
+/** @type {BrowserWindow | null} */
+let assistantWindow = null
+
+// The relay between the main renderer (the one store owner) and the floating
+// assistant overlay. Window getters, not references: both windows are
+// recreated on macOS activate, and the relay must always speak to the live one.
+const assistantIpc = createAssistantIpc({
+  getMainWindow: () => mainWindow,
+  getAssistantWindow: () => assistantWindow,
+  hideAssistant: () => {
+    if (assistantWindow && !assistantWindow.isDestroyed()) assistantWindow.hide()
+  },
+})
 
 // The encrypted store lives beside the app's other user data, NOT in the
 // bundle: an .app is read-only and is replaced wholesale on every update.
@@ -164,6 +179,12 @@ app.whenReady().then(() => {
     // sees phaseCalendar reject, which the UI can show; a dead dock icon it
     // cannot.
     console.error('[phase-calendar] IPC registration failed', err)
+  }
+  try {
+    assistantIpc.register(ipcMain)
+  } catch (err) {
+    // Same rule: the app opens even if the assistant relay cannot.
+    console.error('[phase-assistant] IPC registration failed', err)
   }
   createWindow()
 

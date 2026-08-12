@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { AssistantSurface } from './AssistantSurface';
+import { assistantMainBridge } from '../../lib/assistantBridge';
 import {
   executionAdvice, rankedWork, workThatFits, type ExecutionAdviceInput,
 } from '../../lib/executionAdvisor';
@@ -199,6 +200,31 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
         onClose();
     }
   }
+
+  // ── Desktop relay ──
+  // The host stays the ONLY action executor: the overlay's clicks arrive here
+  // as validated actions and run through the same `onAction` the in-app panel
+  // uses. Snapshots go out only after hydration is ready (a `ready` snapshot
+  // is by construction post-hydration), and again whenever the overlay asks.
+  const bridge = useMemo(() => assistantMainBridge(), []);
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+  const onActionRef = useRef(onAction);
+  onActionRef.current = onAction;
+
+  useEffect(() => {
+    if (snapshot.status !== 'ready') return;
+    bridge.publish(snapshot);
+  }, [bridge, snapshot]);
+
+  useEffect(() => {
+    const offRequest = bridge.onRequestSnapshot(() => bridge.publish(snapshotRef.current));
+    const offAction = bridge.onAction((action) => onActionRef.current(action));
+    return () => {
+      offRequest();
+      offAction();
+    };
+  }, [bridge]);
 
   if (!open) return null;
 
