@@ -5,6 +5,7 @@ import { clockLabel } from '../../lib/clock';
 import { projectBlockClass } from '../../lib/projectColour';
 import type { PlanDragData } from './dropTarget';
 import { containerDragAttributes } from '../../lib/dragAttributes';
+import { IconCheck, IconX } from '../../components/Icons';
 
 /**
  * A block on the grid — either committed work or a calendar event.
@@ -105,7 +106,7 @@ export function EventBlock({
       // The block's own name. Without it the accessible name fell back to the
       // concatenation of its children — "pset Complete pset Unschedule pset".
       aria-label={`${block.title}, ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}`}
-      className={`group/blk absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] border ${
+      className={`group absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] border ${
         isBusy
           ? 'bg-hover border-line-2 text-muted italic'
           : `border-transparent border-l-[3px] ${projectBlockClass(block.goalId ?? null)} text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? 'border-solid' : 'border-dashed border-line-2'} cursor-grab`
@@ -152,13 +153,13 @@ export function EventBlock({
           // that showed at rest, so every block carried a grey tick it did not
           // need — noise on a surface whose whole job is to be scannable. A
           // DONE block keeps it visible: that tick is state, not an offer.
-          className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent text-meta leading-none transition-opacity focus-visible:opacity-100 ${
-            block.done ? 'opacity-100' : 'opacity-0 group-hover/blk:opacity-100'
+          className={`absolute w-[24px] h-[24px] grid place-items-center text-faint hover:text-accent ${
+            block.done ? 'opacity-100 transition-opacity duration-150' : 'quiet-control'
           } ${
             compact ? 'top-1/2 -translate-y-1/2 right-[22px] bg-panel/90 rounded-[4px]' : 'top-0 right-[20px]'
           }`}
         >
-          ✓
+          <IconCheck size={12} />
         </button>
       )}
       {onRemove && !isBusy && (
@@ -168,12 +169,15 @@ export function EventBlock({
           onClick={onRemove}
           aria-label={`Unschedule ${block.title}`}
           // 24x24 target on a block that can itself be only 34px tall — the
-          // glyph stays small, the hit area does not.
-          className={`absolute right-0 w-[24px] h-[24px] grid place-items-center text-faint hover:text-warn text-meta leading-none opacity-0 group-hover/blk:opacity-100 focus-visible:opacity-100 transition-opacity ${
+          // icon stays small, the hit area does not.
+          className={`absolute right-0 w-[24px] h-[24px] grid place-items-center text-faint hover:text-warn quiet-control ${
             compact ? 'top-1/2 -translate-y-1/2 bg-panel/90 rounded-[4px]' : 'top-0'
           }`}
         >
-          ×
+          {/* Was `×` (U+00D7, the MULTIPLICATION SIGN) while every other dismiss
+              in the app was `✕` — the same affordance drawn with two different
+              characters, one of which was not even in the font. */}
+          <IconX size={12} />
         </button>
       )}
       {onResize && !isBusy && (

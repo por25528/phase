@@ -1,7 +1,8 @@
 import type { AvailabilityWindow, BusyBlock, Task } from '../db/types';
 import { windowForDate } from './availability';
 import type { PlannedLeaf } from './plan';
-import { weekDates } from './dates';
+import { addDays, weekDates } from './dates';
+import { blocksOn } from './blocks';
 
 /**
  * The current moment, injected. Capacity is measured from here forward, so this
@@ -97,6 +98,41 @@ export function freeMinutes(
   return Math.max(0, (win.endMin - win.startMin) - busy);
 }
 
+/**
+ * How much working time is left between `now` and `deadline`, inclusive.
+ *
+ * This is the denominator behind a goal's feasibility: remaining effort is only
+ * meaningful against the hours that actually exist before the date. It is an
+ * UPPER BOUND, and deliberately so — `blocks` is a device-local cache covering
+ * whatever range was last fetched, so meetings beyond it are unknown and the
+ * figure can only shrink as they arrive. A forecast built on it must therefore
+ * be conservative in the same direction: see `goalHealth`.
+ *
+ * Capped at `MAX_FORECAST_DAYS`. A deadline two years out produces a capacity
+ * number so large that every goal is trivially "on track", which is not a
+ * forecast, it is arithmetic with no opinion; past the cap the honest answer is
+ * that nobody is planning that far and health says `no-forecast`.
+ */
+export const MAX_FORECAST_DAYS = 180;
+
+export function capacityBefore(
+  deadline: string,
+  windows: AvailabilityWindow[],
+  blocks: BusyBlock[],
+  now: Now,
+  allDayBlocks: boolean,
+): number | null {
+  if (deadline < now.date) return 0; // the date has been and gone
+  let total = 0;
+  let date = now.date;
+  for (let i = 0; i <= MAX_FORECAST_DAYS; i += 1) {
+    total += freeMinutes(date, windows, blocks, now, allDayBlocks);
+    if (date === deadline) return total;
+    date = addDays(date, 1);
+  }
+  return null; // past the forecast horizon
+}
+
 export interface Workload {
   plannedMin: number;  // Σ estimateMin over unfinished commitments
   unestimated: number; // unfinished commitments carrying no usable estimate
@@ -167,10 +203,10 @@ export function workloadOf(leaves: PlannedLeaf[], tasks: Task[]): Workload {
  * "planned" here means the same thing it means everywhere else in the app.
  */
 export function isPlacedLeaf(l: PlannedLeaf): boolean {
-  return l.plannedDay !== undefined && l.plannedStartMin !== undefined;
+  return l.blocks.length > 0;
 }
 export function isPlacedTask(t: Task): boolean {
-  return t.date !== undefined && t.startMin !== undefined;
+  return (t.blocks?.length ?? 0) > 0;
 }
 
 export interface DayCapacity {
@@ -271,28 +307,43 @@ export function weekCapacity(input: CapacityInput): WeekCapacity {
    * compared to each other have to cover the same days.
    */
   const days: DayCapacity[] = dates.map((date) => {
-    const dayLeaves = leaves.filter((l) => l.plannedDay === date);
-    const dayTasks = tasks.filter((t) => t.date === date);
-    const placed = workloadOf(dayLeaves.filter(isPlacedLeaf), dayTasks.filter(isPlacedTask));
-    const waiting = workloadOf(
-      dayLeaves.filter((l) => !isPlacedLeaf(l)),
-      dayTasks.filter((t) => !isPlacedTask(t)),
-    );
+    /*
+     * Planned time on a day is the sum of the SITTINGS on that day, by their
+     * own `minutes` — not the estimate of every task pinned to it.
+     *
+     * That difference is the whole point of the split. A four-hour task sat as
+     * two two-hour sittings used to bill all four hours to whichever day held
+     * its single slot; now Tuesday is charged two and Thursday two, which is
+     * both what the grid draws and what the person actually plans to do.
+     */
+    const plannedMin =
+      leaves.reduce((n, l) => n + l.blocks.filter((b) => b.date === date).reduce((m, b) => m + b.minutes, 0), 0)
+      + tasks.reduce((n, t) => n + blocksOn(t, date).reduce((m, b) => m + b.minutes, 0), 0);
+
+    // Committed to this day and NOT placed. Leaves have no day-level
+    // commitment — only a week — so this is a task-only bucket.
+    const waiting = workloadOf([], tasks.filter((t) => t.date === date && !isPlacedTask(t)));
+
     const asOf = date < now.date ? NO_PAST_LIMIT : now;
     return {
       date,
       freeMin: freeMinutes(date, windows, blocks, asOf, allDayBlocks),
-      plannedMin: placed.plannedMin,
+      plannedMin,
       backlogMin: waiting.plannedMin,
-      unestimated: placed.unestimated + waiting.unestimated,
+      unestimated: waiting.unestimated,
       blockedBy: blockedBy(date, blocks, allDayBlocks),
       hasData,
     };
   });
 
-  // Week totals come from the FULL commitment set, not the sum of day figures,
-  // so anyday leaves and leaves pinned outside the week are still counted.
-  const weekPlaced = workloadOf(leaves.filter(isPlacedLeaf), tasks.filter(isPlacedTask));
+  /*
+   * Week totals.
+   *
+   * `plannedMin` is the sum of the day figures, because a sitting is only ever
+   * on one day and every day of the week is in `dates`. `backlogMin` cannot be:
+   * a leaf committed to the week with no sitting yet belongs to no day at all,
+   * which is exactly the "to place" state the rail lists.
+   */
   const weekWaiting = workloadOf(
     leaves.filter((l) => !isPlacedLeaf(l)),
     tasks.filter((t) => !isPlacedTask(t)),
@@ -301,9 +352,12 @@ export function weekCapacity(input: CapacityInput): WeekCapacity {
   return {
     days,
     freeMin: days.reduce((sum, d) => sum + d.freeMin, 0),
-    plannedMin: weekPlaced.plannedMin,
+    plannedMin: days.reduce((sum, d) => sum + d.plannedMin, 0),
     backlogMin: weekWaiting.plannedMin,
-    unestimated: weekPlaced.unestimated + weekWaiting.unestimated,
+    // Placed work no longer counts as unestimated: a sitting states its own
+    // length, so capacity can always price it. What remains unpriceable is
+    // committed work with no estimate and nowhere to be.
+    unestimated: weekWaiting.unestimated,
     hasData,
   };
 }

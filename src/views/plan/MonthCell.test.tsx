@@ -11,7 +11,7 @@ afterEach(() => cleanup());
 
 function item(over: Partial<ScheduledItem> = {}): ScheduledItem {
   return {
-    kind: 'task', id: 't1', goalId: null, goalTitle: '', title: 'Pset',
+    kind: 'task', id: 't1', blockId: 'b1', goalId: null, goalTitle: '', title: 'Pset',
     done: false, date: '2026-08-05', startMin: 600, endMin: 660, estimated: true,
     ...over,
   };

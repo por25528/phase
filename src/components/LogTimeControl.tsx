@@ -24,6 +24,7 @@ export function LogTimeControl({
   label,
   onLog,
   onClear,
+  alwaysShow = false,
 }: {
   loggedMin: number;
   /** Only for the comparison tooltip; this control never writes it. */
@@ -31,6 +32,8 @@ export function LogTimeControl({
   label: string;
   onLog: (minutes: number) => void;
   onClear: () => void;
+  /** Keep the empty badge legible at rest — see EstimateControl. */
+  alwaysShow?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const logged = loggedMin > 0;
@@ -92,17 +95,24 @@ export function LogTimeControl({
         // Only advertises itself on hover until there is time to show, the same
         // rule the estimate badge follows. Once time exists it is information
         // and stays legible at rest.
-        className={`flex-none font-mono text-eyebrow tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] hover:bg-hover ${
+        className={`flex-none tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center rounded-[4px] hover:bg-hover ${
+          alwaysShow ? 'text-ui' : 'font-mono text-eyebrow justify-center'
+        } ${
           logged
             ? // Over the estimate is worth seeing without hovering; that is the
               // whole point of recording it.
               comparison && comparison.ratio >= 1.15
               ? 'text-warn'
               : 'text-muted hover:text-ink-soft'
-            : 'quiet-control text-muted hover:text-ink-soft'
+            : `${alwaysShow ? '' : 'quiet-control'} text-muted hover:text-ink-soft`
         }`}
       >
-        {logged ? `⏱${formatEstimateValue(loggedMin)}` : '⏱'}
+        {logged
+          ? `⏱${formatEstimateValue(loggedMin)}`
+          // In the inspector the row is a labelled property, so the empty state
+          // names the property. On a dense tree row the clock alone is the
+          // affordance and the horizontal space is worth more than the word.
+          : alwaysShow ? 'No time logged' : '⏱'}
       </button>
     );
   }

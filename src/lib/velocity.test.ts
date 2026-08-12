@@ -14,10 +14,10 @@ const OLD = '2026-06-01';
 const goal = (nodes: GoalNode[]): Goal => ({ id: 'g', title: 'Open-ended', nodes });
 
 const doneLeaf = (id: string, doneAt?: string, estimateMin?: number): GoalNode => ({
-  id, title: id, done: true, ...(doneAt ? { doneAt } : {}), ...(estimateMin ? { estimateMin } : {}),
+  id, title: id, status: 'done', ...(doneAt ? { doneAt } : {}), ...(estimateMin ? { estimateMin } : {}),
 });
 const openLeaf = (id: string, estimateMin?: number): GoalNode => ({
-  id, title: id, done: false, ...(estimateMin ? { estimateMin } : {}),
+  id, title: id, ...(estimateMin ? { estimateMin } : {}),
 });
 
 describe('projectVelocity', () => {
@@ -109,13 +109,13 @@ describe('describeVelocity', () => {
    */
   it('calls out a stall', () => {
     expect(describeVelocity({ completed: 0, windowDays: 14, open: 8 })).toBe(
-      'nothing finished in 14 days · 8 steps open',
+      'nothing finished in 14 days · 8 tasks open',
     );
   });
 
   it('singularises one open step', () => {
     expect(describeVelocity({ completed: 0, windowDays: 14, open: 1 })).toBe(
-      'nothing finished in 14 days · 1 step open',
+      'nothing finished in 14 days · 1 task open',
     );
   });
 

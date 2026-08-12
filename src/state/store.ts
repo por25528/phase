@@ -1,11 +1,12 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset } from '../db/types';
+import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
   loadAllDayBlocks, saveAllDayBlocks,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   loadPlanMode, savePlanMode, type PlanMode,
+  loadGoalsMode, saveGoalsMode, type GoalsMode,
   isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
   isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
@@ -21,18 +22,21 @@ import { HORIZON_LABELS, HORIZON_COUNT } from '../lib/horizons';
 import type { RevealKind, RevealTarget } from '../lib/reveal';
 import { deferOpenWork } from '../lib/deferWork';
 import { backlogGroups } from '../lib/backlog';
-import { topLevelSelection, openLeavesUnder, selectionRemovalCount } from '../lib/selection';
+import { topLevelSelection, openLeavesUnder, allLeavesUnder, selectionRemovalCount } from '../lib/selection';
 import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
+import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
 import { sampleProject } from '../lib/sampleProject';
 import { weaveCompleted, leafCount } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
 import { formatEstimateValue } from '../lib/estimateInput';
-import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN } from '../lib/slot';
+import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT } from '../lib/slot';
 import { spansOn } from '../lib/scheduled';
 import { assetIdsInMarkdown } from '../lib/notes';
-import { clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
+import { addPlannedSlot, clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
+import { addBlock, blocksOf, clearBlocks, isPlaced, makeBlock, removeBlock, replaceBlock, setOnlyBlock } from '../lib/blocks';
+import type { ReplanMove } from '../lib/replan';
 import { MAX_IMAGE_EDGE, scaledDimensions } from '../lib/imageScale';
 import {
   type Theme,
@@ -52,23 +56,83 @@ import {
   cloneGoals,
   insertSiblingAfter as treeInsertSiblingAfter,
 } from '../lib/tree';
+import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status';
 
-export type ViewName = 'plan' | 'goals' | 'timeline' | 'project';
+/**
+ * Write a status onto a node of an already-cloned tree.
+ *
+ * `applyStatus` is pure and returns a copy, so assigning it over the live node
+ * would keep any key the copy DROPPED — unticking a step would leave its
+ * `doneAt` behind, and `doneAt` is what the week recap reads.
+ */
+function writeStatus(n: GoalNode, next: StepStatus, today: string, blockedOn?: string): void {
+  const updated = applyStatus(n, next, today, blockedOn);
+  for (const key of ['status', 'blockedOn', 'doneAt'] as const) {
+    if (updated[key] === undefined) delete n[key];
+    else (n[key] as unknown) = updated[key];
+  }
+}
+
+export type ViewName = 'today' | 'plan' | 'goals' | 'project';
 
 export const VIEW_LABELS = {
+  today: 'Today',
   plan: 'Plan',
-  goals: 'Projects',
-  timeline: 'Timeline',
+  goals: 'Goals',
 } as const;
 
-/** Which tab the project page is showing. */
-export type ProjectTab = 'steps' | 'notes';
+/**
+ * Which goal composer is up, if any.
+ *
+ * It lives in the store rather than in `Goals.tsx` local state because the
+ * command palette can now ask for one from anywhere in the app — and a modal
+ * that only its own page can open is a modal the palette has to lie about.
+ */
+export type GoalModal = 'new' | 'import' | null;
+
+/**
+ * Which tab the goal workspace is showing.
+ *
+ * `'steps'` keeps its stored name so no persisted or in-flight value has to be
+ * migrated for a rename; it is labelled Tasks.
+ */
+export type ProjectTab = 'overview' | 'steps' | 'board' | 'calendar' | 'notes';
+
+/**
+ * A milestone's own tabs.
+ *
+ * Three, not the goal's five. A Board over one container's descendants is a
+ * board with one column's worth of work in it, and a Calendar over them is the
+ * goal's calendar filtered to a subset nobody asked to filter — both would be
+ * tabs that exist only because the parent has them.
+ */
+export type AreaTab = 'overview' | 'steps' | 'notes';
 
 interface UIState {
   view: ViewName;
   projectReturnView: ViewName;
   selDate: string;
   openGoalId: string | null;
+  /**
+   * The container being shown as its own workspace, INSIDE the open goal.
+   *
+   * A second id rather than a second view: a milestone is not a destination of
+   * its own, it is a lens on the goal already open, so `openGoalId` stays set
+   * and the breadcrumb above it stays true. Clearing this returns to the goal
+   * without touching anything else, which is what "Back preserves context"
+   * means here.
+   */
+  openAreaId: string | null;
+  areaTab: AreaTab;
+  /**
+   * The tab each goal was last left on.
+   *
+   * Keyed by goal because the answer is per goal: a study goal is read on
+   * Overview and a build is worked on Tasks, and one global "last tab" makes
+   * every second goal open on the wrong one. Ephemeral — it is a convenience
+   * within a session, not a preference worth a row in the database.
+   */
+  projectTabByGoal: Record<string, ProjectTab>;
   // Node the project page should scroll to + pulse. One-shot: it is a pointer
   // to a MOMENT, and the page clears it once the pulse has run.
   focusNodeId: string | null;
@@ -76,6 +140,7 @@ interface UIState {
   // lived: this one persists until the panel is closed. Read from plan 2 on.
   openStepId: string | null;
   projectTab: ProjectTab;
+  goalModal: GoalModal;
   // Task/habit the Plan view should scroll to + highlight — the same idea as
   // `focusNodeId`, for the two kinds that have no page of their own.
   revealItem: RevealTarget | null;
@@ -98,6 +163,7 @@ interface UIState {
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
   sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
   planMode: PlanMode;                 // week or month shape for the Plan view (device preference)
+  goalsMode: GoalsMode;               // board or timeline shape for the Goals view (device preference)
   activeHorizon: number;              // narrow Projects-board horizon (UI only)
 }
 
@@ -108,13 +174,17 @@ let state: FullState = {
   habits: [],
   tasks: [],
   sessions: [],
-  view: 'plan',
+  view: 'today',
   projectReturnView: 'goals',
   selDate: todayStr(),
   openGoalId: null,
   focusNodeId: null,
   openStepId: null,
   projectTab: 'steps',
+  openAreaId: null,
+  areaTab: 'steps',
+  projectTabByGoal: {},
+  goalModal: null,
   revealItem: null,
   newNodeId: null,
   expanded: new Set(),
@@ -130,6 +200,7 @@ let state: FullState = {
   allDayBlocks: true,
   sidebarPanels: [],
   planMode: 'week',
+  goalsMode: 'board',
   activeHorizon: 0,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
@@ -448,8 +519,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -495,6 +566,19 @@ export async function initStore(): Promise<void> {
       }
     }
 
+    /*
+     * Blocks last, and unconditionally.
+     *
+     * It follows `migrateSlots`, which repairs pre-slot data by writing the
+     * very `plannedDay`/`plannedStartMin` pair this consumes — the other order
+     * leaves the repair with nothing to read. No done-flag and no snapshot,
+     * unlike the two above: this is a pure re-shaping that computes nothing and
+     * is idempotent by construction (a row that already has `blocks` is left
+     * alone), so running it every launch costs one walk and cannot double-apply.
+     */
+    const blocked = migrateWorkBlocks(migrated.goals, migrated.tasks);
+    migrated = { ...migrated, goals: blocked.goals, tasks: blocked.tasks };
+
     state = {
       ...state,
       ...migrated,
@@ -504,6 +588,7 @@ export async function initStore(): Promise<void> {
       allDayBlocks,
       sidebarPanels,
       planMode,
+      goalsMode,
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -528,6 +613,18 @@ export function getState(): FullState {
 /** A cheap toggle is reversible by repeating it; a structural delete is not. */
 const UNDO_MS = 5000;
 const DESTRUCTIVE_UNDO_MS = 15000;
+
+/**
+ * Undo-toast wording for a batch status change. Distinct register from
+ * `STATUS_WORD` in `src/lib/status.ts`, which names a single state for a
+ * button or an accessible label rather than phrasing a toast.
+ */
+const STATUS_LABEL: Record<StepStatus, (n: number) => string> = {
+  todo: (n) => `Reset ${n} task${n === 1 ? '' : 's'}`,
+  doing: (n) => `Marked ${n} task${n === 1 ? '' : 's'} in progress`,
+  blocked: (n) => `Blocked ${n} task${n === 1 ? '' : 's'}`,
+  done: (n) => `Completed ${n} task${n === 1 ? '' : 's'}`,
+};
 
 /**
  * Arm an undo and show its toast.
@@ -557,6 +654,37 @@ function scheduleUndo(
 // seam behind every undoable edit (deletes, date edits). Callers compute
 // `next` from the pre-write state and hand it in; the snapshot below is taken
 // before that value lands, so restore always replays the prior slice.
+/**
+ * An undoable write across SEVERAL slices.
+ *
+ * `withUndo` below snapshots exactly one, which was enough while every
+ * undoable edit touched one table — and is why deleting a step deliberately
+ * leaves its sessions behind: a restore that could only bring back one of the
+ * two would return the step with its history silently gone.
+ *
+ * A replan is the first edit that genuinely spans two. It moves goal tasks and
+ * loose tasks in the same breath, and undoing half of it would leave the user
+ * looking at a week that is neither the old one nor the new one — the worst of
+ * the three possible outcomes.
+ */
+function withUndoSlices(
+  label: string,
+  next: Partial<AppState>,
+  ttlMs = UNDO_MS,
+  uiPatch?: Partial<UIState>,
+): void {
+  const snapshot: Partial<AppState> = {};
+  for (const key of Object.keys(next) as (keyof AppState)[]) {
+    // `as never` only to satisfy the index write; the key and the value come
+    // from the same `AppState`, so the pairing is sound.
+    snapshot[key] = structuredClone(state[key]) as never;
+  }
+  scheduleUndo(label, () => withoutClearingUndo(() => {
+    setAndPersist(snapshot);
+  }), ttlMs);
+  withoutClearingUndo(() => setAndPersist(next, uiPatch));
+}
+
 function withUndo<K extends keyof AppState>(
   label: string,
   key: K,
@@ -569,11 +697,7 @@ function withUndo<K extends keyof AppState>(
   // preference, not data, and snapping it back would fight the user.
   uiPatch?: Partial<UIState>,
 ): void {
-  const snapshot = structuredClone(state[key]);
-  scheduleUndo(label, () => withoutClearingUndo(() => {
-    setAndPersist({ [key]: snapshot } as Partial<AppState>);
-  }), ttlMs);
-  withoutClearingUndo(() => setAndPersist({ [key]: next } as Partial<AppState>, uiPatch));
+  withUndoSlices(label, { [key]: next } as Partial<AppState>, ttlMs, uiPatch);
 }
 
 /** Run a write that must not invalidate the armed undo history. */
@@ -687,33 +811,34 @@ function describeEstimateChange(
  * side, so the result is visible and fixable rather than lost — what was
  * missing was being told.
  */
-function warnIfEstimateOverflows(
-  title: string,
-  date: string | undefined,
-  startMin: number | undefined,
-  nextEstimate: number | undefined,
-  excludeId: string,
-): void {
-  if (date === undefined || startMin === undefined) return; // not on the grid
-  const wanted = durationOf(nextEstimate);
-  const fits = clampResize({
-    date,
-    startMin,
-    requestedMin: wanted,
-    windows: state.availability,
-    blocks: [],
-    placed: spansOn(state.goals, state.tasks, date, excludeId),
-    allDayBlocks: state.allDayBlocks,
-  });
-  // Compared against the SNAPPED duration, not the raw one. `clampResize`
-  // rounds to the 5-minute slot grid, so a 37-minute estimate came back as 35
-  // and looked like a refusal — every estimate whose minutes fell 1 or 2 past a
-  // multiple of five raised a false alarm on a completely empty day.
-  const snapped = Math.round(wanted / SLOT_GRANULARITY_MIN) * SLOT_GRANULARITY_MIN;
-  if (fits === null || fits < snapped) {
-    actions.showToast(`"${title}" no longer fits its slot — move it or shorten the day`);
-  }
+/**
+ * Which of an item's own sittings the slot search must ignore.
+ *
+ * Moving one bar vacates that bar. A REPLACE vacates all of them, because every
+ * one is about to be removed — leave them in and the task collides with the
+ * self it is in the middle of vacating, and a re-drop at 10:30 slides past its
+ * own aim to 11:00. An ADD vacates nothing: the existing sittings stay, so the
+ * new one has to find room beside them.
+ */
+function vacating(
+  item: GoalNode | Task,
+  opts: { blockId?: string; mode?: 'replace' | 'add' },
+): string | ReadonlySet<string> | undefined {
+  if (opts.blockId) return opts.blockId;
+  if (opts.mode === 'add') return undefined;
+  return new Set(blocksOf(item).map((b) => b.id));
 }
+
+/*
+ * `warnIfEstimateOverflows` lived here.
+ *
+ * It fired when a new estimate made a block taller than its gap — which could
+ * only happen while a block's height WAS the estimate. A sitting owns its own
+ * `minutes` now, so changing an estimate moves nothing on the calendar and
+ * there is nothing left to warn about. The discrepancy it was really groping
+ * at — planned sittings adding up to more or less than the estimate — is
+ * `planVsEstimate` in lib/blocks.ts, which states it rather than refusing it.
+ */
 
 // Snapshot the outgoing week's commitments exactly once per rollover. Entries
 // are immutable after creation; a week with no commitments needs no review.
@@ -766,17 +891,78 @@ export const actions = {
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node || node.children?.length) return;
-    if (node.done) {
-      // Unchecking is self-inverse and the row stays visible — no undo toast.
-      node.done = false;
-      delete node.doneAt;
+    const wasDone = isDone(node);
+    writeStatus(node, wasDone ? 'todo' : 'done', todayStr());
+    if (wasDone) {
+      // Unchecking lands on 'todo' unconditionally — a 'doing' step ticked
+      // then unticked does not come back 'doing' — but nothing undo-worthy is
+      // lost by that, and the row stays visible either way, so still no undo
+      // toast.
       setAndPersist({ goals });
     } else {
-      // Completion makes the row vanish from Next up — arm the undo window.
-      node.done = true;
-      node.doneAt = todayStr();
+      // Completion makes the row vanish from Next up, AND — for a 'blocked'
+      // step — discards its `blockedOn` (applyStatus clears it on any
+      // transition away from 'blocked'). Either reason alone would justify
+      // the undo window.
       withUndo(`Completed "${node.title}"`, 'goals', goals);
     }
+  },
+
+  /**
+   * Set one leaf's status. Containers are refused for the same reason they
+   * carry no `done`: a container's state is derived from its children, and
+   * storing one would be a second source of truth about the same work.
+   */
+  setNodeStatus(nodeId: string, next: StepStatus, blockedOn?: string): boolean {
+    if (!isActiveNode(nodeId)) return false; // frozen on a completed project
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
+    if (!node || node.children?.length) return false;
+    if (stepStatus(node) === next && (next !== 'blocked' || node.blockedOn === blockedOn?.trim())) {
+      return false;
+    }
+    writeStatus(node, next, todayStr(), blockedOn);
+    setAndPersist({ goals });
+    return true;
+  },
+
+  /**
+   * Set a whole selection in ONE write, arming ONE undo entry. A loop over
+   * `setNodeStatus` would arm an entry per node and each write's sweep would
+   * discard the ones before it, leaving an Undo button that restores only the
+   * last step.
+   *
+   * A selected id can be a container — `completeNodes` expands one to its open
+   * leaves via `openLeavesUnder` rather than matching ids directly, and this
+   * has to do the same: matching ids straight against `walkLeaves` (which only
+   * ever yields leaves) meant a selected container never matched anything, so
+   * "Set status" silently no-opped on it while "Complete" on the identical
+   * selection reached its children fine.
+   *
+   * Unlike `completeNodes`, this expands via `allLeavesUnder`, not
+   * `openLeavesUnder` — a done leaf is a legitimate target here. The bulk
+   * bar's "Set status…" select offers `'to do'` alongside the others, and a
+   * done step moved back to `'todo'` is exactly what that option means;
+   * filtering it out the way `completeNodes` correctly does made the option
+   * a silent no-op on the one selection it would ever matter for.
+   */
+  setNodesStatus(ids: string[], next: StepStatus): boolean {
+    const wanted = new Set(ids.filter((id) => isActiveNode(id)));
+    if (wanted.size === 0) return false;
+    const goals = cloneGoals(state.goals);
+    const leafIds = new Set(allLeavesUnder(goals.flatMap((g) => g.nodes), wanted));
+    const today = todayStr();
+    let count = 0;
+    for (const g of goals) {
+      walkLeaves(g, (n) => {
+        if (!leafIds.has(n.id) || stepStatus(n) === next) return;
+        writeStatus(n, next, today);
+        count++;
+      });
+    }
+    if (count === 0) return false;
+    withUndo(STATUS_LABEL[next](count), 'goals', goals);
+    return true;
   },
 
   toggleCheckpoint(nodeId: string): void {
@@ -800,7 +986,7 @@ export const actions = {
   addChild(nodeId: string, title = 'New item') {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     // `cloneGoals`, not a shallow `{ ...g, nodes: [...g.nodes] }`. That spread
-    // copies the arrays and SHARES the node objects, so the `delete node.done`
+    // copies the arrays and SHARES the node objects, so the `delete node.status`
     // below reached straight into live state — which meant the undo snapshot
     // taken a few lines later was of the already-mutated tree, and restoring it
     // left the new child in place. `setNodeEstimate` already clones properly.
@@ -819,11 +1005,12 @@ export const actions = {
     // the armed undo in one click. Same trap as `hasLeaf` in lib/plan.ts.
     const converts = !node.children || node.children.length === 0;
     const carried = converts
-      && (node.done === true || node.plannedWeek !== undefined
+      && (isDone(node) || node.plannedWeek !== undefined
         || node.estimateMin !== undefined || node.checkpoint === true);
     if (!node.children) node.children = [];
     node.children.push({ id: uid(), title });
-    delete node.done;
+    delete node.status;
+    delete node.blockedOn;
     delete node.doneAt;
     delete node.checkpoint;
     clearPlannedSlot(node); // a container can never carry a planned slot
@@ -844,20 +1031,38 @@ export const actions = {
   // Batch add (the AI daily-subtasks helper): append several children to a node
   // at once, converting a leaf into a container. Same freeze + field-clearing as
   // addChild; blanks are dropped and an all-blank list is a no-op.
-  addChildren(nodeId: string, titles: string[]) {
+  /**
+   * `titles` may carry estimates.
+   *
+   * A proposal arrives as "Read chapter 7 — 45m", and dropping the 45 on the
+   * way in would mean the user re-typing every duration the proposal already
+   * stated — on the surface whose whole point is that the breakdown arrives
+   * priced. Plain strings still work; every existing caller passes them.
+   */
+  addChildren(nodeId: string, titles: ReadonlyArray<string | { title: string; estimateMin?: number }>) {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
-    const clean = titles.map((t) => t.trim()).filter(Boolean);
+    const clean = titles
+      .map((t) => (typeof t === 'string' ? { title: t.trim() } : { ...t, title: t.title.trim() }))
+      .filter((t) => t.title.length > 0);
     if (clean.length === 0) return;
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node) return;
     const converts = !node.children || node.children.length === 0;
     const carried = converts
-      && (node.done === true || node.plannedWeek !== undefined
+      && (isDone(node) || node.plannedWeek !== undefined
         || node.estimateMin !== undefined || node.checkpoint === true);
     if (!node.children) node.children = [];
-    for (const title of clean) node.children.push({ id: uid(), title, done: false });
-    delete node.done;
+    for (const child of clean) {
+      const estimate = normalizeEstimate(child.estimateMin);
+      node.children.push({
+        id: uid(),
+        title: child.title,
+        ...(estimate === undefined ? {} : { estimateMin: estimate }),
+      });
+    }
+    delete node.status;
+    delete node.blockedOn;
     delete node.doneAt;
     delete node.checkpoint;
     clearPlannedSlot(node); // a container can never carry a planned slot
@@ -881,7 +1086,7 @@ export const actions = {
    * At root level `parentId` is null, so Enter did nothing whatsoever, and a
    * fresh project's steps are ALL root-level.
    */
-  insertSiblingAfter(nodeId: string, title = 'New step') {
+  insertSiblingAfter(nodeId: string, title = 'New task') {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const result = treeInsertSiblingAfter(state.goals, nodeId, title);
     if (!result) return;
@@ -893,11 +1098,42 @@ export const actions = {
     if (state.newNodeId !== null) set({ newNodeId: null });
   },
 
+  /**
+   * A task at the end of a goal's root list.
+   *
+   * An EMPTY title is the "open it ready to type" case — the header's `+ Add`
+   * on a goal page, which has no field of its own to type into. It arms
+   * `newNodeId` so the row mounts straight into its editor, exactly as ⌘Enter
+   * does through `insertSiblingAfter`. A titled call is the tab's own add
+   * field, which has already collected the words and wants no editor.
+   */
   addRootNode(goalId: string, title: string) {
     if (!isActiveGoal(goalId)) return; // frozen on a completed project
+    const id = uid();
     const goals = state.goals.map((g) =>
       g.id === goalId
-        ? { ...g, nodes: [...g.nodes, { id: uid(), title, done: false }] }
+        ? { ...g, nodes: [...g.nodes, { id, title }] }
+        : g
+    );
+    setAndPersist({ goals }, title === '' ? { newNodeId: id } : undefined);
+  },
+
+  /**
+   * Several root tasks at once — how a template lands.
+   *
+   * One write rather than a loop over `addRootNode`: each of those persists,
+   * so accepting a five-area template would be five writes and five renders of
+   * a growing tree. Not undoable, deliberately, and for the same reason
+   * `addRootNode` is not: adding is the one edit that discards nothing, and
+   * every row it creates is a click away from being deleted.
+   */
+  addRootNodes(goalId: string, titles: string[]) {
+    if (!isActiveGoal(goalId)) return;
+    const clean = titles.map((t) => t.trim()).filter(Boolean);
+    if (clean.length === 0) return;
+    const goals = state.goals.map((g) =>
+      g.id === goalId
+        ? { ...g, nodes: [...g.nodes, ...clean.map((title) => ({ id: uid(), title }))] }
         : g
     );
     setAndPersist({ goals });
@@ -933,7 +1169,6 @@ export const actions = {
     if (before === next) return;
     if (next === undefined) delete node.estimateMin;
     else node.estimateMin = next;
-    warnIfEstimateOverflows(node.title, node.plannedDay, node.plannedStartMin, next, nodeId);
     withUndo(describeEstimateChange(node.title, before, next), 'goals', goals);
   },
 
@@ -948,7 +1183,6 @@ export const actions = {
       else copy.estimateMin = next;
       return copy;
     });
-    warnIfEstimateOverflows(target.title, target.date, target.startMin, next, taskId);
     withUndo(describeEstimateChange(target.title, target.estimateMin, next), 'tasks', tasks);
   },
 
@@ -1001,7 +1235,7 @@ export const actions = {
       && targets.some((id) => nodeContains(id, openStepId));
     for (const g of goals) for (const id of targets) removeNode(g.nodes, id);
     withUndo(
-      `Deleted ${removed} step${removed === 1 ? '' : 's'}`,
+      `Deleted ${removed} task${removed === 1 ? '' : 's'}`,
       'goals',
       goals,
       DESTRUCTIVE_UNDO_MS,
@@ -1028,12 +1262,11 @@ export const actions = {
     for (const g of goals) {
       walkLeaves(g, (n) => {
         if (!leafIds.has(n.id)) return;
-        n.done = true;
-        n.doneAt = today;
+        writeStatus(n, 'done', today);
       });
     }
     const count = leafIds.size;
-    withUndo(`Completed ${count} step${count === 1 ? '' : 's'}`, 'goals', goals);
+    withUndo(`Completed ${count} task${count === 1 ? '' : 's'}`, 'goals', goals);
     return true;
   },
 
@@ -1275,14 +1508,14 @@ export const actions = {
   removeGoal(goalId: string) {
     flushPendingNote();
     const goal = state.goals.find((g) => g.id === goalId);
-    const title = goal?.title ?? 'project';
+    const title = goal?.title ?? 'goal';
     const goals = state.goals.filter((g) => g.id !== goalId);
     // Name the cost. Deleting a project takes two clicks and can take a dozen
     // steps, checkpoints and a week of scheduling with it; "Deleted X" alone
     // gave no sense of how much was riding on the Undo button.
     const steps = goal ? leafCount(goal.nodes).total : 0;
     const label = steps > 0
-      ? `Deleted "${title}" and its ${steps} step${steps === 1 ? '' : 's'}`
+      ? `Deleted "${title}" and its ${steps} task${steps === 1 ? '' : 's'}`
       : `Deleted "${title}"`;
     withUndo(label, 'goals', goals, DESTRUCTIVE_UNDO_MS);
   },
@@ -1460,10 +1693,32 @@ export const actions = {
     return true;
   },
 
-  addTask(title: string, date = todayStr(), goalId: string | null = null): void {
+  /**
+   * Capture a loose task.
+   *
+   * `date` defaults to NULL, not today. It used to default to today because the
+   * only caller was a modal whose date pills could not express "not yet" —
+   * so every thought captured on a Tuesday silently became a Tuesday
+   * commitment, and the day filled with work nobody had decided to do.
+   * `Task.date` has always been optional and the backlog rail lists a dateless
+   * task under its goal, so an unscheduled capture is fully reachable.
+   *
+   * An invalid date string is refused rather than swapped for today: a caller
+   * that miscomputed a date must not have it quietly corrected into a
+   * commitment.
+   */
+  addTask(
+    title: string,
+    date: string | null = null,
+    goalId: string | null = null,
+    estimateMin?: number,
+  ): void {
     const trimmed = title.trim();
-    if (!trimmed || !isValidLocalDate(date)) return;
-    const task: Task = { id: uid(), title: trimmed, date, done: false, goalId };
+    if (!trimmed) return;
+    if (date !== null && !isValidLocalDate(date)) return;
+    const task: Task = { id: uid(), title: trimmed, done: false, goalId };
+    if (date !== null) task.date = date;
+    if (estimateMin !== undefined) task.estimateMin = estimateMin;
     setAndPersist({ tasks: [...state.tasks, task] });
   },
 
@@ -1493,7 +1748,7 @@ export const actions = {
       // no room there, or no availability window at all. Clearing it returns
       // the task to that day's backlog rather than parking it in dead time.
       const moved = { ...item, date };
-      delete moved.startMin;
+      clearBlocks(moved);
       return moved;
     });
     setAndPersist({ tasks });
@@ -1538,13 +1793,14 @@ export const actions = {
    * the leaf-XOR-container invariant.
    *
    * Indenting under a leaf turns that leaf into a container, and `treeIndentNode`
-   * therefore strips its `done`, `doneAt`, planned slot and `estimateMin` — so
-   * one keystroke can silently un-complete a step and take it off Thursday
-   * afternoon. Outdenting the last child does the milder version, resetting the
-   * emptied parent to `done: false`. Neither was recoverable: both went through
-   * bare `setAndPersist`, which additionally swept away any restore already
-   * armed. A structural edit that discards a completion has to be at least as
-    * reversible as deleting a checkpoint.
+   * therefore strips its `status`, `blockedOn`, `doneAt`, planned slot and
+   * `estimateMin` — so one keystroke can silently un-complete a step and take
+   * it off Thursday afternoon. Outdenting the last child does the milder
+   * version: the emptied parent becomes a leaf with no status key at all — an
+   * absent field IS todo, so there is nothing left to reset. Neither was
+   * recoverable: both went through bare `setAndPersist`, which additionally
+   * swept away any restore already armed. A structural edit that discards a
+    * completion has to be at least as reversible as deleting a checkpoint.
    */
   indentNode(nodeId: string): void {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
@@ -1562,7 +1818,7 @@ export const actions = {
     if (nodePath && nodePath.length > 1) {
       expanded.add(nodePath[nodePath.length - 2]); // new parent container
     }
-    withUndo(`Indented "${node?.title ?? 'step'}"`, 'goals', goals, UNDO_MS, { expanded });
+    withUndo(`Indented "${node?.title ?? 'task'}"`, 'goals', goals, UNDO_MS, { expanded });
   },
 
   outdentNode(nodeId: string): void {
@@ -1579,7 +1835,7 @@ export const actions = {
         expanded.delete(oldParentId);
       }
     }
-    withUndo(`Outdented "${node?.title ?? 'step'}"`, 'goals', goals, UNDO_MS, { expanded });
+    withUndo(`Outdented "${node?.title ?? 'task'}"`, 'goals', goals, UNDO_MS, { expanded });
   },
 
   reorderSiblingNodes(activeId: string, overId: string): void {
@@ -1636,6 +1892,16 @@ export const actions = {
     ifOwner(() => savePlanMode(mode));
   },
 
+  /**
+   * Same again. Timeline used to be a global destination competing with Plan
+   * and Goals for a presentation people opened weekly; it is a way of looking
+   * at the portfolio, so it changes the representation and nothing else.
+   */
+  setGoalsMode(mode: GoalsMode): void {
+    set({ goalsMode: mode });
+    ifOwner(() => saveGoalsMode(mode));
+  },
+
   // Goal date editing
   confirmGoalDates(goalId: string): void {
     const goal = state.goals.find((g) => g.id === goalId);
@@ -1655,7 +1921,7 @@ export const actions = {
     const idSet = new Set(ids);
     const goals = state.goals.map((g) => (idSet.has(g.id) ? { ...g, datesConfirmed: true } : g));
     withUndo(
-      `Confirmed dates for ${ids.length} project${ids.length === 1 ? '' : 's'}`,
+      `Confirmed dates for ${ids.length} goal${ids.length === 1 ? '' : 's'}`,
       'goals',
       goals,
     );
@@ -1711,14 +1977,35 @@ export const actions = {
   // persists. Views never call resolveSlot. Returns whether a slot was found
   // and persisted — callers must not report success on a refusal, since the
   // refusal already wrote its own explanatory toast.
-  scheduleNode(goalId: string, nodeId: string, day: string, aimMin: number): boolean {
+  /**
+   * Put a leaf's sitting on `day`.
+   *
+   * `blockId` names WHICH sitting is being moved — a drag of one block among
+   * three must not disturb its siblings, and must not collide with itself.
+   * Without one this REPLACES every sitting, which is what a drag from the rail,
+   * a `1`-`7` placement and the inspector's Today button all mean: "put this
+   * here", not "and also here".
+   *
+   * `mode: 'add'` is the third intent, for Option-drag: another sitting for the
+   * same task, leaving the others where they are.
+   */
+  scheduleNode(
+    goalId: string,
+    nodeId: string,
+    day: string,
+    aimMin: number,
+    opts: { blockId?: string; mode?: 'replace' | 'add' } = {},
+  ): boolean {
     if (!isActiveGoal(goalId)) return false; // frozen on a completed project
     const source = state.goals.find((g) => g.id === goalId);
     const sourceNode = source ? findNode(source.nodes, nodeId) : null;
     if (!sourceNode || sourceNode.children) return false;
 
-    const durationMin = durationOf(sourceNode.estimateMin);
-    const placed = spansOn(state.goals, state.tasks, day, nodeId);
+    const moving = opts.blockId ? blocksOf(sourceNode).find((b) => b.id === opts.blockId) : undefined;
+    // The sitting keeps its own length when it moves; a fresh one is sized from
+    // the estimate, which is the only thing there is to go on.
+    const durationMin = moving?.minutes ?? durationOf(sourceNode.estimateMin);
+    const placed = spansOn(state.goals, state.tasks, day, vacating(sourceNode, opts));
     // Moving something already on the grid is an ADJUSTMENT, not a new
     // commitment against "right now" — which is the case `NO_PAST_LIMIT`'s own
     // note describes, and which `clampResize` already uses it for. With the
@@ -1727,9 +2014,16 @@ export const actions = {
     // dragging one onto an earlier weekday of the same week refused with "no
     // free time left that day" about a day that was nine hours empty. Both
     // outcomes came from treating a rearrangement as a fresh booking.
-    const now = sourceNode.plannedDay !== undefined && sourceNode.plannedStartMin !== undefined
-      ? NO_PAST_LIMIT
-      : nowMoment();
+    /*
+     * Already on the grid ⇒ this is an ADJUSTMENT, not a fresh booking.
+     *
+     * True whether or not a specific sitting was named: dropping a placed task
+     * onto an earlier weekday is still a rearrangement. Requiring `blockId` for
+     * this re-introduced the bug `NO_PAST_LIMIT` exists for — at 2pm, dragging
+     * a 09:00 block found the day's only remaining gap at 14:00 and silently
+     * dropped it there.
+     */
+    const now = moving !== undefined || isPlaced(sourceNode) ? NO_PAST_LIMIT : nowMoment();
     const startMin = resolveSlot({
       date: day,
       aimMin,
@@ -1750,22 +2044,48 @@ export const actions = {
 
     const goals = cloneGoals(state.goals);
     const node = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
-    setPlannedSlot(node, day, startMin);
-    setAndPersist({ goals });
+    if (opts.blockId) {
+      node.plannedWeek ??= weekOf(day);
+      replaceBlock(node, opts.blockId, { date: day, startMin });
+    } else if (opts.mode === 'add') {
+      addPlannedSlot(node, day, startMin, durationMin);
+    } else {
+      setPlannedSlot(node, day, startMin, durationMin);
+    }
+    /*
+     * A drag of one existing bar is DIRECT MANIPULATION: you watched it land and
+     * you can drag it back, which is why `resizeNode` is silent too. Every other
+     * route here books from a distance — Today's proposal row, the backlog's
+     * `1`-`7` keypress, `ScheduleMenu`, TaskPage's add-a-sitting — and on Today
+     * the row IS the button, so there is no way to touch that zone without
+     * booking something. A press you did not mean must have a way back.
+     *
+     * The snapshot is the whole slice on purpose: this write sets the block AND
+     * the `plannedWeek` commitment above it, and a surgical undo would have to
+     * remember both, then drift the first time a third field joined them.
+     */
+    if (opts.blockId) setAndPersist({ goals });
+    else withUndo(`Scheduled "${sourceNode.title}"`, 'goals', goals);
     return true;
   },
 
-  scheduleTask(taskId: string, date: string, aimMin: number): boolean {
+  /** The task twin of `scheduleNode` — same three intents, same rules. */
+  scheduleTask(
+    taskId: string,
+    date: string,
+    aimMin: number,
+    opts: { blockId?: string; mode?: 'replace' | 'add' } = {},
+  ): boolean {
     const task = state.tasks.find((t) => t.id === taskId);
     if (!task || !isValidLocalDate(date)) return false;
 
-    const durationMin = durationOf(task.estimateMin);
-    const placed = spansOn(state.goals, state.tasks, date, taskId);
+    const moving = opts.blockId ? blocksOf(task).find((b) => b.id === opts.blockId) : undefined;
+    const durationMin = moving?.minutes ?? durationOf(task.estimateMin);
+    const placed = spansOn(state.goals, state.tasks, date, vacating(task, opts));
     // See scheduleNode: a task already on the grid is being rearranged, not
     // booked, so the wall clock must not amputate the earlier part of its day.
-    const now = task.date !== undefined && task.startMin !== undefined
-      ? NO_PAST_LIMIT
-      : nowMoment();
+    // See `scheduleNode`: a placed task is being rearranged, not booked.
+    const now = moving !== undefined || isPlaced(task) ? NO_PAST_LIMIT : nowMoment();
     const startMin = resolveSlot({
       date,
       aimMin,
@@ -1782,9 +2102,18 @@ export const actions = {
       return false;
     }
 
-    setAndPersist({
-      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, date, startMin } : t)),
+    const tasks = state.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const next = { ...t, date };
+      if (opts.blockId) replaceBlock(next, opts.blockId, { date, startMin });
+      else if (opts.mode === 'add') addBlock(next, makeBlock(date, startMin, durationMin));
+      else setOnlyBlock(next, makeBlock(date, startMin, durationMin));
+      return next;
     });
+    // See `scheduleNode`: a drag of one bar is direct manipulation and stays
+    // silent; every other route books from a distance and gets a way back.
+    if (opts.blockId) setAndPersist({ tasks });
+    else withUndo(`Scheduled "${task.title}"`, 'tasks', tasks);
     return true;
   },
 
@@ -1839,7 +2168,7 @@ export const actions = {
       id: uid(),
       title: trimmed,
       date,
-      startMin: resolved,
+      blocks: [makeBlock(date, resolved, minutes)],
       done: false,
       goalId: null,
       estimateMin: minutes,
@@ -1857,7 +2186,7 @@ export const actions = {
    * availability, `windowForDate` returns null for a weekend, so every Replan
    * button failed outright on a Saturday or Sunday — which is exactly when a
    * weekly review gets done. And on a weekday that succeeded, nothing changed
-   * on screen: `weekRecap` buckets on `node.done`, which a replan doesn't
+   * on screen: `weekRecap` buckets on completion, which a replan doesn't
    * touch, and `scheduleNode`'s return value was discarded, so only the FAILURE
    * path ever spoke. Success was indistinguishable from a dead button, which is
    * how you end up clicking it five times.
@@ -1894,14 +2223,72 @@ export const actions = {
     );
   },
 
-  unscheduleNode(goalId: string, nodeId: string): void {
+  /**
+   * Move every slipped item to where the proposal said it would go.
+   *
+   * ONE write, and one undo entry covering both slices. A loop over
+   * `scheduleNode`/`scheduleTask` would arm an undo per item and each write's
+   * sweep would discard the one before it — so the toast would offer to undo a
+   * recovery and take back only its last step.
+   *
+   * The store re-derives nothing here: the caller has already seen these exact
+   * days and minutes in a preview and said yes to them. Recomputing slots at
+   * apply time is how "nothing moves silently" turns into "it moved somewhere
+   * else than the screen promised".
+   */
+  applyReplan(moves: ReplanMove[]): boolean {
+    if (moves.length === 0) return false;
+    const goals = cloneGoals(state.goals);
+    let tasks = state.tasks;
+    let moved = 0;
+
+    for (const move of moves) {
+      if (move.kind === 'step') {
+        const goal = goals.find((g) => g.id === move.goalId);
+        if (!goal || goal.completedAt) continue;
+        const node = findNode(goal.nodes, move.id);
+        if (!node) continue;
+        // The SITTING moves, not the leaf. Only the sittings in the past
+        // slipped; a later one on the same task stays where it was planned.
+        replaceBlock(node, move.blockId, { date: move.to, startMin: move.startMin });
+        moved += 1;
+        continue;
+      }
+      if (!state.tasks.some((t) => t.id === move.id)) continue;
+      tasks = tasks.map((t) => {
+        if (t.id !== move.id) return t;
+        const next = { ...t };
+        replaceBlock(next, move.blockId, { date: move.to, startMin: move.startMin });
+        return next;
+      });
+      moved += 1;
+    }
+
+    if (moved === 0) return false;
+    withUndoSlices(`Replanned ${moved} task${moved === 1 ? '' : 's'}`, { goals, tasks });
+    return true;
+  },
+
+  /**
+   * `blockId` takes ONE sitting off the calendar; without it the whole leaf
+   * comes off, week commitment and all.
+   *
+   * The `×` on a calendar block passes the sitting it is drawn for, because
+   * removing Tuesday's hour must not also remove Thursday's. The inspector's
+   * Clear passes nothing, because there it means "this is not happening".
+   */
+  unscheduleNode(goalId: string, nodeId: string, blockId?: string): void {
     if (!isActiveGoal(goalId)) return;
     const goal = state.goals.find((g) => g.id === goalId);
     const node = goal ? findNode(goal.nodes, nodeId) : null;
     if (!goal || !node || !node.plannedWeek) return;
     const goals = cloneGoals(state.goals);
-    clearPlannedSlot(findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!);
-    withUndo(`Removed "${node.title}" from plan`, 'goals', goals);
+    const target = findNode(goals.find((g) => g.id === goalId)!.nodes, nodeId)!;
+    if (blockId) removeBlock(target, blockId);
+    else clearPlannedSlot(target);
+    // "Unscheduled", matching the button that fires it — the × on a calendar
+    // block and the Recap panel both say Unschedule.
+    withUndo(`Unscheduled "${node.title}"`, 'goals', goals);
     // The reveal answers "where did it go?" — a question only the Plan view
     // raises, where the rail can bury an unscheduled step behind "+N more".
     // On the project page the step is still in the tree with its panel open,
@@ -1927,35 +2314,48 @@ export const actions = {
    *
    * Two × buttons on the same grid must not mean two different things.
    */
-  unscheduleTask(taskId: string): void {
+  unscheduleTask(taskId: string, blockId?: string): void {
     const task = state.tasks.find((t) => t.id === taskId);
-    if (!task || !task.date || task.startMin === undefined) return;
+    if (!task || !(task.blocks?.length)) return;
     const tasks = state.tasks.map((t) => {
       if (t.id !== taskId) return t;
       const cleared = { ...t };
-      delete cleared.startMin;
+      if (blockId) {
+        removeBlock(cleared, blockId);
+        return cleared;
+      }
+      clearBlocks(cleared);
       delete cleared.date;
       return cleared;
     });
-    withUndo(`Removed "${task.title}" from plan`, 'tasks', tasks);
+    withUndo(`Unscheduled "${task.title}"`, 'tasks', tasks);
     // See unscheduleNode: an unscheduled task is undated, so it sorts to the
     // bottom of its group and the cap can hide it outright.
     actions.revealInPlan('task', taskId);
   },
 
-  resizeNode(nodeId: string, minutes: number): void {
+  /**
+   * Resizing a sitting changes THAT SITTING.
+   *
+   * It used to write `estimateMin` — so dragging Tuesday's block an inch
+   * shorter re-priced the task everywhere, and with two sittings it would have
+   * silently resized the other one too. An estimate is a fact about the work; a
+   * sitting's length is a fact about a Tuesday.
+   */
+  resizeNode(nodeId: string, blockId: string, minutes: number): void {
     if (!isActiveNode(nodeId)) return;
     const goal = goalOfNode(nodeId);
     const node = goal ? findNode(goal.nodes, nodeId) : null;
-    if (!goal || !node || node.plannedDay === undefined || node.plannedStartMin === undefined) return;
+    const block = node ? blocksOf(node).find((b) => b.id === blockId) : undefined;
+    if (!goal || !node || !block) return;
 
     const clamped = clampResize({
-      date: node.plannedDay,
-      startMin: node.plannedStartMin,
+      date: block.date,
+      startMin: block.startMin,
       requestedMin: minutes,
       windows: state.availability,
       blocks: [],
-      placed: spansOn(state.goals, state.tasks, node.plannedDay, nodeId),
+      placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,
     });
     if (clamped === null) {
@@ -1964,21 +2364,23 @@ export const actions = {
     }
 
     const goals = cloneGoals(state.goals);
-    findNode(goals.find((g) => g.id === goal.id)!.nodes, nodeId)!.estimateMin = clamped;
+    replaceBlock(findNode(goals.find((g) => g.id === goal.id)!.nodes, nodeId)!, blockId, { minutes: clamped });
     setAndPersist({ goals });
   },
 
-  resizeTask(taskId: string, minutes: number): void {
+  /** See `resizeNode`: this changes the sitting, never the estimate. */
+  resizeTask(taskId: string, blockId: string, minutes: number): void {
     const task = state.tasks.find((t) => t.id === taskId);
-    if (!task || task.date === undefined || task.startMin === undefined) return;
+    const block = task ? blocksOf(task).find((b) => b.id === blockId) : undefined;
+    if (!task || !block) return;
 
     const clamped = clampResize({
-      date: task.date,
-      startMin: task.startMin,
+      date: block.date,
+      startMin: block.startMin,
       requestedMin: minutes,
       windows: state.availability,
       blocks: [],
-      placed: spansOn(state.goals, state.tasks, task.date, taskId),
+      placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,
     });
     if (clamped === null) {
@@ -1987,7 +2389,12 @@ export const actions = {
     }
 
     setAndPersist({
-      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, estimateMin: clamped } : t)),
+      tasks: state.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+        const next = { ...t };
+        replaceBlock(next, blockId, { minutes: clamped });
+        return next;
+      }),
     });
   },
 
@@ -2052,9 +2459,17 @@ export const actions = {
    * It also sets `openStepId`, so arriving from ⌘K on a step lands you IN that
    * step rather than merely beside a highlighted row.
    *
-   * Always opens on the steps tab. The tab is a property of the visit, not of
-   * the project — landing on notes because that is where you were last time is
-   * a surprise, and steps are what the page is for.
+   * Returns to the tab THIS goal was last left on, defaulting to steps.
+   *
+   * The rule used to be "always steps", against a single global `projectTab`.
+   * That was the right call for a global one — landing on Notes because some
+   * OTHER goal was last read there is a surprise — but the cure also threw away
+   * the case where the memory is correct: a study goal read on Overview every
+   * morning reopened on Tasks every morning. Keyed by goal, the surprise cannot
+   * happen, because the only tab a goal restores is one it was left on.
+   *
+   * A node focus still forces steps. Arriving from ⌘K on a task means being
+   * pointed at a row, and the tree is the only tab that has one.
    */
   openProject(goalId: string, nodeId?: string) {
     const returnView = state.view === 'project' ? state.projectReturnView : state.view;
@@ -2063,30 +2478,102 @@ export const actions = {
       view: 'project' as const,
       projectReturnView,
       openGoalId: goalId,
-      projectTab: 'steps' as const,
+      // Opening a goal always leaves whatever milestone workspace was open:
+      // the two are different places, and one of them is the parent.
+      openAreaId: null,
     };
     if (!nodeId) {
-      set({ ...base, focusNodeId: null, openStepId: null });
+      set({
+        ...base,
+        projectTab: state.projectTabByGoal[goalId] ?? 'steps',
+        focusNodeId: null,
+        openStepId: null,
+      });
       return;
     }
     const path = findNodePath(state.goals, nodeId);
     if (!path) {
-      set({ ...base, focusNodeId: null, openStepId: null });
+      set({ ...base, projectTab: 'steps', focusNodeId: null, openStepId: null });
       return;
     }
     const expanded = new Set(state.expanded);
     for (const id of path.slice(0, -1)) expanded.add(id); // ancestor containers
-    set({ ...base, focusNodeId: nodeId, openStepId: nodeId, expanded });
+    set({ ...base, projectTab: 'steps', focusNodeId: nodeId, openStepId: nodeId, expanded });
   },
 
   /** Leave the project page for the view it was opened from. */
   closeProject() {
     const view = state.projectReturnView === 'project' ? 'goals' : state.projectReturnView;
-    set({ view, openGoalId: null, focusNodeId: null, openStepId: null });
+    set({
+      view,
+      openGoalId: null,
+      openAreaId: null,
+      focusNodeId: null,
+      openStepId: null,
+    });
   },
 
+  /**
+   * Show one container as its own workspace, without leaving the goal.
+   *
+   * The second half of the two-level model the tree could not express: a click
+   * selects a milestone and inspects it, and this OPENS it. `openGoalId` is
+   * deliberately untouched — the breadcrumb, the goal's own header and the
+   * return view all stay valid, so Back is one step and lands exactly where the
+   * user was.
+   *
+   * Refuses a leaf. A task's whole content is its inspector, so a page for one
+   * would be the inspector again with more chrome around it.
+   */
+  openArea(nodeId: string) {
+    const node = findInAll(state.goals, nodeId);
+    if (!node || !node.children || node.children.length === 0) return;
+    set({ openAreaId: nodeId, areaTab: 'steps', openStepId: null });
+  },
+
+  /** Back out of a milestone workspace to the goal that contains it. */
+  closeArea() {
+    if (state.openAreaId === null) return;
+    // Reselect the milestone that was open. Leaving nothing selected would
+    // drop the user at the top of a tree with no trace of where they had been.
+    set({ openAreaId: null, openStepId: state.openAreaId, focusNodeId: state.openAreaId });
+  },
+
+  setAreaTab(tab: AreaTab) {
+    set({ areaTab: tab });
+  },
+
+  /**
+   * Open (or dismiss) a goal composer, switching to Goals on the way.
+   *
+   * The view change is part of the action: opening the New goal dialog over the
+   * Plan calendar would leave the user somewhere the thing they just created
+   * does not appear.
+   */
+  setGoalModal(kind: GoalModal) {
+    if (kind === null) {
+      set({ goalModal: null });
+      return;
+    }
+    set({ goalModal: kind, view: 'goals', openGoalId: null, openStepId: null });
+  },
+
+  /**
+   * Switch tabs, and remember the choice for THIS goal.
+   *
+   * The memory is written here rather than on leaving, because leaving has
+   * several routes — Back, ⌘K to another goal, deleting the goal — and only
+   * this one is guaranteed to see the tab the user actually chose.
+   */
   setProjectTab(tab: ProjectTab) {
-    set({ projectTab: tab });
+    if (!state.openGoalId) {
+      set({ projectTab: tab });
+      return;
+    }
+    set({
+      projectTab: tab,
+      projectTabByGoal: { ...state.projectTabByGoal, [state.openGoalId]: tab },
+    });
   },
 
   /**

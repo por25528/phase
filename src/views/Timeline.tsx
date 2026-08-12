@@ -456,7 +456,7 @@ export function Timeline() {
 
   return (
     <div>
-      <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
+      <h1 className="text-h1 font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
 
       <div className="flex flex-wrap items-center justify-between gap-[8px] mb-[10px]">
         <div className="flex flex-wrap items-center gap-[6px] min-w-0">
@@ -487,7 +487,7 @@ export function Timeline() {
           >
             <option value="focus">Focus · Now + Next</option>
             <option value="all">All active</option>
-            <optgroup label="One project">
+            <optgroup label="One goal">
               {orderedGoals.map((g) => (
                 <option key={g.id} value={g.id}>{g.title}</option>
               ))}
@@ -521,7 +521,7 @@ export function Timeline() {
               type="button"
               onClick={fitProjects}
               disabled={visibleGoals.length === 0}
-              title="Frame the selected projects"
+              title="Frame the selected goals"
               aria-pressed={atFitScale}
               className={`px-[12px] py-[4px] border-r border-line-2 transition-colors duration-100 disabled:opacity-40 ${
                 atFitScale ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'
@@ -566,7 +566,7 @@ export function Timeline() {
       {/* Empty state — no canvas needed */}
       {!hasCanvas ? (
         <div className="mt-[6px] border border-line rounded-[11px] bg-panel px-[12px] py-[32px] text-center text-muted text-body italic">
-          Add both a start and deadline to show a project on the Timeline.
+          Add both a start and deadline to show a goal on the Timeline.
         </div>
       ) : (
         <div
@@ -577,8 +577,8 @@ export function Timeline() {
           <div style={{ width: `${labelW + canvasW}px` }}>
             {/* Time header — sticky against vertical scroll; its label cell also against horizontal */}
             <div className="sticky top-0 z-[15] flex border-b border-line bg-bg">
-              <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-meta tracking-[.1em] uppercase text-muted font-semibold bg-bg">
-                Project
+              <div className="sticky left-0 z-[16] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[9px] text-meta font-semibold text-muted bg-bg">
+                Goal
               </div>
               <div className="relative flex-none" style={{ width: `${canvasW}px` }}>
                 {dayDetail ? (
@@ -604,13 +604,13 @@ export function Timeline() {
             {/* Goal rows, grouped by horizon (Now → Someday), empty groups omitted */}
             {horizonGroups.length === 0 ? (
               <div className="sticky left-0 w-fit px-[12px] py-[14px] text-ui text-muted italic">
-                No projects in this scope.
+                No goals in this scope.
               </div>
             ) : (
               horizonGroups.map((grp) => (
                 <Fragment key={grp.col}>
                   <div className="flex items-stretch border-b border-line bg-bg">
-                    <div className="sticky left-0 z-[12] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[5px] bg-bg font-mono text-tiny tracking-[.11em] uppercase text-muted font-semibold">
+                    <div className="sticky left-0 z-[12] tl-label-w flex-shrink-0 border-r border-line px-[12px] py-[5px] bg-bg text-meta font-semibold text-muted">
                       {grp.label} · {grp.goals.length}
                     </div>
                     <div className="flex-none" style={{ width: `${canvasW}px` }} />

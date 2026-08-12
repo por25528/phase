@@ -31,6 +31,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -66,17 +68,17 @@ const PROJECT: Goal = {
   title: '6.1200',
   column: 0,
   nodes: [
-    { id: 'a', title: 'Pset 6', done: false },
-    { id: 'b', title: 'Pset 7', done: false },
+    { id: 'a', title: 'Pset 6' },
+    { id: 'b', title: 'Pset 7' },
     {
       id: 'grp',
       title: 'Pset 8',
       children: [
-        { id: 'c1', title: 'Problems 1-3', done: false },
-        { id: 'c2', title: 'Problems 4-6', done: false },
+        { id: 'c1', title: 'Problems 1-3' },
+        { id: 'c2', title: 'Problems 4-6' },
       ],
     },
-    { id: 'd', title: 'Pset 9', done: false },
+    { id: 'd', title: 'Pset 9' },
   ],
 };
 
@@ -136,7 +138,7 @@ describe('building a selection', () => {
     expect(selectedIds()).toEqual(['b']);
     // The click selected — it did NOT tick the box.
     const { findInAll } = await import('../lib/tree');
-    expect(findInAll(store.getState().goals, 'b')?.done).toBe(false);
+    expect(findInAll(store.getState().goals, 'b')?.status).toBeUndefined();
 
     await user.keyboard('{Meta>}');
     await user.click(row('Pset 7'));
@@ -166,15 +168,18 @@ describe('building a selection', () => {
   });
 
   it('selects when the click lands on a hover control, rather than firing it', async () => {
-    const { store, user } = await mountTree();
-    const { findInAll } = await import('../lib/tree');
+    const { user } = await mountTree();
 
+    // The `⋯` menu IS the row's hover control now — rename, add-subtask and
+    // delete all moved inside it. A modifier-click on it must still be caught
+    // in the capture phase and read as "select this row", exactly as it was
+    // when the same click could have deleted the row outright.
     await user.keyboard('{Meta>}');
-    await user.click(within(row('Pset 7')).getByRole('button', { name: /^Delete/ }));
+    await user.click(within(row('Pset 7')).getByRole('button', { name: 'Actions for "Pset 7"' }));
     await user.keyboard('{/Meta}');
 
     expect(selectedIds()).toEqual(['b']);
-    expect(findInAll(store.getState().goals, 'b')).not.toBeNull(); // not deleted
+    expect(screen.queryByRole('menu')).toBeNull(); // and the menu never opened
   });
 
   it('selects an on-screen run on Shift-click, including nested rows', async () => {
@@ -217,7 +222,7 @@ describe('building a selection', () => {
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
 
     const status = screen.getByRole('status', { name: 'Selection' });
-    expect(status.textContent).toBe('2 steps selected');
+    expect(status.textContent).toBe('2 tasks selected');
   });
 });
 
@@ -230,9 +235,9 @@ describe('acting on a selection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Complete' }));
 
-    expect(findInAll(store.getState().goals, 'c1')?.done).toBe(true);
-    expect(findInAll(store.getState().goals, 'c2')?.done).toBe(true);
-    expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
+    expect(findInAll(store.getState().goals, 'c1')?.status).toBe('done');
+    expect(findInAll(store.getState().goals, 'c2')?.status).toBe('done');
+    expect(store.getState().pendingUndo?.label).toBe('Completed 2 tasks');
     expect(selectedIds()).toEqual([]); // the bar retires with the selection
   });
 
@@ -245,7 +250,7 @@ describe('acting on a selection', () => {
 
     expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'd']);
     // Pset 8 + its two children + Problems 1-3 is covered by the container.
-    expect(store.getState().pendingUndo?.label).toBe('Deleted 3 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Deleted 3 tasks');
 
     store.actions.undoLastDelete();
     expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b', 'grp', 'd']);
@@ -259,30 +264,52 @@ describe('acting on a selection', () => {
     await user.keyboard('{Backspace}');
 
     expect(store.getState().goals[0].nodes.map((n) => n.id)).toEqual(['grp', 'd']);
-    expect(store.getState().pendingUndo?.label).toBe('Deleted 2 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Deleted 2 tasks');
   });
 
-  it('expands a container with Space, matching what a click does', async () => {
+  /**
+   * Space selects, per the ARIA treeview pattern. It used to complete a leaf
+   * and collapse a container — the keyboard twin of the old row click, bound
+   * to the key most likely to be pressed by someone who thought they were
+   * scrolling.
+   */
+  it('adds the focused row to the selection with Space, and leaves it alone otherwise', async () => {
     const { store, user } = await mountTree();
-    const rowEl = row('Pset 8');
+    const { findInAll } = await import('../lib/tree');
     expect(store.getState().expanded.has('grp')).toBe(true);
-    rowEl.focus();
 
+    row('Pset 8').focus();
     await user.keyboard(' ');
 
-    expect(store.getState().expanded.has('grp')).toBe(false);
+    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('1 task selected');
+    expect(store.getState().expanded.has('grp')).toBe(true);
+    expect(findInAll(store.getState().goals, 'grp')?.status).toBeUndefined();
   });
 
-  it('completes from the keyboard with Space', async () => {
+  it('completes from the keyboard with X', async () => {
     const { store, user } = await mountTree();
     const { findInAll } = await import('../lib/tree');
     row('Pset 6').focus();
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
 
-    await user.keyboard(' ');
+    await user.keyboard('x');
 
-    expect(findInAll(store.getState().goals, 'a')?.done).toBe(true);
-    expect(findInAll(store.getState().goals, 'b')?.done).toBe(true);
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('done');
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('done');
+  });
+
+  it('sets a whole selection to blocked in one undoable write', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}'); // a, b
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Set status' }), 'blocked');
+
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('blocked');
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('blocked');
+    expect(store.getState().pendingUndo?.label).toBe('Blocked 2 tasks');
+    expect(selectedIds()).toEqual([]); // the bar retires with the selection, like Complete/Delete
   });
 });
 
@@ -316,28 +343,29 @@ describe('getting out of a selection', () => {
     await user.click(row('Pset 9'));
 
     expect(selectedIds()).toEqual([]);
-    expect(findInAll(store.getState().goals, 'd')?.done).toBe(false);
+    expect(findInAll(store.getState().goals, 'd')?.status).toBeUndefined();
   });
 
-  it('leaves ordinary clicking alone when nothing is selected', async () => {
+  it('opens a row on an ordinary click, and completes nothing', async () => {
     const { store, user } = await mountTree();
     const { findInAll } = await import('../lib/tree');
 
     await user.click(row('Pset 9'));
 
-    expect(findInAll(store.getState().goals, 'd')?.done).toBe(true);
+    expect(store.getState().openStepId).toBe('d');
+    expect(findInAll(store.getState().goals, 'd')?.status).toBeUndefined();
   });
 
   it('drops ids that stop existing, so the bar cannot count ghosts', async () => {
     const { store, user } = await mountTree();
     row('Pset 6').focus();
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
-    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('2 steps selected');
+    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('2 tasks selected');
 
     // Something else removes one of them out from under the selection.
     store.actions.removeNode('b');
 
-    expect(await screen.findByText('1 step selected')).toBeTruthy();
+    expect(await screen.findByText('1 task selected')).toBeTruthy();
   });
 });
 
@@ -373,7 +401,25 @@ describe('a refused bulk action', () => {
     await user.click(screen.getByRole('button', { name: 'Complete' }));
 
     expect(selectedIds()).toEqual(['a', 'b']);
-    expect(store.getState().pendingUndo?.label).toBe('Completed 2 steps');
+    expect(store.getState().pendingUndo?.label).toBe('Completed 2 tasks');
+  });
+
+  it('keeps the selection when Set status is reapplied to an unchanged status', async () => {
+    const { store, user } = await mountTree();
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Set status' }), 'blocked');
+    expect(selectedIds()).toEqual([]);
+    const before = store.getState().pendingUndo?.label;
+
+    // Select the same two again — both are already blocked, so setNodesStatus
+    // refuses and the bar must not report success on a no-op.
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Set status' }), 'blocked');
+
+    expect(selectedIds()).toEqual(['a', 'b']);
+    expect(store.getState().pendingUndo?.label).toBe(before); // unchanged — no new write happened
   });
 });
 

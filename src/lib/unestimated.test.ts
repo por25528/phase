@@ -3,12 +3,14 @@ import { unestimatedCommitments } from './unestimated';
 import { workloadOf } from './capacity';
 import type { PlannedLeaf } from './plan';
 import type { Task } from '../db/types';
+import { makeBlock } from './blocks';
 
 const leaf = (over: Partial<PlannedLeaf> = {}): PlannedLeaf => ({
   goalId: 'g1',
   goalTitle: '6.5840',
   nodeId: 'n1',
   title: 'A step',
+  blocks: [],
   done: false,
   plannedWeek: '2026-07-27',
   ...over,
@@ -63,20 +65,20 @@ describe('unestimatedCommitments', () => {
   it('marks whether the item is already on the grid', () => {
     const items = unestimatedCommitments(
       [
-        leaf({ nodeId: 'placed', plannedDay: '2026-07-28', plannedStartMin: 540 }),
-        leaf({ nodeId: 'dayOnly', plannedDay: '2026-07-28' }),
+        leaf({ nodeId: 'placed', blocks: [makeBlock('2026-07-28', 540, 60)] }),
+        leaf({ nodeId: 'committed' }),
         leaf({ nodeId: 'anyday' }),
       ],
       [
-        task({ id: 'tPlaced', date: '2026-07-28', startMin: 600 }),
+        task({ id: 'tPlaced', date: '2026-07-28', blocks: [makeBlock('2026-07-28', 600, 60)] }),
         task({ id: 'tDated', date: '2026-07-28' }),
       ],
     );
     expect(items.map((i) => [i.id, i.placed])).toEqual([
       ['placed', true],
-      // A day without a start minute is NOT on the grid — the same predicate
+      // Committed with no sitting is NOT on the grid — the same predicate
       // `isPlacedLeaf` and `backlogGroups` partition on.
-      ['dayOnly', false],
+      ['committed', false],
       ['anyday', false],
       ['tPlaced', true],
       ['tDated', false],
@@ -110,7 +112,7 @@ describe('unestimatedCommitments', () => {
       leaf({ nodeId: 'c', done: true }),
       leaf({ nodeId: 'd', estimateMin: 0 }),
       leaf({ nodeId: 'e', done: true, estimateMin: 30 }),
-      leaf({ nodeId: 'f', plannedDay: '2026-07-28', plannedStartMin: 540 }),
+      leaf({ nodeId: 'f', blocks: [makeBlock('2026-07-28', 540, 60)] }),
     ];
     const tasks = [
       task({ id: 't1' }),

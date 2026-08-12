@@ -1,5 +1,6 @@
 import type { Goal, GoalNode } from '../db/types';
 import { normalizeEstimate } from './capacity';
+import { isDone } from './status';
 
 /**
  * The completion roll-up.
@@ -59,7 +60,7 @@ function rollup(n: GoalNode): Rollup {
   // leaf — the same test every other module here uses.
   if (!n.children || n.children.length === 0) {
     return {
-      pct: n.done ? 100 : 0,
+      pct: isDone(n) ? 100 : 0,
       weight: normalizeEstimate(n.estimateMin) ?? null,
     };
   }

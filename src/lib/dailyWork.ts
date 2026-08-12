@@ -1,6 +1,9 @@
 import type { Goal, GoalNode, Task } from '../db/types';
 import { addDays, weekDates } from './dates';
 import { isValidLocalDate } from './schedule';
+import { isDone } from './status';
+import { blocksOf, blocksOn } from './blocks';
+import { normalizeEstimate } from './capacity';
 
 export type DailyWorkSource =
   | 'due'
@@ -30,6 +33,13 @@ export interface DailyWorkItem {
    * but not placed on the Plan grid — it sorts below everything timed.
    */
   startMin?: number;
+  /**
+   * Mirrored from `Task.estimateMin` / `GoalNode.estimateMin`, normalised the
+   * same way every other reader of an estimate does. Today's Now card states
+   * how long the thing in front of you is meant to take; without it the one
+   * row the surface exists for is the one row with no size.
+   */
+  estimateMin?: number;
 }
 
 export interface DailyWorkSections {
@@ -57,10 +67,22 @@ function walkLeaves(nodes: GoalNode[], visit: (node: GoalNode) => void): void {
   }
 }
 
+/**
+ * The sitting on `today`, if there is one.
+ *
+ * A task can now have several, and Today shows the day's schedule — so the time
+ * a row carries is the time of THIS day's sitting, not of the earliest one. A
+ * task sat on Monday and Wednesday reads 14:00 on Wednesday, not Monday's hour.
+ */
+function todayBlock(item: GoalNode | Task, today: string) {
+  return blocksOn(item, today).sort((a, b) => a.startMin - b.startMin)[0];
+}
+
 function taskItem(
   task: Task,
   source: DailyWorkSource,
   goalById: Map<string, Goal>,
+  today: string,
 ): DailyWorkItem {
   const goal = task.goalId ? goalById.get(task.goalId) : undefined;
   return {
@@ -75,11 +97,12 @@ function taskItem(
     editable: true,
     source,
     ...(isValidLocalDate(task.date) ? { scheduledDate: task.date } : {}),
-    ...(isPlacedMinute(task.startMin) ? { startMin: task.startMin } : {}),
+    ...(todayBlock(task, today) === undefined ? {} : { startMin: todayBlock(task, today)!.startMin }),
+    ...(estimate(task.estimateMin) === undefined ? {} : { estimateMin: estimate(task.estimateMin) }),
   };
 }
 
-function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
+function stepItem(leaf: GoalLeaf, source: DailyWorkSource, today: string): DailyWorkItem {
   const { goal, node } = leaf;
   return {
     key: `step:${node.id}`,
@@ -89,21 +112,20 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource): DailyWorkItem {
     goalId: goal.id,
     goalTitle: goal.title,
     due: source === 'due',
-    done: Boolean(node.done),
+    done: isDone(node),
     editable: !goal.completedAt,
     source,
     ...(isValidLocalDate(node.plannedWeek) ? { plannedWeek: node.plannedWeek } : {}),
-    ...(isValidLocalDate(node.plannedDay) ? { plannedDay: node.plannedDay } : {}),
+    ...(todayBlock(node, today) === undefined ? {} : { plannedDay: today }),
     ...(isValidLocalDate(node.deadline) ? { scheduledDate: node.deadline } : {}),
-    ...(isPlacedMinute(node.plannedStartMin) ? { startMin: node.plannedStartMin } : {}),
+    ...(todayBlock(node, today) === undefined ? {} : { startMin: todayBlock(node, today)!.startMin }),
+    ...(estimate(node.estimateMin) === undefined ? {} : { estimateMin: estimate(node.estimateMin) }),
   };
 }
 
-// A minute-of-day is only meaningful in 0..1440; anything else is corrupt data
-// and is treated as "not placed on the grid" rather than sorted to midnight.
-function isPlacedMinute(value: number | undefined): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1440;
-}
+/** The one definition of a usable estimate, shared with the capacity math. */
+const estimate = normalizeEstimate;
+
 
 function hasValidPlannedWeek(node: GoalNode): node is GoalNodeWithValidPlan {
   return isValidLocalDate(node.plannedWeek);
@@ -143,11 +165,11 @@ export function buildDailyWork(
 
   for (const leaf of activeLeaves) {
     if (
-      !leaf.node.done
+      !isDone(leaf.node)
       && isValidLocalDate(leaf.node.deadline)
       && leaf.node.deadline <= today
     ) {
-      addCommitment(stepItem(leaf, 'due'));
+      addCommitment(stepItem(leaf, 'due', today));
     }
   }
   for (const task of tasks) {
@@ -156,30 +178,38 @@ export function buildDailyWork(
       && isValidLocalDate(task.date)
       && task.date === today
     ) {
-      addCommitment(taskItem(task, 'task-today', goalById));
+      addCommitment(taskItem(task, 'task-today', goalById, today));
     }
   }
   for (const leaf of activeLeaves) {
     const { node } = leaf;
     if (
-      !node.done
+      !isDone(node)
       && hasValidPlannedWeek(node)
       && node.plannedWeek === currentWeek
-      && isValidLocalDate(node.plannedDay)
-      && node.plannedDay === today
+      && blocksOn(node, today).length > 0
     ) {
-      addCommitment(stepItem(leaf, 'pinned-today'));
+      addCommitment(stepItem(leaf, 'pinned-today', today));
     }
   }
   for (const leaf of activeLeaves) {
     const { node } = leaf;
     if (
-      !node.done
+      !isDone(node)
       && hasValidPlannedWeek(node)
       && node.plannedWeek === currentWeek
-      && (!isValidLocalDate(node.plannedDay) || node.plannedDay < today)
+      /*
+       * Committed to this week and not spoken for.
+       *
+       * Nothing today (that is the bucket above) AND nothing still to come: a
+       * leaf sat on Friday is Friday's work, and listing it under today would
+       * put the whole week on one day. A leaf whose only sittings are in the
+       * PAST does belong here — that is the slipped commitment.
+       */
+      && blocksOn(node, today).length === 0
+      && !blocksOf(node).some((b) => b.date > today)
     ) {
-      addCommitment(stepItem(leaf, 'this-week'));
+      addCommitment(stepItem(leaf, 'this-week', today));
     }
   }
 
@@ -192,7 +222,7 @@ export function buildDailyWork(
       && task.date < today
       && !committedKeys.has(key)
     ) {
-      carryOvers.push(taskItem(task, 'carry-over', goalById));
+      carryOvers.push(taskItem(task, 'carry-over', goalById, today));
     }
   }
   for (const leaf of activeLeaves) {
@@ -201,20 +231,20 @@ export function buildDailyWork(
       hasValidPlannedWeek(node) && node.plannedWeek < currentWeek,
     );
     const key = `step:${node.id}`;
-    if (!node.done && stale && !committedKeys.has(key)) {
-      carryOvers.push(stepItem(leaf, 'carry-over'));
+    if (!isDone(node) && stale && !committedKeys.has(key)) {
+      carryOvers.push(stepItem(leaf, 'carry-over', today));
     }
   }
 
   const completedToday: DailyWorkItem[] = [];
   for (const task of tasks) {
     if (task.done && task.doneAt === today) {
-      completedToday.push(taskItem(task, 'completed-today', goalById));
+      completedToday.push(taskItem(task, 'completed-today', goalById, today));
     }
   }
   for (const leaf of allLeaves) {
-    if (leaf.node.done === true && leaf.node.doneAt === today) {
-      completedToday.push(stepItem(leaf, 'completed-today'));
+    if (isDone(leaf.node) && leaf.node.doneAt === today) {
+      completedToday.push(stepItem(leaf, 'completed-today', today));
     }
   }
 

@@ -2,6 +2,7 @@ import type { Goal } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { addDays } from './dates';
 import { walkLeaves } from './plan';
+import { isDone } from './status';
 
 /**
  * Progress signals for a project with no schedule.
@@ -76,7 +77,7 @@ export function projectVelocity(goal: Goal, today: string): VelocitySignal {
   let remaining: number | null = 0;
 
   walkLeaves(goal, (leaf) => {
-    if (leaf.done) {
+    if (isDone(leaf)) {
       if (leaf.doneAt && leaf.doneAt >= since && leaf.doneAt <= today) completed += 1;
       return;
     }
@@ -113,7 +114,7 @@ export function describeVelocity(signal: VelocitySignal): string | null {
   // A stall is the single most useful thing an open-ended project can tell
   // you, and it is precisely what a deadline-based pace line cannot see.
   if (completed === 0) {
-    return `nothing finished in ${windowDays} days · ${open} step${open === 1 ? '' : 's'} open`;
+    return `nothing finished in ${windowDays} days · ${open} task${open === 1 ? '' : 's'} open`;
   }
 
   const rate = `${completed} done in ${windowDays} days`;

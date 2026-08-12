@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { leafCount, groupByColumn, weaveCompleted } from './board';
+import { leafCount, blockedLeafCount, firstBlockedLeaf, groupByColumn, weaveCompleted } from './board';
 import type { Goal, GoalNode } from '../db/types';
 
 // ---- helpers ----
 
 function leaf(id: string, done: boolean): GoalNode {
-  return { id, title: id, done };
+  return { id, title: id, ...(done ? { status: 'done' as const } : {}) };
+}
+
+function blockedLeaf(id: string): GoalNode {
+  return { id, title: id, status: 'blocked' };
 }
 
 function container(id: string, children: GoalNode[]): GoalNode {
@@ -49,6 +53,79 @@ describe('leafCount', () => {
   it('does not count a container itself as a leaf', () => {
     const nodes = [container('parent', [leaf('a', true)])];
     expect(leafCount(nodes)).toEqual({ total: 1, done: 1 });
+  });
+});
+
+// ---- blockedLeafCount ----
+
+describe('blockedLeafCount', () => {
+  it('is zero for a project with nothing stuck', () => {
+    const nodes = [leaf('a', false), leaf('b', true)];
+    expect(blockedLeafCount(nodes)).toBe(0);
+  });
+
+  it('counts flat blocked leaves', () => {
+    const nodes = [blockedLeaf('a'), leaf('b', false), blockedLeaf('c')];
+    expect(blockedLeafCount(nodes)).toBe(2);
+  });
+
+  it('recurses through nested containers', () => {
+    const nodes = [
+      container('a', [
+        container('b', [blockedLeaf('c'), leaf('d', false)]),
+        blockedLeaf('e'),
+      ]),
+    ];
+    expect(blockedLeafCount(nodes)).toBe(2);
+  });
+
+  it('does not count a done leaf as blocked', () => {
+    const nodes = [leaf('a', true)];
+    expect(blockedLeafCount(nodes)).toBe(0);
+  });
+
+  it('returns zero for an empty node list', () => {
+    expect(blockedLeafCount([])).toBe(0);
+  });
+});
+
+// ---- firstBlockedLeaf ----
+
+describe('firstBlockedLeaf', () => {
+  it('returns null for a project with nothing stuck', () => {
+    const nodes = [leaf('a', false), leaf('b', true)];
+    expect(firstBlockedLeaf(nodes)).toBeNull();
+  });
+
+  it('returns the first flat blocked leaf in document order', () => {
+    const nodes = [leaf('a', false), blockedLeaf('b'), blockedLeaf('c')];
+    expect(firstBlockedLeaf(nodes)?.id).toBe('b');
+  });
+
+  it('descends into containers before later siblings, preserving document order', () => {
+    const nodes = [
+      container('a', [leaf('x', false), blockedLeaf('y')]),
+      blockedLeaf('z'),
+    ];
+    expect(firstBlockedLeaf(nodes)?.id).toBe('y');
+  });
+
+  it('recurses through nested containers arbitrarily deep', () => {
+    const nodes = [
+      container('a', [
+        container('b', [leaf('c', false), blockedLeaf('d')]),
+      ]),
+    ];
+    expect(firstBlockedLeaf(nodes)?.id).toBe('d');
+  });
+
+  it('does not match a done leaf', () => {
+    const nodes = [leaf('a', true)];
+    expect(firstBlockedLeaf(nodes)).toBeNull();
+  });
+
+  it('returns null for an empty node list', () => {
+    expect(firstBlockedLeaf([])).toBeNull();
   });
 });
 

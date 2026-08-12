@@ -1,44 +1,61 @@
-import { useEffect, useRef, useState, type FocusEvent, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import type { Goal, GoalNode } from '../../db/types';
-import { registerPendingNoteFlush, useAppStore } from '../../state/store';
+import { useAppStore } from '../../state/store';
 import { DateField } from '../../components/DateField';
-import { EstimateControl } from '../../components/EstimateControl';
+import {
+  IconArrowRight,
+  IconArrowUpRight,
+  IconCalendar,
+  IconCheck,
+  IconCircle,
+  IconPlus,
+  IconX,
+} from '../../components/Icons';
 import { InlineEdit } from '../../components/InlineEdit';
-import { LogTimeControl } from '../../components/LogTimeControl';
 import { NoteEditor } from '../../components/NoteEditor';
-import { loggedForNode } from '../../lib/actuals';
-import { NOTE_SAVE_DEBOUNCE_MS, shouldFlushNoteSave } from '../../lib/noteAutosave';
-import { nodePct } from '../../lib/pct';
+import { StatusMark } from '../../components/StatusMark';
+import { useNoteDraft } from '../../components/useNoteDraft';
+import { PropertyRow, PropertyStatic } from '../../components/PropertyRow';
 import { fmtD } from '../../lib/dates';
+import { containerStatus, isDone, STATUS_WORD } from '../../lib/status';
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-meta font-[550] uppercase tracking-[0.08em] text-muted mb-[7px]">
+    <div className="text-meta font-semibold text-muted mb-[7px]">
       {children}
     </div>
   );
 }
 
+/** A hairline between the inspector's stacked concerns. */
+function PanelRule() {
+  return <div className="my-[10px] border-t border-line" />;
+}
+
+/**
+ * A CONTAINER's inspector.
+ *
+ * A leaf has its own page (`TaskPage`), so the leaf branches this used to carry
+ * are gone rather than unreachable: a dead branch claiming otherwise is a lie
+ * about what the component is for. What is left is what only a container has —
+ * a derived status, a date span, a child list, and notes.
+ */
 export function StepPanel({ goal, node, actions }: {
   goal: Goal;
   node: GoalNode;
   actions: ReturnType<typeof useAppStore>['actions'];
 }): JSX.Element {
-  const { sessions, pendingUndo } = useAppStore();
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftStart, setDraftStart] = useState(node.start ?? '');
   const [draftDeadline, setDraftDeadline] = useState(node.deadline ?? '');
-  const initialNotes = node.notes ?? '';
-  const [draftNotes, setDraftNotes] = useState(initialNotes);
-  const draftNotesRef = useRef(initialNotes);
-  const savedNotesRef = useRef(initialNotes);
-  const noteSubjectRef = useRef(node.id);
-  const pendingUndoRef = useRef(pendingUndo);
-  const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
-  pendingUndoRef.current = pendingUndo;
-  const isLeaf = !node.children || node.children.length === 0;
+  const noteDraft = useNoteDraft(node.id, node.notes ?? '', (id, markdown) =>
+    actions.setNodeNotes(id, markdown),
+  );
+  const children = node.children ?? [];
+  // Counts DIRECT children, matching the list rendered beside it. `nodePct`
+  // rolls the whole subtree up and would state a fraction whose denominator is
+  // nowhere on screen.
+  const childDone = children.filter((c) => isDone(c)).length;
 
   useEffect(() => {
     setEditingTitle(false);
@@ -48,56 +65,6 @@ export function StepPanel({ goal, node, actions }: {
     setDraftStart(node.start ?? '');
     setDraftDeadline(node.deadline ?? '');
   }, [node.id, node.start, node.deadline]);
-
-  function clearNoteTimer(): void {
-    if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
-    noteTimerRef.current = null;
-  }
-
-  function flushNotes(reason: 'debounce' | 'blur' | 'unmount'): void {
-    if (!shouldFlushNoteSave(pendingUndoRef.current !== null, reason)) return;
-    if (draftNotesRef.current === savedNotesRef.current) return;
-    clearNoteTimer();
-    const markdown = draftNotesRef.current;
-    savedNotesRef.current = markdown;
-    actionsRef.current.setNodeNotes(noteSubjectRef.current, markdown);
-  }
-
-  const flushNotesRef = useRef(flushNotes);
-  flushNotesRef.current = flushNotes;
-
-  useEffect(() => registerPendingNoteFlush(() => flushNotesRef.current('unmount')), []);
-
-  // The editor is intentionally reused across steps, so reset the draft when
-  // its subject changes instead of relying on a remount.
-  useEffect(() => {
-    if (noteSubjectRef.current === node.id) return;
-    flushNotesRef.current('unmount');
-    clearNoteTimer();
-    noteSubjectRef.current = node.id;
-    const next = node.notes ?? '';
-    draftNotesRef.current = next;
-    savedNotesRef.current = next;
-    setDraftNotes(next);
-  }, [node.id]);
-
-  useEffect(() => {
-    if (draftNotesRef.current === savedNotesRef.current) return;
-    clearNoteTimer();
-    noteTimerRef.current = setTimeout(() => {
-      noteTimerRef.current = null;
-      flushNotesRef.current('debounce');
-    }, NOTE_SAVE_DEBOUNCE_MS);
-    return clearNoteTimer;
-  }, [draftNotes, pendingUndo]);
-
-  useEffect(() => () => flushNotesRef.current('unmount'), []);
-
-  function handleNotesBlur(event: FocusEvent<HTMLDivElement>): void {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      flushNotesRef.current('blur');
-    }
-  }
 
   function commitDates(start: string, deadline: string): void {
     setDraftStart(start);
@@ -111,12 +78,16 @@ export function StepPanel({ goal, node, actions }: {
 
   return (
     <div className="px-[14px] py-[12px]">
-      <div className="flex items-start gap-[10px]">
+      {/* Header. The title carries the panel; the two verbs beside it —
+          Open and Close — are icon-sized because they are the same two verbs
+          on every container, and spelling them out in words would make the
+          header read as a toolbar with a heading in it. */}
+      <div className="flex items-start gap-[6px]">
         <h2 aria-label={node.title} className="m-0 flex-1 min-w-0">
           {editingTitle ? (
             <InlineEdit
               value={node.title}
-              className="font-disp text-h2 font-semibold tracking-[-0.01em]"
+              className="text-title font-semibold tracking-[-0.01em]"
               onCommit={(title) => {
                 if (title !== node.title) actions.renameNode(node.id, title);
                 setEditingTitle(false);
@@ -126,127 +97,140 @@ export function StepPanel({ goal, node, actions }: {
           ) : (
             <button
               type="button"
-              className="font-disp text-h2 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-fit text-left rounded-[6px]"
+              className="text-title font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-full text-left rounded-[6px]"
               onClick={() => setEditingTitle(true)}
-              aria-label={`Rename step "${node.title}"`}
+              aria-label={`Rename task "${node.title}"`}
               title="Click to rename"
             >
               {node.title}
             </button>
           )}
         </h2>
-        {isLeaf && (
-          <button
-            type="button"
-            aria-label={
-              node.checkpoint
-                ? `Remove checkpoint from "${node.title}"`
-                : `Mark "${node.title}" as a checkpoint`
-            }
-            title="Checkpoint"
-            onClick={() => actions.toggleCheckpoint(node.id)}
-            className={`text-meta px-[6px] py-[4px] min-h-[24px] rounded-field hover:bg-hover ${
-              node.checkpoint ? 'text-accent' : 'text-muted hover:text-accent'
-            }`}
-          >
-            {node.checkpoint ? '◆' : '◇'}
-          </button>
-        )}
+        {/* Open — the same verb the row's `O` and its double-click run. A leaf
+            has its own page now, so every node reaching this panel is a
+            container and this button is never conditional. */}
         <button
           type="button"
-          aria-label="Close step details"
-          onClick={() => actions.closeStep()}
-          className="text-meta font-semibold text-muted px-[7px] py-[4px] min-h-[24px] rounded-field hover:bg-hover hover:text-ink"
+          aria-label={`Open "${node.title}" as a workspace`}
+          title="Open as a workspace (O)"
+          onClick={() => actions.openArea(node.id)}
+          className="flex-none w-[24px] h-[24px] grid place-items-center rounded-[6px] text-muted hover:text-ink hover:bg-hover"
         >
-          Close
+          <IconArrowUpRight size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label="Close task details"
+          title="Close (Esc)"
+          onClick={() => actions.closeStep()}
+          className="flex-none w-[24px] h-[24px] grid place-items-center rounded-[6px] text-muted hover:text-ink hover:bg-hover"
+        >
+          <IconX size={13} />
         </button>
       </div>
 
-      <section className="mt-[22px]">
-        <SectionLabel>Span</SectionLabel>
-        <div className="flex flex-wrap items-center gap-[6px]">
-          <DateField
-            value={draftStart}
-            ariaLabel="Span start"
-            placeholder="Start"
-            onCommit={(next) => commitDates(next, draftDeadline)}
-          />
-          <span className="text-ui text-muted" aria-hidden="true">→</span>
-          <DateField
-            value={draftDeadline}
-            ariaLabel="Span end"
-            placeholder="End"
-            onCommit={(next) => commitDates(draftStart, next)}
-          />
+      {/* Properties. A derived status (read-only — a container carries no
+          status of its own) and a date span, in the place that used to cost
+          labelled sections and ~240 vertical pixels; the span's editor is one
+          click behind the value it edits. */}
+      <div className="mt-[10px] -mx-[6px]">
+        <PropertyStatic icon={<StatusMark status={containerStatus(node)} />}>
+          {STATUS_WORD[containerStatus(node)]}
+        </PropertyStatic>
+
+        {/* Dates. Phase stores a SPAN — start and deadline, both or neither —
+            so the popover keeps both fields and the row states the end, which
+            is the date anyone reads a task for. */}
+        <PropertyRow
+          label="Dates"
+          icon={<IconCalendar size={13} />}
+          value={node.deadline ? fmtD(node.deadline) : null}
+          placeholder="No dates"
+          panelRole="dialog"
+          panelWidth={244}
+        >
+          {() => (
+            <div className="px-[4px] py-[2px]">
+              <div className="flex flex-wrap items-center gap-[6px]">
+                <DateField
+                  value={draftStart}
+                  ariaLabel="Span start"
+                  placeholder="Start"
+                  onCommit={(next) => commitDates(next, draftDeadline)}
+                />
+                <span className="text-muted inline-flex" aria-hidden="true"><IconArrowRight size={13} /></span>
+                <DateField
+                  value={draftDeadline}
+                  ariaLabel="Span end"
+                  placeholder="End"
+                  onCommit={(next) => commitDates(draftStart, next)}
+                />
+              </div>
+              <p className="m-0 mt-[6px] text-meta text-muted">
+                A span needs both ends; clearing either clears both.
+              </p>
+            </div>
+          )}
+        </PropertyRow>
+      </div>
+
+      <PanelRule />
+
+      {/* A container's children, on the panel that selected it.
+          Reaching a milestone's task list used to mean leaving the inspector,
+          finding the row again in the tree and expanding it — for the one
+          question you open a milestone to ask. Rows are read-only markers plus
+          a title that selects; completion stays on the tree's own checkbox, so
+          there is exactly one place a task gets ticked. */}
+      <section>
+        <div className="flex items-baseline gap-[8px] mb-[7px]">
+          <div className="text-meta font-semibold text-muted flex-1">Tasks</div>
+          <span className="text-meta text-faint tabular-nums">
+            {childDone} / {children.length}
+          </span>
         </div>
-      </section>
-
-      <section className="mt-[22px]">
-        <SectionLabel>Plan</SectionLabel>
-        {node.plannedWeek ? (
-          <div className="flex items-center gap-[8px]">
-            <span className="text-ui text-ink-soft tabular-nums">
-              Week of {fmtD(node.plannedWeek)}
-              {node.plannedDay ? ` · ${fmtD(node.plannedDay)}` : ''}
-            </span>
+        <div className="-mx-[6px]">
+          {children.map((child) => (
             <button
+              key={child.id}
               type="button"
-              onClick={() => actions.unscheduleNode(goal.id, node.id)}
-              className="text-meta font-semibold text-muted px-[6px] py-[3px] min-h-[24px] rounded-field hover:bg-hover hover:text-ink"
+              onClick={() => actions.openStep(child.id)}
+              className="w-full flex items-center gap-[8px] px-[6px] py-[4px] rounded-[6px] text-ui text-left hover:bg-hover"
             >
-              Unschedule
+              <span className="flex-none inline-flex text-faint">
+                {isDone(child) ? <IconCheck size={12} /> : <IconCircle size={12} />}
+              </span>
+              <span
+                className={`flex-1 min-w-0 truncate ${
+                  isDone(child) ? 'line-through text-faint' : 'text-ink-soft'
+                }`}
+              >
+                {child.title}
+              </span>
             </button>
-          </div>
-        ) : (
-          <p className="m-0 text-ui text-muted">
-            Not planned — use the Plan view to commit this to a week.
-          </p>
-        )}
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => actions.addChild(node.id)}
+          className="mt-[2px] -ml-[0px] inline-flex items-center gap-[6px] text-ui text-muted hover:text-ink px-[6px] py-[4px] rounded-[6px] hover:bg-hover"
+        >
+          <IconPlus size={12} />
+          Add task
+        </button>
       </section>
 
-      {isLeaf && (
-        <>
-          <section className="mt-[22px]">
-            <SectionLabel>Estimate</SectionLabel>
-            <EstimateControl
-              minutes={node.estimateMin}
-              label={node.title}
-              onChange={(minutes) => actions.setNodeEstimate(node.id, minutes)}
-            />
-          </section>
+      <PanelRule />
 
-          <section className="mt-[22px]">
-            <SectionLabel>Time logged</SectionLabel>
-            <LogTimeControl
-              loggedMin={loggedForNode(sessions, node.id)}
-              estimateMin={node.estimateMin}
-              label={node.title}
-              onLog={(minutes) => actions.logSession('step', node.id, minutes)}
-              onClear={() => actions.clearSessionsFor('step', node.id)}
-            />
-          </section>
-        </>
-      )}
-
-      {!isLeaf && (
-        <section className="mt-[22px]">
-          <SectionLabel>Progress</SectionLabel>
-          <span className="text-title text-ink-soft tabular-nums">{Math.round(nodePct(node))}%</span>
-        </section>
-      )}
-
-      <section className="mt-[22px]">
+      <section>
         <SectionLabel>Notes</SectionLabel>
-        <div onBlur={handleNotesBlur}>
+        <div onBlur={noteDraft.onBlur}>
           <NoteEditor
             docKey={node.id}
-            value={noteSubjectRef.current === node.id ? draftNotes : initialNotes}
-            onChange={(markdown) => {
-              draftNotesRef.current = markdown;
-              setDraftNotes(markdown);
-            }}
+            value={noteDraft.value}
+            onChange={noteDraft.onChange}
             placeholder="What actually happened?"
-            ariaLabel="Step notes"
+            ariaLabel="Task notes"
           />
         </div>
       </section>

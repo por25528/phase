@@ -6,7 +6,7 @@ import { NOW_WIP_LIMIT } from '../../lib/plan';
 // go silent there (horizon gating, spec §2.2), so the calm reads as intentional.
 const HINTS: Record<number, string> = {
   2: 'Quiet by design — schedule pressure is hidden off Now / Next.',
-  3: 'Ideas — no "define a step" nag until you commit them.',
+  3: 'Ideas — no "define a task" nag until you commit them.',
 };
 
 export function Column({
@@ -56,10 +56,14 @@ export function Column({
           }`}
         >
           {children}
+          {/* No dashed box. A dashed border is the app's DROP-TARGET signal —
+              it is what `DayColumn` draws while something is in the air — and
+              spending it on "nothing is here" in four columns at once is how it
+              stops meaning anything. An empty column is empty. */}
           {ids.length === 0 && (
-            <div className="grid place-items-center min-h-[110px] rounded-card border border-dashed border-line-2 text-muted text-compact px-[10px] text-center">
-              Drop a project here
-            </div>
+            <p className="min-h-[80px] pt-[10px] text-faint text-meta text-center px-[10px]">
+              Nothing here
+            </p>
           )}
         </div>
       </SortableContext>

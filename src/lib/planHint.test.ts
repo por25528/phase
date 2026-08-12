@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Goal, Task } from '../db/types';
 import { hasPlacedWork, showPlanHint } from './planHint';
+import { makeBlock } from './blocks';
 
 function goal(over: Partial<Goal> = {}): Goal {
   return { id: 'g1', title: 'Thesis', nodes: [], ...over };
@@ -14,36 +15,42 @@ describe('hasPlacedWork', () => {
     expect(hasPlacedWork([goal({ nodes: [{ id: 'n1', title: 'Draft' }] })], [task()])).toBe(false);
   });
 
-  it('is false for a step with a day but no start minute — not on the grid', () => {
-    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedDay: '2026-07-15' }] });
+  it('is false for a step committed to a week but never placed', () => {
+    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: '2026-07-13' }] });
     expect(hasPlacedWork([g], [])).toBe(false);
   });
 
-  it('is false for a task with a start minute but no day', () => {
-    expect(hasPlacedWork([], [task({ startMin: 600 })])).toBe(false);
+  /**
+   * A sitting carries its own date, so the half-state this guarded against —
+   * a start minute with no day — is no longer expressible. What remains is a
+   * task committed to a day with nothing on the calendar, which is still not
+   * placed work.
+   */
+  it('is false for a task committed to a day but never placed', () => {
+    expect(hasPlacedWork([], [task({ date: '2026-07-15' })])).toBe(false);
   });
 
   it('is true for a fully placed step', () => {
-    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedDay: '2026-07-15', plannedStartMin: 600 }] });
+    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', blocks: [makeBlock('2026-07-15', 600, 60)] }] });
     expect(hasPlacedWork([g], [])).toBe(true);
   });
 
   it('is true for a fully placed task', () => {
-    expect(hasPlacedWork([], [task({ date: '2026-07-15', startMin: 600 })])).toBe(true);
+    expect(hasPlacedWork([], [task({ date: '2026-07-15', blocks: [makeBlock('2026-07-15', 600, 60)] })])).toBe(true);
   });
 
   it('finds a placed leaf nested below the top level', () => {
     const g = goal({
       nodes: [{
         id: 'p', title: 'Part',
-        children: [{ id: 'n1', title: 'Draft', plannedDay: '2026-07-15', plannedStartMin: 600 }],
+        children: [{ id: 'n1', title: 'Draft', blocks: [makeBlock('2026-07-15', 600, 60)] }],
       }],
     });
     expect(hasPlacedWork([g], [])).toBe(true);
   });
 
   it('counts a placement in any week, not just a given one', () => {
-    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: '2020-01-06', plannedDay: '2020-01-08', plannedStartMin: 540 }] });
+    const g = goal({ nodes: [{ id: 'n1', title: 'Draft', plannedWeek: '2020-01-06', blocks: [makeBlock('2020-01-08', 540, 60)] }] });
     expect(hasPlacedWork([g], [])).toBe(true);
   });
 });
@@ -56,7 +63,7 @@ describe('showPlanHint', () => {
   });
 
   it('retires itself once anything has been placed', () => {
-    const placed = [goal({ nodes: [{ id: 'n1', title: 'Draft', plannedDay: '2026-07-15', plannedStartMin: 600 }] })];
+    const placed = [goal({ nodes: [{ id: 'n1', title: 'Draft', blocks: [makeBlock('2026-07-15', 600, 60)] }] })];
     expect(showPlanHint(placed, [], true)).toBe(false);
   });
 

@@ -1,4 +1,5 @@
 import type { Goal, GoalNode, Task } from '../db/types';
+import { clearBlocks } from './blocks';
 import { buildDailyWork } from './dailyWork';
 
 export interface DeferResult {
@@ -22,9 +23,10 @@ function replanNodes(nodes: GoalNode[], stepIds: Set<string>, week: string): Goa
       return { ...node, children: replanNodes(node.children, stepIds, week) };
     }
     if (stepIds.has(node.id)) {
+      // Pushed to another week means UNPLACED: every sitting goes, because a
+      // sitting is a specific hour on a specific day and "next week" is neither.
       const next: GoalNode = { ...node, plannedWeek: week };
-      delete next.plannedDay;
-      delete next.plannedStartMin;
+      clearBlocks(next);
       return next;
     }
     return node;
@@ -77,7 +79,7 @@ export function deferOpenWork(
     : tasks.map((t) => {
       if (!taskIds.has(t.id)) return t;
       const next: Task = { ...t, date: targetWeekMonday };
-      delete next.startMin;
+      clearBlocks(next);
       return next;
     });
   const nextGoals = stepIds.size === 0

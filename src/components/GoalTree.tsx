@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useId } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import type { GoalNode, Session } from '../db/types';
+import type { GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
 import { nodePct } from '../lib/pct';
+import { IconChevronRight, IconDiamond, IconGrip } from './Icons';
 import {
   DndContext,
   PointerSensor,
@@ -21,9 +22,13 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { InlineEdit } from './InlineEdit';
 import { EstimateControl } from './EstimateControl';
-import { LogTimeControl } from './LogTimeControl';
-import { loggedForNode } from '../lib/actuals';
+import { Popover } from './Popover';
+import { RowActions } from './RowActions';
+import { ScheduleMenu } from './SchedulePopover';
 import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
+import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
+import { scheduleCell } from '../lib/rowSchedule';
+import { todayStr } from '../lib/dates';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -44,50 +49,57 @@ function usePrefersReducedMotion(): boolean {
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
-function LeafCheckbox({
-  checked,
+// STATUS_WORD is imported from src/lib/status.ts — do NOT redeclare it here.
+// The tree label, the panel radio group and the board chip must name a state
+// the same way.
+const STATUS_BOX: Record<StepStatus, string> = {
+  todo: 'border-check group-hover/cb:border-muted',
+  doing: 'border-accent',
+  blocked: 'border-warn bg-warn-tint',
+  done: 'bg-accent border-accent',
+};
+
+function LeafStatusBox({
+  status,
   onToggle,
   label,
 }: {
-  checked: boolean;
+  status: StepStatus;
   onToggle: () => void;
   label: string;
 }) {
   return (
     // The 17px box sits inside a 24×24 button: WCAG 2.2 AA wants a 24px target,
-    // but a 24px box would overpower the row. `border-check` clears 1.4.11's
-    // 3:1 — `border-line-2` measured 1.55:1 dark / 1.31:1 light, which made the
-    // one action that moves every number in the app effectively invisible.
+    // but a 24px box would overpower the row. `border-check` clears 1.4.11's 3:1.
     <button
       type="button"
       role="checkbox"
-      aria-checked={checked}
-      aria-label={label}
+      aria-checked={status === 'done'}
+      aria-label={`${label} — ${STATUS_WORD[status]}`}
       // -1 like every other control on the row. It was the one tabbable child,
       // so focus landed on it between rows — and from there the row's
       // `e.target !== e.currentTarget` guard swallowed ↑/↓ and ⌘]/⌘[. The row
       // itself is the focusable unit and handles Space, so nothing is lost.
       tabIndex={-1}
       className="w-[24px] h-[24px] -m-[3px] flex-shrink-0 grid place-items-center group/cb"
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
+      onClick={(e) => { e.stopPropagation(); onToggle(); }}
     >
       <span
-        className={`w-[17px] h-[17px] border-[1.5px] rounded-[6px] grid place-items-center transition-all duration-100 ${
-          checked ? 'bg-accent border-accent' : 'border-check group-hover/cb:border-muted'
-        }`}
+        className={`w-[17px] h-[17px] border-[1.5px] rounded-[6px] grid place-items-center transition-all duration-100 ${STATUS_BOX[status]}`}
       >
-        <svg
-          viewBox="0 0 12 12"
-          className={`w-[11px] h-[11px] stroke-accent-contrast fill-none transition-opacity duration-100 ${
-            checked ? 'opacity-100' : 'opacity-0'
-          }`}
-          strokeWidth={2.4}
-        >
-          <path d="M2 6.2 4.6 9 10 3" />
-        </svg>
+        {status === 'done' && (
+          <svg viewBox="0 0 12 12" className="w-[11px] h-[11px] stroke-accent-contrast fill-none" strokeWidth={2.4}>
+            <path d="M2 6.2 4.6 9 10 3" />
+          </svg>
+        )}
+        {status === 'doing' && (
+          <span className="w-[7px] h-[7px] rounded-full bg-accent" aria-hidden="true" />
+        )}
+        {status === 'blocked' && (
+          <svg viewBox="0 0 12 12" className="w-[11px] h-[11px] stroke-warn fill-none" strokeWidth={2}>
+            <path d="M2.5 9.5 9.5 2.5" />
+          </svg>
+        )}
       </span>
     </button>
   );
@@ -143,9 +155,14 @@ interface SharedProps {
   onSelect: (id: string, mode: SelectMode) => void;
   /** Runs the selection's bulk action from a row's keyboard handler. */
   onBulk: (action: 'complete' | 'delete') => void;
-  /** The whole ledger; each leaf sums its own. Small enough that filtering per
-   *  row is cheaper than building a map on every store notification. */
-  sessions: Session[];
+  /**
+   * The goal every row in this tree belongs to.
+   *
+   * Threaded rather than read per row: the milestone workspace renders this
+   * same component over a SUBTREE of the open goal, so "which goal" is a fact
+   * about the tree, not something a row can derive from its own node.
+   */
+  goalId: string;
 }
 
 /**
@@ -174,11 +191,13 @@ export type SelectMode = 'toggle' | 'range' | 'clear';
 function SelectionBar({
   count,
   onComplete,
+  onSetStatus,
   onDelete,
   onClear,
 }: {
   count: number;
   onComplete: () => void;
+  onSetStatus: (next: StepStatus) => void;
   onDelete: () => void;
   onClear: () => void;
 }) {
@@ -198,7 +217,7 @@ function SelectionBar({
           aria-label="Selection"
           className="text-ui text-ink-soft flex-1 min-w-0"
         >
-          {count > 0 && `${count} step${count === 1 ? '' : 's'} selected`}
+          {count > 0 && `${count} task${count === 1 ? '' : 's'} selected`}
         </span>
         {/* Conditionally rendered, not just untabbable. `max-h-0 opacity-0`
             clips the bar visually and hides it from nobody: a screen reader in
@@ -215,6 +234,25 @@ function SelectionBar({
             >
               Complete
             </button>
+            {/* Native <select> — no outside-click/Escape wiring to duplicate,
+                and it applies the moment a status is picked. Resets to the
+                placeholder afterwards since the selection holds a mix of
+                statuses, not one shared value to keep shown as selected. */}
+            <select
+              value=""
+              onChange={(e) => {
+                const next = e.target.value as StepStatus;
+                if (next) onSetStatus(next);
+                e.target.value = '';
+              }}
+              aria-label="Set status"
+              className="text-compact font-medium text-ink-soft px-[8px] py-[4px] min-h-[24px] rounded-field border border-line-2 bg-transparent hover:bg-hover focus-visible:border-accent"
+            >
+              <option value="" disabled>Set status…</option>
+              {(['todo', 'doing', 'blocked', 'done'] as const).map((s) => (
+                <option key={s} value={s}>{STATUS_WORD[s]}</option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={onDelete}
@@ -239,7 +277,7 @@ function SelectionBar({
 // ── GoalTree (public export, owns DndContext) ─────────────────────────────────
 
 export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: number }) {
-  const { expanded, actions, newNodeId, sessions } = useAppStore();
+  const { expanded, actions, newNodeId, openGoalId } = useAppStore();
   const reducedMotion = usePrefersReducedMotion();
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -302,6 +340,15 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
     if (wrote) clearSelection();
   }
 
+  function onSetStatus(next: StepStatus): void {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    // ONE write, ONE undo entry — setNodesStatus refuses (false) when nothing
+    // in the selection actually changes, same silent-refusal contract as
+    // complete/delete above.
+    if (actions.setNodesStatus(ids, next)) clearSelection();
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -325,6 +372,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
       <SelectionBar
         count={selected.size}
         onComplete={() => onBulk('complete')}
+        onSetStatus={onSetStatus}
         onDelete={() => onBulk('delete')}
         onClear={clearSelection}
       />
@@ -333,7 +381,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
           single-select right up until the moment it wasn't. It is also what
           makes the per-row `aria-selected` mean "one of several" rather than
           "the cursor is here". */}
-      <div role="tree" aria-label="Steps" aria-multiselectable="true">
+      <div role="tree" aria-label="Tasks" aria-multiselectable="true">
         <GoalSiblingList
           nodes={nodes}
           depth={depth}
@@ -344,7 +392,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
           selected={selected}
           onSelect={onSelect}
           onBulk={onBulk}
-          sessions={sessions}
+          goalId={openGoalId ?? ''}
         />
       </div>
     </DndContext>
@@ -356,8 +404,11 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
 function GoalSiblingList({ nodes, ...shared }: { nodes: GoalNode[] } & SharedProps) {
   return (
     <SortableContext items={nodes.map((n) => n.id)} strategy={verticalListSortingStrategy}>
-      {nodes.map((n) => (
-        <GoalTreeNode key={n.id} n={n} {...shared} />
+      {nodes.map((n, i) => (
+        // `isFirstSibling` only answers "is there a sibling above to nest
+        // under" — the one thing `indentNode` refuses on, and the one reason
+        // the ⋯ menu would otherwise offer a verb that does nothing.
+        <GoalTreeNode key={n.id} n={n} isFirstSibling={i === 0} {...shared} />
       ))}
     </SortableContext>
   );
@@ -367,6 +418,7 @@ function GoalSiblingList({ nodes, ...shared }: { nodes: GoalNode[] } & SharedPro
 
 function GoalTreeNode({
   n,
+  isFirstSibling,
   depth,
   expanded,
   actions,
@@ -375,8 +427,8 @@ function GoalTreeNode({
   selected,
   onSelect,
   onBulk,
-  sessions,
-}: { n: GoalNode } & SharedProps) {
+  goalId,
+}: { n: GoalNode; isFirstSibling: boolean } & SharedProps) {
   // A row created by Enter mounts straight into its editor, so the sequence is
   // "Enter, type, Enter" rather than "Enter, hunt for the row, double-click,
   // type". The initialiser runs once per mount and the flag is cleared below,
@@ -386,12 +438,18 @@ function GoalTreeNode({
   const groupId = useId();
   const isNew = n.id === newNodeId;
   const [editing, setEditing] = useState(isNew);
+  // Counters, not booleans: the host is asking for an EVENT ("open the
+  // estimate now"), and a boolean would need clearing afterwards or the second
+  // `E` in a row would do nothing.
+  const [estimateOpen, setEstimateOpen] = useState(0);
+  const scheduleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (isNew) actions.clearNewNode();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot, on mount
   }, []);
   const hasKids = Boolean(n.children && n.children.length > 0);
   const isOpen = hasKids && expanded.has(n.id);
+  const when = scheduleCell(n, todayStr());
   const ind = depth * 22;
 
   const {
@@ -418,11 +476,21 @@ function GoalTreeNode({
     setEditing(false);
   }
 
-  // Single click anywhere on the row runs its primary action: toggle a leaf's
-  // done state, or expand/collapse a container. Interactive children (checkbox,
-  // twirl, drag handle, + sub, delete) stopPropagation so they never reach here.
-  // Double-click on the title enters rename; its two underlying single clicks
-  // toggle then untoggle (net zero) before the editor opens (Approach A).
+  /**
+   * A plain click OPENS the row. It does not complete it and it does not
+   * expand it.
+   *
+   * The row used to run a "primary action" that depended on what the row was:
+   * completion on a leaf, expand/collapse on a container. Efficient once
+   * memorised, and unusually dangerous — the single most consequential action
+   * in the product, the one that moves every number, was bound to the largest
+   * click target on the page, on the object people click at to read it. A
+   * mis-aimed click on a title checked work off.
+   *
+   * So the row behaves the way a row behaves everywhere else: clicking it makes
+   * it the subject. The checkbox completes, the chevron expands, and each of
+   * those is a deliberate 24px target that says what it does.
+   */
   /**
    * Modifier clicks are caught on the way DOWN, before any child sees them.
    *
@@ -449,13 +517,10 @@ function GoalTreeNode({
     if (editing) return;
     // Modifiers are handled in the capture phase above and never arrive here.
     if (e.metaKey || e.ctrlKey || e.shiftKey) return;
-    // A plain click while a selection is up dismisses it and stops there. It
-    // must NOT also toggle done: the click that ends a selection is the click
-    // people use to "get out", and having it silently tick a box off is exactly
-    // the accidental destructive action a selection UI has to avoid.
+    // A plain click while a selection is up dismisses it and stops there — the
+    // click people use to "get out" must not also do something to a row.
     if (selected.size > 0) { onSelect(n.id, 'clear'); return; }
-    if (hasKids) actions.toggleExpand(n.id);
-    else actions.toggleLeaf(n.id);
+    actions.openStep(n.id);
   }
 
   // Move focus to the next/previous VISIBLE row in DOM order. Because children
@@ -558,28 +623,86 @@ function GoalTreeNode({
       else actions.removeNode(n.id);
       return;
     }
-    // Space runs the row's primary action, the same one a click runs: the
-    // selection if there is one, else complete a leaf or expand a container.
-    // Always prevented — on a container it previously fell through and scrolled
+    // Space adds the focused row to the selection, per the ARIA treeview
+    // pattern and per every list this product is trying to feel like. It used
+    // to complete a leaf — the keyboard twin of the row click, and dangerous
+    // for the same reason, on the key most likely to be pressed by someone who
+    // thought they were scrolling.
+    //
+    // Always prevented: on a container it previously fell through and scrolled
     // the page, which is a key that both does nothing and does something wrong.
     if (plain && e.key === ' ' && !editing) {
       e.preventDefault();
-      if (selected.size > 0) onBulk('complete');
-      else if (hasKids) actions.toggleExpand(n.id);
-      else actions.toggleLeaf(n.id);
+      onSelect(n.id, 'toggle');
       return;
     }
-    // Enter → a new step directly below this one, opened ready to type.
+    // X completes — the selection if there is one, otherwise this row. A letter
+    // rather than Space, because completion is the one keystroke here that
+    // moves a number and it should take an aimed press.
+    if (plain && (e.key === 'x' || e.key === 'X') && !editing) {
+      e.preventDefault();
+      if (selected.size > 0) onBulk('complete');
+      else if (!hasKids) actions.toggleLeaf(n.id);
+      return;
+    }
+    // ⇧S opens the schedule popover on the WHEN cell.
     //
-    // This used to be `addChild(parentId)`, which pushes onto the END of the
-    // parent's list — so on the first of ten psets the new row appeared tenth,
-    // unfocused, titled "New item". And `parentId` is null for every root-level
-    // step, so on a freshly created project Enter did nothing at all.
+    // Not plain `S`, which has cycled status here for a long time and is one of
+    // four documented routes to `doing`/`blocked`. Rebinding it to scheduling
+    // would have made the commonest keystroke on this row mean something new
+    // without warning, so the new verb takes the modifier and the old one keeps
+    // its key. Checked BEFORE the plain-S branch, which requires no modifiers.
+    if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      if (hasKids) return; // a group is scheduled through its tasks
+      scheduleRef.current?.click();
+      return;
+    }
+    // S cycles a leaf's status: todo → doing → blocked → todo. `done` is
+    // deliberately unreachable from here — the checkbox is the only route to
+    // it, so ticking it remains the one action that moves the pct roll-up.
+    if (plain && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      if (hasKids) return; // a container's status is derived, never set
+      actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
+      return;
+    }
+    // E opens the estimate editor — the row's own control, not a second one.
+    if (plain && (e.key === 'e' || e.key === 'E')) {
+      e.preventDefault();
+      if (hasKids) return; // `setNodeEstimate` refuses containers for the same reason
+      setEstimateOpen((c) => c + 1);
+      return;
+    }
+    // O opens a container as its own workspace — the keyboard half of the
+    // inspector's ↗ and the row's double-click.
+    //
+    // `O`, not `Enter`. Enter renames here and has for as long as the tree has
+    // existed; making it mean "open" on a container and "rename" on a leaf
+    // would put back exactly the row-type-dependent primary action that was
+    // deliberately removed from the row click.
+    if (plain && (e.key === 'o' || e.key === 'O') && !editing) {
+      e.preventDefault();
+      if (hasKids) actions.openArea(n.id);
+      return;
+    }
+    // ⌘Enter → a new task directly below this one, opened ready to type.
+    //
     // `insertSiblingAfter` works off the row's own sibling list, so it needs no
-    // parent id and behaves the same at every depth.
-    if (plain && e.key === 'Enter' && !editing) {
+    // parent id and behaves the same at every depth — unlike the
+    // `addChild(parentId)` this began as, which pushed onto the END of the
+    // parent's list and did nothing at all at root level.
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !editing) {
       e.preventDefault();
       actions.insertSiblingAfter(n.id);
+      return;
+    }
+    // Enter → edit the title. Double-click was the only route to a rename for
+    // a long time, which is an invisible affordance on the most common edit
+    // there is; on the keyboard there was none at all.
+    if (plain && e.key === 'Enter' && !editing) {
+      e.preventDefault();
+      setEditing(true);
     }
   }
 
@@ -612,6 +735,12 @@ function GoalTreeNode({
         onKeyDown={handleKeyDown}
         onClickCapture={handleRowClickCapture}
         onClick={handleRowClick}
+        // Double-click OPENS a container as its own workspace — the pointer
+        // half of `O` and the inspector's ↗. On a leaf it does nothing here:
+        // the title has owned double-click-to-rename for as long as the tree
+        // has existed, and it stops propagation, so a double-click on a leaf's
+        // title never reaches this.
+        onDoubleClick={hasKids ? () => actions.openArea(n.id) : undefined}
       >
         {/* Drag handle — {listeners} here, NOT on the whole row, to avoid
             colliding with row-level Space/Arrow handlers. tabIndex={-1} keeps
@@ -623,9 +752,11 @@ function GoalTreeNode({
           tabIndex={-1}
           aria-label="Drag to reorder"
           onClick={(e) => e.stopPropagation()}
-          className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-tiny text-faint cursor-grab active:cursor-grabbing select-none"
+          className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-faint cursor-grab active:cursor-grabbing"
         >
-          ⠿
+          {/* The plan sidebar already drew this handle properly; the tree used
+              `⠿` — a BRAILLE PATTERN — for the same affordance. */}
+          <IconGrip size={13} />
         </button>
 
         {/* Twirl (container) or fixed-width spacer (leaf) */}
@@ -635,31 +766,32 @@ function GoalTreeNode({
             aria-expanded={isOpen}
             aria-label={isOpen ? 'Collapse' : 'Expand'}
             tabIndex={-1}
-            className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint text-micro select-none transition-transform duration-150 rounded-[4px] hover:bg-hover"
+            className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint transition-transform duration-150 rounded-[4px] hover:bg-hover"
             style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
             onClick={(e) => {
               e.stopPropagation();
               actions.toggleExpand(n.id);
             }}
           >
-            ▶
+            <IconChevronRight size={13} />
           </button>
         ) : (
           <span className="w-[14px] h-[14px] flex-shrink-0" aria-hidden="true" />
         )}
 
-        {/* Checkbox on leaves only */}
+        {/* Status box on leaves only. Click/Space still only toggle done — the
+            other two states are set via `S` or the hover control below. */}
         {!hasKids && (
-          <LeafCheckbox
-            checked={!!n.done}
+          <LeafStatusBox
+            status={stepStatus(n)}
             onToggle={() => actions.toggleLeaf(n.id)}
             label={`Mark "${n.title}" as done`}
           />
         )}
 
         {n.checkpoint && (
-          <span className="text-accent text-meta leading-none flex-shrink-0" aria-hidden="true">
-            ◆
+          <span className="text-accent flex-shrink-0 inline-flex" aria-hidden="true">
+            <IconDiamond size={9} />
           </span>
         )}
 
@@ -668,40 +800,42 @@ function GoalTreeNode({
           <InlineEdit
             value={n.title}
             className={`flex-1 text-lead ${
-              hasKids ? 'font-semibold text-ink' : n.done ? 'line-through text-faint' : 'text-ink-soft'
+              hasKids ? 'font-semibold text-ink' : isDone(n) ? 'line-through text-faint' : 'text-ink-soft'
             }`}
             onCommit={commitRename}
             onCancel={() => setEditing(false)}
           />
         ) : (
           /*
-           * The title swallows its own clicks.
+           * The title lets its clicks through now.
            *
-           * Double-click here opens the rename editor, and the two single
-           * clicks underneath it used to reach the row's toggle first. The
-           * in-code claim that this is "net zero" holds for `done` and NOT for
-           * `doneAt`: on an already-finished step, click one deletes the
-           * completion date and click two re-sets it to today. Renaming a pset
-           * you finished last Tuesday silently rewrote when you finished it —
-           * and `doneAt` is what the week recap reads.
-           *
-           * Stopping propagation also fixes the milder complaint that the whole
-           * row is a completion target, so a stray click on the text checks
-           * work off. The checkbox is the deliberate 24px target, and the row
-           * outside the title still toggles.
+           * It used to stop them, because underneath was a completion toggle
+           * and a rename double-click therefore ticked the box off and on
+           * again — net zero for `done` but NOT for `doneAt`, so renaming a
+           * pset you finished last Tuesday silently rewrote when you finished
+           * it. Under a row click that merely opens the inspector there is
+           * nothing left to defend against, and swallowing the click would make
+           * the largest part of the row the one part that does not open it.
            */
           <span
             className={`flex-1 text-lead select-none ${
               hasKids
                 ? 'font-semibold text-ink'
-                : n.done
+                : isDone(n)
                   ? 'line-through text-faint'
                   : 'text-ink-soft'
             }`}
-            onClick={hasKids ? undefined : (e) => e.stopPropagation()}
             onDoubleClick={() => setEditing(true)}
           >
             {n.title}
+          </span>
+        )}
+
+        {/* Why a blocked leaf is stuck — the status box already names "blocked"
+            in its label; this is the reason a person typed in. */}
+        {!hasKids && stepStatus(n) === 'blocked' && n.blockedOn && (
+          <span className="text-meta text-muted truncate max-w-[180px] flex-shrink" title={n.blockedOn}>
+            {n.blockedOn}
           </span>
         )}
 
@@ -711,6 +845,51 @@ function GoalTreeNode({
             {Math.round(nodePct(n))}%
           </span>
         )}
+
+        {/* A container's status is DERIVED, never stored — see containerStatus. */}
+        {hasKids && containerStatus(n) === 'blocked' && (
+          <span className="text-meta text-warn flex-shrink-0">blocked</span>
+        )}
+
+        {/* WHEN — one cell, fixed width, so the column is a column.
+            `GoalNode` carries `plannedStartMin`, `plannedDay`, `plannedWeek`
+            and `deadline`, and the row used to show none of them; four
+            separate cells would be four columns of mostly-empty metadata, so
+            `scheduleCell` picks the most specific one. The placeholder keeps
+            the estimate beside it aligned across rows that have no date. */}
+        {/* The cell states the answer AND sets it. Scheduling used to be
+            reachable from the inspector and from a drag onto the Plan grid and
+            from nowhere on the row, so the commonest thing to do to a task you
+            are looking at cost a panel or a trip to another surface.
+
+            Containers get the readout without the control, matching the store:
+            a group is scheduled through its tasks. */}
+        <span className="hidden sm:flex w-[92px] flex-none justify-end" onClick={(e) => e.stopPropagation()}>
+          {hasKids ? (
+            <span
+              className={`text-meta tabular-nums truncate px-[5px] py-[3px] ${
+                when?.tone === 'warn' ? 'text-warn' : 'text-muted'
+              }`}
+              title={when?.hint}
+            >
+              {when?.text ?? ''}
+            </span>
+          ) : (
+            <Popover
+              label={when?.text ? `Scheduled ${when.text}. Change it` : `Schedule "${n.title}"`}
+              role="menu"
+              align="end"
+              panelWidth={188}
+              triggerRef={scheduleRef}
+              triggerClassName={`text-meta tabular-nums truncate rounded-[4px] px-[5px] py-[3px] min-h-[24px] inline-flex items-center hover:bg-hover hover:text-ink ${
+                when?.tone === 'warn' ? 'text-warn' : when?.text ? 'text-muted' : 'text-faint quiet-control'
+              }`}
+              trigger={when?.text ?? 'plan'}
+            >
+              {(close) => <ScheduleMenu goalId={goalId} node={n} close={close} />}
+            </Popover>
+          )}
+        </span>
 
         {/* Estimate — LEAVES only, matching `setNodeEstimate`'s own guard: a
             container's duration is the sum of its children's, not a figure of
@@ -722,93 +901,55 @@ function GoalTreeNode({
             sole host, and it shows only unplaced work from Now/Next projects.
             So a Later project's steps, and anything already on the calendar,
             had no estimate route at all. */}
+        <span className="w-[56px] flex-none flex justify-end">
+          {!hasKids && (
+            <EstimateControl
+              minutes={n.estimateMin}
+              label={n.title}
+              openRequest={estimateOpen}
+              onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+            />
+          )}
+        </span>
+
+        {/* Cycle status — leaves only, same rule as `S`: a container's status
+            is derived and never stored.
+
+            This one control stayed on the row while rename, add-subtask and
+            delete moved into the `⋯` beside it, because it is the only one of
+            the four that is also a READOUT: `LeafStatusBox` shows done or not
+            done, and nothing else on the row distinguishes a task in progress
+            from one nobody has touched. */}
         {!hasKids && (
-          <EstimateControl
-            minutes={n.estimateMin}
-            label={n.title}
-            onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
-          />
+          <button
+            type="button"
+            tabIndex={-1}
+            className="quiet-control"
+            aria-label={`Change status of "${n.title}"`}
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
+            }}
+          >
+            ◐
+          </button>
         )}
 
-        {/* Actual time, beside the estimate that predicted it — the other half
-            of the loop. Explicit only: nothing infers minutes from a scheduled
-            block, because a block is what you set aside, not what you spent. */}
-        {!hasKids && (
-          <LogTimeControl
-            loggedMin={loggedForNode(sessions, n.id)}
-            estimateMin={n.estimateMin}
-            label={n.title}
-            onLog={(minutes) => actions.logSession('step', n.id, minutes)}
-            onClear={() => actions.clearSessionsFor('step', n.id)}
+        {/* Everything below daily frequency, in one menu.
+            The row used to carry rename, add-subtask, cycle-status and delete
+            as four separate hover controls, on top of six that never left —
+            ten targets to manipulate one task, and sixty small glyphs to read
+            past on a list of twenty. */}
+        <span onClick={(e) => e.stopPropagation()} className="flex-none">
+          <RowActions
+            node={n}
+            isFirstSibling={isFirstSibling}
+            depth={depth}
+            onRename={() => setEditing(true)}
+            onEstimate={() => setEstimateOpen((c) => c + 1)}
+            onSchedule={() => scheduleRef.current?.click()}
           />
-        )}
-
-        {/* Open the detail panel. `GoalNode` has carried `start`, `deadline`,
-            `plannedWeek` and `estimateMin` for a long time with almost nowhere
-            to show them; this is that place. It is a separate control rather
-            than a row click because the row click is the completion gesture,
-            and reassigning the single action that moves every number in the
-            product would be a bad trade for a disclosure affordance. */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Open details for "${n.title}"`}
-          title="Details"
-          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            actions.openStep(n.id);
-          }}
-        >
-          ◈
-        </button>
-
-        {/* Rename. Double-clicking the title still works, but it was the ONLY
-            route — an invisible affordance on the single most common edit, and
-            the one place a hover control was missing while drag, + sub and
-            delete all had one. The Habits rail already uses this pencil. */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Rename "${n.title}"`}
-          title="Rename"
-          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditing(true);
-          }}
-        >
-          ✎
-        </button>
-
-        {/* + sub — consistent on every row (leaf: converts to container; container: adds child) */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Add sub-item to "${n.title}"`}
-          title="+ sub"
-          className="quiet-control text-faint text-compact flex-shrink-0 rounded-[4px] hover:text-accent hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            actions.addChild(n.id);
-          }}
-        >
-          + sub
-        </button>
-
-        {/* Delete */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={`Delete ${n.title}`}
-          className="quiet-control text-faint text-ui flex-shrink-0 rounded-[4px] hover:text-warn hover:bg-hover"
-          onClick={(e) => {
-            e.stopPropagation();
-            actions.removeNode(n.id);
-          }}
-        >
-          ✕
-        </button>
+        </span>
       </div>
 
       {/* ── children (fade in on expand; unmount on collapse for clean DOM) ── */}
@@ -841,7 +982,7 @@ function GoalTreeNode({
               selected={selected}
               onSelect={onSelect}
               onBulk={onBulk}
-              sessions={sessions}
+              goalId={goalId}
             />
             <AddChildInput
               indent={(depth + 1) * 22}

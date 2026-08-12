@@ -29,6 +29,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -64,7 +66,7 @@ beforeAll(() => {
 });
 
 const project = (id: string, title: string, column: number): Goal =>
-  ({ id, title, column, nodes: [{ id: `${id}-n`, title: 'Step', done: false }], datesConfirmed: true });
+  ({ id, title, column, nodes: [{ id: `${id}-n`, title: 'Step' }], datesConfirmed: true });
 
 // Three in Now, one in Next — enough to move in every direction and to hit both
 // ends of a column.

@@ -13,11 +13,13 @@ import {
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
+import { IconCheck, IconChevronRight, IconX } from '../components/Icons';
 import { groupByColumn } from '../lib/board';
 import { focusSummary } from '../lib/plan';
 import { fmtD } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { Timeline } from './Timeline';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
@@ -25,6 +27,7 @@ import { FocusSummary, type FocusFilter } from './goals/FocusSummary';
 import { Column } from './goals/Column';
 import { HORIZON_LABELS } from './goals/styles';
 import type { Goal } from '../db/types';
+import type { GoalsMode } from '../db/db';
 import { needsDateConfirmation, confirmableDateGoalIds } from '../lib/schedule';
 
 // Commitment horizons, left → right = Now … Someday. Column order IS the model:
@@ -35,8 +38,11 @@ const COL_COUNT = COLUMNS.length;
 // ── Goals view ────────────────────────────────────────────────────────────────
 
 export function Goals() {
-  const { goals, dateReviewDismissed, activeHorizon, actions } = useAppStore();
-  const [modal, setModal] = useState<null | 'new' | 'import'>(null);
+  const { goals, dateReviewDismissed, activeHorizon, goalsMode, goalModal, actions } = useAppStore();
+  // Which composer is up lives in the store: ⌘K can ask for one from anywhere,
+  // and a modal only its own page can open is one the palette has to lie about.
+  const modal = goalModal;
+  const setModal = actions.setGoalModal;
   const [filter, setFilter] = useState<FocusFilter | null>(null);
   // The card the date-review banner (or a horizon move) is pointing at, plus a
   // nonce so pointing at the SAME card twice is still two distinct events.
@@ -162,6 +168,7 @@ export function Goals() {
       'needs-step': summary.needsFirstStep.goalIds,
       behind: summary.behind.goalIds,
       planned: summary.plannedRemaining.goalIds,
+      blocked: summary.blocked.goalIds,
     }[filter];
     return new Set(src);
   }, [filter, summary]);
@@ -225,7 +232,6 @@ export function Goals() {
   // switch view, leaving the project to be found by hand in a rail holding a
   // dozen others. `cardPrimaryAction` returns 'plan' for nearly every healthy
   // project, so that was the default action on most cards.
-  const onPlan = actions.planNextStepFor;
 
   /**
    * Walk the unconfirmed projects, one per click.
@@ -288,45 +294,59 @@ export function Goals() {
     return () => { cancelAnimationFrame(raf); clearTimeout(t); };
   }, [highlight, reducedMotion]);
 
-  function confirmDatesFromCard(goalId: string) {
-    actions.confirmGoalDates(goalId);
-    requestAnimationFrame(() => {
-      document.getElementById(`goal-card-${goalId}`)?.focus();
-    });
-  }
+
+  const timeline = goalsMode === 'timeline';
 
   return (
-    <div>
+    /* Timeline scrolls a semester sideways and wants the whole viewport; the
+       board is a four-column read and stops being legible past ~1280px. The
+       measure belongs to the mode, so it is set here rather than in App. */
+    <div className={timeline ? undefined : 'max-w-[1280px] mx-auto'}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-[10px] sm:gap-[16px] mb-[6px]">
         <div className="min-w-0">
-          <h1 className="font-disp text-h1 font-semibold tracking-[-0.015em]">Projects</h1>
-          <p className="text-ui text-muted mt-[3px]">
-            Drag a project between horizons to recommit it — Now is what you're actively pushing on, and {summary.slots.limit} at a time is the target that keeps focus honest.
-          </p>
+          <h1 className="text-h1 font-semibold tracking-[-0.015em]">Goals</h1>
+          {/* First use only. Explaining the horizons on EVERY visit is a
+              paragraph of chrome above the object people came for, and after
+              the second goal it is a sentence nobody reads — the column hints
+              on Later and Someday carry the same rule where it applies. */}
+          {(timeline || goals.length <= 1) && (
+            <p className="text-ui text-muted mt-[3px]">
+              {timeline
+                ? 'Every goal with a start and a deadline, laid out against the calendar.'
+                : `Drag a goal between horizons to recommit it — Now is what you're actively pushing on, and ${summary.slots.limit} at a time is the target that keeps focus honest.`}
+            </p>
+          )}
         </div>
         <div className="flex-none flex items-center gap-[8px] self-start">
+          <ViewModeSwitch mode={goalsMode} onChange={actions.setGoalsMode} />
           <button
             className="text-body font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
             onClick={() => setModal('import')}
           >
-            Import project
+            Import goal
           </button>
           <button
             className="text-body font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
             onClick={() => setModal('new')}
           >
-            + New project
+            + New goal
           </button>
         </div>
       </div>
 
+      {timeline ? (
+        <div className="mt-[14px]">
+          <Timeline />
+        </div>
+      ) : (
+       <>
       {/* Empty state */}
       {isEmpty && (
-        <div className="mt-[18px] grid place-items-center rounded-card border border-dashed border-line-2 py-[44px] px-[20px] text-center">
+        <div className="mt-[18px] grid place-items-center py-[44px] px-[20px] text-center">
           <p className="text-ink-soft text-lead max-w-[440px] mb-[16px] leading-[1.6]">
-            No projects yet. A project is one outcome you can finish — a pset, a paper, a
-            launch — split into a few steps you check off. Start one, or drop in the example
+            No goals yet. A goal is one outcome you can finish — a pset, a paper, a
+            launch — split into a few tasks you check off. Start one, or drop in the example
             to see how a good one decomposes.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-[10px]">
@@ -334,13 +354,13 @@ export function Goals() {
               className="text-body font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
               onClick={() => setModal('new')}
             >
-              + New project
+              + New goal
             </button>
             <button
               className="text-body font-semibold text-accent-deep border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-accent-tint"
               onClick={() => {
                 actions.addSampleProject();
-                actions.showToast('Example project added — delete it anytime');
+                actions.showToast('Example goal added — delete it anytime');
               }}
             >
               Load example
@@ -349,7 +369,7 @@ export function Goals() {
               className="text-body font-medium text-ink-soft border border-line-2 px-[13px] py-[8px] rounded-field hover:bg-hover"
               onClick={() => setModal('import')}
             >
-              Import project
+              Import goal
             </button>
           </div>
           <p className="text-muted text-compact mt-[13px]">
@@ -361,7 +381,7 @@ export function Goals() {
       {unconfirmed.length > 0 && !dateReviewDismissed && (
         <div className="mt-[16px] flex items-center gap-[10px] rounded-card border border-line-2 bg-panel px-[13px] py-[10px] shadow-card">
           <p className="flex-1 text-ui text-ink-soft">
-            {unconfirmed.length} {unconfirmed.length === 1 ? 'project has' : 'projects have'} unconfirmed dates
+            {unconfirmed.length} {unconfirmed.length === 1 ? 'goal has' : 'goals have'} unconfirmed dates
           </p>
           {confirmableCount > 0 && (
             <button
@@ -383,9 +403,9 @@ export function Goals() {
             type="button"
             aria-label="Dismiss date review" 
             onClick={actions.dismissDateReview}
-            className="text-body text-muted px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-field hover:bg-hover hover:text-ink"
+            className="text-muted px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-field hover:bg-hover hover:text-ink"
           >
-            ✕
+            <IconX />
           </button>
         </div>
       )}
@@ -408,7 +428,7 @@ export function Goals() {
               key={col.id}
               type="button"
               aria-pressed={i === activeHorizon}
-              aria-label={`Show ${col.label} — ${(columns[i] ?? []).length} project${(columns[i] ?? []).length === 1 ? '' : 's'}`}
+              aria-label={`Show ${col.label} — ${(columns[i] ?? []).length} goal${(columns[i] ?? []).length === 1 ? '' : 's'}`}
               onClick={() => actions.setActiveHorizon(i)}
               className={`flex-1 text-ui font-medium px-[6px] py-[7px] rounded-field transition-colors ${
                 i === activeHorizon ? 'bg-panel text-ink shadow-card' : 'text-muted hover:text-ink'
@@ -449,14 +469,9 @@ export function Goals() {
                       goal={g}
                       today={currentDate}
                       onOpen={actions.openProject}
-                      onPlan={onPlan}
-                      onDefine={actions.openProject}
-                      onComplete={actions.completeGoal}
                       onMove={moveToHorizon}
                       onRank={moveRank}
                       onDelete={actions.removeGoal}
-                      onConfirmDates={confirmDatesFromCard}
-                      onEditDates={actions.openProject}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}
@@ -482,25 +497,71 @@ export function Goals() {
       {/* Completed projects */}
       {completed.length > 0 && <CompletedSection goals={completed} onReopen={actions.reopenGoal} />}
 
+       </>
+      )}
+
       <NewGoalModal
         open={modal === 'new'}
         onClose={() => setModal(null)}
         onAdd={(goal) => {
           actions.addGoals([goal]);
-          actions.showToast('Project added');
           setModal(null);
+          // Straight into the workspace. Creation used to end on the board with
+          // a toast, which is the one place the new goal is a card among
+          // fifteen others and the least useful place to be standing when the
+          // next thing to do is break it down.
+          actions.openProject(goal.id);
         }}
-        columns={COLUMNS}
       />
       <ImportGoalModal
         open={modal === 'import'}
         onClose={() => setModal(null)}
         onImport={(imported) => {
           actions.addGoals(imported);
-          actions.showToast(`Imported ${imported.length} project${imported.length === 1 ? '' : 's'}`);
+          actions.showToast(`Imported ${imported.length} goal${imported.length === 1 ? '' : 's'}`);
           setModal(null);
         }}
       />
+    </div>
+  );
+}
+
+// ── View mode ─────────────────────────────────────────────────────────────────
+/**
+ * Board or Timeline. A segmented control, not two nav destinations: both show
+ * the same goals, and switching between them changes the representation and
+ * nothing about the data — which is exactly the distinction the old top-level
+ * Timeline tab destroyed by sitting beside Plan and Goals as a peer.
+ */
+const MODES = [
+  ['board', 'Board'],
+  ['timeline', 'Timeline'],
+] as const;
+
+function ViewModeSwitch({
+  mode,
+  onChange,
+}: {
+  mode: GoalsMode;
+  onChange: (mode: GoalsMode) => void;
+}) {
+  return (
+    <div role="group" aria-label="Goals view" className="flex gap-[2px] p-[3px] bg-hover rounded-[11px]">
+      {MODES.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={mode === key}
+          onClick={() => onChange(key)}
+          className={`text-ui px-[10px] py-[5px] rounded-field transition-colors ${
+            mode === key
+              ? 'bg-panel text-ink font-semibold shadow-card'
+              : 'text-muted font-medium hover:text-ink'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -519,13 +580,13 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
         className="flex items-center gap-[9px] w-full text-left px-[2px] py-[4px]"
       >
         <span
-          className="text-muted text-meta transition-transform"
+          className="text-muted inline-flex transition-transform"
           style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
           aria-hidden="true"
         >
-          ▶
+          <IconChevronRight size={12} />
         </span>
-        <span className="font-mono text-kbd tracking-[.11em] uppercase text-muted font-semibold">Completed</span>
+        <span className="text-meta font-semibold text-muted">Completed</span>
         <span className="font-mono text-badge text-muted tabular-nums">{goals.length}</span>
       </button>
       {open && (
@@ -535,8 +596,8 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
               key={g.id}
               className="flex items-center gap-[10px] px-[13px] py-[11px] border border-line rounded-card bg-panel opacity-[.86]"
             >
-              <span className="text-accent text-body" aria-hidden="true">✓</span>
-              <span className="font-disp text-lead font-semibold flex-1 min-w-0 truncate">{g.title}</span>
+              <span className="text-accent inline-flex" aria-hidden="true"><IconCheck /></span>
+              <span className="text-lead font-semibold flex-1 min-w-0 truncate">{g.title}</span>
               {g.completedAt && <span className="font-mono text-tiny text-muted whitespace-nowrap">{fmtD(g.completedAt)}</span>}
               <button
                 type="button"

@@ -1,23 +1,33 @@
 import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { BacklogItem } from '../../../lib/backlog';
-import { backlogGroups, capBacklog, deferredProjectCount, dueChip } from '../../../lib/backlog';
+import { backlogGroups, capBacklog, hiddenProjectCounts, dueChip } from '../../../lib/backlog';
 import { revealDomId, groupKeyContaining, type RevealTarget } from '../../../lib/reveal';
 import { countOpenCarryOver } from '../../../lib/deferWork';
 import { weekOf } from '../../../lib/plan';
+import { durationOf } from '../../../lib/slot';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
+import { IconCheck, IconGrip, IconX } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 
 /**
  * One draggable row.
  *
  * No border, no fill, no radius at rest — the rail holds dozens of these and
- * every border is a decision the eye has to process for nothing. The hover
- * tint and `cursor-grab` are the whole affordance; a permanent grip glyph on
- * every row would advertise what the cursor already says, and Task 10's
- * `1`-`7` keys give a non-drag route regardless.
+ * every border is a decision the eye has to process for nothing.
+ *
+ * It DOES carry a grip, reversing the earlier call here that "the hover tint
+ * and `cursor-grab` are the whole affordance; a permanent grip glyph would
+ * advertise what the cursor already says". `cursor-grab` only says it once the
+ * pointer is already on the row, which cannot help someone who has not worked
+ * out that the rail and the calendar are connected — and the evidence that
+ * they do not is that the Plan view needs a hint above the grid explaining the
+ * connection in a sentence. A 12px mark on each row states it where the
+ * question is asked. Faint rather than hover-revealed for the same reason: an
+ * affordance that appears on hover is an affordance for people who already
+ * suspected it was there.
  *
  * The complete/delete controls follow the same rule: text at rest, revealed on
  * hover or keyboard focus (the pattern `Habits.tsx` already uses in this rail).
@@ -47,6 +57,7 @@ function BacklogRow({
   const due = dueChip(item.due, today);
   const data: PlanDragData = {
     kind: item.kind, id: item.id, goalId: item.goalId, title: item.title,
+    durationMin: durationOf(item.estimateMin),
   };
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `${item.kind}:${item.id}`,
@@ -69,12 +80,25 @@ function BacklogRow({
       // `:focus-visible` on a tabIndex div focused by pointer, so the app's
       // global focus ring (index.css) never shows. Without this the user sits
       // in an invisible mode where `2` schedules onto Tuesday instead of
-      // switching to Goals, and `scheduleNode` has no undo. The mode has to be
-      // visible for as long as it is active.
+      // switching to Goals. That arms an undo now, but a mode still has to be
+      // visible for as long as it is active — an undo is a way back, not a
+      // warning, and it expires.
       className={`group flex items-center gap-[6px] text-ui text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       } ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
     >
+      {/*
+        Decorative, not a handle: `listeners` stay on the ROW, which is what has
+        been draggable all along — moving them here would shrink a full-width
+        target to 12px. This only says the row can be dragged.
+
+        `aria-hidden` because the row's own label already reads "drag onto a
+        day, or press 1–7"; a second announcement of the same fact is noise on
+        the surface that can least afford it.
+      */}
+      <span aria-hidden="true" className="flex-none text-faint-2">
+        <IconGrip size={12} />
+      </span>
       <span className="flex-1 min-w-0 truncate">{item.title}</span>
       {/* Only inside the next week, and always for anything overdue. Printing a
           date on every row would make the urgent ones harder to find, not
@@ -105,12 +129,12 @@ function BacklogRow({
           else actions.toggleLeaf(item.id);
         }}
         aria-label={`Complete "${item.title}"`}
-        className="quiet-control flex-none text-meta text-muted hover:text-ink rounded-[4px] hover:bg-hover"
+        className="quiet-control flex-none text-muted hover:text-ink rounded-[4px] hover:bg-hover"
       >
-        ✓
+        <IconCheck size={13} />
       </button>
       {/*
-        Tasks only. A step belongs to a project's structure — it is deleted in
+        Loose tasks only. A goal's task belongs to its structure — it is deleted in
         the Goals view, where the tree it lives in is visible; offering that
         here would let a stray click amputate a branch from a flat list.
       */}
@@ -123,9 +147,9 @@ function BacklogRow({
             actions.removeTask(item.id);
           }}
           aria-label={`Delete "${item.title}"`}
-          className="quiet-control flex-none text-meta text-muted hover:text-warn rounded-[4px] hover:bg-hover"
+          className="quiet-control flex-none text-muted hover:text-warn rounded-[4px] hover:bg-hover"
         >
-          ✕
+          <IconX size={13} />
         </button>
       )}
     </div>
@@ -169,10 +193,11 @@ export function Backlog({
     [goals, tasks, weekStart, today],
   );
   // Only when there is nothing to show: an empty rail must not read as "you
-  // are finished" while deferred projects hold the work. Guarded on
-  // `groups.length` so the extra tree walk never runs in the normal case.
-  const deferred = useMemo(
-    () => (groups.length === 0 ? deferredProjectCount(goals, today) : 0),
+  // are finished" while hidden projects hold the work — deferred to Later/
+  // Someday, or blocked with nothing committed. Guarded on `groups.length` so
+  // the extra tree walk never runs in the normal case.
+  const hidden = useMemo(
+    () => (groups.length === 0 ? hiddenProjectCounts(goals, today) : { parked: 0, blocked: 0 }),
     [groups, goals, today],
   );
   const isCurrentWeek = weekStart === weekOf(today);
@@ -207,7 +232,7 @@ export function Backlog({
 
   return (
     <div>
-      <h3 className="flex items-baseline gap-[6px] font-mono text-tiny tracking-[.13em] uppercase text-muted font-semibold py-[6px] px-[6px]">
+      <h3 className="flex items-baseline gap-[6px] text-meta font-semibold text-muted py-[6px] px-[6px]">
         <span className="flex-1">To plan</span>
         <span className="text-muted tabular-nums">{total}</span>
       </h3>
@@ -238,16 +263,25 @@ export function Backlog({
 
       {capped.length === 0 ? (
         <div className="text-muted text-body italic px-[6px]">
-          {deferred === 0 ? (
+          {hidden.parked === 0 && hidden.blocked === 0 ? (
             'Nothing left to plan.'
           ) : (
             <>
               Nothing to plan in Now or Next.
               {' '}
-              <span className="not-italic">
-                {deferred} deferred project{deferred === 1 ? ' is' : 's are'} not shown — move one
-                to Now to plan it.
-              </span>
+              {hidden.parked > 0 && (
+                <span className="not-italic">
+                  {hidden.parked} deferred goal{hidden.parked === 1 ? ' is' : 's are'} not shown
+                  — move one to Now to plan it.
+                </span>
+              )}
+              {hidden.parked > 0 && hidden.blocked > 0 && ' '}
+              {hidden.blocked > 0 && (
+                <span className="not-italic">
+                  {hidden.blocked} goal{hidden.blocked === 1 ? ' has' : 's have'} blocked tasks
+                  not shown — unblock one to plan it.
+                </span>
+              )}
             </>
           )}
         </div>
@@ -255,7 +289,7 @@ export function Backlog({
         capped.map((group, i) => (
           <div key={group.key} className={i === 0 ? '' : 'mt-[14px]'}>
             <div className="flex items-baseline gap-[6px] px-[6px]">
-              <span className="font-disp text-body font-semibold text-ink flex-1 min-w-0 truncate">
+              <span className="text-body font-semibold text-ink flex-1 min-w-0 truncate">
                 {group.goalTitle}
               </span>
               {group.goalId && (

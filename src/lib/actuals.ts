@@ -1,6 +1,7 @@
 import type { Goal, Session, Task } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { walkLeaves } from './plan';
+import { isDone } from './status';
 
 /**
  * Estimated versus actual time.
@@ -105,7 +106,7 @@ export function projectCalibration(goal: Goal, sessions: Session[]): Calibration
   let samples = 0;
 
   walkLeaves(goal, (leaf) => {
-    if (!leaf.done) return;
+    if (!isDone(leaf)) return;
     const est = normalizeEstimate(leaf.estimateMin);
     if (est === undefined) return;
     const logged = loggedForNode(sessions, leaf.id);

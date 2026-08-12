@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import type { CanvasSpan } from '../../lib/canvasCreate';
 import { DayColumn } from './DayColumn';
+import { EventBlock, type GridBlock } from './EventBlock';
 
 // jsdom implements neither pointer capture nor layout. Both are stubbed rather
 // than worked around: the component is correct to use capture (see
@@ -101,5 +102,33 @@ describe('when the day refuses work', () => {
       nowMinute: null, readOnly: true, onCreate: vi.fn(), children: null,
     }));
     expect(screen.queryByTestId('day-canvas-2026-07-15')).toBeNull();
+  });
+});
+
+const EVENT_BLOCK: GridBlock = {
+  key: 'step:a',
+  kind: 'step',
+  title: 'Finished step',
+  startMin: 540,
+  endMin: 600,
+  done: true,
+  estimated: true,
+};
+
+describe('EventBlock completion control', () => {
+  it('fades the completion control on a done block', () => {
+    render(<EventBlock block={EVENT_BLOCK} lane={0} laneCount={1} onComplete={() => {}} />);
+
+    const button = screen.getByRole('button', { name: 'Reopen Finished step' });
+    expect(button.className).toContain('transition-opacity');
+    expect(button.className).toContain('duration-150');
+  });
+
+  it('keeps the open completion control on the quiet-control path', () => {
+    render(<EventBlock block={{ ...EVENT_BLOCK, done: false }} lane={0} laneCount={1} onComplete={() => {}} />);
+
+    const button = screen.getByRole('button', { name: 'Complete Finished step' });
+    expect(button.className).toContain('quiet-control');
+    expect(button.className).not.toContain('transition-opacity');
   });
 });

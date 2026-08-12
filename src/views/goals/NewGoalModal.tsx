@@ -2,154 +2,119 @@ import { useState, useRef, useEffect } from 'react';
 import type { Goal } from '../../db/types';
 import { Modal } from '../../components/Modal';
 import { DateField } from '../../components/DateField';
-import { buildManualGoal, priorityToColumn, PRIORITY_WORDS } from '../../lib/goalImport';
+import { uid } from '../../lib/tree';
+import { GOAL_TYPE_WORD, inferGoalType, type GoalType } from '../../lib/goalType';
 import { projectDateError } from '../../lib/schedule';
 import { fieldCls, labelCls, primaryBtn, ghostBtn } from './styles';
 
+const TYPES: GoalType[] = ['study', 'project', 'general'];
+
+/**
+ * Two fields, and one of them is optional.
+ *
+ * What this replaced asked for a title, a horizon, a start date, a deadline, a
+ * list of first tasks and a notes body — six decisions before the goal existed.
+ * Horizon is a portfolio commitment nobody can make about a thing they have not
+ * created yet; notes are ceremony at a moment when there is nothing to note;
+ * and "first tasks" as a flat repeated input undersells the decomposition the
+ * workspace does properly, two seconds later.
+ *
+ * So: a title, a deadline if there is one, and a type that is guessed from the
+ * title and shown as a control rather than applied silently. Enter creates the
+ * goal and opens it. Everything else is a thing to do INSIDE a real workspace,
+ * where the user can see what they are doing it to.
+ */
 export function NewGoalModal({
   open,
   onClose,
   onAdd,
-  columns,
 }: {
   open: boolean;
   onClose: () => void;
   onAdd: (goal: Goal) => void;
-  columns: readonly { id: string; label: string }[];
 }) {
   const [title, setTitle] = useState('');
-  const [priority, setPriority] = useState<(typeof PRIORITY_WORDS)[number]>('now');
-  const [start, setStart] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [subgoals, setSubgoals] = useState<string[]>([]);
-  const [draft, setDraft] = useState('');
-  const [notes, setNotes] = useState('');
+  /** Null until the user picks one, so the inference stays live while typing. */
+  const [chosenType, setChosenType] = useState<GoalType | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
-  // Reset the form each time it opens.
   useEffect(() => {
     if (!open) return;
     setTitle('');
-    setPriority('now');
-    setStart('');
     setDeadline('');
-    setSubgoals([]);
-    setDraft('');
-    setNotes('');
+    setChosenType(null);
     const t = setTimeout(() => titleRef.current?.focus(), 0);
     return () => clearTimeout(t);
   }, [open]);
 
-  function commitDraft() {
-    const v = draft.trim();
-    if (!v) return;
-    setSubgoals((s) => [...s, v]);
-    setDraft('');
-  }
+  const type = chosenType ?? inferGoalType(title);
+  const dateError = projectDateError(undefined, deadline || undefined);
 
   function submit() {
     const t = title.trim();
     if (!t || dateError) return;
-    const pending = draft.trim();
-    const goal = buildManualGoal({
+    onAdd({
+      id: uid(),
       title: t,
-      start: start || undefined,
-      deadline: deadline || undefined,
-      column: priorityToColumn(priority),
-      notes,
-      subgoalTitles: pending ? [...subgoals, pending] : subgoals,
+      type,
+      nodes: [],
+      // Now, without asking. A goal you are creating right now is one you are
+      // thinking about right now, and the board's own drag is the cheap,
+      // visible way to say otherwise — unlike a select in a dialog, which asks
+      // for the answer at the moment it is least knowable.
+      column: 0,
+      // A deadline typed here is one the user just typed, so it needs no
+      // review; `datesConfirmed` exists for IMPORTED dates nobody has seen.
+      ...(deadline ? { deadline, datesConfirmed: true } : {}),
     });
-    onAdd(goal);
   }
 
-  const dateError = projectDateError(start || undefined, deadline || undefined);
-
   return (
-    <Modal open={open} onClose={onClose} title="New project">
+    <Modal open={open} onClose={onClose} title="New goal">
       <div className="flex flex-col gap-[14px]">
         <div className="flex flex-col gap-[5px]">
-          <label className={labelCls}>Title</label>
+          <label className={labelCls} htmlFor="goal-title">What do you want to finish?</label>
           <input
             ref={titleRef}
+            id="goal-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="What do you want to make progress on?"
+            placeholder="Physics Final"
             className={`${fieldCls} w-full`}
             onKeyDown={(e) => {
               if (e.key === 'Enter') { e.preventDefault(); submit(); }
             }}
           />
         </div>
+
         <div className="flex flex-wrap gap-[14px]">
           <div className="flex flex-col gap-[5px]">
-            <label className={labelCls}>Horizon</label>
+            <label className={labelCls}>Deadline <span className="text-faint font-normal">(optional)</span></label>
+            <DateField value={deadline} onCommit={setDeadline} ariaLabel="Deadline" placeholder="No deadline" className={fieldCls} />
+          </div>
+          <div className="flex flex-col gap-[5px]">
+            {/* The guess is visible and editable, never applied silently. A
+                default only has to be reasonable; a hidden inference has to be
+                right. */}
+            <label className={labelCls} htmlFor="goal-type">Type</label>
             <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as (typeof PRIORITY_WORDS)[number])}
+              id="goal-type"
+              value={type}
+              onChange={(e) => setChosenType(e.target.value as GoalType)}
               className={fieldCls}
             >
-              {PRIORITY_WORDS.map((w) => (
-                <option key={w} value={w}>
-                  {columns[PRIORITY_WORDS.indexOf(w)].label}
-                </option>
+              {TYPES.map((t) => (
+                <option key={t} value={t}>{GOAL_TYPE_WORD[t]}</option>
               ))}
             </select>
-          </div>
-          <div className="flex flex-col gap-[5px]">
-            <label className={labelCls}>Start</label>
-            <DateField value={start} onCommit={setStart} ariaLabel="Start" placeholder="Start" className={fieldCls} />
-          </div>
-          <div className="flex flex-col gap-[5px]">
-            <label className={labelCls}>Deadline</label>
-            <DateField value={deadline} onCommit={setDeadline} ariaLabel="Deadline" placeholder="Deadline" className={fieldCls} />
           </div>
         </div>
         {dateError && <div className="text-compact text-warn">{dateError}</div>}
 
-        <div className="flex flex-col gap-[6px]">
-          <label className={labelCls}>First steps <span className="text-faint font-normal">(optional)</span></label>
-          {subgoals.length > 0 && (
-            <div className="flex flex-col gap-[4px]">
-              {subgoals.map((s, i) => (
-                <div key={i} className="flex items-center gap-[8px] text-body text-ink-soft">
-                  <span className="text-faint">•</span>
-                  <span className="flex-1 truncate">{s}</span>
-                  <button
-                    aria-label={`Remove ${s}`}
-                    className="text-muted text-ui hover:text-warn"
-                    onClick={() => setSubgoals((arr) => arr.filter((_, j) => j !== i))}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Type a step, press Enter…"
-            className={`${fieldCls} w-full`}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); commitDraft(); }
-            }}
-          />
-        </div>
-
-        <div className="flex flex-col gap-[5px]">
-          <label className={labelCls}>Notes <span className="text-faint font-normal">(optional)</span></label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            placeholder="Strategy, links, blockers…"
-            className={`${fieldCls} w-full resize-y leading-[1.5]`}
-          />
-        </div>
-
         <div className="flex items-center gap-[8px] mt-[2px]">
           <button className={primaryBtn} onClick={submit} disabled={!title.trim() || !!dateError}>
-            Add project
+            Create
           </button>
           <button className={ghostBtn} onClick={onClose}>Cancel</button>
         </div>

@@ -42,23 +42,23 @@ describe('roadmapWarnings', () => {
   });
 
   it('phase-overdue for a scheduled first-level phase past due with an incomplete subtree', () => {
-    const g = goal({ column: 1, nodes: [{ id: 'p', title: 'P', start: '2026-06-01', deadline: '2026-07-01', done: false }] });
+    const g = goal({ column: 1, nodes: [{ id: 'p', title: 'P', start: '2026-06-01', deadline: '2026-07-01' }] });
     const w = roadmapWarnings(g, TODAY).find((x) => x.kind === 'phase-overdue');
     expect(w?.nodeIds).toEqual(['p']);
     // a completed phase does not warn
-    const done = goal({ column: 1, nodes: [{ id: 'p', title: 'P', start: '2026-06-01', deadline: '2026-07-01', done: true }] });
+    const done = goal({ column: 1, nodes: [{ id: 'p', title: 'P', start: '2026-06-01', deadline: '2026-07-01', status: 'done' }] });
     expect(kinds(done)).not.toContain('phase-overdue');
   });
 
   it('phase-outside-project when a scheduled phase starts before or ends after the project', () => {
     const g = goal({ column: 1, start: '2026-06-01', deadline: '2026-08-01',
-      nodes: [{ id: 'p', title: 'P', start: '2026-05-01', deadline: '2026-07-20', done: false }] });
+      nodes: [{ id: 'p', title: 'P', start: '2026-05-01', deadline: '2026-07-20' }] });
     const w = roadmapWarnings(g, TODAY).find((x) => x.kind === 'phase-outside-project');
     expect(w?.nodeIds).toEqual(['p']);
   });
 
   it('unscheduled-phases only for a Now project with undated first-level nodes', () => {
-    const nodes = [{ id: 'a', title: 'A', done: false }, { id: 'b', title: 'B', done: false }];
+    const nodes = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }];
     const now = roadmapWarnings(goal({ column: 0, nodes }), TODAY).find((x) => x.kind === 'unscheduled-phases');
     expect(now?.nodeIds).toEqual(['a', 'b']);
     expect(kinds(goal({ column: 1, nodes }))).not.toContain('unscheduled-phases');
@@ -66,27 +66,27 @@ describe('roadmapWarnings', () => {
 
   it('checkpoint-unplanned reuses the checkpoint window + unplanned-this-week predicate', () => {
     const base = { column: 1 as const };
-    const checkpoint = { id: 'm', title: 'M', checkpoint: true, done: false, start: '2026-07-20', deadline: '2026-07-20' };
-    const unplanned = goal({ ...base, nodes: [checkpoint, { id: 'a', title: 'A', done: false }] });
+    const checkpoint = { id: 'm', title: 'M', checkpoint: true, start: '2026-07-20', deadline: '2026-07-20' };
+    const unplanned = goal({ ...base, nodes: [checkpoint, { id: 'a', title: 'A' }] });
     expect(kinds(unplanned)).toContain('checkpoint-unplanned');
     // planned this week → silent
-    const planned = goal({ ...base, nodes: [checkpoint, { id: 'a', title: 'A', done: false, plannedWeek: WEEK }] });
+    const planned = goal({ ...base, nodes: [checkpoint, { id: 'a', title: 'A', plannedWeek: WEEK }] });
     expect(kinds(planned)).not.toContain('checkpoint-unplanned');
     // checkpoint too far out → silent
     const farCheckpoint = { ...checkpoint, start: '2026-09-01', deadline: '2026-09-01' };
-    const far = goal({ column: 1, nodes: [farCheckpoint, { id: 'a', title: 'A', done: false }] });
+    const far = goal({ column: 1, nodes: [farCheckpoint, { id: 'a', title: 'A' }] });
     expect(kinds(far)).not.toContain('checkpoint-unplanned');
   });
 
   it('does not warn for a done near checkpoint', () => {
     const done = goal({ column: 1, nodes: [
-      { id: 'm', title: 'M', checkpoint: true, done: true, start: '2026-07-20', deadline: '2026-07-20' },
+      { id: 'm', title: 'M', checkpoint: true, status: 'done', start: '2026-07-20', deadline: '2026-07-20' },
     ] });
     expect(kinds(done)).not.toContain('checkpoint-unplanned');
   });
 
   it('stacks independent warnings (Now project both overdue and unscheduled)', () => {
-    const g = goal({ column: 0, deadline: '2026-07-01', nodes: [{ id: 'a', title: 'A', done: false }] });
+    const g = goal({ column: 0, deadline: '2026-07-01', nodes: [{ id: 'a', title: 'A' }] });
     expect(kinds(g)).toEqual(expect.arrayContaining(['project-overdue', 'unscheduled-phases']));
   });
 });
@@ -166,7 +166,7 @@ describe('fitRoadmapRange', () => {
 
   it('considers checkpoint dates when framing', () => {
     const r = fitRoadmapRange([goal({ start: '2026-07-01', deadline: '2026-07-10', nodes: [
-      { id: 'm', title: 'M', checkpoint: true, done: false, start: '2026-09-01', deadline: '2026-09-01' },
+      { id: 'm', title: 'M', checkpoint: true, start: '2026-09-01', deadline: '2026-09-01' },
     ] })], 4000)!;
     expect(r.scrollToCenterDate).toBe('2026-08-01'); // midpoint of 07-01…09-01
   });

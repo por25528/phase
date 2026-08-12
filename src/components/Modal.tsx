@@ -1,9 +1,11 @@
 import { useEffect, useId, useRef } from 'react';
 import { modalRegistry } from '../lib/modalRegistry';
+import { IconX } from './Icons';
 
 /**
  * Centered modal dialog — mirrors the goal drawer's scrim/panel styling.
- * Closes on scrim click, ✕, and Escape. Renders nothing when `open` is false.
+ * Closes on scrim click, the close button, and Escape. Renders nothing when
+ * `open` is false.
  * Focus is trapped inside while open and restored to the opener on close;
  * body scroll is locked. size='full' is the wide, content-sized planner variant.
  */
@@ -75,7 +77,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[rgba(20,20,18,0.28)] px-[16px] py-[24px] overflow-y-auto"
+      className="scrim fixed inset-0 z-50 grid place-items-center px-[16px] py-[24px] overflow-y-auto"
       onClick={onClose}
     >
       <div
@@ -87,14 +89,14 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-[12px] mb-[16px]">
-          <h2 className="font-disp text-h2 font-semibold tracking-[-0.01em]">{title}</h2>
+          <h2 className="text-h2 font-semibold tracking-[-0.01em]">{title}</h2>
           <button
             ref={closeBtnRef}
             aria-label="Close"
-            className="flex-none text-muted text-h3 px-[7px] py-[3px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
+            className="flex-none text-muted px-[7px] py-[3px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
             onClick={onClose}
           >
-            ✕
+            <IconX size={15} />
           </button>
         </div>
         {children}

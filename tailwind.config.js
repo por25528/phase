@@ -87,6 +87,16 @@ export default {
       fontFamily: {
         disp: ['Fraunces Variable', 'Fraunces', 'Georgia', 'serif'],
         ui: ['Inter Variable', 'Inter', '-apple-system', 'system-ui', 'sans-serif'],
+        // The eyebrow/label face — the app's THIRD type role, not a stray.
+        // `font-mono` is applied in a dozen files (every uppercase section
+        // label, the kbd hints, the tabular stats) and the fontSize scale names
+        // it: `micro`/`eyebrow` exist for "mono eyebrows at their smallest".
+        // Without a key here it fell through to Tailwind's stock stack, so the
+        // one face the app never chose was the one on every section header —
+        // SF Mono on macOS, Consolas on Windows, Liberation Mono on Linux, at
+        // three different widths. The `tracking-[.11em]` tuned against those
+        // labels is only correct for whichever machine tuned it.
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
     },
   },

@@ -2,6 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, Habit, Task } from '../db/types';
+import { makeBlock } from '../lib/blocks';
 
 /**
  * Render every view once, against a dataset shaped like a real term.
@@ -32,6 +33,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async (): Promise<'week' | 'month'> => 'week'),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -84,17 +87,17 @@ const GOALS: Goal[] = [
     deadline: iso(60),
     datesConfirmed: true,
     nodes: [
-      { id: 'n-p7', title: 'Pset 7', done: true, doneAt: iso(-3) },
+      { id: 'n-p7', title: 'Pset 7', status: 'done', doneAt: iso(-3) },
       {
         id: 'n-p8',
         title: 'Pset 8',
         children: [
-          { id: 'n-p8a', title: 'Problems 1–3', done: false, deadline: iso(2), estimateMin: 120 },
-          { id: 'n-p8b', title: 'Problems 4–6', done: false, estimateMin: 90 },
+          { id: 'n-p8a', title: 'Problems 1–3', deadline: iso(2), estimateMin: 120 },
+          { id: 'n-p8b', title: 'Problems 4–6', estimateMin: 90 },
         ],
       },
-      { id: 'n-exam', title: '18.06 exam prep', done: false, deadline: iso(9) },
-      { id: 'm1', title: 'Midterm', checkpoint: true, done: false, start: iso(9), deadline: iso(9) },
+      { id: 'n-exam', title: '18.06 exam prep', deadline: iso(9) },
+      { id: 'm1', title: 'Midterm', checkpoint: true, start: iso(9), deadline: iso(9) },
     ],
     notes: 'Office hours Tue/Thu.',
   },
@@ -105,14 +108,14 @@ const GOALS: Goal[] = [
     // Deliberately unconfirmed, so the date-review banner and card render.
     start: iso(-10),
     deadline: iso(45),
-    nodes: [{ id: 'n-deck', title: 'Investor deck', done: false, estimateMin: 180 }],
+    nodes: [{ id: 'n-deck', title: 'Investor deck', estimateMin: 180 }],
   },
   {
     id: 'g-done',
     title: '6.031 (archived)',
     column: 0,
     completedAt: iso(-1),
-    nodes: [{ id: 'n-old', title: 'Final project', done: true, doneAt: iso(-2) }],
+    nodes: [{ id: 'n-old', title: 'Final project', status: 'done', doneAt: iso(-2) }],
   },
   // No nodes and no dates: the degenerate project every empty-state path keys off.
   { id: 'g-empty', title: 'Someday: learn Rust', column: 3, nodes: [] },
@@ -120,7 +123,7 @@ const GOALS: Goal[] = [
 
 const TASKS: Task[] = [
   { id: 't-overdue', title: 'Email advisor', date: iso(-2), done: false, goalId: null },
-  { id: 't-placed', title: 'Standup', date: iso(0), startMin: 600, done: false, goalId: 'g-startup', estimateMin: 30 },
+  { id: 't-placed', title: 'Standup', date: iso(0), done: false, goalId: 'g-startup', estimateMin: 30, blocks: [makeBlock(iso(0), 600, 30)] },
   { id: 't-loose', title: 'Renew T pass', done: false, goalId: null },
 ];
 
@@ -149,6 +152,25 @@ async function readyStore() {
 
 describe('the three views render against a populated store', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('Today leads with one thing and stays out of the way otherwise', async () => {
+    await readyStore();
+    const { Today } = await import('./Today');
+    const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+
+    expect(html).not.toContain('Loading…');
+    /*
+     * The day's one open commitment is on the page — as the Now card in the
+     * morning, as a row in the rest of the day by the evening. Which of the two
+     * depends on the wall clock this suite runs at, and pinning `Now` meant
+     * asserting that an evening render still claims to have a "now": before the
+     * free-time offer existed, that zone passed this test by printing "Nothing
+     * committed to today" over an unticked 10:00 standup.
+     */
+    expect(html).toContain('Standup');
+    expect(html).not.toContain('Habits');
+    expect(html).not.toContain('Working hours');
+  });
 
   it('Plan draws the week, the rail and the capacity readout', async () => {
     const store = await readyStore();
@@ -202,6 +224,22 @@ describe('the three views render against a populated store', () => {
     expect(html).toContain('6.1200 Problem Sets');
   });
 
+  // Timeline stopped being a destination and became a representation of the
+  // same page, so the switch has to be part of Goals' own render — not a route
+  // App picks between.
+  it('Goals draws the timeline instead of the board when that is the stored mode', async () => {
+    dbMocks.loadGoalsMode.mockResolvedValueOnce('timeline' as const);
+    const store = await readyStore();
+    expect(store.getState().goalsMode).toBe('timeline');
+
+    const { Goals } = await import('./Goals');
+    const html = renderToStaticMarkup(createElement(Goals));
+
+    expect(html).toContain('6.1200 Problem Sets');
+    expect(html).toContain('Timeline scope');   // the timeline's own control
+    expect(html).not.toContain('Drop a goal here'); // …and none of the board
+  });
+
   /**
    * Day one, with nothing in the app at all. Empty states are where `.map` on
    * an absent field, a `[0]` on an empty array, or a divide-by-zero surfaces —
@@ -224,6 +262,27 @@ describe('the three views render against a populated store', () => {
 
       expect(html).toContain('Nothing left to plan');
       expect(html).toContain('No habits yet');
+    });
+
+    it('Today says what to do about an empty account rather than showing a blank page', async () => {
+      // `readyStore` here was a copy-paste: it asserted the empty-account
+      // sentence against a POPULATED account, which is precisely the bug the
+      // free-time offer exists to fix — three live projects, and Today saying
+      // there is nothing to do.
+      await emptyStore();
+      const { Today } = await import('./Today');
+      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+      expect(html).toContain('Nothing committed to today');
+    });
+
+    it('offers work to place when projects exist but the day is empty', async () => {
+      await readyStore();
+      const { Today } = await import('./Today');
+      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+
+      expect(html).toContain('aria-label="Free time"');
+      expect(html).toContain('Investor deck');       // one project's next action
+      expect(html).not.toContain('Nothing committed to today');
     });
 
     it('Projects and Timeline render with nothing in them', async () => {

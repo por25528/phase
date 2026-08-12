@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { goalPct } from './pct';
 import { weekOf } from './plan';
 import { sampleProject, SAMPLE_PROJECT_TITLE } from './sampleProject';
+import { isDone } from './status';
 
 const TODAY = '2026-07-23';
 
@@ -24,7 +25,7 @@ describe('sampleProject', () => {
     const g = sampleProject(TODAY, counter());
     const container = g.nodes.find((n) => n.children && n.children.length > 0);
     expect(container).toBeDefined();
-    expect(container!.done).toBeUndefined(); // containers never carry completion
+    expect(container!.status).toBeUndefined(); // containers never carry completion
     const pct = goalPct(g);
     expect(pct).toBeGreaterThan(0);
     expect(pct).toBeLessThan(100);
@@ -35,7 +36,7 @@ describe('sampleProject', () => {
     const backlog: string[] = [];
     const walk = (nodes: typeof g.nodes) => nodes.forEach((n) => {
       if (n.children) walk(n.children);
-      else if (!n.done && n.plannedWeek === weekOf(TODAY) && n.plannedDay === undefined && n.plannedStartMin === undefined) {
+      else if (!isDone(n) && n.plannedWeek === weekOf(TODAY) && (n.blocks?.length ?? 0) === 0) {
         backlog.push(n.id);
       }
     });

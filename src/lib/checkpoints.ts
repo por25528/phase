@@ -1,6 +1,7 @@
 import type { Goal, GoalNode } from '../db/types';
 import { addDays } from './dates';
 import { uid } from './tree';
+import { isDone } from './status';
 
 interface LegacyMarker {
   id: string;
@@ -53,7 +54,7 @@ export function checkpointWithin(g: Goal, days: number, today: string): boolean 
     if (
       !found
       && node.checkpoint
-      && !node.done
+      && !isDone(node)
       && node.deadline !== undefined
       && node.deadline >= today
       && node.deadline <= end
@@ -67,7 +68,7 @@ export function checkpointWithin(g: Goal, days: number, today: string): boolean 
 export function nextCheckpoint(g: Goal, today: string): { title: string; date: string } | null {
   const candidates: GoalNode[] = [];
   walkLeaves(g, (node) => {
-    if (node.checkpoint && !node.done && node.deadline !== undefined && node.deadline >= today) {
+    if (node.checkpoint && !isDone(node) && node.deadline !== undefined && node.deadline >= today) {
       candidates.push(node);
     }
   });
@@ -97,7 +98,6 @@ export function milestonesToCheckpointNodes(g: Goal): GoalNode[] {
         id,
         title: m.title,
         checkpoint: true,
-        done: false,
         start: m.date,
         deadline: m.date,
       };

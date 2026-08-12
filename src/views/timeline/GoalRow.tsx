@@ -7,6 +7,7 @@ import { goalPct } from '../../lib/pct';
 import { SpanBar, type Span } from './SpanBar';
 import { NodeLane, CanvasGrid } from './NodeLane';
 import { BehindChip } from '../../components/BehindChip';
+import { IconChevronRight, IconDiamond, IconWarning } from '../../components/Icons';
 import { useReducedMotion } from '../../components/useReducedMotion';
 import { paceStatus } from '../../lib/plan';
 import { roadmapWarnings } from '../../lib/roadmap';
@@ -74,16 +75,15 @@ export const GoalRow = memo(function GoalRow({
             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${g.title}`}
             className="flex-shrink-0 w-[24px] h-[24px] -m-[4px] flex items-center justify-center text-muted hover:text-ink rounded-[4px] hover:bg-hover-deep"
           >
-            <svg
-              width="8"
-              height="8"
-              viewBox="0 0 8 8"
+            {/* The rotation goes on a wrapper, matching every other twirl in the
+                app — `Icon` owns its own viewBox and stroke and takes no style. */}
+            <span
               aria-hidden="true"
-              className={reduced ? '' : 'transition-transform duration-150'}
+              className={`inline-flex ${reduced ? '' : 'transition-transform duration-150'}`}
               style={{ transform: isExpanded ? 'rotate(90deg)' : 'none' }}
             >
-              <path d="M2 1 L6 4 L2 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+              <IconChevronRight size={11} />
+            </span>
           </button>
           <div className="flex flex-col justify-center gap-[2px] min-w-0">
             <span className="text-badge text-muted font-semibold tracking-[.06em]">#{i + 1}</span>
@@ -97,17 +97,22 @@ export const GoalRow = memo(function GoalRow({
               </span>
               {pace === 'behind' && <BehindChip pts={behind} donePct={p} className="flex-none" />}
               {pace === 'needs-breakdown' && (
-                <span className="text-badge text-muted italic flex-none">define next step</span>
+                <span className="text-badge text-muted italic flex-none">define next task</span>
               )}
             </span>
             {warnings.length > 0 && (
               <button
                 type="button"
                 onClick={() => actions.openProject(g.id, warnings[0].nodeIds?.[0])}
-                className="text-badge text-warn text-left leading-[1.3] truncate hover:underline min-h-[24px] inline-flex items-center rounded-[4px]"
+                className="text-badge text-warn text-left leading-[1.3] hover:underline min-h-[24px] inline-flex items-center gap-[4px] rounded-[4px]"
                 title={warnings.map((w) => w.message).join(' · ')}
               >
-                ⚠ {warnings[0].message}{warnings.length > 1 ? ` · +${warnings.length - 1}` : ''}
+                {/* `⚠` U+26A0 has an emoji presentation default, so this could
+                    resolve to a full-colour glyph that ignores `text-warn`. */}
+                <IconWarning size={11} />
+                <span className="truncate">
+                  {warnings[0].message}{warnings.length > 1 ? ` · +${warnings.length - 1}` : ''}
+                </span>
               </button>
             )}
           </div>
@@ -137,7 +142,7 @@ export const GoalRow = memo(function GoalRow({
           ) : (
             <button
               type="button"
-              aria-label={`${g.title}: dates unconfirmed, ${fmtD(g.start)}–${fmtD(g.deadline)}. Open project to review dates.`}
+              aria-label={`${g.title}: dates unconfirmed, ${fmtD(g.start)}–${fmtD(g.deadline)}. Open goal to review dates.`}
               onClick={() => actions.openProject(g.id)}
               onMouseMove={(e) => setBarTip({ x: e.clientX, y: e.clientY })}
               onMouseLeave={() => setBarTip(null)}
@@ -179,12 +184,12 @@ export const GoalRow = memo(function GoalRow({
           {checkpointMarkers(g).map((m) => (
             <span
               key={m.id}
-              className="absolute top-[3px] -translate-x-1/2 text-accent text-tiny leading-none z-[4] cursor-default select-none"
+              className="absolute top-[3px] -translate-x-1/2 text-accent inline-flex z-[4] cursor-default"
               style={{ left: `${dateToX(m.date, rangeStart, pxPerDay)}px` }}
               onMouseEnter={(e) => setCheckpointTip({ x: e.clientX, y: e.clientY, text: `${m.title} · ${fmtD(m.date)}` })}
               onMouseLeave={() => setCheckpointTip(null)}
             >
-              ◆
+              <IconDiamond size={9} />
             </span>
           ))}
         </div>
@@ -224,7 +229,7 @@ export const GoalRow = memo(function GoalRow({
                 return `${behind} pts behind pace · expected ${expected}% by today`;
               }
               if (pace === 'needs-breakdown') {
-                return `define next step · expected ${expected}% by today`;
+                return `define next task · expected ${expected}% by today`;
               }
               if (pace === 'complete') return 'complete';
               return `on pace · expected ${expected}% by today`;

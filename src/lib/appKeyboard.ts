@@ -4,9 +4,9 @@ export type AppKeyCommand =
   | 'undo'
   | 'blur-target'
   | 'close-drawer'
+  | 'view-today'
   | 'view-plan'
   | 'view-goals'
-  | 'view-timeline'
   | 'toggle-shortcuts';
 
 interface AppKeyEvent {
@@ -50,14 +50,18 @@ export function resolveAppKeyCommand(event: AppKeyEvent): AppKeyCommand | null {
   if (event.metaKey || event.ctrlKey || event.altKey) return null;
   if (event.key === 'Escape') return 'close-drawer';
   if (event.key === '?') return 'toggle-shortcuts'; // Shift+/ — the cheat sheet
-  // 1-3 are the three views, in nav order. They collide with the Plan view's
-  // own 1-7 weekday placement, which wins: Plan registers a CAPTURE-phase
-  // listener on `window` and calls stopPropagation, so a digit it consumes
-  // never reaches App's bubble-phase handler. Plan only consumes the digit
-  // when a backlog row is focused, so otherwise it falls through to here.
-  if (event.key === '1') return 'view-plan';
-  if (event.key === '2') return 'view-goals';
-  if (event.key === '3') return 'view-timeline';
+  // 1-3 are the three destinations, in nav order. They collide with the Plan
+  // view's own 1-7 weekday placement, which wins: Plan registers a CAPTURE-phase
+  // listener on `window` and calls stopPropagation, so a digit it consumes never
+  // reaches App's bubble-phase handler. Plan only consumes the digit when a
+  // backlog row is focused, so otherwise it falls through to here.
+  //
+  // 3 is Goals, not Timeline. Timeline stopped being a destination and became a
+  // representation of Goals; a shortcut that jumped to a representation would be
+  // the one navigation key that changes two things.
+  if (event.key === '1') return 'view-today';
+  if (event.key === '2') return 'view-plan';
+  if (event.key === '3') return 'view-goals';
   // `t` is deliberately NOT mapped here. It belongs to the Plan view, which
   // handles it on its own capture-phase listener to jump the week back to
   // today. An app-level `t` could only call `actions.goToToday()`, and nothing

@@ -1,4 +1,5 @@
 import type { Goal, GoalNode } from '../db/types';
+import { stepStatus } from './status';
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 9);
@@ -23,6 +24,21 @@ export function findInAll(goals: Goal[], id: string): GoalNode | null {
   return null;
 }
 
+/**
+ * A leaf carries no `children` key, or an empty one — the same ambiguity
+ * `blocks` deliberately avoids by staying absent (see CLAUDE.md). Here it is
+ * unavoidable: `addChild` and `indentNode` both leave a container with an
+ * empty array mid-edit, so "no key" and "empty array" have to mean the same
+ * thing, unlike `blocks` where an empty array would be a real state to distinguish.
+ */
+export function isLeafNode(node: GoalNode): boolean {
+  return !node.children?.length;
+}
+
+export function isContainerNode(node: GoalNode): boolean {
+  return !isLeafNode(node);
+}
+
 // Mutating removal — mirrors prototype's removeNode exactly
 export function removeNode(nodes: GoalNode[], id: string): boolean {
   for (let i = 0; i < nodes.length; i++) {
@@ -32,13 +48,31 @@ export function removeNode(nodes: GoalNode[], id: string): boolean {
   return false;
 }
 
-/** Depth-first first not-done leaf across the given nodes; null when all done / empty. */
+/**
+ * The next leaf worth working: a step already in progress if there is one,
+ * otherwise the first untouched one. Blocked leaves are skipped entirely.
+ *
+ * Two passes rather than one, because "already started" beats "earlier in the
+ * document" — resuming is what a person means by "next step", and a single
+ * depth-first pass cannot express a preference that spans the whole tree.
+ *
+ * Returns null when open work exists but ALL of it is blocked. Callers must
+ * treat that as "unblock something", not as "nothing to do".
+ */
 export function firstOpenLeaf(nodes: GoalNode[]): GoalNode | null {
+  return firstLeafMatching(nodes, (n) => stepStatus(n) === 'doing')
+    ?? firstLeafMatching(nodes, (n) => stepStatus(n) === 'todo');
+}
+
+function firstLeafMatching(
+  nodes: GoalNode[],
+  match: (n: GoalNode) => boolean,
+): GoalNode | null {
   for (const n of nodes) {
     if (n.children && n.children.length) {
-      const hit = firstOpenLeaf(n.children);
+      const hit = firstLeafMatching(n.children, match);
       if (hit) return hit;
-    } else if (!n.done) {
+    } else if (match(n)) {
       return n;
     }
   }
@@ -117,7 +151,7 @@ export function insertSiblingAfter(
   const found = findParentList(next, nodeId);
   if (!found) return null;
   const newId = uid();
-  found.list.splice(found.index + 1, 0, { id: newId, title, done: false });
+  found.list.splice(found.index + 1, 0, { id: newId, title });
   return { goals: next, newId };
 }
 
@@ -142,7 +176,7 @@ export function findNodePath(goals: Goal[], id: string): string[] | null {
 
 /**
  * Move `nodeId` under its immediately-preceding sibling in the same list.
- * That sibling becomes a container (loses `done`, gains `children`).
+ * That sibling becomes a container (loses `status`, gains `children`).
  * No-op (returns clone) if node has no preceding sibling.
  */
 export function indentNode(goals: Goal[], nodeId: string): Goal[] {
@@ -156,14 +190,15 @@ export function indentNode(goals: Goal[], nodeId: string): Goal[] {
     const node = list.splice(idx, 1)[0];
     const prev = list[idx - 1];
     if (!prev.children?.length) {
-      delete prev.done;
+      delete prev.status;
+      delete prev.blockedOn;
       delete prev.doneAt;
       delete prev.checkpoint;
-      // A container can never carry a planned slot — clear all three
-      // together so plannedStartMin never survives without plannedDay.
+      // A container can never carry a plan — the week commitment and every
+      // sitting go together, or the tree would draw blocks for a node that has
+      // no work of its own left.
       delete prev.plannedWeek;
-      delete prev.plannedDay;
-      delete prev.plannedStartMin;
+      delete prev.blocks;
       delete prev.estimateMin;
     }
     (prev.children ??= []).push(node);
@@ -175,7 +210,8 @@ export function indentNode(goals: Goal[], nodeId: string): Goal[] {
 /**
  * Move `nodeId` out to its parent's sibling list, inserted directly after the parent.
  * No-op if node is already at goal-root level.
- * If old parent loses its last child it becomes a leaf (done:false, children removed).
+ * If old parent loses its last child it becomes a leaf (children removed, absent
+ * status — an absent field IS todo, so there is nothing left to reset).
  */
 export function outdentNode(goals: Goal[], nodeId: string): Goal[] {
   const next = cloneGoals(goals);
@@ -187,10 +223,7 @@ export function outdentNode(goals: Goal[], nodeId: string): Goal[] {
     const parent = atPath(g.nodes, parentPath);
     const nodeIdx = path[path.length - 1];
     const node = parent.children!.splice(nodeIdx, 1)[0];
-    if (parent.children!.length === 0) {
-      delete parent.children;
-      parent.done = false;
-    }
+    if (parent.children!.length === 0) delete parent.children;
     const grandList = listForPath(g, parentPath);
     const parentIdx = parentPath[parentPath.length - 1];
     grandList.splice(parentIdx + 1, 0, node);

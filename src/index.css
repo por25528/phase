@@ -67,6 +67,15 @@
 
     --shadow-card: 0 1px 2px rgba(30, 28, 22, 0.05);
     --shadow-today: 0 2px 6px rgba(30, 28, 22, 0.07);
+
+    /* Modal / command-palette scrim.
+       A whole value rather than a `R G B` triple, because dark needs a
+       different ALPHA as well as a different hue: this was a hardcoded
+       `rgba(20,20,18,0.28)` at two call sites and therefore the only colour in
+       the app that did not theme. A warm 28% drop over the OLED page (#000) is
+       almost no drop at all, which left the panel (#0D0D0E) sitting on its own
+       background with only a hairline to separate them. */
+    --scrim: rgba(20, 20, 18, 0.28);
   }
 
   /* OLED dark theme — pure-black base, faintly elevated surfaces, off-white ink,
@@ -105,6 +114,10 @@
 
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-today: 0 2px 8px rgba(0, 0, 0, 0.6);
+
+    /* Pure black and much heavier: the dark panel is only 5% lighter than the
+       page, so the scrim is doing the separation the shadow cannot. */
+    --scrim: rgba(0, 0, 0, 0.66);
   }
 
 @layer base {
@@ -146,10 +159,16 @@
 }
 
 @layer components {
+  /* The one backdrop behind a modal or the command palette. One class, so the
+     two cannot drift apart, and a themed var, so it follows dark. */
+  .scrim {
+    background: var(--scrim);
+  }
+
   /* Timeline bar fill + label — used by Timeline (round-2) */
   .tl-bar-fill {
     @apply absolute left-0 top-0 bottom-0 bg-fill opacity-90;
-    transition: width 300ms ease-out;
+    transition: width 200ms ease-out;
   }
 
   /* Ghost input style */
@@ -188,8 +207,15 @@
 
   /* Markdown notes use the app's type and colour tokens rather than Tiptap's
      stylesheet. The editor content is the direct child of this wrapper. */
+  /* The border exists at rest and is simply not painted, so nothing moves when
+     it appears — an empty note reads as page, and the box arrives only once
+     you are actually writing in it. */
   .note-prose {
-    @apply w-full border border-line rounded-[6px] bg-transparent px-[9px] py-[7px] text-body leading-[1.6] text-ink;
+    @apply w-full border border-transparent rounded-[6px] bg-transparent px-[9px] py-[7px] text-body leading-[1.6] text-ink;
+    transition: border-color .15s;
+  }
+  .note-prose:focus-within {
+    @apply border-line;
   }
   .note-prose > div {
     @apply min-h-[120px] outline-none;

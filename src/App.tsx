@@ -1,14 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore, initStore, VIEW_LABELS } from './state/store';
+import { Today } from './views/Today';
 import { Goals } from './views/Goals';
-import { Timeline } from './views/Timeline';
 import { Plan } from './views/Plan';
 import { Project } from './views/Project';
-import { TaskCaptureModal } from './components/TaskCaptureModal';
+import { QuickAdd } from './components/QuickAdd';
+import { ConfirmImportModal } from './components/ConfirmImportModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { SettingsModal } from './components/SettingsModal';
 import { useLocalDate } from './hooks/useLocalDate';
+import { addDays, todayStr } from './lib/dates';
+import type { SearchEntry } from './lib/search';
+import type { ObjectActionId } from './lib/commands';
 import { CommandPalette } from './components/CommandPalette';
 import { HeaderMenu, HeaderMenuItem } from './components/HeaderMenu';
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconBackspace,
+  IconClock,
+  IconMoon,
+  IconPlus,
+  IconSearch,
+  IconSun,
+} from './components/Icons';
 import {
   resolveAppKeyCommand,
   shouldConsumePaletteShortcut,
@@ -17,6 +32,7 @@ import {
   shouldLeaveProjectPage,
 } from './lib/appKeyboard';
 import { modalRegistry } from './lib/modalRegistry';
+import { addActionFor } from './lib/addAction';
 import {
   closeTaskCapture,
   requestTaskCaptureForCommand,
@@ -32,34 +48,21 @@ import {
 
 // Header toggle cycles System → Light → Dark → System.
 const NEXT_THEME: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' };
-const THEME_LABEL: Record<Theme, string> = { system: 'SYSTEM', light: 'LIGHT', dark: 'DARK' };
+const THEME_LABEL: Record<Theme, string> = { system: 'System', light: 'Light', dark: 'Dark' };
 
-// The nav, in the order the number keys 1–3 select them (see lib/appKeyboard).
-// The board is labelled "Projects" because every string on it says project.
+// The nav, in the order the number keys select them (see lib/appKeyboard).
+//
+// Two destinations, not three. Timeline was a full global destination for a
+// presentation of goal dates people opened weekly, sitting at the same weight
+// as the surfaces they work in daily; it is a view mode inside Goals now.
 const NAV_TABS = [
+  ['today', VIEW_LABELS.today],
   ['plan', VIEW_LABELS.plan],
   ['goals', VIEW_LABELS.goals],
-  ['timeline', VIEW_LABELS.timeline],
 ] as const;
 
-function SunIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-    </svg>
-  );
-}
-function MoonIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-    </svg>
-  );
-}
-
 export function App() {
-  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, actions } = useAppStore();
+  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -70,6 +73,10 @@ export function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Held between "a file was picked" and "the user typed REPLACE". The File is
+  // captured here, so the input can be reset immediately and stay re-pickable.
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
 
   const reclaimSpace = () => {
     void actions.reclaimSpace()
@@ -89,6 +96,26 @@ export function App() {
     hydration,
     modalRegistry.hasOpenModal(),
   ));
+
+  /**
+   * `+ Add`, and `⌘N`, resolved against the surface underneath.
+   *
+   * The two share one resolver deliberately: a shortcut that did something
+   * other than the button advertising it would be worse than either alone.
+   */
+  const addAction = addActionFor(view, openGoalId !== null);
+  const runAddAction = () => {
+    if (addAction.intent === 'goal') { actions.setGoalModal('new'); return; }
+    // Straight onto the tree, ready to type — an empty title arms `newNodeId`,
+    // so the row mounts into its editor rather than as a node called "New task".
+    if (addAction.intent === 'node' && openGoalId) { actions.addRootNode(openGoalId, ''); return; }
+    openTaskCapture();
+  };
+  // The key handler is bound once and would otherwise close over the first
+  // render's view. A ref keeps ⌘N and the button on the same resolver without
+  // re-binding the listener on every navigation.
+  const runAddActionRef = useRef(runAddAction);
+  runAddActionRef.current = runAddAction;
 
   useEffect(() => {
     initStore();
@@ -142,7 +169,7 @@ export function App() {
         return;
       }
       if (command === 'capture-task') {
-        openTaskCapture();
+        runAddActionRef.current();
         return;
       }
       if (command === 'blur-target') {
@@ -156,17 +183,95 @@ export function App() {
       }
       // Escape on the project page goes back to the board. `close-drawer` is
       // the command's historical name; the drawer it referred to is gone.
-      if (shouldLeaveProjectPage(command, view, modalRegistry.hasOpenModal(), openStepId !== null)) actions.closeProject();
+      //
+      // A milestone workspace is one more layer between the two, so it peels
+      // off first: Escape out of it lands on the goal that contains it, and a
+      // second Escape leaves for the board. Skipping straight past the goal
+      // would be the "dump users back at a generic screen" the whole
+      // preserve-context rule exists to prevent.
+      if (shouldLeaveProjectPage(command, view, modalRegistry.hasOpenModal(), openStepId !== null)) {
+        if (openAreaId !== null) actions.closeArea();
+        else actions.closeProject();
+      }
       // View/navigation shortcuts must not fire underneath an open dialog — inside
       // a dialog, 1–7 mean "plan this step on that weekday", not "switch view".
       if (modalRegistry.hasOpenModal()) return;
+      if (command === 'view-today') actions.setView('today');
       if (command === 'view-plan') actions.setView('plan');
       if (command === 'view-goals') actions.setView('goals');
-      if (command === 'view-timeline') actions.setView('timeline');
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [actions, hydration, openStepId, showShortcuts, view]);
+  }, [actions, hydration, openAreaId, openStepId, showShortcuts, view]);
+
+
+  /**
+   * The palette's verbs, resolved against the app shell.
+   *
+   * They live here rather than in the palette because most of them are things
+   * only App can do — open the file picker, raise the cheat sheet, cycle the
+   * theme — and because the registry that names them (`lib/commands.ts`) has to
+   * stay free of the store to be testable.
+   */
+  function runPaletteCommand(id: string): void {
+    switch (id) {
+      case 'add-task': openTaskCapture(); return;
+      case 'new-goal': actions.setGoalModal('new'); return;
+      case 'import-goal': actions.setGoalModal('import'); return;
+      case 'nav-today': actions.setView('today'); return;
+      case 'nav-plan': actions.setView('plan'); return;
+      case 'nav-goals': actions.setGoalsMode('board'); actions.setView('goals'); return;
+      case 'nav-timeline': actions.setGoalsMode('timeline'); actions.setView('goals'); return;
+      case 'theme': actions.setTheme(NEXT_THEME[theme]); return;
+      case 'shortcuts': setShowShortcuts(true); return;
+      case 'export': void actions.exportBackup(); return;
+      case 'import': fileInputRef.current?.click(); return;
+      case 'reclaim': reclaimSpace(); return;
+      case 'settings': setSettingsOpen(true); return;
+    }
+  }
+
+  /**
+   * A verb applied to something the palette found.
+   *
+   * Search used to be navigation-only: every result opened a location and left
+   * the user to find the control. `aimMin: 0` on the two scheduling verbs means
+   * "the earliest gap that fits", the same rule `replanNode` uses — the palette
+   * is not the place to choose an hour, and the store refuses with a toast when
+   * the day has no room.
+   */
+  function runObjectAction(entry: SearchEntry, action: ObjectActionId): void {
+    const isNode = entry.kind === 'step' && entry.goalId !== null && entry.nodeId !== undefined;
+    const day = action === 'schedule-tomorrow' ? addDays(todayStr(), 1) : todayStr();
+
+    switch (action) {
+      case 'open':
+        if (entry.kind === 'project' && entry.goalId) actions.openProject(entry.goalId);
+        else if (isNode) actions.openProject(entry.goalId!, entry.nodeId);
+        else actions.revealInPlan(entry.kind === 'habit' ? 'habit' : 'task', entry.id);
+        return;
+      case 'complete':
+      case 'reopen':
+        if (isNode) actions.toggleLeaf(entry.nodeId!);
+        else if (entry.kind === 'task') actions.toggleTask(entry.id);
+        return;
+      case 'schedule-today':
+      case 'schedule-tomorrow':
+        if (isNode) actions.scheduleNode(entry.goalId!, entry.nodeId!, day, 0);
+        else if (entry.kind === 'task') actions.scheduleTask(entry.id, day, 0);
+        return;
+      case 'unschedule':
+        if (isNode) actions.unscheduleNode(entry.goalId!, entry.nodeId!);
+        else if (entry.kind === 'task') actions.unscheduleTask(entry.id);
+        return;
+      case 'plan-next':
+        if (entry.goalId) actions.planNextStepFor(entry.goalId);
+        return;
+      case 'complete-goal':
+        if (entry.goalId) actions.completeGoal(entry.goalId);
+        return;
+    }
+  }
 
   return (
     <>
@@ -220,68 +325,49 @@ export function App() {
           title="Search (⌘K)"
           className="flex-none flex items-center gap-[7px] rounded-field border border-line-2 text-muted text-ui px-[9px] sm:pl-[10px] sm:pr-[8px] py-[6px] hover:text-ink hover:border-muted disabled:opacity-40 disabled:pointer-events-none"
         >
-          <span aria-hidden="true">⌕</span>
+          <IconSearch />
           <span className="hidden sm:inline">Search</span>
           <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] border border-line-2 rounded-[4px] px-[4px] py-[1px]">⌘K</kbd>
         </button>
 
         <button
           type="button"
-          onClick={openTaskCapture}
+          onClick={runAddAction}
           disabled={hydration !== 'ready'}
-          aria-label="Add a task (⌘N)"
-          title="Add a task (⌘N)"
+          aria-label={addAction.title}
+          title={addAction.title}
           className="flex-none flex items-center gap-[7px] rounded-field bg-ink text-paper text-ui font-semibold px-[9px] sm:pl-[12px] sm:pr-[10px] py-[6px] hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
         >
-          <span aria-hidden="true">＋</span>
-          <span className="hidden sm:inline">Task</span>
+          <IconPlus />
+          <span className="hidden sm:inline whitespace-nowrap">{addAction.label}</span>
           <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
         </button>
 
-        {/* Utilities: inline on wide screens, folded into ⋯ below lg. */}
-        <div className="hidden lg:flex items-center gap-[16px] font-mono text-meta tracking-[.06em] text-muted flex-none">
-          <button
-            type="button"
-            onClick={() => setShowShortcuts(true)}
-            aria-label="Keyboard shortcuts (?)"
-            title="Keyboard shortcuts (?)"
-            className="w-[24px] h-[24px] grid place-items-center rounded-full border border-line-2 text-compact hover:text-ink hover:border-muted"
-          >
-            ?
-          </button>
-          <button
-            onClick={() => actions.setTheme(NEXT_THEME[theme])}
-            aria-label={`Theme: ${THEME_LABEL[theme]}${theme === 'system' ? ` (${effectiveTheme})` : ''} — switch to ${THEME_LABEL[NEXT_THEME[theme]]}`}
-            title={`Theme: ${THEME_LABEL[theme]}`}
-            className="flex items-center gap-[6px] min-h-[24px] px-[2px] rounded-[6px] hover:text-ink"
-          >
-            {effectiveTheme === 'dark' ? <MoonIcon /> : <SunIcon />}
-            <span>{THEME_LABEL[theme]}</span>
-          </button>
-          <button onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↓ EXPORT</button>
-          <button onClick={reclaimSpace} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">RECLAIM SPACE</button>
-          <button onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'} className="inline-flex items-center min-h-[24px] px-[2px] rounded-[6px] hover:text-ink disabled:opacity-40 disabled:pointer-events-none">↑ IMPORT</button>
-        </div>
-
         <HeaderMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <HeaderMenuItem onClick={() => actions.setTheme(NEXT_THEME[theme])}>
-            {effectiveTheme === 'dark' ? <MoonIcon /> : <SunIcon />}
+            {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
             Theme: {THEME_LABEL[theme]}
           </HeaderMenuItem>
+          <HeaderMenuItem onClick={() => setSettingsOpen(true)}>
+            <IconClock />
+            Working hours
+          </HeaderMenuItem>
           <HeaderMenuItem onClick={() => setShowShortcuts(true)}>
+            {/* Stays a character: `?` is ASCII, it is in the font, and it is the
+                literal key you press. The 14px box keeps it in the icon gutter. */}
             <span aria-hidden="true" className="w-[14px] text-center">?</span>
             Keyboard shortcuts
           </HeaderMenuItem>
           <HeaderMenuItem onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'}>
-            <span aria-hidden="true" className="w-[14px] text-center">↓</span>
+            <IconArrowDown />
             Export backup
           </HeaderMenuItem>
           <HeaderMenuItem onClick={reclaimSpace} disabled={hydration !== 'ready'}>
-            <span aria-hidden="true" className="w-[14px] text-center">⌫</span>
+            <IconBackspace />
             Reclaim space
           </HeaderMenuItem>
           <HeaderMenuItem onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'}>
-            <span aria-hidden="true" className="w-[14px] text-center">↑</span>
+            <IconArrowUp />
             Import backup
           </HeaderMenuItem>
         </HeaderMenu>
@@ -293,10 +379,11 @@ export function App() {
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f && window.confirm('Importing a backup replaces everything currently in Phase. Continue?')) {
-              actions.importBackup(f);
-            }
+            // Reset unconditionally, and BEFORE the modal resolves: picking the
+            // same file twice must fire `change` again, and the File object is
+            // already captured in state by then.
             e.target.value = '';
+            if (f) setPendingImport(f);
           }}
         />
       </header>
@@ -341,7 +428,7 @@ export function App() {
       <main className="flex-1 min-w-0 pb-[60px] md:pb-0">
         {hydration === 'error' ? (
           <div className="max-w-[520px] mx-auto mt-[80px] px-[24px] text-center">
-            <div className="font-disp text-h1 font-semibold mb-[10px]">
+            <div className="text-h1 font-semibold mb-[10px]">
               Phase can’t reach its local database
             </div>
             <p className="text-lead text-muted leading-[1.6] mb-[18px]">
@@ -362,20 +449,23 @@ export function App() {
           <div role="status" className="max-w-[420px] mx-auto mt-[100px] px-[24px] text-center">
             <div className="text-lead text-muted">Opening your local database…</div>
           </div>
-        ) : view === 'plan' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[24px]">
-            <Plan />
+        ) : view === 'today' ? (
+          <div className="w-full px-[16px] sm:px-[36px] py-[22px]">
+            <Today onOpenSettings={() => setSettingsOpen(true)} />
           </div>
-        ) : view === 'timeline' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[32px]">
-            <Timeline />
+        ) : view === 'plan' ? (
+          <div className="w-full px-[16px] sm:px-[36px] py-[18px]">
+            <Plan onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         ) : view === 'project' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[28px] pb-[90px]">
+          <div className="w-full px-[16px] sm:px-[36px] py-[20px] pb-[90px]">
             <Project />
           </div>
         ) : (
-          <div className="max-w-[1280px] mx-auto px-[16px] sm:px-[36px] py-[42px] pb-[90px]">
+          // Full-bleed on purpose: Goals owns its own measure, because the
+          // timeline it now contains needs the whole viewport to scroll a
+          // semester across, and the board does not.
+          <div className="w-full px-[16px] sm:px-[36px] py-[28px] pb-[90px]">
             <Goals />
           </div>
         )}
@@ -410,12 +500,22 @@ export function App() {
         })}
       </nav>
 
-      <TaskCaptureModal
+      <QuickAdd
         open={taskCapture.open}
         focusRequest={taskCapture.focusRequest}
         enabled={hydration === 'ready'}
         onClose={() => setTaskCapture((current) => closeTaskCapture(current))}
       />
+      <ConfirmImportModal
+        open={pendingImport !== null}
+        fileName={pendingImport?.name ?? ''}
+        onCancel={() => setPendingImport(null)}
+        onConfirm={() => {
+          if (pendingImport) actions.importBackup(pendingImport);
+          setPendingImport(null);
+        }}
+      />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <CommandPalette
         open={paletteOpen}
@@ -423,17 +523,15 @@ export function App() {
         goals={goals}
         tasks={tasks}
         habits={habits}
-        onOpenGoal={actions.openProject}
-        onSetProjectTab={actions.setProjectTab}
-        onSetView={actions.setView}
-        onReveal={actions.revealInPlan}
+        onCommand={runPaletteCommand}
+        onObjectAction={runObjectAction}
       />
 
       {/* Undo toast */}
       <div
         role="status"
         aria-live="polite"
-        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[220ms] flex items-center gap-[12px] whitespace-nowrap ${
+        className={`fixed bottom-[20px] left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[200ms] flex items-center gap-[12px] whitespace-nowrap ${
           pendingUndo
             ? 'opacity-100 translate-y-0'
             : 'opacity-0 translate-y-[20px] pointer-events-none'
@@ -459,7 +557,7 @@ export function App() {
       <div
         role="status"
         aria-live="polite"
-        className={`fixed left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[220ms] ${
+        className={`fixed left-1/2 -translate-x-1/2 bg-ink text-paper px-[16px] py-[9px] rounded-field text-body z-[60] transition-all duration-[200ms] ${
           pendingUndo ? 'bottom-[68px]' : 'bottom-[20px]'
         } ${
           toast

@@ -31,6 +31,7 @@ function leaf(done = false): PlannedLeaf {
     goalTitle: 'Launch',
     nodeId: 'n1',
     title: 'Draft brief',
+    blocks: [],
     done,
     plannedWeek: WEEK,
   };

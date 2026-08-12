@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode, Task } from '../db/types';
 import { deferOpenWork, countOpenCarryOver } from './deferWork';
+import { makeBlock } from './blocks';
 
 // today is Thu 2026-07-23; this week's Monday is 2026-07-20, so next week is
 // 2026-07-27.
@@ -38,7 +39,7 @@ describe('deferOpenWork', () => {
   it('replans slipped steps onto the target week and clears the day pin', () => {
     const goals = [
       goal('g', [
-        { id: 'slipped', title: 'Slipped', plannedWeek: '2026-07-13', plannedDay: '2026-07-15' },
+        { id: 'slipped', title: 'Slipped', plannedWeek: '2026-07-13', blocks: [makeBlock('2026-07-15', 540, 60)] },
         { id: 'thisweek', title: 'This week', plannedWeek: THIS_WEEK },
       ]),
     ];
@@ -49,7 +50,7 @@ describe('deferOpenWork', () => {
     const nodes = result.goals[0].nodes;
     const slipped = nodes.find((n) => n.id === 'slipped')!;
     expect(slipped.plannedWeek).toBe(NEXT_WEEK);
-    expect(slipped.plannedDay).toBeUndefined();
+    expect(slipped.blocks).toBeUndefined();
     // A step already committed to this week is not a carry-over.
     expect(nodes.find((n) => n.id === 'thisweek')!.plannedWeek).toBe(THIS_WEEK);
   });
@@ -121,7 +122,7 @@ describe('deferOpenWork', () => {
   it('drops a start minute when deferring a placed step to another week', () => {
     const goals: Goal[] = [
       goal('g', [
-        { id: 'n1', title: 'Draft', plannedWeek: '2026-07-13', plannedDay: '2026-07-15', plannedStartMin: 600 },
+        { id: 'n1', title: 'Draft', plannedWeek: '2026-07-13', blocks: [makeBlock('2026-07-15', 600, 60)] },
       ]),
     ];
     const { goals: next } = deferOpenWork(goals, [], TODAY, NEXT_WEEK);
@@ -141,8 +142,8 @@ describe('deferOpenWork', () => {
    */
   it('drops a start minute when deferring placed tasks to another week', () => {
     const tasks = [
-      task('a', '2026-07-21', { startMin: 600 }),
-      task('b', '2026-07-21', { startMin: 600 }),
+      task('a', '2026-07-21', { blocks: [makeBlock('2026-07-21', 600, 60)] }),
+      task('b', '2026-07-21', { blocks: [makeBlock('2026-07-21', 600, 60)] }),
     ];
 
     const { tasks: next } = deferOpenWork([], tasks, TODAY, NEXT_WEEK);

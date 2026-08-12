@@ -36,10 +36,8 @@ import { WeekHeader } from './plan/WeekHeader';
 import { UnestimatedPanel } from './plan/UnestimatedPanel';
 import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
 import { RecapPanel } from './plan/RecapPanel';
-import { AvailabilitySettings } from './plan/AvailabilitySettings';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
-import { Stats } from './plan/sidebar/Stats';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
 import type { BacklogItem } from '../lib/backlog';
 
@@ -85,8 +83,8 @@ let lastViewedWeek: string | null = null;
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
  */
-export function Plan() {
-  const { goals, tasks, habits, hydration, availability, allDayBlocks, sidebarPanels, revealItem, planMode } = useAppStore();
+export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const { goals, tasks, habits, hydration, availability, allDayBlocks, revealItem, planMode } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
@@ -227,6 +225,9 @@ export function Plan() {
 
   const [dragTitle, setDragTitle] = useState<string | null>(null);
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
+  // Live for the length of a drag, so the day headings can answer "does this fit"
+  // while the block is still in the air rather than refusing it after the drop.
+  const [dragDuration, setDragDuration] = useState<number | null>(null);
   const [showUnestimated, setShowUnestimated] = useState(false);
   /*
    * The block being drawn: a gesture that has landed but not yet been named.
@@ -425,15 +426,19 @@ export function Plan() {
   }, [focusedItem, weekStart, availability, isPast, draft]);
 
   function handleDragStart(e: DragStartEvent) {
-    setDragTitle((e.active.data.current as PlanDragData | undefined)?.title ?? null);
+    const data = e.active.data.current as PlanDragData | undefined;
+    setDragTitle(data?.title ?? null);
+    setDragDuration(data?.durationMin ?? null);
   }
 
   function handleDragCancel() {
     setDragTitle(null);
+    setDragDuration(null);
   }
 
   function handleDragEnd(e: DragEndEvent) {
     setDragTitle(null);
+    setDragDuration(null);
     const data = e.active.data.current as PlanDragData | undefined;
     const overId = typeof e.over?.id === 'string' ? e.over.id : null;
     if (!data || !e.over || !overId?.startsWith('day:')) return;
@@ -456,8 +461,8 @@ export function Plan() {
         actions.showToast('No working hours on that day.');
         return;
       }
-      if (data.kind === 'task') actions.scheduleTask(data.id, date, dayWindow.startMin);
-      else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, dayWindow.startMin);
+      if (data.kind === 'task') actions.scheduleTask(data.id, date, dayWindow.startMin, { blockId: data.blockId });
+      else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, dayWindow.startMin, { blockId: data.blockId });
       return;
     }
 
@@ -510,8 +515,13 @@ export function Plan() {
       gridOffsetPx: gridRef.current?.offsetTop ?? 0,
     });
 
-    if (data.kind === 'task') actions.scheduleTask(data.id, date, aim);
-    else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim);
+    /*
+     * `blockId` is set only when an existing bar is being dragged, so the drop
+     * MOVES that sitting. A row from the rail has none, and placing it replaces
+     * whatever the task had — "put this here", not "and also here".
+     */
+    if (data.kind === 'task') actions.scheduleTask(data.id, date, aim, { blockId: data.blockId });
+    else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim, { blockId: data.blockId });
   }
 
   if (hydration !== 'ready') {
@@ -541,12 +551,6 @@ export function Plan() {
           <Backlog weekStart={weekStart} today={today} onFocusItem={setFocusedItem} reveal={revealItem} />
           <SidebarSection panel="habits" title="Habits" count={`${habitsDone}/${habits.length} today`}>
             <Habits reveal={revealItem} />
-          </SidebarSection>
-          <SidebarSection panel="stats" title="This week">
-            <Stats />
-          </SidebarSection>
-          <SidebarSection panel="availability" title="Working hours">
-            <AvailabilitySettings />
           </SidebarSection>
         </PlanSidebar>
 
@@ -579,17 +583,14 @@ export function Plan() {
               No working hours set — every day is off, so nothing can be scheduled.{' '}
               <button
                 type="button"
-                // Expands the sidebar's "Working hours" panel rather than
-                // navigating: the editor is already on this page, beside the
-                // banner. Guarded against re-adding an already-open panel so a
-                // second click can't duplicate the entry.
-                onClick={() => {
-                  if (sidebarPanels.includes('availability')) return;
-                  actions.setSidebarPanels([...sidebarPanels, 'availability']);
-                }}
+                // Straight into Settings. The editor used to be an accordion in
+                // the rail beside this banner; it is a dialog now, and the one
+                // banner that exists because availability is unset should be
+                // the shortest route to setting it.
+                onClick={onOpenSettings}
                 className="font-semibold text-accent hover:text-accent-deep"
               >
-                Set your availability
+                Set your working hours
               </button>
             </div>
           )}
@@ -606,7 +607,7 @@ export function Plan() {
             the question they still have.
           */}
           {planHint && (
-            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-dashed border-line-2 bg-panel text-body text-ink-soft">
+            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
               Drag anything from <span className="font-semibold text-ink">To plan</span> onto a day
               to schedule it — or click a row and press{' '}
               <kbd className="font-mono text-kbd border border-line-2 rounded-[4px] px-[4px] py-[1px] text-muted">1</kbd>
@@ -644,6 +645,7 @@ export function Plan() {
             scrollWindow={scrollWindow}
             readOnly={isPast}
             dayCapacity={capacity.days}
+            dragDurationMin={dragDuration}
             onCreate={(date, span) => setDraft({ date, span })}
             scrollerRef={scrollerRef}
             gridRef={gridRef}
@@ -657,9 +659,11 @@ export function Plan() {
                 allDayBlocks={allDayBlocks}
                 readOnly={isPast}
                 reveal={revealItem}
-                onRemove={(kind, id, goalId) => {
-                  if (kind === 'task') actions.unscheduleTask(id);
-                  else if (goalId) actions.unscheduleNode(goalId, id);
+                onRemove={(kind, id, goalId, blockId) => {
+                  // The SITTING comes off, not the task: a four-hour task sat
+                  // twice must not lose Thursday because Tuesday was cancelled.
+                  if (kind === 'task') actions.unscheduleTask(id, blockId);
+                  else if (goalId) actions.unscheduleNode(goalId, id, blockId);
                 }}
                 // Fires on past weeks too: `readOnly` above stops history being
                 // rescheduled, not recorded. See DayBlocks' `readOnly` note.
@@ -667,9 +671,11 @@ export function Plan() {
                   if (kind === 'task') actions.toggleTask(id);
                   else actions.toggleLeaf(id);
                 }}
-                onResize={(kind, id, minutes) => {
-                  if (kind === 'task') actions.resizeTask(id, minutes);
-                  else actions.resizeNode(id, minutes);
+                onResize={(kind, id, blockId, minutes) => {
+                  // Resizing a bar changes THAT sitting's length, never the
+                  // task's estimate — which is what it used to write.
+                  if (kind === 'task') actions.resizeTask(id, blockId, minutes);
+                  else actions.resizeNode(id, blockId, minutes);
                 }}
               />
               {draft?.date === date && (

@@ -44,7 +44,7 @@ describe('sanitizeBackupGoal', () => {
   it('does not promote legacy backup dates or completion timestamps', () => {
     const legacy: Goal = {
       ...base,
-      nodes: [{ id: 'n', title: 'Done before timestamps', done: true }],
+      nodes: [{ id: 'n', title: 'Done before timestamps', status: 'done' }],
     };
 
     const sanitized = sanitizeBackupGoal(legacy);
@@ -97,10 +97,10 @@ describe('priorityToColumn', () => {
 // ---- buildNode ----
 
 describe('buildNode', () => {
-  it('turns a plain string into a leaf with done:false', () => {
+  it('turns a plain string into a leaf with status absent (todo)', () => {
     const n = buildNode('Pick one idea')!;
     expect(n.title).toBe('Pick one idea');
-    expect(n.done).toBe(false);
+    expect(n.status).toBeUndefined();
     expect(n.children).toBeUndefined();
     expect(typeof n.id).toBe('string');
   });
@@ -114,13 +114,13 @@ describe('buildNode', () => {
   it('an object with subgoals becomes a container (no done)', () => {
     const n = buildNode({ title: 'Build v1', subgoals: ['a', 'b'] })!;
     expect(n.children).toHaveLength(2);
-    expect(n.done).toBeUndefined();
-    expect(n.children!.every((c: GoalNode) => c.done === false)).toBe(true);
+    expect(n.status).toBeUndefined();
+    expect(n.children!.every((c: GoalNode) => c.status === undefined)).toBe(true);
   });
 
   it('an object with empty subgoals stays a leaf', () => {
     const n = buildNode({ title: 'solo', subgoals: [] })!;
-    expect(n.done).toBe(false);
+    expect(n.status).toBeUndefined();
     expect(n.children).toBeUndefined();
   });
 
@@ -161,7 +161,7 @@ describe('buildManualGoal', () => {
     expect(g.title).toBe('Launch');
     expect(g.column).toBe(2);
     expect(g.nodes.map((n) => n.title)).toEqual(['step 1', 'step 2']);
-    expect(g.nodes.every((n) => n.done === false)).toBe(true);
+    expect(g.nodes.every((n) => n.status === undefined)).toBe(true);
   });
 
   it('omits notes when blank, keeps them when present', () => {
@@ -246,9 +246,9 @@ describe('parseGoalImport', () => {
     });
     const [g] = ok(parseGoalImport(json, TODAY));
     expect(g.column).toBe(2);
-    expect(g.nodes[0].done).toBe(false);
+    expect(g.nodes[0].status).toBeUndefined();
     expect(g.nodes[1].children!.map((c) => c.title)).toEqual(['Design', 'Backend']);
-    expect(g.nodes[1].done).toBeUndefined();
+    expect(g.nodes[1].status).toBeUndefined();
   });
 
   it('keeps a scheduled leaf’s dates', () => {
@@ -406,7 +406,7 @@ describe('parseGoalImport rejects what it used to swallow', () => {
     });
     const out = parseGoalImport(raw, TODAY);
     expect('error' in out).toBe(true);
-    expect('error' in out && out.error).toContain('group of 3 steps');
+    expect('error' in out && out.error).toContain('group of 3 tasks');
   });
 
   it('refuses a `subgoals` that is a string — the classic LLM slip', () => {

@@ -1,20 +1,24 @@
 import { useEffect, useRef } from 'react';
+import { IconX } from './Icons';
 
 // The `?` cheat sheet. A lightweight dialog (not a modalRegistry Modal) so it
 // never interferes with the ⌘N capture-suppression logic; Escape and a backdrop
 // click both dismiss it, wired from App's global key handler and onClose here.
 
 // Listed in nav order, which is also the order the number keys select.
-// "Projects", not "Goals" — that is what the nav, the board and the command
-// palette all call it; this list was the last survivor of the old name.
+// Timeline is absent because it is not a destination any more — it is a mode
+// inside Goals, reachable from the command palette.
 const SHORTCUTS: { keys: string[]; label: string }[] = [
-  { keys: ['1'], label: 'Plan' },
-  { keys: ['2'], label: 'Projects' },
-  { keys: ['3'], label: 'Timeline' },
+  { keys: ['1'], label: 'Today' },
+  { keys: ['2'], label: 'Plan' },
+  { keys: ['3'], label: 'Goals' },
   // No `t` here: it is a Plan-view key only (see PLANNER_KEYS below). The
   // app-level binding that used to sit here set a `selDate` nothing reads.
-  { keys: ['⌘', 'K'], label: 'Search everything' },
-  { keys: ['⌘', 'N'], label: 'Add a task' },
+  { keys: ['⌘', 'K'], label: 'Search everything, and run commands' },
+  // What it creates follows the surface — a goal on Goals, a task in a goal,
+  // a task on Plan and Today. See lib/addAction.ts.
+  { keys: ['⌘', 'N'], label: 'Add — a goal or a task, matching where you are' },
+  { keys: ['⌘', '↵'], label: 'Add it and keep the composer open' },
   { keys: ['⌘', 'Z'], label: 'Undo the last change' },
   { keys: ['?'], label: 'This cheat sheet' },
   { keys: ['Esc'], label: 'Close drawer or dialog' },
@@ -24,38 +28,49 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
 // them separately rather than implying they work everywhere. `1`-`7` also
 // require a focused backlog row; `[`, `]` and `t` work regardless of focus.
 //
-// `1`-`3` deliberately appear in both lists: with a backlog row focused they
-// place work, because Plan's capture-phase listener consumes them before the
-// view switcher above ever sees them. With nothing focused they fall through
-// and switch view.
+// `1` and `2` deliberately appear in both lists: with a backlog row focused
+// they place work, because Plan's capture-phase listener consumes them before
+// the view switcher above ever sees them. With nothing focused they fall
+// through and switch view.
 const PLANNER_KEYS: { keys: string[]; label: string }[] = [
-  { keys: ['1–7'], label: 'Put the focused step on that weekday' },
+  { keys: ['1–7'], label: 'Put the focused task on that weekday' },
   { keys: ['['], label: 'Previous week' },
   { keys: [']'], label: 'Next week' },
   { keys: ['t'], label: 'Back to this week' },
 ];
 
-// Board keys — on a focused project card. Alt rather than Cmd because ⌘← is
+// Board keys — on a focused goal card. Alt rather than Cmd because ⌘← is
 // Back in a browser and the board is a normal document.
 const BOARD_KEYS: { keys: string[]; label: string }[] = [
-  { keys: ['↵'], label: 'Open the project' },
+  { keys: ['↵'], label: 'Open the goal' },
   { keys: ['⌥', '←/→'], label: 'Move to the previous / next horizon' },
   { keys: ['⌥', '↑/↓'], label: 'Move up / down within the horizon' },
 ];
 
-// Step-tree keys, inside a project's drawer. Indent/outdent are chords rather
-// than Tab: on Tab they made the tree a keyboard trap, and re-parented a step
+// Task-tree keys, inside a goal's Work tab. Indent/outdent are chords rather
+// than Tab: on Tab they made the tree a keyboard trap, and re-parented a task
 // on the way. A chord also has to be documented somewhere to exist at all,
-// which is what this block is for.
+// which is what this block is for — and so does `X`, which took completion
+// over from Space.
 const TREE_KEYS: { keys: string[]; label: string }[] = [
-  { keys: ['↑', '↓'], label: 'Move between steps' },
-  { keys: ['⌘', 'click'], label: 'Add a step to the selection' },
+  { keys: ['↑', '↓'], label: 'Move between tasks' },
+  { keys: ['↵'], label: 'Rename the focused task' },
+  { keys: ['X'], label: 'Check the focused task off' },
+  { keys: ['Space'], label: 'Add the focused task to the selection' },
+  { keys: ['⌘', 'click'], label: 'Add a task to the selection' },
   { keys: ['⇧', '↑/↓'], label: 'Extend the selection' },
-  { keys: ['⌘', 'A'], label: 'Select every step' },
+  { keys: ['⌘', 'A'], label: 'Select every task' },
   { keys: ['⌫'], label: 'Delete the selection' },
-  { keys: ['→', '←'], label: 'Expand or collapse a step' },
-  { keys: ['Space'], label: 'Check the focused step off' },
-  { keys: ['⌘', ']'], label: 'Indent — make it a sub-step' },
+  { keys: ['→', '←'], label: 'Expand or collapse a task' },
+  { keys: ['S'], label: 'Cycle a task: to do → in progress → blocked' },
+  // ⇧S, not plain S. S has cycled status on this row for a long time and is
+  // one of four documented routes to in-progress/blocked; rebinding the
+  // commonest keystroke here would change what it means without warning.
+  { keys: ['⇧', 'S'], label: 'Schedule the focused task' },
+  { keys: ['E'], label: 'Estimate the focused task' },
+  { keys: ['O'], label: 'Open a milestone as its own workspace' },
+  { keys: ['⌘', '↵'], label: 'Add a task below this one' },
+  { keys: ['⌘', ']'], label: 'Indent — make it a subtask' },
   { keys: ['⌘', '['], label: 'Outdent' },
 ];
 
@@ -136,15 +151,15 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
         className="w-full max-w-[360px] bg-panel border border-line rounded-card shadow-card p-[20px]"
       >
         <div className="flex items-center justify-between mb-[14px]">
-          <h2 className="font-disp text-h3 font-semibold tracking-[-0.01em]">Keyboard shortcuts</h2>
+          <h2 className="text-h3 font-semibold tracking-[-0.01em]">Keyboard shortcuts</h2>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="Close shortcuts"
-            className="text-muted hover:text-ink text-lead px-[6px] py-[2px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
+            className="text-muted hover:text-ink px-[6px] py-[2px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover"
           >
-            ✕
+            <IconX size={15} />
           </button>
         </div>
         <dl className="flex flex-col gap-[9px]">
@@ -153,8 +168,8 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           ))}
         </dl>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
-            While planning a step
+          <h3 className="text-meta font-semibold text-muted mb-[9px]">
+            While planning a task
           </h3>
           <dl className="flex flex-col gap-[9px]">
             {PLANNER_KEYS.map((shortcut) => (
@@ -163,8 +178,8 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           </dl>
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
-            On a project card
+          <h3 className="text-meta font-semibold text-muted mb-[9px]">
+            On a goal card
           </h3>
           <dl className="flex flex-col gap-[9px]">
             {BOARD_KEYS.map((shortcut) => (
@@ -173,8 +188,8 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           </dl>
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="font-mono text-tiny tracking-[.1em] uppercase text-muted font-semibold mb-[9px]">
-            In a project's steps
+          <h3 className="text-meta font-semibold text-muted mb-[9px]">
+            In a goal's tasks
           </h3>
           <dl className="flex flex-col gap-[9px]">
             {TREE_KEYS.map((shortcut) => (

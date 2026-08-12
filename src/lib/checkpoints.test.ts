@@ -64,7 +64,7 @@ describe('checkpointWithin', () => {
   it('ignores done checkpoints', () => {
     const goal: Goal = {
       ...baseGoal,
-      nodes: [{ id: 'done', title: 'Already reached', checkpoint: true, done: true, deadline: '2026-08-03' }],
+      nodes: [{ id: 'done', title: 'Already reached', checkpoint: true, status: 'done', deadline: '2026-08-03' }],
     };
 
     expect(checkpointWithin(goal, 7, '2026-08-01')).toBe(false);
@@ -81,7 +81,7 @@ describe('nextCheckpoint', () => {
           id: 'group',
           title: 'Group',
           children: [
-            { id: 'done', title: 'Done', checkpoint: true, done: true, deadline: '2026-08-02' },
+            { id: 'done', title: 'Done', checkpoint: true, status: 'done', deadline: '2026-08-02' },
             { id: 'earlier', title: 'Earlier', checkpoint: true, deadline: '2026-08-03' },
           ],
         },
@@ -90,7 +90,7 @@ describe('nextCheckpoint', () => {
     };
 
     expect(nextCheckpoint(goal, '2026-08-01')).toEqual({ title: 'Earlier', date: '2026-08-03' });
-    expect(nextCheckpoint({ ...baseGoal, nodes: [{ id: 'done', title: 'Done', checkpoint: true, done: true, deadline: '2026-08-02' }] }, '2026-08-01')).toBeNull();
+    expect(nextCheckpoint({ ...baseGoal, nodes: [{ id: 'done', title: 'Done', checkpoint: true, status: 'done', deadline: '2026-08-02' }] }, '2026-08-01')).toBeNull();
   });
 });
 
@@ -105,8 +105,8 @@ describe('milestonesToCheckpointNodes', () => {
     } as Goal;
 
     expect(milestonesToCheckpointNodes(goal)).toEqual([
-      { id: 'm1', title: 'Exam', checkpoint: true, done: false, start: '2026-08-03', deadline: '2026-08-03' },
-      { id: 'm2', title: 'Demo', checkpoint: true, done: false, start: '2026-08-10', deadline: '2026-08-10' },
+      { id: 'm1', title: 'Exam', checkpoint: true, start: '2026-08-03', deadline: '2026-08-03' },
+      { id: 'm2', title: 'Demo', checkpoint: true, start: '2026-08-10', deadline: '2026-08-10' },
     ]);
   });
 
@@ -117,7 +117,7 @@ describe('milestonesToCheckpointNodes', () => {
   it('mints a fresh id when a milestone collides with a node in the tree', () => {
     const goal = {
       ...baseGoal,
-      nodes: [{ id: 'x', title: 'Existing step', done: false }],
+      nodes: [{ id: 'x', title: 'Existing step' }],
       milestones: [{ id: 'x', title: 'Marker', date: '2026-08-01' }],
     } as Goal;
 

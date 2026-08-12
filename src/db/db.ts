@@ -5,6 +5,8 @@ import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
 import { parseAvailability, serializeAvailability } from '../lib/availability';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
+import { migrateNodeStatus } from '../lib/migrateNodeStatus';
+import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { decodeAssets, encodeAssets } from '../lib/backupAssets';
 
@@ -84,7 +86,16 @@ export async function loadState(): Promise<AppState> {
     db.tasks.toArray(),
     db.sessions.toArray(),
   ]);
-  return { goals, habits, tasks, sessions };
+  /*
+   * Status only, here.
+   *
+   * `migrateWorkBlocks` runs in the store's `initStore` instead, AFTER
+   * `migrateSlots` — which repairs pre-slot-era data by reading the very
+   * `plannedDay`/`plannedStartMin` pair the block migration consumes. Running
+   * the two in the other order leaves the repair with nothing to read, and it
+   * needs the availability windows and the tab lock that only the store has.
+   */
+  return { goals: migrateNodeStatus(goals), habits, tasks, sessions };
 }
 
 export async function persist(state: AppState): Promise<void> {
@@ -147,12 +158,21 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
   await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
-/** Which sidebar panels are expanded. The backlog is pinned and never listed. */
-export type SidebarPanel = 'habits' | 'stats' | 'availability';
+/**
+ * The collapsible sections in the Plan rail.
+ *
+ * Down to one. Stats was an accordion of figures the week header already
+ * carries, and Working hours was a settings form sitting as a peer of the one
+ * section used repeatedly while planning — both left the rail on the way to
+ * Settings and the header. An unknown value in a stored list is dropped by
+ * `parseSidebarPanels`, so an old preference naming either of them degrades to
+ * "collapsed" rather than to an error.
+ */
+export type SidebarPanel = 'habits';
 
 // Stored order — `saveSidebarPanels` writes panels in this order, so append
 // new members rather than inserting them.
-const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits', 'stats', 'availability'];
+const SIDEBAR_PANELS: readonly SidebarPanel[] = ['habits'];
 const SIDEBAR_PANELS_KEY = 'sidebarPanels';
 
 /**
@@ -204,6 +224,29 @@ export async function loadPlanMode(): Promise<PlanMode> {
 
 export async function savePlanMode(mode: PlanMode): Promise<void> {
   await db.settings.put({ key: PLAN_MODE_KEY, value: mode });
+}
+
+/**
+ * Which representation the Goals page is in. A device preference, like
+ * `PlanMode` — list, board and timeline are ways of looking at the same
+ * portfolio, not different data, so this never rides in `AppState`.
+ */
+export type GoalsMode = 'board' | 'timeline';
+
+const GOALS_MODE_KEY = 'goalsMode';
+
+/**
+ * Total parse, like `parsePlanMode`. Board is the default because it is the
+ * mode you can act in: a card can be dragged between horizons and opened.
+ * Timeline answers "when does all of this land", which is a weekly question.
+ */
+export async function loadGoalsMode(): Promise<GoalsMode> {
+  const row = await db.settings.get(GOALS_MODE_KEY);
+  return row?.value === 'timeline' ? 'timeline' : 'board';
+}
+
+export async function saveGoalsMode(mode: GoalsMode): Promise<void> {
+  await db.settings.put({ key: GOALS_MODE_KEY, value: mode });
 }
 
 // One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
@@ -513,11 +556,24 @@ export async function importStateFromFile(
   // Imported data must never enter the running store with the retired field:
   // converting before persist also makes a crash before resetCheckpointMigration
   // safe, because the done-flag cannot strand the just-imported milestones.
-  const { goals } = migrateCheckpoints(sanitizedGoals);
+  // Both migrations, in this order: migrateCheckpoints can APPEND nodes built
+  // from legacy milestones, and those nodes must go through the status
+  // migration too rather than entering the store carrying `done`.
+  const { goals: checkpointed } = migrateCheckpoints(sanitizedGoals);
+  /*
+   * …and the block migration last, so nodes APPENDED by migrateCheckpoints go
+   * through it too rather than entering the store with a legacy placement.
+   *
+   * Unlike hydration there is no `migrateSlots` to run first — this path has no
+   * availability windows to place anything against — so a day with no start
+   * minute degrades to a week commitment here. That is lossless: the rail lists
+   * a week-committed leaf exactly as it listed a day-committed one.
+   */
+  const blocked = migrateWorkBlocks(migrateNodeStatus(checkpointed), raw.tasks ?? []);
   const parsed: AppState = {
-    goals,
+    goals: blocked.goals,
     habits: (raw.habits ?? []).map(sanitizeBackupHabit),
-    tasks: raw.tasks ?? [],
+    tasks: blocked.tasks,
     sessions: raw.sessions ?? [],
   };
   await persist(parsed);

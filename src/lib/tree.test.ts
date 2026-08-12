@@ -10,14 +10,17 @@ import {
   firstOpenLeaf,
   insertSiblingAfter,
   findInAll,
+  isLeafNode,
+  isContainerNode,
 } from './tree';
 import { goalPct } from './pct';
-import type { Goal, GoalNode } from '../db/types';
+import type { Goal, GoalNode, StepStatus } from '../db/types';
+import { makeBlock } from './blocks';
 
 // ---- helpers ----
 
 function leaf(id: string, done: boolean): GoalNode {
-  return { id, title: id, done };
+  return { id, title: id, ...(done ? { status: 'done' as const } : {}) };
 }
 
 function container(id: string, children: GoalNode[]): GoalNode {
@@ -27,6 +30,28 @@ function container(id: string, children: GoalNode[]): GoalNode {
 function makeGoal(id: string, nodes: GoalNode[]): Goal {
   return { id, title: id, start: '2026-01-01', deadline: '2026-12-31', nodes };
 }
+
+// ---- isLeafNode / isContainerNode ----
+
+describe('isLeafNode', () => {
+  it('is true when the node has no children key', () => {
+    const node: GoalNode = { id: 'a', title: 'a' };
+    expect(isLeafNode(node)).toBe(true);
+    expect(isContainerNode(node)).toBe(false);
+  });
+
+  it('is true when children is an empty array', () => {
+    const node: GoalNode = { id: 'a', title: 'a', children: [] };
+    expect(isLeafNode(node)).toBe(true);
+    expect(isContainerNode(node)).toBe(false);
+  });
+
+  it('is false when children is populated', () => {
+    const node: GoalNode = { id: 'a', title: 'a', children: [leaf('b', false)] };
+    expect(isLeafNode(node)).toBe(false);
+    expect(isContainerNode(node)).toBe(true);
+  });
+});
 
 // ---- cloneGoals ----
 
@@ -92,10 +117,10 @@ describe('indentNode', () => {
     expect(result[0].nodes).toHaveLength(1);
     const a = result[0].nodes[0];
     expect(a.id).toBe('A');
-    expect(a.done).toBeUndefined();          // done removed → container
+    expect(a.status).toBeUndefined();          // done removed → container
     expect(a.children).toHaveLength(1);
     expect(a.children![0].id).toBe('B');
-    expect(a.children![0].done).toBe(false); // B's state preserved
+    expect(a.children![0].status).toBeUndefined(); // B's state preserved
   });
 
   it('moved node is appended to existing container children', () => {
@@ -154,8 +179,8 @@ describe('indentNode', () => {
     it('drops checkpoint when a checkpoint leaf becomes a container', () => {
       const goals: Goal[] = [{
         id: 'g1', title: 'G', nodes: [
-          { id: 'a', title: 'A', done: false, checkpoint: true },
-          { id: 'b', title: 'B', done: false },
+          { id: 'a', title: 'A', checkpoint: true },
+          { id: 'b', title: 'B' },
         ],
       }];
 
@@ -169,32 +194,32 @@ describe('indentNode', () => {
     it('leaves checkpoint absent when a non-checkpoint leaf becomes a container', () => {
       const goals: Goal[] = [{
         id: 'g1', title: 'G', nodes: [
-          { id: 'a', title: 'A', done: false },
-          { id: 'b', title: 'B', done: false },
+          { id: 'a', title: 'A' },
+          { id: 'b', title: 'B' },
         ],
       }];
 
       const next = indentNode(goals, 'b');
 
       expect(next[0].nodes[0]).toEqual({
-        id: 'a', title: 'A', children: [{ id: 'b', title: 'B', done: false }],
+        id: 'a', title: 'A', children: [{ id: 'b', title: 'B' }],
       });
     });
 
-    it('drops done, plannedWeek and plannedDay when the preceding leaf becomes a container', () => {
+    it('drops status, plannedWeek and plannedDay when the preceding leaf becomes a container', () => {
       const goals: Goal[] = [{
         id: 'g1', title: 'G', start: '2026-01-01', deadline: '2026-12-31',
         nodes: [
-          { id: 'a', title: 'A', done: false, plannedWeek: '2026-07-13', plannedDay: '2026-07-15' },
-          { id: 'b', title: 'B', done: false },
+          { id: 'a', title: 'A', status: 'done', plannedWeek: '2026-07-13', blocks: [makeBlock('2026-07-15', 540, 60)] },
+          { id: 'b', title: 'B' },
         ],
       }];
       const next = indentNode(goals, 'b');
       const a = next[0].nodes[0];
       expect(a.children).toHaveLength(1);
-      expect(a.done).toBeUndefined();
+      expect(a.status).toBeUndefined();
       expect(a.plannedWeek).toBeUndefined();
-      expect(a.plannedDay).toBeUndefined();
+      expect(a.blocks).toBeUndefined();
     });
 
     it('drops doneAt when a completed preceding leaf becomes a container', () => {
@@ -202,14 +227,14 @@ describe('indentNode', () => {
         id: 'g1',
         title: 'G',
         nodes: [
-          { id: 'a', title: 'A', done: true, doneAt: '2026-07-22' },
-          { id: 'b', title: 'B', done: false },
+          { id: 'a', title: 'A', status: 'done', doneAt: '2026-07-22' },
+          { id: 'b', title: 'B' },
         ],
       }];
 
       const next = indentNode(goals, 'b');
 
-      expect(next[0].nodes[0].done).toBeUndefined();
+      expect(next[0].nodes[0].status).toBeUndefined();
       expect(next[0].nodes[0].doneAt).toBeUndefined();
     });
 
@@ -222,10 +247,10 @@ describe('indentNode', () => {
             id: 'a',
             title: 'A',
             children: [],
-            done: true,
+            status: 'done',
             doneAt: '2026-07-22',
           },
-          { id: 'b', title: 'B', done: false },
+          { id: 'b', title: 'B' },
         ],
       }];
 
@@ -233,15 +258,15 @@ describe('indentNode', () => {
       const a = next[0].nodes[0];
 
       expect(a.children?.map((node) => node.id)).toEqual(['b']);
-      expect(a.done).toBeUndefined();
+      expect(a.status).toBeUndefined();
       expect(a.doneAt).toBeUndefined();
     });
 
     it('drops estimateMin when a leaf becomes a container via indent', () => {
       const goals: Goal[] = [{
         id: 'g1', title: 'G', nodes: [
-          { id: 'a', title: 'A', done: false, estimateMin: 90 },
-          { id: 'b', title: 'B', done: false },
+          { id: 'a', title: 'A', estimateMin: 90 },
+          { id: 'b', title: 'B' },
         ],
       }];
       const next = indentNode(goals, 'b');
@@ -262,12 +287,12 @@ describe('outdentNode', () => {
     expect(result[0].nodes).toHaveLength(2);
     const a = result[0].nodes[0];
     expect(a.id).toBe('A');
-    expect(a.done).toBe(false);       // A converted back to leaf
+    expect(a.status).toBeUndefined();       // A converted back to leaf
     expect(a.children).toBeUndefined();
 
     const b = result[0].nodes[1];
     expect(b.id).toBe('B');           // B placed after A
-    expect(b.done).toBe(false);
+    expect(b.status).toBeUndefined();
   });
 
   it('parent retains remaining children when it still has some', () => {
@@ -323,7 +348,7 @@ describe('outdentNode', () => {
     expect(a.id).toBe('A');
     expect(a.children).toHaveLength(2);
     expect(a.children![0].id).toBe('B');
-    expect(a.children![0].done).toBe(false); // B → leaf
+    expect(a.children![0].status).toBeUndefined(); // B → leaf
     expect(a.children![0].children).toBeUndefined();
     expect(a.children![1].id).toBe('C');
   });
@@ -432,15 +457,17 @@ describe('equal-weight roll-up invariant across operations', () => {
   it('nodePct is still equal-weight per level after indent+outdent round-trip', () => {
     // Start: [A(T), B(T), C(F)] → goalPct = 66.7
     // Indent B under A: [A(container→[B(T)]), C(F)] → goalPct = (100+0)/2 = 50
-    // Outdent B from A: [A(leaf,F), B(T), C(F)] → goalPct = (0+100+0)/3 = 33.3
-    // (not the same as start because A's `done` was dropped during indent)
+    // Outdent B from A: [A(leaf, cleared), B(T), C(F)] → goalPct = 33.3
+    // A becoming a container during indent clears its completion (indentNode
+    // deletes `status`/`blockedOn`/`doneAt`) — that loss is deliberate and
+    // undoable (CLAUDE.md), so outdenting B back out does not restore it: A
+    // comes back as an open leaf, not the done one it started as.
     const goals = [makeGoal('g', [leaf('A', true), leaf('B', true), leaf('C', false)])];
 
     const afterIndent = indentNode(goals, 'B');
     expect(goalPct(afterIndent[0])).toBeCloseTo(50, 5);
 
     const afterOutdent = outdentNode(afterIndent, 'B');
-    // A is now done=false (lost its done when it became a container)
     expect(goalPct(afterOutdent[0])).toBeCloseTo(100 / 3, 3);
   });
 
@@ -472,6 +499,38 @@ describe('firstOpenLeaf', () => {
   });
 });
 
+describe('firstOpenLeaf and status', () => {
+  const leaf = (id: string, status?: StepStatus): GoalNode => ({ id, title: id, ...(status ? { status } : {}) });
+
+  it('prefers a step already in progress over an earlier untouched one', () => {
+    expect(firstOpenLeaf([leaf('a'), leaf('b', 'doing')])?.id).toBe('b');
+  });
+
+  it('takes the first doing when several are in progress', () => {
+    expect(firstOpenLeaf([leaf('a', 'doing'), leaf('b', 'doing')])?.id).toBe('a');
+  });
+
+  it('skips blocked work entirely', () => {
+    expect(firstOpenLeaf([leaf('a', 'blocked'), leaf('b')])?.id).toBe('b');
+  });
+
+  /**
+   * The new case every caller must handle. There IS open work, but none of it
+   * can be worked — so "plan the next step" is the wrong offer and the card
+   * must say "unblock" instead.
+   */
+  it('returns null when every open leaf is blocked', () => {
+    expect(firstOpenLeaf([leaf('a', 'blocked'), leaf('b', 'done')])).toBeNull();
+  });
+
+  it('finds a doing leaf across container boundaries', () => {
+    expect(firstOpenLeaf([
+      { id: 'p', title: 'P', children: [leaf('c1')] },
+      { id: 'q', title: 'Q', children: [leaf('c2', 'doing')] },
+    ])?.id).toBe('c2');
+  });
+});
+
 /**
  * Enter in the step tree used to call `addChild(parentId)`, which pushes onto
  * the end — so on the first of ten psets the new row appeared TENTH — and at
@@ -481,12 +540,12 @@ describe('firstOpenLeaf', () => {
 describe('insertSiblingAfter', () => {
   const tree = (): Goal[] => [{
     id: 'g', title: 'G', column: 0, nodes: [
-      { id: 'a', title: 'Pset 1', done: false },
+      { id: 'a', title: 'Pset 1' },
       { id: 'grp', title: 'Exam prep', children: [
-        { id: 'c1', title: 'Review', done: false },
-        { id: 'c2', title: 'Practice', done: false },
+        { id: 'c1', title: 'Review' },
+        { id: 'c2', title: 'Practice' },
       ] },
-      { id: 'b', title: 'Pset 2', done: false },
+      { id: 'b', title: 'Pset 2' },
     ],
   }];
 
@@ -516,7 +575,7 @@ describe('insertSiblingAfter', () => {
     const out = insertSiblingAfter(tree(), 'grp', 'Sibling of the group')!;
     const made = findInAll(out.goals, out.newId)!;
     expect(made.children).toBeUndefined();
-    expect(made.done).toBe(false);
+    expect(made.status).toBeUndefined();
   });
 
   it('does not touch the array it was given', () => {

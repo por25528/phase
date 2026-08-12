@@ -11,7 +11,7 @@ describe('migrateCheckpoints', () => {
     const goal: LegacyGoal = {
       id: 'g1',
       title: 'Project',
-      nodes: [{ id: 'step', title: 'Existing step', done: false }],
+      nodes: [{ id: 'step', title: 'Existing step' }],
       milestones: [
         { id: 'm2', title: 'Demo', date: '2026-08-10' },
         { id: 'm1', title: 'Exam', date: '2026-08-03' },
@@ -21,12 +21,11 @@ describe('migrateCheckpoints', () => {
     const result = migrateCheckpoints([goal]);
 
     expect(result.goals[0].nodes).toEqual([
-      { id: 'step', title: 'Existing step', done: false },
+      { id: 'step', title: 'Existing step' },
       {
         id: 'm1',
         title: 'Exam',
         checkpoint: true,
-        done: false,
         start: '2026-08-03',
         deadline: '2026-08-03',
       },
@@ -34,7 +33,6 @@ describe('migrateCheckpoints', () => {
         id: 'm2',
         title: 'Demo',
         checkpoint: true,
-        done: false,
         start: '2026-08-10',
         deadline: '2026-08-10',
       },
@@ -47,8 +45,8 @@ describe('migrateCheckpoints', () => {
       id: 'g1',
       title: 'Project',
       nodes: [
-        { id: 'first', title: 'First', done: false },
-        { id: 'second', title: 'Second', done: false },
+        { id: 'first', title: 'First' },
+        { id: 'second', title: 'Second' },
       ],
       milestones: [{ id: 'm1', title: 'Marker', date: '2026-08-01' }],
     };
@@ -62,7 +60,7 @@ describe('migrateCheckpoints', () => {
     const goal: LegacyGoal = {
       id: 'g1',
       title: 'Project',
-      nodes: [{ id: 'x', title: 'Existing step', done: false }],
+      nodes: [{ id: 'x', title: 'Existing step' }],
       milestones: [{ id: 'x', title: 'Marker', date: '2026-08-01' }],
     };
 
@@ -81,7 +79,7 @@ describe('migrateCheckpoints', () => {
     const goal: LegacyGoal = {
       id: 'g1',
       title: 'Project',
-      nodes: [{ id: 'step', title: 'Step', done: false }],
+      nodes: [{ id: 'step', title: 'Step' }],
       milestones: [{ id: 'm1', title: 'Marker', date: '2026-08-01' }],
     };
 

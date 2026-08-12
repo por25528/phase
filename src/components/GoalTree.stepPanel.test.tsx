@@ -19,6 +19,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -51,7 +53,7 @@ const PROJECT: Goal = {
   id: 'g',
   title: 'Project',
   column: 0,
-  nodes: [{ id: 'a', title: 'Alpha', done: false }],
+  nodes: [{ id: 'a', title: 'Alpha' }],
 };
 
 type Store = typeof import('../state/store');
@@ -75,23 +77,76 @@ async function mountTree(): Promise<{ store: Store; user: ReturnType<typeof user
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => cleanup());
 
-describe('opening a step from its row', () => {
-  it('the ◈ control selects that step and nothing else', async () => {
+/**
+ * The row's own click is the route to the inspector now. There used to be a
+ * `◈` hover control for it, because the row click was the completion gesture
+ * and could not be spent on a disclosure — which is the trade this slice
+ * reversed: completion moved to the checkbox, where it says what it does, and
+ * the row went back to meaning "this one".
+ */
+describe('opening a task from its row', () => {
+  it('opens the inspector on a plain click, and completes nothing', async () => {
     const { store, user } = await mountTree();
-    const before = store.getState().goals[0].nodes[0].done;
-
-    await user.click(screen.getByRole('button', { name: 'Open details for "Alpha"' }));
-
-    expect(store.getState().openStepId).toBe('a');
-    // The click must not have leaked to the row's toggle.
-    expect(store.getState().goals[0].nodes[0].done).toBe(before);
-  });
-
-  it('a plain row click still toggles done, not the panel', async () => {
-    const { store, user } = await mountTree();
+    const before = store.getState().goals[0].nodes[0].status;
 
     await user.click(screen.getByText('Alpha'));
 
+    expect(store.getState().openStepId).toBe('a');
+    expect(store.getState().goals[0].nodes[0].status).toBe(before);
+  });
+
+  it('completes from the checkbox without opening the inspector', async () => {
+    const { store, user } = await mountTree();
+
+    await user.click(screen.getByRole('checkbox', { name: /Mark "Alpha" as done/ }));
+
+    expect(store.getState().goals[0].nodes[0].status).toBe('done');
     expect(store.getState().openStepId).toBeNull();
+  });
+
+  it('expands from the chevron without opening the inspector', async () => {
+    const { store, user } = await mountTree();
+    const container = store.getState().goals[0].nodes.find((n) => n.children);
+    if (!container) return;
+
+    const open = store.getState().expanded.has(container.id);
+    await user.click(screen.getAllByRole('button', { name: open ? 'Collapse' : 'Expand' })[0]);
+
+    expect(store.getState().expanded.has(container.id)).toBe(!open);
+    expect(store.getState().openStepId).toBeNull();
+  });
+});
+
+/**
+ * The keyboard model moved with the pointer one, and for the same reason: the
+ * dangerous action should take an aimed press.
+ */
+describe('the task row keyboard', () => {
+  it('renames on Enter rather than creating a row nobody asked for', async () => {
+    const { user } = await mountTree();
+    (screen.getByText('Alpha').closest('[data-row]') as HTMLElement).focus();
+
+    await user.keyboard('{Enter}');
+
+    expect(screen.getByRole('textbox')).toBeTruthy();
+  });
+
+  it('inserts a sibling below on Cmd+Enter', async () => {
+    const { store, user } = await mountTree();
+    const before = store.getState().goals[0].nodes.length;
+    (screen.getByText('Alpha').closest('[data-row]') as HTMLElement).focus();
+
+    await user.keyboard('{Meta>}{Enter}{/Meta}');
+
+    expect(store.getState().goals[0].nodes.length).toBe(before + 1);
+  });
+
+  it('completes on X and leaves Space to the selection', async () => {
+    const { store, user } = await mountTree();
+    (screen.getByText('Alpha').closest('[data-row]') as HTMLElement).focus();
+
+    await user.keyboard('x');
+
+    expect(store.getState().goals[0].nodes[0].status).toBe('done');
   });
 });

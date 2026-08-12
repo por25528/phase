@@ -35,6 +35,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -68,15 +70,15 @@ const PROJECT: Goal = {
   title: '6.5840',
   column: 0,
   nodes: [
-    { id: 'a', title: 'Implement AppendEntries', done: false },
-    { id: 'b', title: 'Already estimated', done: false, estimateMin: 45 },
+    { id: 'a', title: 'Implement AppendEntries' },
+    { id: 'b', title: 'Already estimated', estimateMin: 45 },
     // Only reachable from an imported or hand-edited file; `parseEstimateInput`
     // cannot produce it.
-    { id: 'junk', title: 'Junk import', done: false, estimateMin: 0 },
+    { id: 'junk', title: 'Junk import', estimateMin: 0 },
     {
       id: 'grp',
       title: 'A container',
-      children: [{ id: 'c1', title: 'A child leaf', done: false }],
+      children: [{ id: 'c1', title: 'A child leaf' }],
     },
   ],
 };
@@ -96,6 +98,66 @@ async function mountTree(): Promise<{ store: Store; user: ReturnType<typeof user
     return createElement(GoalTree, { nodes: goals[0].nodes });
   };
   render(createElement(TreeHost));
+  return { store, user: userEvent.setup() };
+}
+
+/**
+ * Mount the task inspector over one node.
+ *
+ * Logging actual time moved off the tree row and into the inspector, then a
+ * leaf's inspector moved again to its own page (`TaskPage`) — a container
+ * still docks `StepPanel`, which is why `nodeId: 'grp'` is the one caller that
+ * asks for it below. The assertions in the block below are the SAME ones that
+ * ran against the row — same control, same accessible names, same store writes
+ * — only the host changed.
+ */
+async function mountInspector(
+  nodeId: string,
+): Promise<{ store: Store; user: ReturnType<typeof userEvent.setup> }> {
+  vi.resetModules();
+  dbMocks.loadState.mockResolvedValueOnce({
+    goals: [structuredClone(PROJECT)], habits: [], tasks: [], sessions: [],
+  });
+  const store = await import('../state/store');
+  await store.initStore();
+  store.actions.openProject('g');
+  const pick = (nodes: Goal['nodes']): Goal['nodes'][number] | null => {
+    for (const n of nodes) {
+      if (n.id === nodeId) return n;
+      if (n.children) {
+        const hit = pick(n.children);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  };
+  const isContainer = !!pick(PROJECT.nodes)?.children?.length;
+  if (isContainer) {
+    const { StepPanel } = await import('../views/project/StepPanel');
+    const PanelHost = () => {
+      const current = store.useAppStore();
+      const goal = current.goals[0];
+      return createElement(StepPanel, {
+        goal,
+        node: pick(goal.nodes)!,
+        actions: current.actions,
+      });
+    };
+    render(createElement(PanelHost));
+  } else {
+    const { TaskPage } = await import('../views/project/TaskPage');
+    const PageHost = () => {
+      const current = store.useAppStore();
+      const goal = current.goals[0];
+      return createElement(TaskPage, {
+        goal,
+        node: pick(goal.nodes)!,
+        backLabel: goal.title,
+        onBack: () => current.actions.closeStep(),
+      });
+    };
+    render(createElement(PageHost));
+  }
   return { store, user: userEvent.setup() };
 }
 
@@ -322,19 +384,23 @@ describe('reaching the estimate from the step tree', () => {
       }),
     );
     const leaf = store.getState().goals[0].nodes.find((n) => n.id === 'a');
-    expect(leaf?.done).toBe(false);
+    expect(leaf?.status).toBeUndefined();
   });
 });
 
-describe('logging actual time from the step tree', () => {
+describe('logging actual time from the task inspector', () => {
   it('offers a log control on every leaf and none on a container', async () => {
-    await mountTree();
+    await mountInspector('a');
     expect(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' })).toBeTruthy();
+
+    cleanup();
+    // A container has no ledger of its own, exactly as it has no estimate.
+    await mountInspector('grp');
     expect(screen.queryByRole('button', { name: /log time on "A container"/i })).toBeNull();
   });
 
   it('logs from a preset and shows the running total', async () => {
-    const { store, user } = await mountTree();
+    const { store, user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     await user.click(
       screen.getByRole('button', { name: 'Log 1h on "Implement AppendEntries"' }),
@@ -348,7 +414,7 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('accumulates a second sitting rather than replacing the first', async () => {
-    const { store, user } = await mountTree();
+    const { store, user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     await user.click(screen.getByRole('button', { name: 'Log 30m on "Implement AppendEntries"' }));
     await user.click(
@@ -363,7 +429,7 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('shows the comparison against the estimate', async () => {
-    const { user } = await mountTree();
+    const { user } = await mountInspector('b');
     // "Already estimated" carries a 45m estimate; logging 1h is 1.3× over.
     await user.click(screen.getByRole('button', { name: 'Log time on "Already estimated"' }));
     await user.click(screen.getByRole('button', { name: 'Log 1h on "Already estimated"' }));
@@ -377,7 +443,7 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('says so when there is no estimate to compare against', async () => {
-    const { user } = await mountTree();
+    const { user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     await user.click(screen.getByRole('button', { name: 'Log 1h on "Implement AppendEntries"' }));
 
@@ -388,7 +454,7 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('clears a mis-logged entry', async () => {
-    const { store, user } = await mountTree();
+    const { store, user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     await user.click(screen.getByRole('button', { name: 'Log 4h on "Implement AppendEntries"' }));
 
@@ -402,7 +468,7 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('offers no clear control before anything is logged', async () => {
-    const { user } = await mountTree();
+    const { user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     expect(
       screen.queryByRole('button', { name: /^Clear the time logged/ }),
@@ -410,16 +476,16 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('does not complete the step when time is logged on it', async () => {
-    const { store, user } = await mountTree();
+    const { store, user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     await user.click(screen.getByRole('button', { name: 'Log 30m on "Implement AppendEntries"' }));
     // Logging time is journalling, not progress. The row's click handler must
     // never see this.
-    expect(store.getState().goals[0].nodes.find((n) => n.id === 'a')?.done).toBe(false);
+    expect(store.getState().goals[0].nodes.find((n) => n.id === 'a')?.status).toBeUndefined();
   });
 
   it('types a duration and commits it with Enter', async () => {
-    const { store, user } = await mountTree();
+    const { store, user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     const field = screen.getByRole('textbox', {
       name: 'Estimate for time on Implement AppendEntries',
@@ -429,7 +495,7 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('logs only the preset when a draft was typed first', async () => {
-    const { store, user } = await mountTree();
+    const { store, user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     const field = screen.getByRole('textbox', {
       name: 'Estimate for time on Implement AppendEntries',
@@ -444,7 +510,7 @@ describe('logging actual time from the step tree', () => {
   });
 
   it('returns focus to the badge after logging', async () => {
-    const { user } = await mountTree();
+    const { user } = await mountInspector('a');
     await user.click(screen.getByRole('button', { name: 'Log time on "Implement AppendEntries"' }));
     await user.click(screen.getByRole('button', { name: 'Log 30m on "Implement AppendEntries"' }));
     expect(document.activeElement).toBe(

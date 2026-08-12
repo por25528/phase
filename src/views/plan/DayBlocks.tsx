@@ -20,6 +20,14 @@ interface DayItem extends LaneSpan {
   estimated: boolean;
   goalId: string | null; // null for busy
   id: string | null;     // nodeId or taskId; null for busy
+  /**
+   * Which SITTING this bar is, or null for a calendar event.
+   *
+   * A task can be sat several times, so `id` no longer identifies a bar. Every
+   * action a bar offers — remove, resize, drag — acts on one sitting, and
+   * passing the task id would make each of them affect all of them.
+   */
+  blockId: string | null;
 }
 
 /**
@@ -58,10 +66,10 @@ export function DayBlocks({
    * by adding `!readOnly` below.
    */
   readOnly?: boolean;
-  onRemove: (kind: 'step' | 'task', id: string, goalId: string | null) => void;
+  onRemove: (kind: 'step' | 'task', id: string, goalId: string | null, blockId: string) => void;
   /** No `goalId`: both `toggleTask` and `toggleLeaf` key off the id alone. */
   onComplete: (kind: 'step' | 'task', id: string) => void;
-  onResize: (kind: 'step' | 'task', id: string, minutes: number) => void;
+  onResize: (kind: 'step' | 'task', id: string, blockId: string, minutes: number) => void;
   /** Task the command palette is pointing at — marked wherever it turns up. */
   reveal?: RevealTarget | null;
 }) {
@@ -71,7 +79,9 @@ export function DayBlocks({
   // already done. Plan no longer does those passes either; the `scheduledSpans`
   // memo that used to compute them was deleted in favour of `scheduledByDate`.
   const work: DayItem[] = items.map((item) => ({
-    key: `${item.kind}:${item.id}`,
+    // Keyed by the SITTING. Two sittings of one task on the same day are two
+    // bars, and `${kind}:${id}` gave them the same React key.
+    key: `${item.kind}:${item.blockId}`,
     kind: item.kind,
     title: item.title,
     startMin: item.startMin,
@@ -80,10 +90,12 @@ export function DayBlocks({
     estimated: item.estimated,
     goalId: item.goalId,
     id: item.id,
+    blockId: item.blockId,
   }));
 
   const busy: DayItem[] = dayBusySpans(date, blocks, allDayBlocks).map((span) => ({
     key: span.key,
+    blockId: null,
     kind: 'busy' as const,
     title: span.title,
     startMin: span.startMin,
@@ -111,7 +123,13 @@ export function DayBlocks({
         };
         const isWork = item.kind !== 'busy' && item.id !== null;
         const drag: PlanDragData | undefined = isWork
-          ? { kind: item.kind as 'step' | 'task', id: item.id!, goalId: item.goalId, title: item.title }
+          ? {
+            kind: item.kind as 'step' | 'task', id: item.id!, goalId: item.goalId, title: item.title,
+            blockId: item.blockId!,
+            // Already on the grid, so its length is the block's own height —
+            // no estimate lookup, and no chance of the two disagreeing.
+            durationMin: item.endMin - item.startMin,
+          }
           : undefined;
         return (
           <EventBlock
@@ -121,14 +139,14 @@ export function DayBlocks({
             laneCount={laneCount}
             drag={drag}
             onRemove={
-              isWork && !readOnly ? () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId) : undefined
+              isWork && !readOnly ? () => onRemove(item.kind as 'step' | 'task', item.id!, item.goalId, item.blockId!) : undefined
             }
             onComplete={
               // Not gated on `readOnly` — see the prop's note above.
               isWork ? () => onComplete(item.kind as 'step' | 'task', item.id!) : undefined
             }
             onResize={
-              isWork && !readOnly ? (minutes) => onResize(item.kind as 'step' | 'task', item.id!, minutes) : undefined
+              isWork && !readOnly ? (minutes) => onResize(item.kind as 'step' | 'task', item.id!, item.blockId!, minutes) : undefined
             }
             // A revealed task can be in the rail OR already on the grid; only
             // one of the two renders it, so both carry the same id and mark.

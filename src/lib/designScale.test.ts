@@ -120,6 +120,71 @@ describe('design scale', () => {
   });
 
   /**
+   * `rgba()` is a colour too, and the two assertions above only match `#`.
+   *
+   * The modal scrim sat at `bg-[rgba(20,20,18,0.28)]` in BOTH `Modal` and
+   * `CommandPalette` — duplicated, and the only colour in the app that did not
+   * theme, because nothing here was looking for it. It is now `--scrim`.
+   *
+   * `rgb(var(--c-*))` stays allowed for the same reason as above: that IS the
+   * token. The guard only fires on a literal channel number.
+   */
+  it('declares no literal rgb/hsl colours — use the theme tokens', () => {
+    expect(offenders(/(?:text|bg|border|fill|stroke|ring|shadow)-\[[^\]]*(?:rgba?|hsla?)\(\s*[0-9][^\]]*\]/g))
+      .toEqual([]);
+  });
+
+  /**
+   * An icon has to be in the font, or it is not an icon — it is a lottery.
+   *
+   * Inter is self-hosted and subsetted, and `@fontsource-variable/inter`'s
+   * `unicode-range` list covers Latin, Greek, Cyrillic, Vietnamese and a short
+   * roster of named symbols. Every glyph below is outside all of them, so the
+   * browser resolved each one through per-glyph fallback: the app's close,
+   * complete, rename, drag, expand and overflow icons were drawn by whatever
+   * face the OS offered, at whatever weight it happened to have. Two of them
+   * (`⚠` U+26A0 and `✦` U+2726) have emoji presentation defaults and could
+   * resolve to a colour emoji, which ignores `currentColor` outright.
+   *
+   * It was not visible locally — macOS has a glyph for all of these and they
+   * look plausible — which is exactly why it needs a test rather than an eye.
+   * They now live in `components/Icons.tsx` as SVGs on one grid.
+   *
+   * Only unambiguous ICON characters are listed. Deliberately absent:
+   *   - `⌘ ⌥ ⇧ ⌫ ← →` in `ShortcutsOverlay` name physical keys, have no icon
+   *     equivalent, and are set in `font-mono` (SF Mono / Menlo) which covers
+   *     them in one face.
+   *   - `×` (U+00D7) is a multiplication sign in "1.5× short" and IS in Inter.
+   *   - `·`, `–`, `…` are punctuation, and are in Inter.
+   */
+  const ICON_GLYPHS = '✕✓✎▶◆◇⠿⋯✦⚠⌕＋';
+
+  it('renders no icon as a Unicode glyph — use components/Icons.tsx', () => {
+    // Comments are stripped first: `Icons.tsx` documents each character it
+    // replaced, and half a dozen components explain the control they used to
+    // draw. Over-stripping (a `//` inside a string) can only hide a violation,
+    // never invent one, so the guard stays sound in the direction that matters.
+    const stripComments = (src: string) =>
+      src
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/(^|[^:])\/\/.*$/, '$1'))
+        .join('\n');
+
+    const hits: string[] = [];
+    for (const file of files) {
+      stripComments(readFileSync(file, 'utf8'))
+        .split('\n')
+        .forEach((line, i) => {
+          for (const glyph of ICON_GLYPHS) {
+            if (line.includes(glyph)) hits.push(`${file.slice(SRC.length)}:${i + 1} ${glyph}`);
+          }
+        });
+    }
+    expect(hits).toEqual([]);
+  });
+
+  /**
    * Tailwind emits `text-<key>` for BOTH the `fontSize` and the `colors` scale,
    * into the same stylesheet, with no namespacing. A key present in both
    * therefore produces two `.text-<key>` rules and the later one silently wins
@@ -136,5 +201,138 @@ describe('design scale', () => {
     const fontSizes = Object.keys(extend.fontSize ?? {});
     const colors = Object.keys(extend.colors ?? {});
     expect(fontSizes.filter((key) => colors.includes(key))).toEqual([]);
+  });
+});
+
+/**
+ * Two rules the remaster added, both of them about restraint rather than
+ * consistency — the scale was already consistent and still too ornamental.
+ */
+describe('type roles', () => {
+  /**
+   * Fraunces made ordinary metadata feel editorial: it was on goal titles, task
+   * titles, percentages, modal headings, the focus-summary numerals and the
+   * backlog rows, so a `62%` carried the same voice as a masthead. It is a
+   * brand mark now and nothing else.
+   */
+  it('keeps the display serif out of the working UI', () => {
+    // The file, not the line: pinning a line number makes an unrelated import
+    // above it fail this test, which teaches people to edit the assertion.
+    const files = offenders(/font-disp/g).map((h) => h.split(':')[0]);
+    expect(files).toEqual(['App.tsx']);
+  });
+
+  /**
+   * A letter-spaced uppercase mono eyebrow over every group is a second
+   * typeface doing a job a font weight already does. The survivors are the
+   * weekday strips on the calendars, which is what a terse uppercase micro
+   * label is genuinely for.
+   */
+  it('reserves uppercase for terse date labels', () => {
+    const files = offenders(/uppercase/g).map((h) => h.split(':')[0]);
+    expect([...new Set(files)].sort()).toEqual([
+      'views/plan/MonthGrid.tsx',
+      'views/plan/WeekGrid.tsx',
+      'views/timeline/DaysLane.tsx',
+    ]);
+  });
+});
+
+/**
+ * `.quiet-control` is the one hover-reveal for a CONTROL, because it carries
+ * the `@media (hover: hover)` gate. A hand-rolled hover/focus-within group
+ * reveal has no such gate, so on a touch device the control never appears at
+ * all — it is not "subtle", it is missing. Two calendar buttons shipped that
+ * way. Class order is arbitrary, so the guard watches the revealing variant
+ * anywhere on the line and covers opacity, visibility and display respellings.
+ *
+ * The survivor is a decorative drag hint: `pointer-events-none`, nothing to
+ * click, and giving it `.quiet-control` would impose a 24px interactive
+ * target on something that is not interactive.
+ */
+describe('hover-revealed controls', () => {
+  it('use .quiet-control rather than a hand-rolled reveal', () => {
+    const hits = offenders(/group-(?:hover|focus-within)[^\s"'`]*:(?:opacity-100|visible|block|flex)/g)
+      .map((h) => h.split(':')[0]);
+    expect([...new Set(hits)].sort()).toEqual(['views/plan/sidebar/Habits.tsx']);
+  });
+});
+
+/**
+ * A dashed border is the app's DROP-TARGET signal — what a day column draws
+ * while something is in the air. Spending it on ordinary empty states, in four
+ * board columns at once, is how it stops meaning anything.
+ *
+ * The two survivors are semantic: the drop preview itself, and a calendar block
+ * whose height is a guessed hour rather than an estimate somebody typed.
+ */
+describe('dashed borders', () => {
+  it('are reserved for drop targets and guessed durations', () => {
+    const files = offenders(/border-dashed/g).map((h) => h.split(':')[0]);
+    expect([...new Set(files)].sort()).toEqual([
+      'views/plan/DayColumn.tsx',
+      'views/plan/EventBlock.tsx',
+    ]);
+  });
+});
+
+/**
+ * An empty note should read as empty page, not as an empty form field.
+ *
+ * `.note-prose` is the only large outlined box left on a task page, and it is
+ * outlined even when it holds nothing — which is what made a task detail feel
+ * like a form rather than a document. The border still EXISTS at rest, so the
+ * text does not shift by a pixel when it appears; it is simply transparent
+ * until the editor has focus.
+ */
+describe('the notes editor', () => {
+  const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+  const rule = /\.note-prose\s*\{[^}]*\}/.exec(css)?.[0] ?? '';
+
+  it('keeps its border transparent at rest', () => {
+    expect(rule).toContain('border-transparent');
+    expect(/border-line\b/.test(rule)).toBe(false);
+  });
+
+  it('paints that border only while it is focused', () => {
+    expect(/\.note-prose:focus-within\s*\{[^}]*border-line\b[^}]*\}/.test(css)).toBe(true);
+  });
+});
+
+/**
+ * Motion is restrained by agreement, not by taste: 100–200ms for hover, menus,
+ * property changes, selection, expansion and completion. 100ms is the floor
+ * for a binary STATE MARK (a checkbox tick, a status box), where the change is
+ * instantaneous and a longer fade reads as lag; 200ms is the ceiling for
+ * everything else. The brief's approximately 120–200ms guideline becomes
+ * precise here without making those state marks fail the guard.
+ *
+ * Deliberately NOT covered: the focus pulse in `Project.tsx`, which is a Web
+ * Animations call rather than a CSS class, is 1400ms on purpose, and already
+ * checks `prefers-reduced-motion` itself.
+ */
+describe('motion', () => {
+  const inBand = (ms: number) => ms >= 100 && ms <= 200;
+  const durationClass = /duration-\[(\d+)ms\]|duration-\[(\d*\.?\d+)s\]|duration-(\d+)\b/g;
+  const durationValue = /duration-\[(\d+)ms\]|duration-\[(\d*\.?\d+)s\]|duration-(\d+)\b/;
+
+  it('keeps every CSS duration between 100ms and 200ms', () => {
+    const bad = offenders(durationClass)
+      .filter((hit) => {
+        const match = durationValue.exec(hit);
+        if (!match) return false;
+        const [, ms, seconds, scale] = match;
+        const value = ms != null ? Number(ms) : seconds != null ? Number(seconds) * 1000 : Number(scale);
+        return !inBand(value);
+      });
+    expect(bad).toEqual([]);
+  });
+
+  it('keeps the stylesheet transitions in band', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const values = [...css.matchAll(/(?:^|[;{])\s*(?:transition|transition-duration|animation)\s*:\s*([^;}]+)/g)]
+      .flatMap((declaration) => [...declaration[1].matchAll(/(\d*\.?\d+)(ms|s)\b/g)]
+        .map(([, value, unit]) => Number(value) * (unit === 's' ? 1000 : 1)));
+    expect(values.filter((value) => !inBand(value))).toEqual([]);
   });
 });

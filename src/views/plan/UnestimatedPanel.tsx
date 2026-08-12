@@ -1,5 +1,6 @@
 import { actions } from '../../state/store';
 import { EstimateControl } from '../../components/EstimateControl';
+import { IconX } from '../../components/Icons';
 import type { UnestimatedItem } from '../../lib/unestimated';
 
 /**
@@ -34,7 +35,7 @@ export function UnestimatedPanel({
       className="mb-[10px] rounded-card border border-line-2 bg-panel px-[12px] py-[10px]"
     >
       <div className="flex items-baseline gap-[8px] mb-[8px]">
-        <h4 className="font-mono text-kbd tracking-[.1em] uppercase text-muted font-semibold">
+        <h4 className="text-meta font-semibold text-muted">
           Unestimated
         </h4>
         <p className="text-meta text-muted flex-1 min-w-0">
@@ -45,9 +46,9 @@ export function UnestimatedPanel({
           type="button"
           onClick={onClose}
           aria-label="Close unestimated work"
-          className="text-body text-muted px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-field hover:bg-hover hover:text-ink"
+          className="text-muted px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-field hover:bg-hover hover:text-ink"
         >
-          ✕
+          <IconX />
         </button>
       </div>
 
@@ -84,7 +85,7 @@ export function UnestimatedPanel({
                 contributing nothing to `plannedMin`. Saying which rows those
                 are explains why the day looks fuller than the number claims. */}
             {item.placed && (
-              <span className="flex-none text-eyebrow font-mono uppercase tracking-[.08em] text-muted">
+              <span className="flex-none text-meta text-muted">
                 on grid
               </span>
             )}

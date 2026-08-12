@@ -4,6 +4,8 @@ import { addDays, fmtD } from './dates';
 import { isPlanningHorizon } from './horizons';
 import { goalPct } from './pct';
 import { attentionRank, walkLeaves } from './plan';
+import { isDone, stepStatus } from './status';
+import { isPlaced } from './blocks';
 
 /** One draggable row in the backlog rail. */
 export interface BacklogItem {
@@ -118,7 +120,13 @@ export const LOOSE_GROUP_TITLE = 'Loose tasks';
 export function backlogGroups(
   goals: Goal[],
   tasks: Task[],
-  week: string,
+  /**
+   * Kept in the signature, and deliberately unused for the placed/unplaced
+   * split: a leaf with a sitting on ANY day is not waiting to be placed, so the
+   * test cannot be "placed inside this week". Callers still pass it, and it
+   * still reads as the week the rail is for.
+   */
+  _week: string,
   today: string,
 ): BacklogGroup[] {
   const withEstimate = (min: number | undefined): { estimateMin?: number } => {
@@ -140,11 +148,16 @@ export function backlogGroups(
   for (const g of ranked) {
     const items: BacklogItem[] = [];
     walkLeaves(g, (n) => {
-      if (n.done) return;
-      const placed =
-        n.plannedWeek === week && n.plannedDay !== undefined && n.plannedStartMin !== undefined;
-      if (placed) return;
+      if (isDone(n)) return;
+      // Placed anywhere at all, not just inside `week`: a sitting is a sitting,
+      // and a leaf with one on the calendar is not waiting to be placed.
+      if (isPlaced(n)) return;
       if (parked.has(g.id) && n.plannedWeek === undefined) return;
+      // Blocked work is not a queue you can work. Dropped, unless committed —
+      // weekCapacity bills a plannedWeek step to "to place", and a number you
+      // plan against must have a row beside it. Same exception a parked
+      // project gets, just above.
+      if (stepStatus(n) === 'blocked' && n.plannedWeek === undefined) return;
       items.push({
         kind: 'step', id: n.id, goalId: g.id, title: n.title,
         ...withEstimate(n.estimateMin),
@@ -157,7 +170,7 @@ export function backlogGroups(
   const loose: BacklogItem[] = [];
   for (const t of tasks) {
     if (t.done) continue;
-    if (t.date !== undefined && t.startMin !== undefined) continue; // on the grid
+    if (isPlaced(t)) continue; // on the grid
     const item: BacklogItem = {
       kind: 'task', id: t.id, goalId: t.goalId, title: t.title,
       ...withEstimate(t.estimateMin),
@@ -193,27 +206,55 @@ export function backlogGroups(
   return out;
 }
 
+/** Why `backlogGroups` is hiding a project's work — see `hiddenProjectCounts`. */
+export interface HiddenProjectCounts {
+  /** Parked in Later or Someday, holding open work that carries no commitment. */
+  parked: number;
+  /**
+   * Holds at least one blocked, uncommitted leaf that `backlogGroups` is not
+   * showing — the same per-leaf rule applied there, counted per-project. NOT
+   * "every open leaf is blocked": a project with one placed leaf and one
+   * hidden-blocked leaf still has a row in the rail, via the placed one, so
+   * `groups` is non-empty and this count is never consulted for it (`hidden`
+   * is only computed when the rail is already empty) — safe to count more
+   * loosely here than "fully blocked".
+   */
+  blocked: number;
+}
+
 /**
- * Projects the rail is deliberately not showing: parked in Later or Someday,
- * still holding open work that carries no commitment.
+ * Projects the rail is deliberately not showing, split by the reason.
  *
  * Only the empty state needs this, and it needs it badly. "Nothing left to
  * plan" is the right sentence when the week really is placed and the wrong one
- * when four projects of work are simply deferred — it reads as finished rather
- * than as filtered, and the user cannot see the rail is applying a rule at all.
- * The count turns an apparent dead end into an instruction: promote one.
+ * whenever `backlogGroups` comes back empty while hidden work exists —
+ * deferred to Later/Someday, or blocked with nothing committed. Either way it
+ * reads as finished rather than as filtered, and the user cannot see the rail
+ * is applying a rule at all. The counts turn an apparent dead end into an
+ * instruction: promote a parked project, or unblock a stuck one.
+ *
+ * A project can land in both buckets (parked AND fully blocked) — the buckets
+ * are independent counts of DIFFERENT rules, not a partition of projects.
  */
-export function deferredProjectCount(goals: Goal[], today: string): number {
-  let count = 0;
+export function hiddenProjectCounts(goals: Goal[], today: string): HiddenProjectCounts {
+  let parked = 0;
+  let blocked = 0;
   for (const g of attentionRank(goals, today)) {
-    if (isPlanningHorizon(g.column)) continue;
-    let hidden = false;
+    let hiddenBlocked = false;
     walkLeaves(g, (n) => {
-      if (!n.done && n.plannedWeek === undefined) hidden = true;
+      if (!isDone(n) && stepStatus(n) === 'blocked' && n.plannedWeek === undefined) hiddenBlocked = true;
     });
-    if (hidden) count++;
+    if (hiddenBlocked) blocked++;
+
+    if (!isPlanningHorizon(g.column)) {
+      let hidden = false;
+      walkLeaves(g, (n) => {
+        if (!isDone(n) && n.plannedWeek === undefined) hidden = true;
+      });
+      if (hidden) parked++;
+    }
   }
-  return count;
+  return { parked, blocked };
 }
 
 /**

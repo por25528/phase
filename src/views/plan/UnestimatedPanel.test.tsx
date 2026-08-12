@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, Task } from '../../db/types';
+import { makeBlock } from '../../lib/blocks';
 
 /**
  * The header's "N unestimated" used to be inert text: the app naming a hole in
@@ -27,6 +28,8 @@ const dbMocks = vi.hoisted(() => ({
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
   savePlanMode: vi.fn(async () => {}),
+  loadGoalsMode: vi.fn(async (): Promise<'board' | 'timeline'> => 'board'),
+  saveGoalsMode: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
@@ -55,11 +58,9 @@ const PROJECT: Goal = {
   title: '6.5840',
   column: 0,
   nodes: [
-    { id: 'n1', title: 'Implement AppendEntries', done: false, plannedWeek: '2026-07-27' },
-    {
-      id: 'n2', title: 'Debug figure-8', done: false,
-      plannedWeek: '2026-07-27', plannedDay: '2026-07-28', plannedStartMin: 540,
-    },
+    { id: 'n1', title: 'Implement AppendEntries', plannedWeek: '2026-07-27' },
+    { id: 'n2', title: 'Debug figure-8',
+      plannedWeek: '2026-07-27', blocks: [makeBlock('2026-07-28', 540, 60)] },
   ],
 };
 

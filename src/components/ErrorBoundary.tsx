@@ -12,7 +12,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
     return (
       <div className="min-h-screen w-full grid place-items-center">
         <div className="border border-line rounded-[6px] bg-panel px-[26px] py-[22px] max-w-[420px]">
-          <div className="font-disp text-h2 font-semibold mb-[6px]">Something broke.</div>
+          <div className="text-h2 font-semibold mb-[6px]">Something broke.</div>
           <p className="text-body text-muted mb-[14px]">
             Your data is safe in the browser database. Reload to continue; if it repeats, export a backup from the sidebar.
           </p>

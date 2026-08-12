@@ -1,23 +1,17 @@
 import type { Goal } from '../db/types';
-import { addDays } from './dates';
-import { isValidLocalDate } from './schedule';
 
-export type TaskCaptureDateChoice = 'today' | 'tomorrow' | 'pick';
-
-export interface TaskCaptureDraft {
-  title: string;
-  dateChoice: TaskCaptureDateChoice;
-  pickedDate: string;
-  chooseProject: boolean;
-  goalId: string;
-}
-
-export interface TaskCaptureSubmission {
-  title: string;
-  date: string;
-  goalId: string | null;
-}
-
+/**
+ * How the app tracks whether Quick add is up, and whether it has been asked to
+ * take focus again.
+ *
+ * `focusRequest` is a counter rather than a boolean because ⌘N while the
+ * composer is ALREADY open means "focus me", and a boolean cannot express the
+ * same request twice.
+ *
+ * The draft model that used to live here — a title, a `today | tomorrow | pick`
+ * choice, a picked date and a `chooseProject` toggle — went with the modal it
+ * described. One line of text and `parseQuickAdd` replaced all of it.
+ */
 export interface TaskCaptureHostState {
   open: boolean;
   focusRequest: number;
@@ -54,51 +48,8 @@ export function requestTaskCaptureForCommand(
   return requestTaskCapture(state);
 }
 
-export function shouldRefocusTaskCaptureTitle(
-  open: boolean,
-  focusRequest: number,
-  lastHandledFocusRequest: number,
-): boolean {
-  return open && focusRequest !== lastHandledFocusRequest;
-}
-
-export function createTaskCaptureDraft(today: string): TaskCaptureDraft {
-  return {
-    title: '',
-    dateChoice: 'today',
-    pickedDate: today,
-    chooseProject: false,
-    goalId: '',
-  };
-}
-
-export function resolveTaskCaptureDate(
-  draft: TaskCaptureDraft,
-  today: string,
-): string | null {
-  if (!isValidLocalDate(today)) return null;
-  if (draft.dateChoice === 'today') return today;
-  if (draft.dateChoice === 'tomorrow') return addDays(today, 1);
-  return isValidLocalDate(draft.pickedDate) ? draft.pickedDate : null;
-}
-
 export function activeProjectOptions(goals: readonly Goal[]): { id: string; title: string }[] {
   return goals
     .filter((goal) => !goal.completedAt)
     .map(({ id, title }) => ({ id, title }));
-}
-
-export function buildTaskCaptureSubmission(
-  draft: TaskCaptureDraft,
-  goals: readonly Goal[],
-  today: string,
-): TaskCaptureSubmission | null {
-  const title = draft.title.trim();
-  const date = resolveTaskCaptureDate(draft, today);
-  if (!title || !date) return null;
-  const goalId = draft.chooseProject
-    && goals.some((goal) => !goal.completedAt && goal.id === draft.goalId)
-    ? draft.goalId
-    : null;
-  return { title, date, goalId };
 }

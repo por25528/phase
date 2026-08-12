@@ -3,7 +3,7 @@ import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
 import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
 import { windowForDate } from '../../lib/availability';
-import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
+import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, GRID_VIEWPORT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
 import type { CanvasSpan } from '../../lib/canvasCreate';
 import { DayColumn } from './DayColumn';
@@ -11,18 +11,6 @@ import { DayColumn } from './DayColumn';
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 import { clockLabel } from '../../lib/clock';
-
-/**
- * How tall the scroller itself is — the window onto the day, not the day.
- *
- * 720px is the scroller's own height: the sticky day headings now live INSIDE
- * this box, eating into it, exactly as they do in every calendar, so the
- * visible hour grid is shorter than 720px by whatever the heading row costs.
- * The sidebar bounds itself to this region, whatever it nets out to — see
- * the rail note in CLAUDE.md. The content behind the headings is
- * `DAY_HEIGHT_PX` tall and reachable by scrolling.
- */
-export const GRID_VIEWPORT_PX = 720;
 
 const AXIS_WIDTH_PX = 46;
 
@@ -37,7 +25,7 @@ const AXIS_WIDTH_PX = 46;
  * `scrollWindow` opens on.
  */
 export function WeekGrid({
-  days, today, nowMinute, windows, scrollWindow, readOnly, dayCapacity,
+  days, today, nowMinute, windows, scrollWindow, readOnly, dayCapacity, dragDurationMin,
   onCreate, scrollerRef, gridRef, children,
 }: {
   days: string[];
@@ -54,6 +42,15 @@ export function WeekGrid({
    * week total — which cannot tell you that Tuesday is full.
    */
   dayCapacity?: DayCapacity[];
+  /**
+   * How long the block currently being dragged is, or null when nothing is.
+   *
+   * Capacity feedback belonged AFTER the drop: the store resolved a slot,
+   * failed, and raised "no free time left that day" — by which point the user
+   * had already aimed, committed and let go. With this the heading says
+   * whether the day can take it while it is still in the air.
+   */
+  dragDurationMin?: number | null;
   /** Draw a block on a day's empty canvas. Absent ⇒ no canvas is rendered. */
   onCreate?: (date: string, span: CanvasSpan) => void;
   /** Owned by Plan, which needs it live to resolve a drop. */
@@ -231,14 +228,34 @@ export function WeekGrid({
                     busy day cannot shove the header row down relative to its
                     neighbours. */}
                 <div className="h-[12px] leading-[12px]">
-                  {load && (
+                  {dragDurationMin != null && cap ? (
+                    (() => {
+                      // Free time LESS what is already committed to the day.
+                      // `freeMin` only nets off meetings, so comparing the raw
+                      // figure would promise room that this week's own work has
+                      // already taken.
+                      const left = cap.freeMin - cap.plannedMin - cap.backlogMin;
+                      const fits = left >= dragDurationMin;
+                      return (
+                        <span
+                          role="status"
+                          title={fits
+                            ? `${left}m free after what is already planned`
+                            : `Only ${Math.max(0, left)}m free — this needs ${dragDurationMin}m`}
+                          className={`font-mono text-eyebrow tabular-nums font-semibold ${fits ? 'text-accent' : 'text-warn'}`}
+                        >
+                          {fits ? 'fits' : 'full'}
+                        </span>
+                      );
+                    })()
+                  ) : load ? (
                     <span
                       title={cap ? dayLoadHint(cap) : undefined}
                       className={`font-mono text-eyebrow tabular-nums ${over ? 'text-warn font-semibold' : 'text-muted'}`}
                     >
                       {load}
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             );

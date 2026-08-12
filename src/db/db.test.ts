@@ -181,11 +181,14 @@ describe('importStateFromFile', () => {
 
     const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
 
+    // migrateCheckpoints appends this node with the legacy `done: false`;
+    // migrateNodeStatus (running right after, inside importStateFromFile)
+    // strips it since false never sets `status` — the node lands as todo,
+    // i.e. status absent, same as any never-completed node.
     expect(imported.goals[0].nodes).toEqual([{
       id: 'm1',
       title: 'Demo',
       checkpoint: true,
-      done: false,
       start: '2026-08-10',
       deadline: '2026-08-10',
     }]);
@@ -199,7 +202,7 @@ describe('importStateFromFile', () => {
       title: 'Legacy goal',
       start: '2026-01-01',
       deadline: '2026-12-31',
-      nodes: [{ id: 'legacy-leaf', title: 'Already done', done: true }],
+      nodes: [{ id: 'legacy-leaf', title: 'Already done', status: 'done' }],
       column: 0,
     };
     const legacyTask = {
@@ -224,9 +227,35 @@ describe('importStateFromFile', () => {
     expect(imported.goals[0].nodes[0]).not.toHaveProperty('doneAt');
     expect(imported.tasks[0]).not.toHaveProperty('doneAt');
 
+    // Migration of a legacy `done` flag to `status` is covered separately by
+    // 'migrates a legacy done flag out of an imported backup' below — this
+    // fixture already carries `status: 'done'`, so nothing here exercises a
+    // migration; it's a plain round-trip comparison.
     const persisted = await loadState();
     expect(persisted.goals[0]).toEqual(legacyGoal);
     expect(persisted.tasks[0]).toEqual(legacyTask);
+  });
+
+  it('migrates a legacy done flag out of an imported backup', async () => {
+    const backup = {
+      goals: [{ id: 'g', title: 'G', nodes: [
+        { id: 'a', title: 'A', done: true, doneAt: '2026-07-01' },
+        { id: 'b', title: 'B', done: false },
+        { id: 'p', title: 'P', children: [{ id: 'c', title: 'C', done: true }] },
+      ] }],
+      habits: [], tasks: [], sessions: [],
+    };
+
+    await importStateFromFile(fileOf(JSON.stringify(backup)));
+
+    const [g] = await db.goals.toArray();
+    const [a, b, p] = g.nodes;
+    expect(a.status).toBe('done');
+    expect(a.doneAt).toBe('2026-07-01');
+    expect('done' in a).toBe(false);
+    expect(b.status).toBeUndefined();
+    expect('done' in b).toBe(false);
+    expect(p.children![0].status).toBe('done');
   });
 
   it('rejects non-JSON with a JSON-specific message', async () => {
@@ -374,7 +403,7 @@ describe('loadState', () => {
       title: 'Legacy goal',
       start: '2026-01-01',
       deadline: '2026-12-31',
-      nodes: [{ id: 'legacy-leaf', title: 'Done before timestamps', done: true }],
+      nodes: [{ id: 'legacy-leaf', title: 'Done before timestamps', status: 'done' }],
       column: 0,
     };
     const legacyTask = {
@@ -390,11 +419,26 @@ describe('loadState', () => {
     await db.tasks.put(legacyTask);
 
     const loaded = await loadState();
+    // Migration of a legacy `done` flag to `status` is covered separately by
+    // 'migrates a legacy done flag on load' below — this fixture already
+    // carries `status: 'done'`, so nothing here exercises a migration; it's a
+    // plain round-trip comparison.
     expect(loaded.goals[0]).toEqual(legacyGoal);
     expect(loaded.tasks[0]).toEqual(legacyTask);
     expect(loaded.goals[0].datesConfirmed).toBeUndefined();
     expect(loaded.goals[0].nodes[0].doneAt).toBeUndefined();
     expect(loaded.tasks[0].doneAt).toBeUndefined();
+  });
+
+  it('migrates a legacy done flag on load', async () => {
+    await db.goals.bulkPut([
+      { id: 'g', title: 'G', nodes: [{ id: 'a', title: 'A', done: true }] },
+    ] as never);
+
+    const state = await loadState();
+
+    expect(state.goals[0].nodes[0].status).toBe('done');
+    expect('done' in state.goals[0].nodes[0]).toBe(false);
   });
 });
 
@@ -540,8 +584,19 @@ describe('sidebar panels', () => {
   });
 
   it('round-trips a saved selection', async () => {
-    await saveSidebarPanels(['habits', 'stats']);
-    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+    await saveSidebarPanels(['habits']);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
+  });
+
+  /**
+   * Stats and Working hours were panels here until they moved to the week
+   * header and to Settings. An old preference naming one has to degrade to
+   * "collapsed" rather than to an error — a settings row is not worth a
+   * failed hydration.
+   */
+  it('forgets a panel that no longer exists', async () => {
+    await db.settings.put({ key: 'sidebarPanels', value: JSON.stringify(['habits', 'availability']) });
+    expect(await loadSidebarPanels()).toEqual(['habits']);
   });
 
   it('drops unknown panel names rather than storing them', async () => {
@@ -555,8 +610,8 @@ describe('sidebar panels', () => {
   });
 
   it('deduplicates repeated panels', async () => {
-    await saveSidebarPanels(['stats', 'stats']);
-    expect(await loadSidebarPanels()).toEqual(['stats']);
+    await saveSidebarPanels(['habits', 'habits']);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
   });
 
   describe('planMode', () => {
@@ -584,9 +639,9 @@ describe('sidebar panels', () => {
     // defends against a row written by a different version of the app.
     await db.settings.put({
       key: 'sidebarPanels',
-      value: JSON.stringify(['habits', 'bogus', 'stats', 'stats']),
+      value: JSON.stringify(['habits', 'bogus', 'habits']),
     });
-    expect(await loadSidebarPanels()).toEqual(['habits', 'stats']);
+    expect(await loadSidebarPanels()).toEqual(['habits']);
   });
 });
 
@@ -598,18 +653,18 @@ describe('sidebar panels', () => {
  */
 describe('sidebarPanels round-trips through a backup', () => {
   it('restores the panels a backup carries', async () => {
-    await saveSidebarPanels(['habits', 'stats']);
-    const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [], sidebarPanels: ['availability'] }));
+    await saveSidebarPanels(['habits']);
+    const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [], sidebarPanels: [] }));
     const out = await importStateFromFile(file);
-    expect(out.sidebarPanels).toEqual(['availability']);
-    expect(await loadSidebarPanels()).toEqual(['availability']);
+    expect(out.sidebarPanels).toEqual([]);
+    expect(await loadSidebarPanels()).toEqual([]);
   });
 
   it('leaves this device alone when the backup is silent — absent is not "default"', async () => {
-    await saveSidebarPanels(['habits', 'stats']);
+    await saveSidebarPanels(['habits']);
     const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [] }));
     const out = await importStateFromFile(file);
-    expect(out.sidebarPanels).toEqual(['habits', 'stats']);
+    expect(out.sidebarPanels).toEqual(['habits']);
   });
 
   it('collapses a malformed value rather than half-trusting it', async () => {

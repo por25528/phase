@@ -72,15 +72,18 @@ describe('resolveAppKeyCommand', () => {
     expect(resolveAppKeyCommand({ key: 'T' })).toBeNull();
   });
 
-  it('maps 1-3 to the three views in nav order, but not while typing', () => {
-    expect(resolveAppKeyCommand({ key: '1' })).toBe('view-plan');
-    expect(resolveAppKeyCommand({ key: '2' })).toBe('view-goals');
-    expect(resolveAppKeyCommand({ key: '3' })).toBe('view-timeline');
+  it('maps 1-3 to the three destinations in nav order, but not while typing', () => {
+    expect(resolveAppKeyCommand({ key: '1' })).toBe('view-today');
+    expect(resolveAppKeyCommand({ key: '2' })).toBe('view-plan');
+    expect(resolveAppKeyCommand({ key: '3' })).toBe('view-goals');
     expect(resolveAppKeyCommand({ key: '1', target: inputTarget })).toBeNull();
     expect(resolveAppKeyCommand({ key: '3', target: inputTarget })).toBeNull();
   });
 
-  it('leaves 4 and 5 unmapped now that Today and the modal planner are gone', () => {
+  // 3 is Goals, not Timeline. Timeline stopped being a destination and became a
+  // representation of Goals; a key that jumped to a representation would be the
+  // one nav key doing two things.
+  it('leaves 4 and 5 unmapped', () => {
     expect(resolveAppKeyCommand({ key: '4' })).toBeNull();
     expect(resolveAppKeyCommand({ key: '5' })).toBeNull();
   });

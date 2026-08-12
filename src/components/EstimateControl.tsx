@@ -52,6 +52,8 @@ export function EstimateControl({
   label,
   onChange,
   className = '',
+  openRequest = 0,
+  alwaysShow = false,
 }: {
   minutes: number | undefined;
   /** The item's title, for the accessible name. */
@@ -59,9 +61,33 @@ export function EstimateControl({
   /** `null` clears the estimate; a number sets it. */
   onChange: (minutes: number | null) => void;
   className?: string;
+  /**
+   * Bump to open the editor from outside — the row's `E` shortcut and its `⋯`
+   * menu both land here.
+   *
+   * A COUNTER rather than a boolean, matching `taskCapture`'s focusRequest: the
+   * host is asking for an event, not describing a state, and a boolean would
+   * need resetting to false afterwards or the second `E` would do nothing.
+   */
+  openRequest?: number;
+  /**
+   * Keep the unset badge legible at rest.
+   *
+   * On a dense tree row `+ est` is pure affordance and hides until hover, which
+   * is right there. In the INSPECTOR the property row IS the affordance — a
+   * `.quiet-control` there rendered as a bare icon beside an empty space, which
+   * reads as a broken row rather than as an empty property.
+   */
+  alwaysShow?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const badgeRef = useRef<HTMLButtonElement>(null);
+  const seenOpenRequest = useRef(openRequest);
+  useEffect(() => {
+    if (openRequest === seenOpenRequest.current) return;
+    seenOpenRequest.current = openRequest;
+    setEditing(true);
+  }, [openRequest]);
   /*
    * Committing collapses the panel, which unmounts the control the user was
    * standing on — so focus fell to `<body>` after every preset click and every
@@ -133,11 +159,14 @@ export function EstimateControl({
         // anything that is purely an affordance. `.quiet-control` carries the
         // `@media (hover: hover)` gate and the 24px target floor; a hand-rolled
         // `opacity-0 group-hover:` would drop both.
-        className={`flex-none font-mono text-eyebrow tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[4px] text-muted hover:text-ink-soft hover:bg-hover ${
-          set ? '' : 'quiet-control'
-        } ${className}`}
+        // `alwaysShow` is the INSPECTOR presentation: the row is a labelled
+        // property in a column of them, so it takes the column's UI face rather
+        // than the mono badge that suits a dense tree row.
+        className={`flex-none tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center rounded-[4px] text-muted hover:text-ink-soft hover:bg-hover ${
+          alwaysShow ? 'text-ui' : 'font-mono text-eyebrow justify-center'
+        } ${set || alwaysShow ? '' : 'quiet-control'} ${className}`}
       >
-        {set ? formatEstimateValue(shown) : '+ est'}
+        {set ? formatEstimateValue(shown) : alwaysShow ? 'No estimate' : '+ est'}
       </button>
     );
   }

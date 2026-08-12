@@ -1,6 +1,7 @@
 import type { Task } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import type { PlannedLeaf } from './plan';
+import { isPlaced } from './blocks';
 
 /**
  * One commitment the week's capacity arithmetic could not price.
@@ -56,7 +57,7 @@ export function unestimatedCommitments(
       title: leaf.title,
       goalId: leaf.goalId,
       goalTitle: leaf.goalTitle,
-      placed: leaf.plannedDay !== undefined && leaf.plannedStartMin !== undefined,
+      placed: leaf.blocks.length > 0,
     });
   }
 
@@ -69,7 +70,7 @@ export function unestimatedCommitments(
       title: task.title,
       goalId: task.goalId,
       goalTitle: task.goalId ? goalTitleById?.get(task.goalId) : undefined,
-      placed: task.date !== undefined && task.startMin !== undefined,
+      placed: isPlaced(task),
     });
   }
 
