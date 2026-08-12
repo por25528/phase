@@ -297,10 +297,20 @@ describe('TaskPage', () => {
     expect(screen.getByRole('menuitem', { name: /Outdent/ })).toBeTruthy();
   });
 
-  it('offers to break the task into subtasks, since no tree row can here', async () => {
+  /**
+   * In the `⋯` menu, not standing under the note. As a permanent button it was
+   * the only thing on an empty page competing with the document, stranded below
+   * 220px of blank body. `ProposalPanel` is leaf-only, so the page is still the
+   * ONLY surface that offers it — the tree row does not.
+   */
+  it('offers to break the task into subtasks from the menu, since no tree row can', async () => {
     await mountTask('n1');
 
-    expect(screen.getByRole('button', { name: 'Break into smaller steps' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Break into smaller steps' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Actions for / }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Break into smaller steps' }));
+
+    expect(screen.getByRole('heading', { name: /Break down/ })).toBeTruthy();
   });
 
   it('invites an oversized task to break into smaller steps', async () => {
@@ -320,7 +330,8 @@ describe('TaskPage', () => {
         dow, startMin: 540, endMin: 1020,
       })));
 
-      fireEvent.click(screen.getByRole('button', { name: 'Break into smaller steps' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Actions for / }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Break into smaller steps' }));
       const box = screen.getByRole('textbox', { name: 'Paste the reply' });
       fireEvent.paste(box, { clipboardData: { getData: () => 'Read the spec — 45m' } });
 
@@ -334,11 +345,16 @@ describe('TaskPage', () => {
     }
   });
 
-  it('does not show the oversized invitation for a small task', async () => {
+  /**
+   * The invitation is the ONLY inline route now, so a small task shows neither
+   * the sentence nor a button — the verb is in the menu, and nothing on the page
+   * argues with the document.
+   */
+  it('shows no inline breakdown affordance at all for a small task', async () => {
     await mountTask('n1');
 
-    expect(screen.getByRole('button', { name: 'Break into smaller steps' })).toBeTruthy();
     expect(screen.queryByText('This looks larger than one focused work session.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Break into smaller steps' })).toBeNull();
   });
 
   it('edits the estimate in place, without a popover', async () => {

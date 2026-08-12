@@ -1,4 +1,5 @@
 import { Modal } from '../../components/Modal';
+import { primaryBtn, ghostBtn, dialogFooter } from '../../components/dialogStyles';
 import { IconArrowRight } from '../../components/Icons';
 import { fmtD } from '../../lib/dates';
 import { fmtMinutes } from '../../lib/effort';
@@ -72,21 +73,19 @@ export function ReplanPreview({
         </div>
       )}
 
-      <div className="flex items-center gap-[8px] mt-[16px]">
+      <div className={dialogFooter}>
+        {/* The words stay — "Leave it where it is" is this dialog's own answer,
+            not a generic Cancel. Only the geometry and the order join the rest. */}
+        <button type="button" onClick={onCancel} className={ghostBtn}>
+          Leave it where it is
+        </button>
         <button
           type="button"
           onClick={onApply}
           disabled={moves.length === 0}
-          className="px-[14px] py-[8px] rounded-field bg-ink text-paper text-body font-semibold hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
+          className={primaryBtn}
         >
           Move {moves.length > 0 ? `${moves.length} task${moves.length === 1 ? '' : 's'}` : 'nothing'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-[12px] py-[8px] rounded-field text-body text-ink-soft hover:bg-hover"
-        >
-          Leave it where it is
         </button>
       </div>
     </Modal>

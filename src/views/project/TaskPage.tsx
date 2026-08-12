@@ -5,11 +5,13 @@ import { DateField } from '../../components/DateField';
 import {
   IconArrowRight,
   IconCalendar,
+  IconCircle,
   IconClock,
   IconDiamond,
   IconDots,
   IconRotate,
   IconSparkle,
+  IconWarning,
 } from '../../components/Icons';
 import { EstimateControl } from '../../components/EstimateControl';
 import { InlineEdit } from '../../components/InlineEdit';
@@ -17,9 +19,10 @@ import { LogTimeControl } from '../../components/LogTimeControl';
 import { NoteEditor } from '../../components/NoteEditor';
 import { Popover, PopoverItem, PopoverSeparator } from '../../components/Popover';
 import {
-  PropertyChip,
-  PropertyChipInline,
-  PropertyChipToggle,
+  PropertyLine,
+  PropertyLineField,
+  PropertyLineInline,
+  PropertyLineToggle,
   PropertyOption,
 } from '../../components/PropertyRow';
 import { ScheduleMenu } from '../../components/SchedulePopover';
@@ -46,9 +49,24 @@ const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done']
  * The invariant this overturns said a page for a leaf "would be the inspector
  * again with more chrome". The answer is that this page's job is the NOTE: the
  * body runs the full 720px measure with its images inline, and the properties
- * above it are chips — the same `Popover` controls the inspector used, stated
- * as readouts — rather than a second property list. It is the note with its
- * context above it.
+ * above it are its context.
+ *
+ * Those properties were chips, on the rule that "the value IS the label". That
+ * rule is right for the docked inspector and wrong here, and the empty state is
+ * what proves it: five bordered chips under the title, FOUR of them reading
+ * "No dates", "Not scheduled", "No estimate", "Not a milestone" — a row of
+ * negations with more visual weight than the document they introduced. Split
+ * into labelled lines, the labels stay quiet and constant and only the values
+ * carry ink, so an untouched task reads as a page with a blank margin instead
+ * of a page listing what it lacks. `PropertyLine` opens the identical
+ * `Popover` with the identical children, so the page and the panel still
+ * cannot drift about what a property offers.
+ *
+ * The note is the document, not a field on it: no box, no padding, its first
+ * line on the same left edge as the title and the property labels. The whole
+ * column is centred, and the two horizontal rules that used to cut it into
+ * strips are gone — including the one over a "Time" section, which is the
+ * `Time logged` line in the list now.
  *
  * It is still a LENS on the open goal, by exactly the mechanism `openArea`
  * uses: `openGoalId` stays set behind it, so the breadcrumb is real navigation
@@ -130,6 +148,7 @@ export function TaskPage({
   function runAction(id: RowActionId): void {
     switch (id) {
       case 'rename': setEditingTitle(true); return;
+      case 'breakdown': setProposing(true); return;
       case 'indent': actions.indentNode(node.id); return;
       case 'outdent': actions.outdentNode(node.id); return;
       // `removeNode` nulls `openStepId` when the open node is inside what it
@@ -163,7 +182,14 @@ export function TaskPage({
       : null;
 
   return (
-    <div>
+    /*
+      One centred column, breadcrumb included. The body used to be a 720px block
+      pinned to the LEFT of the 1100px container, so at 1440px the document sat
+      in 170px of left margin and 550px of right — a page that looked like it
+      had lost a sidebar. Centring is also what makes the title, the property
+      labels and the note's first line share one left edge.
+    */
+    <div className="max-w-[720px] mx-auto">
       <nav aria-label="Breadcrumb" className="flex items-center gap-[5px] text-meta text-muted pt-[8px]">
         <button
           type="button"
@@ -175,13 +201,13 @@ export function TaskPage({
         </button>
       </nav>
 
-      <div className="max-w-[720px]">
-        <div className="flex items-start gap-[10px] py-[4px]">
+      <div>
+        <div className="flex items-start gap-[10px] mt-[10px] mb-[14px]">
           <h1 className="m-0 min-w-0 flex-1">
             {editingTitle ? (
               <InlineEdit
                 value={node.title}
-                className="text-h2 font-semibold tracking-[-0.01em]"
+                className="text-page font-semibold tracking-[-0.02em]"
                 onCommit={(title) => {
                   if (title !== node.title) actions.renameNode(node.id, title);
                   setEditingTitle(false);
@@ -191,7 +217,7 @@ export function TaskPage({
             ) : (
               <button
                 type="button"
-                className="text-h2 font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-full text-left rounded-[6px]"
+                className="text-page font-semibold tracking-[-0.02em] cursor-text hover:text-ink-hover w-full text-left rounded-[6px] leading-[1.2]"
                 onClick={() => setEditingTitle(true)}
                 aria-label={`Rename task "${node.title}"`}
                 title="Click to rename"
@@ -229,13 +255,19 @@ export function TaskPage({
           </Popover>
         </div>
 
-        {/* The chips. Every one of them opens the SAME control the inspector
-            opens, so the page and the panel cannot drift about what a property
-            offers. */}
-        <div className="flex flex-wrap items-center gap-[6px] mt-[6px]">
-          <PropertyChip
+        {/* Every line opens the SAME control the docked inspector opens, so the
+            page and the panel cannot drift about what a property offers. Only
+            the layout differs: a column of quiet labels here, a narrow stack of
+            bare values there. */}
+        <div className="flex flex-col -ml-[6px] max-w-[520px]">
+          {/* A plain circle in the LABEL column: it names the property, which
+              never changes. The live `StatusMark` belongs beside the VALUE —
+              drawing the tick in both columns stated the same thing twice
+              across 140px of the same row. */}
+          <PropertyLine
             label="Status"
-            icon={<StatusMark status={status} />}
+            icon={<IconCircle size={13} />}
+            valueMark={<StatusMark status={status} />}
             value={STATUS_WORD[status]}
             placeholder={STATUS_WORD.todo}
             panelWidth={188}
@@ -265,9 +297,9 @@ export function TaskPage({
                 ))}
               </>
             )}
-          </PropertyChip>
+          </PropertyLine>
 
-          <PropertyChip
+          <PropertyLine
             label="Dates"
             icon={<IconCalendar size={13} />}
             value={node.deadline ? fmtD(node.deadline) : null}
@@ -297,9 +329,9 @@ export function TaskPage({
                 </p>
               </div>
             )}
-          </PropertyChip>
+          </PropertyLine>
 
-          <PropertyChip
+          <PropertyLine
             label="Schedule"
             icon={<IconCalendar size={13} />}
             value={whenValue}
@@ -307,18 +339,35 @@ export function TaskPage({
             panelWidth={188}
           >
             {(close) => <ScheduleMenu goalId={goal.id} node={node} close={close} />}
-          </PropertyChip>
+          </PropertyLine>
 
-          <PropertyChipInline icon={<IconClock size={13} />}>
+          <PropertyLineInline name="Estimate" icon={<IconClock size={13} />}>
             <EstimateControl
               minutes={node.estimateMin}
               label={node.title}
               alwaysShow
               onChange={(minutes) => actions.setNodeEstimate(node.id, minutes)}
             />
-          </PropertyChipInline>
+          </PropertyLineInline>
 
-          <PropertyChipToggle
+          {/* The time ledger, which used to be a titled section behind a rule at
+              the foot of the page. It is a fact about this task stated as a
+              value, which is what every other line here is — and folding it in
+              took a section header, a horizontal rule and 60px of scroll out of
+              a page that was mostly empty. */}
+          <PropertyLineInline name="Time logged" icon={<IconRotate size={13} />}>
+            <LogTimeControl
+              loggedMin={logged}
+              estimateMin={node.estimateMin}
+              label={node.title}
+              alwaysShow
+              onLog={(minutes) => actions.logSession('step', node.id, minutes)}
+              onClear={() => actions.clearSessionsFor('step', node.id)}
+            />
+          </PropertyLineInline>
+
+          <PropertyLineToggle
+            name="Milestone"
             label={
               node.checkpoint
                 ? `Stop treating "${node.title}" as a milestone`
@@ -328,31 +377,35 @@ export function TaskPage({
             on={!!node.checkpoint}
             onToggle={() => actions.toggleCheckpoint(node.id)}
           >
-            {node.checkpoint ? 'Milestone' : 'Not a milestone'}
-          </PropertyChipToggle>
+            {node.checkpoint ? 'Yes' : 'No'}
+          </PropertyLineToggle>
+
+          {/* The reason stays OUT of the status popover. It is what makes a
+              blocked task actionable, and hiding it behind the control that set
+              the status would let the page say "Blocked" without ever saying
+              what by. As a line it is visible AND labelled, which the bare
+              full-width input under the chips never was. */}
+          {status === 'blocked' && (
+            <PropertyLineField
+              name="Blocked on"
+              /* Not `StatusMark status="blocked"`: that mark IS `IconDiamond`,
+                 which is also Milestone's icon — the two lines came out with
+                 the same glyph in the same column, two rows apart. */
+              icon={<IconWarning size={13} />}
+              value={draftBlockedOn}
+              onChange={(e) => setDraftBlockedOn(e.target.value)}
+              onBlur={() => {
+                if (draftBlockedOn.trim() === (node.blockedOn ?? '').trim()) return;
+                actions.setNodeStatus(node.id, 'blocked', draftBlockedOn);
+              }}
+              placeholder="What is it waiting on?"
+              aria-label="Blocked on"
+            />
+          )}
         </div>
 
-        {/* The reason stays OUT of the status popover. It is the one piece of
-            free text here, it is what makes a blocked task actionable, and
-            hiding it behind the control that set the status would let the page
-            say "Blocked" without ever saying what by. */}
-        {status === 'blocked' && (
-          <input
-            type="text"
-            value={draftBlockedOn}
-            onChange={(e) => setDraftBlockedOn(e.target.value)}
-            onBlur={() => {
-              if (draftBlockedOn.trim() === (node.blockedOn ?? '').trim()) return;
-              actions.setNodeStatus(node.id, 'blocked', draftBlockedOn);
-            }}
-            placeholder="Blocked on…"
-            aria-label="Blocked on"
-            className="mt-[8px] w-full text-ui px-[9px] py-[5px] rounded-field border border-line-2 bg-field text-ink placeholder:text-muted"
-          />
-        )}
-
         {sittings.length > 0 && (
-          <div className="mt-[10px] flex flex-col gap-[4px]">
+          <div className="mt-[6px] ml-[134px] max-w-[386px] flex flex-col gap-[4px]">
             {sittings.map((b) => (
               <div key={b.id} className="flex items-center gap-[8px]">
                 <span className="text-ui text-ink-soft tabular-nums flex-1 min-w-0">
@@ -379,7 +432,7 @@ export function TaskPage({
                 type="button"
                 onClick={() => actions.scheduleNode(goal.id, node.id, todayStr(), 0, { mode: 'add' })}
                 title="Another sitting for the same task, leaving the others where they are"
-                className="text-meta font-semibold text-accent-deep px-[8px] py-[4px] rounded-field hover:bg-accent-tint"
+                className="text-meta font-medium text-muted px-[8px] py-[4px] rounded-[6px] hover:bg-hover hover:text-ink"
               >
                 Sit again today
               </button>
@@ -394,24 +447,17 @@ export function TaskPage({
           </div>
         )}
 
-        <div className="my-[14px] border-t border-line" />
-
-        <div onBlur={noteDraft.onBlur}>
-          <NoteEditor
-            docKey={node.id}
-            value={noteDraft.value}
-            onChange={noteDraft.onChange}
-            placeholder="What actually happened?"
-            ariaLabel="Task notes"
-          />
-        </div>
-
         {/* The breakdown proposal, which used to live under the tree. It is
             leaf-only, and a leaf no longer opens in the tree — so it comes here,
-            beside its subject, which is where its own docstring says it belongs.
-            Accepting one gives this node children, and the caller's render-time
-            branch turns the page into the container inspector on the next
-            paint. */}
+            beside its subject. Accepting one gives this node children, and the
+            caller's render-time branch turns the page into the container
+            inspector on the next paint.
+
+            ABOVE the note, not below it. The invitation is a remark about the
+            ESTIMATE, which is four lines up in the property list — under the
+            note it sat past 220px of blank document, arguing with the one thing
+            the page is for and pointing at something off the top of the reader's
+            eye. The document stays last, which is what makes it the document. */}
         {proposing ? (
           <div className="mt-[14px]">
             <ProposalPanel
@@ -423,52 +469,45 @@ export function TaskPage({
             />
           </div>
         ) : looksOversized(node) ? (
-          /* An invitation, not a button. It appears only when the estimate says
-             this will not fit one sitting — everywhere else the same action is
-             available, quietly, below. */
-          <div className="mt-[14px]">
+          /* An invitation, not a button — the ONLY inline route left. It appears
+             when the estimate says this will not fit one sitting, and a sentence
+             saying so has earned the room. The rest of the time the same verb
+             waits in the `⋯` menu, where it used to be a standing button
+             stranded under 220px of blank document. */
+          <div className="mt-[22px]">
             <p className="text-ui text-ink-soft">
               This looks larger than one focused work session.
             </p>
             <button
               type="button"
               onClick={() => setProposing(true)}
-              className="mt-[4px] inline-flex items-center gap-[6px] text-ui font-semibold text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[8px]"
+              className="mt-[4px] inline-flex items-center gap-[6px] text-ui font-medium text-ink-soft hover:bg-hover hover:text-ink px-[8px] py-[5px] rounded-[6px] -ml-[8px]"
             >
               <IconSparkle size={12} />
               Break into smaller steps
             </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setProposing(true)}
-            className="mt-[14px] inline-flex items-center gap-[6px] text-ui font-medium text-accent-deep hover:bg-accent-tint px-[8px] py-[5px] rounded-[6px] -ml-[8px]"
-          >
-            <IconSparkle size={12} />
-            Break into smaller steps
-          </button>
-        )}
+        ) : null}
 
-        <div className="my-[14px] border-t border-line" />
+        {/* No rule above the note. Two hairlines used to cut a mostly-empty
+            page into three thin strips; the space between the last property and
+            the first line of the document says the same thing without drawing
+            anything. */}
+        <div className="mt-[22px]" onBlur={noteDraft.onBlur}>
+          <NoteEditor
+            docKey={node.id}
+            value={noteDraft.value}
+            onChange={noteDraft.onChange}
+            placeholder="What actually happened?"
+            ariaLabel="Task notes"
+            className="note-page"
+          />
+        </div>
 
-        <section className="pb-[60px]">
-          {/* One label, so it is a div and not a component. */}
-          <div className="text-meta font-semibold text-muted mb-[7px]">Time</div>
-          {/* IconRotate, not IconCheck. StatusMark draws a tick for `done` in
-              the chip row above, and one mark meaning both "finished" and "time
-              was recorded" is the icon ambiguity the row redesign removed. */}
-          <PropertyChipInline icon={<IconRotate size={13} />}>
-            <LogTimeControl
-              loggedMin={logged}
-              estimateMin={node.estimateMin}
-              label={node.title}
-              alwaysShow
-              onLog={(minutes) => actions.logSession('step', node.id, minutes)}
-              onClear={() => actions.clearSessionsFor('step', node.id)}
-            />
-          </PropertyChipInline>
-        </section>
+        {/* The page ends at the document. What sat below — a rule, a "Time"
+            header and one control — is the `Time logged` line in the property
+            list now: the same fact, stated where every other fact about this
+            task is stated, instead of 60px past the fold. */}
       </div>
     </div>
   );

@@ -22,6 +22,7 @@ export type RowActionId =
   | 'schedule'
   | 'estimate'
   | 'milestone'
+  | 'breakdown'
   | 'indent'
   | 'outdent'
   | 'delete';
@@ -125,9 +126,18 @@ export function rowActionGroups(ctx: RowActionContext): RowAction[][] {
  * Add task is absent for a stronger reason. It converts the leaf into a
  * container, and the page only exists for leaves — so the one gesture would
  * eject the reader from the page they are on. Converting a task into a group
- * stays a tree operation. The sanctioned route from a page is "Break into
- * subtasks", which ends in the same conversion but shows what it is about to
- * create first.
+ * stays a tree operation. The sanctioned route from a page is Break into
+ * smaller steps, which ends in the same conversion but shows what it is about
+ * to create first — and which is HERE, in its own run between Rename and the
+ * move verbs. It used to be a standing button under the note, where an empty
+ * task left it stranded below 220px of blank document, the only thing on the
+ * page competing with the document. The oversized INVITATION is a separate
+ * thing and stays inline: when the estimate says the task will not fit one
+ * sitting, a sentence saying so has earned the room, and the menu is where the
+ * same verb waits the rest of the time.
+ *
+ * It stays out of `rowActions`: `ProposalPanel` is leaf-only and lives on the
+ * page, so a tree row offering it would open a surface the row cannot show.
  *
  * `open` is absent because a leaf has nothing behind it, which is exactly the
  * rule `rowActions` already applies.
@@ -141,6 +151,7 @@ export function rowActionGroups(ctx: RowActionContext): RowAction[][] {
 export function taskPageActions(ctx: Pick<RowActionContext, 'canIndent' | 'canOutdent'>): RowAction[] {
   const out: RowAction[] = [];
   out.push({ id: 'rename', label: 'Rename', hint: '↵', group: 0 });
+  out.push({ id: 'breakdown', label: 'Break into smaller steps', group: 1 });
   if (ctx.canIndent) out.push({ id: 'indent', label: 'Indent', hint: '⌘]', group: 2 });
   if (ctx.canOutdent) out.push({ id: 'outdent', label: 'Outdent', hint: '⌘[', group: 2 });
   out.push({ id: 'delete', label: 'Delete', hint: '⌫', tone: 'danger', group: 3 });

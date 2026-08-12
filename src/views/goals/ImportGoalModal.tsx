@@ -3,7 +3,9 @@ import type { Goal } from '../../db/types';
 import { Modal } from '../../components/Modal';
 import { todayStr } from '../../lib/dates';
 import { buildAiPrompt, parseGoalImport, FORMAT_HINT } from '../../lib/goalImport';
-import { fieldCls, labelCls, primaryBtn, ghostBtn } from './styles';
+import {
+  fieldCls, labelCls, primaryBtn, ghostBtn, secondaryBtn, dialogFooter,
+} from '../../components/dialogStyles';
 
 export function ImportGoalModal({
   open,
@@ -57,8 +59,12 @@ export function ImportGoalModal({
         </p>
 
         <div className="flex items-center gap-[10px]">
-          <button className={primaryBtn} onClick={copyPrompt}>
-            {copied ? 'Copied!' : 'Copy AI prompt'}
+          {/* Outlined, not filled. This is a convenience on the way to the
+              dialog's actual job, and wearing the same ink button as "Import
+              goal" put the heavier-looking of the two commit-shaped buttons on
+              the lesser action. */}
+          <button type="button" className={secondaryBtn} onClick={copyPrompt}>
+            {copied ? 'Copied' : 'Copy AI prompt'}
           </button>
           <span className="text-compact text-muted">Paste into ChatGPT, Claude, etc.</span>
         </div>
@@ -79,17 +85,21 @@ export function ImportGoalModal({
             onChange={(e) => { setText(e.target.value); if (error) setError(null); }}
             rows={8}
             placeholder={'{ "title": "…", "subgoals": ["…"] }'}
-            className={`${fieldCls} w-full resize-y font-mono text-compact leading-[1.5]`}
+            className={`${fieldCls} resize-y font-mono text-compact leading-[1.5]`}
           />
           {error && <p role="alert" className="text-ui text-warn">{error}</p>}
         </div>
+      </div>
 
-        <div className="flex items-center gap-[8px] mt-[2px]">
-          <button className={primaryBtn} onClick={submit} disabled={!text.trim()}>
-            Add to board
-          </button>
-          <button className={ghostBtn} onClick={onClose}>Cancel</button>
-        </div>
+      {/* "Import goal" — the words on the dialog and on the menu item that
+          opened it. "Add to board" was a third name for one action, in a
+          codebase whose other import dialog already carries a comment insisting
+          the button repeat the menu. */}
+      <div className={dialogFooter}>
+        <button type="button" className={ghostBtn} onClick={onClose}>Cancel</button>
+        <button type="button" className={primaryBtn} onClick={submit} disabled={!text.trim()}>
+          Import goal
+        </button>
       </div>
     </Modal>
   );

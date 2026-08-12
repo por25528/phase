@@ -5,9 +5,12 @@ import { DateField } from '../../components/DateField';
 import { uid } from '../../lib/tree';
 import { GOAL_TYPE_WORD, inferGoalType, type GoalType } from '../../lib/goalType';
 import { projectDateError } from '../../lib/schedule';
-import { fieldCls, labelCls, primaryBtn, ghostBtn } from './styles';
+import { SegmentedControl, type SegmentedOption } from '../../components/SegmentedControl';
+import { fieldCls, labelCls, primaryBtn, ghostBtn, dialogFooter } from '../../components/dialogStyles';
 
-const TYPES: GoalType[] = ['study', 'project', 'general'];
+const TYPES: readonly SegmentedOption<GoalType>[] = (
+  ['study', 'project', 'general'] as const
+).map((t) => ({ value: t, label: GOAL_TYPE_WORD[t] }));
 
 /**
  * Two fields, and one of them is optional.
@@ -72,53 +75,69 @@ export function NewGoalModal({
 
   return (
     <Modal open={open} onClose={onClose} title="New goal">
-      <div className="flex flex-col gap-[14px]">
-        <div className="flex flex-col gap-[5px]">
-          <label className={labelCls} htmlFor="goal-title">What do you want to finish?</label>
-          <input
-            ref={titleRef}
-            id="goal-title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Physics Final"
-            className={`${fieldCls} w-full`}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); submit(); }
-            }}
-          />
-        </div>
-
-        <div className="flex flex-wrap gap-[14px]">
+      {/*
+        A real <form>, so Enter commits from anywhere in it. It used to be wired
+        by hand to the title input alone, which meant the key that creates a goal
+        worked in one of the three places a person could be standing.
+        `DateField` still swallows its own Enter to commit a draft date — that is
+        the correct precedence, not a gap.
+      */}
+      <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <div className="flex flex-col gap-[14px]">
           <div className="flex flex-col gap-[5px]">
-            <label className={labelCls}>Deadline <span className="text-faint font-normal">(optional)</span></label>
-            <DateField value={deadline} onCommit={setDeadline} ariaLabel="Deadline" placeholder="No deadline" className={fieldCls} />
-          </div>
-          <div className="flex flex-col gap-[5px]">
-            {/* The guess is visible and editable, never applied silently. A
-                default only has to be reasonable; a hidden inference has to be
-                right. */}
-            <label className={labelCls} htmlFor="goal-type">Type</label>
-            <select
-              id="goal-type"
-              value={type}
-              onChange={(e) => setChosenType(e.target.value as GoalType)}
+            <label className={labelCls} htmlFor="goal-title">What do you want to finish?</label>
+            <input
+              ref={titleRef}
+              id="goal-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Physics Final"
               className={fieldCls}
-            >
-              {TYPES.map((t) => (
-                <option key={t} value={t}>{GOAL_TYPE_WORD[t]}</option>
-              ))}
-            </select>
+            />
           </div>
-        </div>
-        {dateError && <div className="text-compact text-warn">{dateError}</div>}
 
-        <div className="flex items-center gap-[8px] mt-[2px]">
-          <button className={primaryBtn} onClick={submit} disabled={!title.trim() || !!dateError}>
-            Create
-          </button>
-          <button className={ghostBtn} onClick={onClose}>Cancel</button>
+          {/* Two equal columns, not `flex-wrap`. The date was 86px and the
+              select was as wide as the word inside it, so the row under a
+              full-width title ended in a ragged 200px of nothing. */}
+          <div className="grid grid-cols-2 gap-[14px]">
+            <div className="flex flex-col gap-[5px]">
+              {/* A <span>: `DateField` names itself with `ariaLabel`, and a
+                  <label> pointing at no control is a label in markup only. */}
+              <span className={labelCls}>Deadline <span className="text-faint font-normal">(optional)</span></span>
+              <DateField
+                value={deadline}
+                onCommit={setDeadline}
+                ariaLabel="Deadline"
+                placeholder="No deadline"
+                size="field"
+              />
+            </div>
+            <div className="flex flex-col gap-[5px]">
+              {/* The guess is visible and editable, never applied silently. A
+                  default only has to be reasonable; a hidden inference has to be
+                  right. Laid out rather than collapsed, it also shows what it
+                  chose OVER. */}
+              <span className={labelCls}>Type</span>
+              <SegmentedControl
+                name="goal-type"
+                label="Type"
+                value={type}
+                options={TYPES}
+                onChange={setChosenType}
+              />
+            </div>
+          </div>
+          {dateError && <p role="alert" className="text-ui text-warn">{dateError}</p>}
         </div>
-      </div>
+
+        <div className={dialogFooter}>
+          <button type="button" className={ghostBtn} onClick={onClose}>Cancel</button>
+          {/* The verb the dialog's own title promised. */}
+          <button type="submit" className={primaryBtn} disabled={!title.trim() || !!dateError}>
+            Create goal
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

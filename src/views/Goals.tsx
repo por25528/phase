@@ -20,6 +20,7 @@ import { fmtD } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { Timeline } from './Timeline';
+import { SegmentedSwitch } from '../components/SegmentedControl';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
@@ -536,8 +537,8 @@ export function Goals() {
  * Timeline tab destroyed by sitting beside Plan and Goals as a peer.
  */
 const MODES = [
-  ['board', 'Board'],
-  ['timeline', 'Timeline'],
+  { value: 'board', label: 'Board' },
+  { value: 'timeline', label: 'Timeline' },
 ] as const;
 
 function ViewModeSwitch({
@@ -547,25 +548,7 @@ function ViewModeSwitch({
   mode: GoalsMode;
   onChange: (mode: GoalsMode) => void;
 }) {
-  return (
-    <div role="group" aria-label="Goals view" className="flex gap-[2px] p-[3px] bg-hover rounded-[11px]">
-      {MODES.map(([key, label]) => (
-        <button
-          key={key}
-          type="button"
-          aria-pressed={mode === key}
-          onClick={() => onChange(key)}
-          className={`text-ui px-[10px] py-[5px] rounded-field transition-colors ${
-            mode === key
-              ? 'bg-panel text-ink font-semibold shadow-card'
-              : 'text-muted font-medium hover:text-ink'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
+  return <SegmentedSwitch label="Goals view" value={mode} options={MODES} onChange={onChange} />;
 }
 
 // ── Completed section ─────────────────────────────────────────────────────────

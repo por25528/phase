@@ -35,6 +35,8 @@ export default {
         paper: 'rgb(var(--c-paper) / <alpha-value>)',
         chip: 'rgb(var(--c-chip) / <alpha-value>)',
         'chip-ink': 'rgb(var(--c-chip-ink) / <alpha-value>)',
+        // One step UP from `chip`, in whichever direction the theme calls up.
+        raised: 'rgb(var(--c-raised) / <alpha-value>)',
         warn: 'rgb(var(--c-warn) / <alpha-value>)',
         'warn-tint': 'rgb(var(--c-warn-tint) / <alpha-value>)',
         // Project identity — see index.css for the contrast rationale. No key
@@ -72,6 +74,11 @@ export default {
         h2: '1.2rem',
         h1: '1.4rem',
         wordmark: '1.5rem',
+        // A document's own title. It has to outrank `h1`, because `h1` is what
+        // a heading typed INSIDE a note renders at — with the task page's title
+        // set to `h2`, a heading in the body came out larger than the name of
+        // the thing it was in.
+        page: '1.75rem',
       },
       // Corner radii: 4, 6, 11 arbitrary plus `field` (9) and `card` (14).
       borderRadius: {

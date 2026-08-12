@@ -1,8 +1,15 @@
 import type { WeekCapacity } from '../../lib/capacity';
 import type { PlanMode } from '../../db/db';
+import { SegmentedSwitch } from '../../components/SegmentedControl';
 import { fmtD, addDays } from '../../lib/dates';
 import { ymOf, ymLabel } from '../../lib/calendar';
 import { loadParts, unestimatedLabel, capacityNote, isOverCommitted } from './capacityLabel';
+
+/** Capitalised here rather than by `capitalize`: a label is written, not cased. */
+const PLAN_RANGES = [
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+] as const;
 
 /**
  * The week calendar's header: date range, capacity readout, and week
@@ -92,22 +99,17 @@ export function WeekHeader({
       {onModeChange && (
         // `aria-pressed`, not `role="tab"`: these are two states of one
         // control, and a tablist would promise arrow-key navigation between
-        // tabpanels that do not exist.
-        <div className="flex items-center rounded-field border border-line-2 overflow-hidden">
-          {(['week', 'month'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => onModeChange(m)}
-              aria-pressed={mode === m}
-              className={`px-[10px] py-[3px] text-meta capitalize min-h-[24px] ${
-                mode === m ? 'bg-fill text-bg' : 'text-muted hover:text-ink hover:bg-hover'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
+        // tabpanels that do not exist. `SegmentedSwitch` supplies that role —
+        // and the shape, which used to be a joined bordered pair whose selected
+        // half went SOLID INVERTED, a third reading of "selected" in an app that
+        // already had two.
+        <SegmentedSwitch
+          label="Calendar range"
+          value={mode}
+          options={PLAN_RANGES}
+          onChange={onModeChange}
+          size="sm"
+        />
       )}
       <button type="button" onClick={onPrev} aria-label={isMonth ? 'Previous month' : 'Previous week'} className="text-muted hover:text-ink px-[6px] min-w-[24px] min-h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover">‹</button>
       <button type="button" onClick={onToday} className="text-meta text-muted hover:text-ink min-h-[24px] px-[6px] rounded-[6px] hover:bg-hover">today</button>

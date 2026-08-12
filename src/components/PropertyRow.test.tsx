@@ -4,8 +4,8 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  PropertyChip,
-  PropertyChipToggle,
+  PropertyLine,
+  PropertyLineToggle,
   PropertyOption,
   PropertyRow,
   PropertyStatic,
@@ -151,10 +151,10 @@ describe('PropertyOption', () => {
   });
 });
 
-describe('PropertyChip', () => {
+describe('PropertyLine', () => {
   it('names the property when it has no value, and never prints a zero', () => {
     render(
-      createElement(PropertyChip, {
+      createElement(PropertyLine, {
         label: 'Estimate',
         icon: null,
         value: null,
@@ -166,10 +166,30 @@ describe('PropertyChip', () => {
     expect(screen.queryByText('0m')).toBeNull();
   });
 
+  /**
+   * The visible label is `aria-hidden`, and the value button carries the whole
+   * `"Estimate: No estimate"` name instead. Exposing both would make a screen
+   * reader say "Estimate, Estimate: No estimate" on one row — the label column
+   * is a sighted reader's affordance for a name the button already states.
+   */
+  it('states the whole property on the value, and hides the visible label from AT', () => {
+    const { container } = render(
+      createElement(PropertyLine, {
+        label: 'Schedule',
+        icon: null,
+        value: null,
+        placeholder: 'Not scheduled',
+        children: () => null,
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'Schedule: Not scheduled' })).toBeTruthy();
+    expect(container.querySelector('[aria-hidden="true"]')?.textContent).toBe('Schedule');
+  });
+
   it('opens the same popover children a PropertyRow would', async () => {
     const user = userEvent.setup();
     render(
-      createElement(PropertyChip, {
+      createElement(PropertyLine, {
         label: 'Status',
         icon: null,
         value: 'Doing',
@@ -183,15 +203,16 @@ describe('PropertyChip', () => {
 
   it('renders a toggle as a switch that reports its state', () => {
     render(
-      createElement(PropertyChipToggle, {
+      createElement(PropertyLineToggle, {
+        name: 'Milestone',
         label: 'Make a milestone',
         icon: null,
         on: true,
         onToggle: () => {},
-        children: 'Milestone',
+        children: 'Yes',
       }),
     );
-    const chip = screen.getByRole('switch', { name: 'Make a milestone' });
-    expect(chip.getAttribute('aria-checked')).toBe('true');
+    const line = screen.getByRole('switch', { name: 'Make a milestone' });
+    expect(line.getAttribute('aria-checked')).toBe('true');
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
+import { dangerBtn, ghostBtn, dialogFooter, fieldCls } from './dialogStyles';
 
 /**
  * The one destructive action in Phase that cannot be undone.
@@ -56,24 +57,19 @@ export function ConfirmImportModal({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && armed) onConfirm();
           }}
-          className="mt-[6px] w-full bg-field border border-line-2 rounded-field px-[10px] py-[7px] text-body text-ink outline-none focus:border-accent"
+          className={`mt-[6px] ${fieldCls}`}
         />
       </label>
-      <div className="mt-[18px] flex justify-end gap-[8px]">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-[24px] px-[12px] py-[6px] rounded-field text-ui text-muted hover:bg-hover hover:text-ink"
-        >
+      <div className={dialogFooter}>
+        <button type="button" onClick={onCancel} className={ghostBtn}>
           Cancel
         </button>
-        {/* Same words as the menu item that opened it. */}
-        <button
-          type="button"
-          disabled={!armed}
-          onClick={onConfirm}
-          className="min-h-[24px] px-[12px] py-[6px] rounded-field text-ui font-semibold bg-accent text-accent-contrast hover:bg-accent-deep disabled:opacity-40 disabled:pointer-events-none"
-        >
+        {/* Same words as the menu item that opened it — and the app's only
+            coloured button, because this is the app's only action with no undo
+            behind it. It wore `accent` before, which index.css defines as
+            ACTION: the same meaning every other dialog's commit button carries,
+            so the colour marked nothing. `warn` means trouble. */}
+        <button type="button" disabled={!armed} onClick={onConfirm} className={dangerBtn}>
           Import backup
         </button>
       </div>

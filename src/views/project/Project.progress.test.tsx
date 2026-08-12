@@ -158,14 +158,14 @@ describe('Project page', () => {
        * It used to open a dialog whose first field was a dropdown asking which
        * task you meant — about a task you had just clicked on.
        *
-       * The leading `✦` is an aria-hidden icon, so the accessible name is the
-       * words alone; it used to be a bare text node and screen readers read the
-       * decoration out.
-       *
-       * `n2` is a leaf, so it now opens as `TaskPage`, whose trigger uses the
-       * shared invitation label without repeating the task title.
+       * `n2` is a leaf, so it opens as `TaskPage` — and the verb now lives in
+       * that page's `⋯` rather than standing under the note, which on an
+       * untouched task left it alone below 220px of blank document. The
+       * accessible name is still the words alone: it was once a bare text node
+       * beside a `✦`, and screen readers read the decoration out.
        */
-      const breakdown = screen.getByRole('button', { name: 'Break into smaller steps' });
+      fireEvent.click(screen.getByRole('button', { name: /^Actions for / }));
+      const breakdown = screen.getByRole('menuitem', { name: 'Break into smaller steps' });
       expect(breakdown.textContent).toBe('Break into smaller steps');
       fireEvent.click(breakdown);
       expect(screen.getByRole('heading', { name: /Break down/ })).toBeTruthy();
