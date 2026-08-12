@@ -5,6 +5,7 @@ import { Goals } from './views/Goals';
 import { Plan } from './views/Plan';
 import { Project } from './views/Project';
 import { QuickAdd } from './components/QuickAdd';
+import { AssistantHost } from './components/assistant/AssistantHost';
 import { ConfirmImportModal } from './components/ConfirmImportModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { SettingsModal } from './components/SettingsModal';
@@ -74,6 +75,10 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The in-app assistant panel. Opens from ⌘K in every build; the desktop
+  // shell's global shortcut opens the floating overlay window instead —
+  // Command+Space never reaches Chromium, so it is deliberately NOT bound here.
+  const [assistantOpen, setAssistantOpen] = useState(false);
   // Held between "a file was picked" and "the user typed REPLACE". The File is
   // captured here, so the input can be reset immediately and stay re-pickable.
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -215,6 +220,7 @@ export function App() {
    */
   function runPaletteCommand(id: string): void {
     switch (id) {
+      case 'assistant': setAssistantOpen(true); return;
       case 'add-task': openTaskCapture(); return;
       case 'new-goal': actions.setGoalModal('new'); return;
       case 'import-goal': actions.setGoalModal('import'); return;
@@ -516,6 +522,7 @@ export function App() {
         }}
       />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AssistantHost open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <CommandPalette
         open={paletteOpen}

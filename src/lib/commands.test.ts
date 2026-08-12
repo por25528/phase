@@ -99,3 +99,15 @@ describe('actionsFor', () => {
     expect(actionsFor(entry({ kind: 'task' }))[0].label).toBe('Show in Plan');
   });
 });
+
+describe('the assistant command', () => {
+  it('exists in the registry under the one consistent verb', () => {
+    const assistant = COMMANDS.find((c) => c.id === 'assistant');
+    expect(assistant?.label).toBe('Open assistant');
+  });
+
+  it('is findable by the words people will actually type', () => {
+    expect(matchCommands('assistant').map((c) => c.id)).toContain('assistant');
+    expect(matchCommands('next action').map((c) => c.id)).toContain('assistant');
+  });
+});

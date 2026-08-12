@@ -1,0 +1,214 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useAppStore } from '../../state/store';
+import { AssistantSurface } from './AssistantSurface';
+import {
+  executionAdvice, rankedWork, workThatFits, type ExecutionAdviceInput,
+} from '../../lib/executionAdvisor';
+import { expectedTimeFor } from '../../lib/expectedTime';
+import {
+  ASSISTANT_EXAMPLES, interpretAssistantInput, proposeAssistant, type AssistantProposal,
+} from '../../lib/assistantCommands';
+import type {
+  AssistantAction, AssistantFocusView, AssistantSnapshot,
+} from '../../lib/assistantProtocol';
+import { elapsedFocusMinutes } from '../../lib/focusSession';
+import { weekOf } from '../../lib/plan';
+import { todayStr } from '../../lib/dates';
+
+/**
+ * The sole adapter between `AssistantAction` and the store.
+ *
+ * Everything a snapshot contains is derived here from hydrated state and the
+ * local clock, and every confirmed proposal lands on an EXISTING store action —
+ * `addTask`, `toggleLeaf`/`toggleTask`, `scheduleNode`/`scheduleTask`,
+ * `startFocus` and friends — never on a new write path. The only state of its
+ * own is the ephemeral conversation-shaped pair (current proposal, current
+ * notice), which is exactly the state that must NOT persist: the assistant
+ * keeps no history.
+ *
+ * Works with no Electron at all: in the browser this renders the surface as an
+ * anchored in-app panel and the desktop relay simply never engages.
+ */
+
+interface Notice {
+  tone: 'neutral' | 'warning';
+  text: string;
+}
+
+function nowMinute(): number {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+export function AssistantHost({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const {
+    goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, hydration, actions,
+  } = useAppStore();
+  const [proposal, setProposal] = useState<AssistantProposal | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  // Escape is CONSUMED, exactly as Popover consumes it: App listens on the
+  // bubble phase, and letting the key through would close this panel and the
+  // page behind it in one press.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, onClose]);
+
+  const adviceInput = (today: string): ExecutionAdviceInput => ({
+    goals, tasks, sessions, availability, blocks: [], allDayBlocks,
+    today, week: weekOf(today), now: { date: today, minute: nowMinute() },
+  });
+
+  const snapshot: AssistantSnapshot = useMemo(() => {
+    if (hydration !== 'ready') return { status: 'loading' };
+    const today = todayStr();
+    const advice = executionAdvice({
+      goals, tasks, sessions, availability, blocks: [], allDayBlocks,
+      today, week: weekOf(today), now: { date: today, minute: nowMinute() },
+    });
+    const activeFocus: AssistantFocusView | null = activeFocusSession
+      ? {
+          title: activeFocusSession.title,
+          ...(activeFocusSession.goalTitle === undefined ? {} : { goalTitle: activeFocusSession.goalTitle }),
+          phase: activeFocusSession.phase,
+          elapsedMin: elapsedFocusMinutes(activeFocusSession, Date.now()),
+          expected: activeFocusSession.expected,
+          ...(activeFocusSession.proposedMinutes === undefined ? {} : { proposedMinutes: activeFocusSession.proposedMinutes }),
+        }
+      : null;
+    return {
+      status: 'ready',
+      advice,
+      activeFocus,
+      proposal,
+      ...(notice ? { notice } : {}),
+    };
+  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, proposal, notice]);
+
+  function commit(current: AssistantProposal): void {
+    if (current.kind === 'capture') {
+      actions.addTask(current.title, current.date, current.goalId, current.estimateMin);
+      setProposal(null);
+      setNotice({ tone: 'neutral', text: `Added "${current.title}".` });
+      return;
+    }
+    if (current.kind === 'complete') {
+      if (current.subject.ref.kind === 'step') actions.toggleLeaf(current.subject.ref.id);
+      else actions.toggleTask(current.subject.ref.id);
+      setProposal(null);
+      setNotice({ tone: 'neutral', text: `Completed "${current.subject.title}".` });
+      return;
+    }
+    if (current.kind === 'schedule') {
+      const { ref } = current.subject;
+      // The store resolves the slot and refuses honestly; aiming at minute 0
+      // means "the earliest gap that fits", the palette's own rule.
+      const placed = ref.kind === 'step'
+        ? actions.scheduleNode(ref.goalId, ref.id, current.date, 0)
+        : actions.scheduleTask(ref.id, current.date, 0);
+      if (!placed) {
+        setNotice({ tone: 'warning', text: `No room for "${current.subject.title}" that day.` });
+        return;
+      }
+      setProposal(null);
+      setNotice({ tone: 'neutral', text: `Scheduled "${current.subject.title}".` });
+    }
+  }
+
+  function onAction(action: AssistantAction): void {
+    switch (action.type) {
+      case 'start-focus': {
+        const started = actions.startFocus(
+          action.ref,
+          expectedTimeFor(action.ref, { goals, tasks, sessions }),
+        );
+        if (!started) setNotice({ tone: 'warning', text: 'A session is already running.' });
+        return;
+      }
+      case 'pause-focus': actions.pauseFocus(); return;
+      case 'resume-focus': actions.resumeFocus(); return;
+      case 'complete-focus': {
+        if (actions.completeFocus() === 'refused') {
+          setNotice({ tone: 'warning', text: "Couldn't log that session." });
+        }
+        return;
+      }
+      case 'confirm-focus': actions.confirmFocus(action.minutes); return;
+      case 'switch-focus': {
+        // Log the running session first; only a clean log releases the switch.
+        // A stale one parks in `confirming` and the surface asks about it.
+        const result = actions.completeFocus();
+        if (result === 'refused') {
+          setNotice({ tone: 'warning', text: "Couldn't log the current session." });
+          return;
+        }
+        if (result === 'needs-confirmation') return;
+        actions.startFocus(action.ref, expectedTimeFor(action.ref, { goals, tasks, sessions }));
+        return;
+      }
+      case 'submit-input': {
+        setNotice(null);
+        const today = todayStr();
+        const intent = interpretAssistantInput(action.text, goals, today);
+        if (intent.kind === 'fits') {
+          const fits = workThatFits(intent.minutes, rankedWork(adviceInput(today)));
+          setProposal(null);
+          setNotice({
+            tone: 'neutral',
+            text: fits.length === 0
+              ? `Nothing on your plate fits ${intent.minutes}m with confidence.`
+              : `Fits ${intent.minutes}m: ${fits.slice(0, 3).map((w) => w.title).join(' · ')}`,
+          });
+          return;
+        }
+        if (intent.kind === 'examples') {
+          setProposal(null);
+          setNotice({ tone: 'neutral', text: `Try: ${ASSISTANT_EXAMPLES.join(' · ')}` });
+          return;
+        }
+        setProposal(proposeAssistant(intent, goals, tasks));
+        return;
+      }
+      case 'confirm-proposal': {
+        if (proposal && proposal.id === action.id) commit(proposal);
+        return;
+      }
+      case 'choose-subject': {
+        if (!proposal || proposal.kind !== 'choose-subject' || proposal.id !== action.proposalId) return;
+        const choice = proposal.choices.find((c) => c.ref.id === action.subjectId);
+        if (!choice) return;
+        setProposal(
+          proposal.verb === 'complete' || proposal.date === undefined
+            ? { kind: 'complete', id: proposal.id, subject: choice }
+            : { kind: 'schedule', id: proposal.id, subject: choice, date: proposal.date },
+        );
+        return;
+      }
+      case 'cancel-proposal':
+        setProposal(null);
+        setNotice(null);
+        return;
+      case 'close':
+        onClose();
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Assistant"
+      className="fixed right-[16px] top-[64px] z-40 max-h-[70vh] w-[380px] overflow-y-auto rounded-card border border-line bg-panel"
+    >
+      <AssistantSurface snapshot={snapshot} onAction={onAction} />
+    </div>
+  );
+}

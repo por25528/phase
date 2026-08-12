@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, Task } from '../db/types';
+import type { AvailabilityWindow, Goal, Habit, Task } from '../db/types';
 import { blocksOf } from '../lib/blocks';
 
 /**
@@ -13,7 +13,7 @@ import { blocksOf } from '../lib/blocks';
  */
 
 const dbMocks = vi.hoisted(() => ({
-  loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: Task[]; sessions: never[] }> =>
+  loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: Habit[]; tasks: Task[]; sessions: never[] }> =>
     ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
@@ -40,6 +40,8 @@ const dbMocks = vi.hoisted(() => ({
   saveCheckpointMigrationSnapshot: vi.fn(async () => {}),
   loadCheckpointMigrationSnapshot: vi.fn(async () => null),
   markCheckpointMigrationDone: vi.fn(async () => {}),
+  loadActiveFocusSession: vi.fn(async () => null),
+  saveActiveFocusSession: vi.fn(async () => {}),
 }));
 vi.mock('../db/db', () => dbMocks);
 vi.mock('../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));
@@ -66,13 +68,14 @@ const project: Goal = {
 async function mountToday(over: {
   goals?: Goal[];
   tasks?: Task[];
+  habits?: Habit[];
   availability?: AvailabilityWindow[];
   onOpenSettings?: () => void;
 } = {}) {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
     goals: structuredClone(over.goals ?? [project]),
-    habits: [],
+    habits: structuredClone(over.habits ?? []),
     tasks: structuredClone(over.tasks ?? []),
     sessions: [],
   });
@@ -203,5 +206,67 @@ describe('the free-time offer', () => {
 
     expect(screen.queryByLabelText('Free time')).toBeNull();
     expect(screen.getByText(/Nothing committed to today/)).toBeTruthy();
+  });
+});
+
+describe('the shared primary', () => {
+  it("shows the advisor's primary as the top item with honest time copy", async () => {
+    const store = await mountToday();
+
+    const { executionAdvice } = await import('../lib/executionAdvisor');
+    const { weekOf } = await import('../lib/plan');
+    const s = store.getState();
+    const advice = executionAdvice({
+      goals: s.goals, tasks: s.tasks, sessions: s.sessions,
+      availability: s.availability, blocks: [], allDayBlocks: s.allDayBlocks,
+      today: TODAY, week: weekOf(TODAY), now: { date: TODAY, minute: 10 * 60 },
+    });
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.key).toBe('step:n1');
+
+    // The top row is that exact item, wearing the plan action and the honest
+    // planned-estimate language — never "likely".
+    expect(screen.getByRole('button', { name: 'Plan “Draft the intro” today' })).toBeTruthy();
+    expect(screen.getByText('Planned 60m')).toBeTruthy();
+  });
+
+  it('keeps the primary out of the lower free-time list', async () => {
+    await mountToday({
+      goals: [
+        project,
+        { id: 'g2', title: 'Startup', column: 0, nodes: [{ id: 'n2', title: 'Pitch deck', estimateMin: 30 }] },
+      ],
+    });
+
+    const countTitle = (title: string) => [...document.querySelectorAll('span')]
+      .filter((span) => span.textContent === title).length;
+    expect(countTitle('Draft the intro')).toBe(1);
+    expect(countTitle('Pitch deck')).toBe(1);
+  });
+
+  it('Start session starts a focus draft for that exact ref', async () => {
+    const store = await mountToday();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Start session on “Draft the intro”' }).click();
+    });
+
+    expect(store.getState().activeFocusSession?.ref).toEqual({
+      kind: 'step', id: 'n1', goalId: 'g1',
+    });
+    // Time is logged later, at completion. Starting a session completes nothing.
+    expect(store.getState().sessions).toHaveLength(0);
+    expect(store.getState().goals[0].nodes[0].status).toBeUndefined();
+  });
+
+  it('a habit never becomes the primary', async () => {
+    await mountToday({
+      goals: [],
+      habits: [{ id: 'h1', title: 'Stretch', cadence: 'daily', weeklyTarget: 7, goalId: null, checkins: [] }],
+    });
+
+    expect(screen.getByText(/Nothing committed to today/)).toBeTruthy();
+    expect(screen.queryByText('Stretch')).toBeNull();
   });
 });

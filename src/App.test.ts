@@ -36,3 +36,11 @@ describe('App toast announcements', () => {
     }
   });
 });
+
+describe('the in-app assistant', () => {
+  it('stays closed by default — no assistant surface in the initial markup', () => {
+    vi.useFakeTimers();
+    const html = renderToStaticMarkup(createElement(App));
+    expect(html).not.toContain('Ask the assistant');
+  });
+});
