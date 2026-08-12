@@ -4,7 +4,7 @@ import { allAssetIds, clearAssets, deleteAssets, getAsset, putAsset } from './as
 import { persist } from './db';
 import type { AppState, Asset } from './types';
 
-const state: AppState = { goals: [], habits: [], tasks: [], sessions: [] };
+const state: AppState = { goals: [], habits: [], tasks: [], sessions: [], lives: [] };
 
 function asset(id: string, bytes = [1, 2, 3]): Asset {
   return {

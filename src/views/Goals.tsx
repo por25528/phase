@@ -38,7 +38,7 @@ const COL_COUNT = COLUMNS.length;
 // ── Goals view ────────────────────────────────────────────────────────────────
 
 export function Goals() {
-  const { goals, dateReviewDismissed, activeHorizon, goalsMode, goalModal, actions } = useAppStore();
+  const { goals, lives, dateReviewDismissed, activeHorizon, goalsMode, goalModal, actions } = useAppStore();
   // Which composer is up lives in the store: ⌘K can ask for one from anywhere,
   // and a modal only its own page can open is one the palette has to lie about.
   const modal = goalModal;
@@ -476,6 +476,8 @@ export function Goals() {
                       dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}
                       highlighted={id === highlightId}
+                      lives={lives}
+                      onSetLife={actions.setGoalLife}
                     />
                   );
                 })}

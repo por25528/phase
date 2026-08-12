@@ -18,13 +18,13 @@ function goal(id: string): Goal {
   return { id, title: id, start: '2026-01-01', deadline: '2026-12-31', nodes: [], column: 0 };
 }
 
-const stateA: AppState = { goals: [goal('a'), goal('b')], habits: [], tasks: [], sessions: [] };
-const stateB: AppState = { goals: [goal('c')], habits: [], tasks: [], sessions: [] };
+const stateA: AppState = { goals: [goal('a'), goal('b')], habits: [], tasks: [], sessions: [], lives: [] };
+const stateB: AppState = { goals: [goal('c')], habits: [], tasks: [], sessions: [], lives: [] };
 
 beforeEach(async () => {
   await Promise.all([
     db.goals.clear(), db.habits.clear(), db.tasks.clear(), db.sessions.clear(), db.settings.clear(),
-    db.planReview.clear(), db.assets.clear(), db.calendarCache.clear(),
+    db.planReview.clear(), db.assets.clear(), db.calendarCache.clear(), db.lives.clear(),
   ]);
 });
 
@@ -107,6 +107,7 @@ describe('importStateFromFile', () => {
       habits: [],
       tasks: [],
       sessions: [],
+      lives: [],
     };
 
     const backup = await exportedPayload(state);
@@ -127,6 +128,7 @@ describe('importStateFromFile', () => {
       habits: [],
       tasks: [],
       sessions: [],
+      lives: [],
     };
 
     const backup = await exportedPayload(state);
@@ -168,7 +170,7 @@ describe('importStateFromFile', () => {
     expect(result.sessions).toEqual([session]);
     expect(result.pxPerDay).toBe(40);
     expect(await loadState()).toEqual({
-      goals: [goal('g1')], habits: [], tasks: [task], sessions: [session],
+      goals: [goal('g1')], habits: [], tasks: [task], sessions: [session], lives: [],
     });
   });
 
@@ -394,7 +396,7 @@ describe('importStateFromFile', () => {
 describe('loadState', () => {
   it('returns an empty state on a fresh database — no demo seed', async () => {
     const s = await loadState();
-    expect(s).toEqual({ goals: [], habits: [], tasks: [], sessions: [] });
+    expect(s).toEqual({ goals: [], habits: [], tasks: [], sessions: [], lives: [] });
   });
 
   it('loads legacy optional fields on the existing Dexie schema version', async () => {
@@ -414,7 +416,7 @@ describe('loadState', () => {
       goalId: null,
     };
 
-    expect(db.verno).toBe(6);
+    expect(db.verno).toBe(7);
     await db.goals.put(legacyGoal);
     await db.tasks.put(legacyTask);
 
@@ -672,5 +674,56 @@ describe('sidebarPanels round-trips through a backup', () => {
     const file = fileOf(JSON.stringify({ goals: [], habits: [], tasks: [], sessions: [], sidebarPanels: 'habits,stats' }));
     const out = await importStateFromFile(file);
     expect(out.sidebarPanels).toEqual([]);
+  });
+});
+
+describe('lives', () => {
+  const withLives = (lives: AppState['lives']): AppState => ({
+    goals: [], habits: [], tasks: [], sessions: [], lives,
+  });
+
+  it('round-trips through persist and loadState', async () => {
+    await persist(withLives([{ id: 'l1', title: 'MIT', order: 0 }]));
+
+    const loaded = await loadState();
+
+    expect(loaded.lives).toEqual([{ id: 'l1', title: 'MIT', order: 0 }]);
+  });
+
+  // persist is a full clear + bulkPut, so a life removed in memory must be
+  // gone from disk — not merged with what was there before.
+  it('a removed life does not survive the next write', async () => {
+    await persist(withLives([
+      { id: 'l1', title: 'MIT', order: 0 },
+      { id: 'l2', title: 'Startup', order: 1 },
+    ]));
+    await persist(withLives([{ id: 'l1', title: 'MIT', order: 0 }]));
+
+    expect((await loadState()).lives.map((l) => l.id)).toEqual(['l1']);
+  });
+
+  it('loads as an empty list when nothing was ever written', async () => {
+    expect((await loadState()).lives).toEqual([]);
+  });
+
+  it('survives an export/import round trip, capping and cleaning on the way in', async () => {
+    const raw = JSON.stringify({
+      goals: [], habits: [], tasks: [], sessions: [],
+      lives: [
+        { id: 'l1', title: 'MIT', order: 0 },
+        { id: 'l1', title: 'Duplicate', order: 1 },
+        { id: 'l2', title: 'Startup', order: 1 },
+      ],
+      pxPerDay: 13,
+    });
+    const file = new File([raw], 'phase-goals-2026-08-11.json', { type: 'application/json' });
+
+    const imported = await importStateFromFile(file);
+
+    expect(imported.lives).toEqual([
+      { id: 'l1', title: 'MIT', order: 0 },
+      { id: 'l2', title: 'Startup', order: 1 },
+    ]);
+    expect((await loadState()).lives.map((l) => l.id)).toEqual(['l1', 'l2']);
   });
 });

@@ -1,5 +1,6 @@
 import { Modal } from './Modal';
 import { AvailabilitySettings } from '../views/plan/AvailabilitySettings';
+import { LivesSettings } from '../views/goals/LivesSettings';
 
 /**
  * Where the low-frequency system operations live.
@@ -12,11 +13,20 @@ import { AvailabilitySettings } from '../views/plan/AvailabilitySettings';
  *
  * A dialog earns itself here for the reason §14 gives: this is provider-style
  * configuration, not routine editing, and it is reached deliberately from the
- * utility menu or `⌘K`, never stumbled into.
+ * utility menu or `⌘K`, never stumbled into. Naming your lives belongs to the
+ * same class — done once a semester, and it costs the board no chrome.
  */
 export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
-    <Modal open={open} onClose={onClose} title="Working hours">
+    <Modal open={open} onClose={onClose} title="Settings">
+      <h3 className="text-meta font-semibold text-muted mb-[6px]">Lives</h3>
+      <p className="text-ui text-muted mb-[12px] leading-[1.5]">
+        The handful of things you are doing at once. A goal belongs to one of
+        them, or to none — an errand is nobody's project.
+      </p>
+      <LivesSettings />
+
+      <h3 className="text-meta font-semibold text-muted mt-[20px] mb-[6px]">Working hours</h3>
       <p className="text-ui text-muted mb-[12px] leading-[1.5]">
         The hours Phase may schedule into. Everything that reports free time —
         the week's capacity, where a dragged task lands, whether a goal still

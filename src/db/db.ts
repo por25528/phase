@@ -1,8 +1,9 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow, Asset, CalendarCache } from './types';
+import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow, Asset, CalendarCache, Life } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
+import { sanitizeBackupLives } from '../lib/lives';
 import { parseAvailability, serializeAvailability } from '../lib/availability';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { migrateNodeStatus } from '../lib/migrateNodeStatus';
@@ -26,6 +27,7 @@ class PhaseDB extends Dexie {
   planReview!: Table<PlanReview, string>;
   assets!: Table<Asset, string>;
   calendarCache!: Table<CalendarCacheRow, string>;
+  lives!: Table<Life, string>;
 
   constructor() {
     super('phase');
@@ -74,17 +76,29 @@ class PhaseDB extends Dexie {
       assets: 'id',
       calendarCache: 'key',
     });
+    this.version(7).stores({
+      goals: 'id',
+      habits: 'id',
+      tasks: 'id',
+      settings: 'key',
+      sessions: 'id',
+      planReview: 'week',
+      assets: 'id',
+      calendarCache: 'key',
+      lives: 'id',
+    });
   }
 }
 
 export const db = new PhaseDB();
 
 export async function loadState(): Promise<AppState> {
-  const [goals, habits, tasks, sessions] = await Promise.all([
+  const [goals, habits, tasks, sessions, lives] = await Promise.all([
     db.goals.toArray(),
     db.habits.toArray(),
     db.tasks.toArray(),
     db.sessions.toArray(),
+    db.lives.toArray(),
   ]);
   /*
    * Status only, here.
@@ -95,7 +109,7 @@ export async function loadState(): Promise<AppState> {
    * the two in the other order leaves the repair with nothing to read, and it
    * needs the availability windows and the tab lock that only the store has.
    */
-  return { goals: migrateNodeStatus(goals), habits, tasks, sessions };
+  return { goals: migrateNodeStatus(goals), habits, tasks, sessions, lives };
 }
 
 export async function persist(state: AppState): Promise<void> {
@@ -108,12 +122,13 @@ export async function persist(state: AppState): Promise<void> {
   // One rw transaction: either every table reflects `state`, or none does.
   // (The previous Promise.all of independent clear→bulkPut chains could leave
   // the DB partially wiped if one chain failed mid-flight.)
-  await db.transaction('rw', db.goals, db.habits, db.tasks, db.sessions, async () => {
+  await db.transaction('rw', db.goals, db.habits, db.tasks, db.sessions, db.lives, async () => {
     await Promise.all([
       db.goals.clear().then(() => db.goals.bulkPut(state.goals)),
       db.habits.clear().then(() => db.habits.bulkPut(state.habits)),
       db.tasks.clear().then(() => db.tasks.bulkPut(state.tasks)),
       db.sessions.clear().then(() => db.sessions.bulkPut(state.sessions)),
+      db.lives.clear().then(() => db.lives.bulkPut(state.lives)),
     ]);
   });
 }
@@ -575,6 +590,11 @@ export async function importStateFromFile(
     habits: (raw.habits ?? []).map(sanitizeBackupHabit),
     tasks: blocked.tasks,
     sessions: raw.sessions ?? [],
+    // A goal whose `lifeId` names a life this backup does not carry is left
+    // exactly as it is: the reference dangles and reads as unassigned. Stripping
+    // it would silently rewrite user data to satisfy a constraint the read path
+    // already handles.
+    lives: sanitizeBackupLives((raw as { lives?: unknown }).lives),
   };
   await persist(parsed);
   let assetWriteFailed = false;
