@@ -79,6 +79,7 @@ them explicitly rather than staying silent.
 | [`student-workflows.md`](student-workflows.md) | 13 ideas specific to coursework, psets, exams and a semester's shape. |
 | [`startup-workflows.md`](startup-workflows.md) | 13 ideas for the half of my life that is metrics rather than checkboxes. |
 | [`roadmap.md`](roadmap.md) | The synthesis: Top 10s, the single biggest weakness, and a sequenced build order. |
+| [`vision.md`](vision.md) | **2026-08-11.** What Phase is becoming: two pillars, two moments, two lives. Decided in conversation; supersedes F-6 and UX-6. |
 
 ## How ideas are scored
 
