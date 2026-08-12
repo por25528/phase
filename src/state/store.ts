@@ -1723,7 +1723,9 @@ export const actions = {
   },
 
   toggleTask(taskId: string): void {
-    if (!state.tasks.some((task) => task.id === taskId)) return;
+    const target = state.tasks.find((task) => task.id === taskId);
+    if (!target) return;
+    const wasDone = target.done;
     const tasks = state.tasks.map((task) => {
       if (task.id !== taskId) return task;
       const updated = { ...task };
@@ -1736,7 +1738,12 @@ export const actions = {
       }
       return updated;
     });
-    setAndPersist({ tasks });
+    // The task twin of `toggleLeaf`, and it splits the same way. Completion
+    // makes the row vanish from Today and the backlog rail, so it gets the undo
+    // window; reopening is itself the recovery and leaves the row on screen, so
+    // it stays silent.
+    if (wasDone) setAndPersist({ tasks });
+    else withUndo(`Completed "${target.title}"`, 'tasks', tasks);
   },
 
   rescheduleTask(taskId: string, date: string): void {
