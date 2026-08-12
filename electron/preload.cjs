@@ -38,4 +38,6 @@ contextBridge.exposeInMainWorld('phaseAssistant', {
     ipcRenderer.on('phase-assistant:action', listener);
     return () => ipcRenderer.removeListener('phase-assistant:action', listener);
   },
+  /** Push the hydrated accelerator preference; resolves with registration status. */
+  configureShortcut: (accelerator) => ipcRenderer.invoke('phase-assistant:set-shortcut', accelerator),
 });

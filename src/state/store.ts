@@ -11,6 +11,7 @@ import {
   isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
   loadActiveFocusSession, saveActiveFocusSession,
+  loadAssistantAccelerator, saveAssistantAccelerator,
 } from '../db/db';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
@@ -63,6 +64,9 @@ import {
   discardFocusSession, type ActiveFocusSession,
 } from '../lib/focusSession';
 import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
+import {
+  DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
+} from '../lib/assistantAccelerator';
 import { canAddLife, nextLifeOrder } from '../lib/lives';
 
 /**
@@ -179,6 +183,14 @@ interface UIState {
    * never inside `persist()`'s four-table write.
    */
   activeFocusSession: ActiveFocusSession | null;
+  /** The assistant's global shortcut — a device preference, like `planMode`. */
+  assistantAccelerator: string;
+  /**
+   * What the OS said when the chord was registered. Ephemeral and
+   * Electron-only: null in the browser, where there is no global shortcut to
+   * register and so nothing honest to report.
+   */
+  assistantShortcut: ShortcutStatus | null;
 }
 
 interface FullState extends AppState, UIState {}
@@ -218,6 +230,8 @@ let state: FullState = {
   goalsMode: 'board',
   activeHorizon: 0,
   activeFocusSession: null,
+  assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
+  assistantShortcut: null,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
   // non-DOM contexts (tests).
@@ -547,8 +561,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -618,6 +632,7 @@ export async function initStore(): Promise<void> {
       planMode,
       goalsMode,
       activeFocusSession,
+      assistantAccelerator,
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -1871,6 +1886,25 @@ export const actions = {
     if (!draft) return false;
     setFocusDraft(discardFocusSession(draft));
     return true;
+  },
+
+  /**
+   * Change the assistant's global shortcut preference. Validation is at the
+   * boundary — a chord that cannot anchor (no real modifier) is refused, not
+   * stored — and the write goes through the owner gate like every settings
+   * write. Actually registering it with the OS is Electron's job; the status
+   * that comes back lands in `setAssistantShortcutStatus`.
+   */
+  setAssistantAccelerator(next: string): boolean {
+    if (!isValidAccelerator(next)) return false;
+    set({ assistantAccelerator: next });
+    ifOwner(() => saveAssistantAccelerator(next));
+    return true;
+  },
+
+  /** Ephemeral registration status from the desktop shell. Never persisted. */
+  setAssistantShortcutStatus(status: ShortcutStatus | null): void {
+    set({ assistantShortcut: status });
   },
 
   /**

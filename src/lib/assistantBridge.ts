@@ -1,4 +1,5 @@
 import type { AssistantAction, AssistantSnapshot } from './assistantProtocol';
+import type { ShortcutStatus } from './assistantAccelerator';
 
 /**
  * The renderer-side wrapper around the preload bridges — and the reason the
@@ -15,6 +16,8 @@ export interface AssistantMainBridge {
   publish(snapshot: AssistantSnapshot): void;
   onRequestSnapshot(fn: () => void): () => void;
   onAction(fn: (action: AssistantAction) => void): () => void;
+  /** Null in the browser, or when the main process refused the request. */
+  configureShortcut(accelerator: string): Promise<ShortcutStatus | null>;
 }
 
 export interface AssistantOverlayBridge {
@@ -29,6 +32,7 @@ interface MainPreload {
   publish(snapshot: AssistantSnapshot): void;
   onRequestSnapshot(fn: () => void): () => void;
   onAction(fn: (action: AssistantAction) => void): () => void;
+  configureShortcut(accelerator: string): Promise<ShortcutStatus | null>;
 }
 
 interface OverlayPreload {
@@ -53,6 +57,7 @@ export function assistantMainBridge(): AssistantMainBridge {
       publish: noop,
       onRequestSnapshot: () => noop,
       onAction: () => noop,
+      configureShortcut: async () => null,
     };
   }
   return {
@@ -60,6 +65,7 @@ export function assistantMainBridge(): AssistantMainBridge {
     publish: (snapshot) => preload.publish(snapshot),
     onRequestSnapshot: (fn) => preload.onRequestSnapshot(fn),
     onAction: (fn) => preload.onAction(fn),
+    configureShortcut: (accelerator) => preload.configureShortcut(accelerator),
   };
 }
 

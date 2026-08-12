@@ -42,6 +42,8 @@ const dbMocks = vi.hoisted(() => ({
   markCheckpointMigrationDone: vi.fn(async () => {}),
   loadActiveFocusSession: vi.fn(async (): Promise<ActiveFocusSession | null> => null),
   saveActiveFocusSession: vi.fn(async () => {}),
+  loadAssistantAccelerator: vi.fn(async () => 'Command+Space'),
+  saveAssistantAccelerator: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -4803,5 +4805,59 @@ describe('focus sessions', () => {
     expect(store.actions.startFocus(ref, starter, t0)).toBe(true);
     expect(store.getState().activeFocusSession).not.toBeNull();
     expect(dbMocks.saveActiveFocusSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('assistant shortcut preference', () => {
+  beforeEach(() => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+  });
+
+  it('hydrates the stored accelerator', async () => {
+    dbMocks.loadAssistantAccelerator.mockResolvedValueOnce('Control+Alt+K');
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().assistantAccelerator).toBe('Control+Alt+K');
+  });
+
+  it('saves a valid change through the owner gate', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveAssistantAccelerator.mockClear();
+
+    expect(store.actions.setAssistantAccelerator('Control+Alt+K')).toBe(true);
+    expect(store.getState().assistantAccelerator).toBe('Control+Alt+K');
+    expect(dbMocks.saveAssistantAccelerator).toHaveBeenCalledWith('Control+Alt+K');
+  });
+
+  it('refuses an invalid accelerator instead of storing it', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveAssistantAccelerator.mockClear();
+
+    expect(store.actions.setAssistantAccelerator('Space')).toBe(false);
+    expect(store.getState().assistantAccelerator).toBe('Command+Space');
+    expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
+  });
+
+  it('a non-owning tab does not save a shortcut setting', async () => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(false);
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveAssistantAccelerator.mockClear();
+
+    expect(store.actions.setAssistantAccelerator('Control+Alt+K')).toBe(true);
+    expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
+  });
+
+  it('holds the ephemeral registration status without persisting anything', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    const status = { requested: 'Command+Space', active: null, registered: false, conflict: true };
+
+    store.actions.setAssistantShortcutStatus(status);
+
+    expect(store.getState().assistantShortcut).toEqual(status);
+    expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
   });
 });

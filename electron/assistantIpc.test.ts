@@ -249,3 +249,42 @@ describe('preload surfaces', () => {
     }
   });
 });
+
+describe('set-shortcut', () => {
+  function shortcutRelay() {
+    const main = fakeWindow(MAIN_ID);
+    const overlay = fakeWindow(OVERLAY_ID);
+    const setShortcut = vi.fn((requested: string) => ({
+      requested, active: requested, registered: true, conflict: false,
+    }));
+    const ipcMain = fakeIpcMain();
+    const ipc = createAssistantIpc({
+      getMainWindow: () => main,
+      getAssistantWindow: () => overlay,
+      hideAssistant: vi.fn(),
+      setShortcut,
+    });
+    ipc.register(ipcMain);
+    return { ipcMain, setShortcut };
+  }
+
+  it('lets only the main window configure the accelerator', () => {
+    const { ipcMain, setShortcut } = shortcutRelay();
+    expect(ipcMain.invoke('phase-assistant:set-shortcut', OVERLAY_ID, 'Command+Space')).toBeNull();
+    expect(ipcMain.invoke('phase-assistant:set-shortcut', STRANGER_ID, 'Command+Space')).toBeNull();
+    expect(setShortcut).not.toHaveBeenCalled();
+
+    const status = ipcMain.invoke('phase-assistant:set-shortcut', MAIN_ID, 'Command+Space');
+    expect(status).toEqual({
+      requested: 'Command+Space', active: 'Command+Space', registered: true, conflict: false,
+    });
+  });
+
+  it('rejects malformed accelerators before the adapter sees them', () => {
+    const { ipcMain, setShortcut } = shortcutRelay();
+    for (const bad of [null, 42, '', 'x'.repeat(200), { chord: 'Command+Space' }]) {
+      expect(ipcMain.invoke('phase-assistant:set-shortcut', MAIN_ID, bad)).toBeNull();
+    }
+    expect(setShortcut).not.toHaveBeenCalled();
+  });
+});

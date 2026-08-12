@@ -43,7 +43,8 @@ function nowMinute(): number {
 
 export function AssistantHost({ open, onClose }: { open: boolean; onClose: () => void }) {
   const {
-    goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, hydration, actions,
+    goals, tasks, sessions, availability, allDayBlocks, activeFocusSession,
+    assistantAccelerator, hydration, actions,
   } = useAppStore();
   const [proposal, setProposal] = useState<AssistantProposal | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -225,6 +226,21 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
       offAction();
     };
   }, [bridge]);
+
+  // Electron cannot read Dexie, so the hydrated shortcut preference is pushed
+  // from here — once at hydration and again whenever Settings changes it. The
+  // status that comes back (registered, or a conflict) is what the Settings
+  // section shows; a conflict is a state to display, never an exception.
+  useEffect(() => {
+    if (!bridge.available || hydration !== 'ready') return;
+    let cancelled = false;
+    void bridge.configureShortcut(assistantAccelerator).then((status) => {
+      if (!cancelled && status) actions.setAssistantShortcutStatus(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, hydration, assistantAccelerator, actions]);
 
   if (!open) return null;
 

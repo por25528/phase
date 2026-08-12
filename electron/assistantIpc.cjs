@@ -178,7 +178,7 @@ function validAction(action) {
  * cached snapshot only ever holds a payload that already passed validation.
  */
 function createAssistantIpc(deps) {
-  const { getMainWindow, getAssistantWindow, hideAssistant } = deps;
+  const { getMainWindow, getAssistantWindow, hideAssistant, setShortcut } = deps;
   let latestSnapshot = null;
 
   function live(win) {
@@ -218,18 +218,29 @@ function createAssistantIpc(deps) {
     hideAssistant();
   }
 
+  function onSetShortcut(event, requested) {
+    // The accelerator preference lives in the main renderer's Dexie; only that
+    // renderer may push it. The overlay has no business rebinding the OS.
+    if (!isSender(event, live(getMainWindow()))) return null;
+    if (typeof requested !== 'string' || requested.length === 0 || requested.length > 64) return null;
+    if (!setShortcut) return null;
+    return setShortcut(requested);
+  }
+
   return {
     register(ipcMain) {
       ipcMain.on(`${ASSISTANT_CHANNEL_PREFIX}:publish`, onPublish);
       ipcMain.handle(`${ASSISTANT_CHANNEL_PREFIX}:ready`, onReady);
       ipcMain.on(`${ASSISTANT_CHANNEL_PREFIX}:act`, onAct);
       ipcMain.on(`${ASSISTANT_CHANNEL_PREFIX}:close`, onClose);
+      ipcMain.handle(`${ASSISTANT_CHANNEL_PREFIX}:set-shortcut`, onSetShortcut);
     },
     dispose(ipcMain) {
       ipcMain.removeAllListeners(`${ASSISTANT_CHANNEL_PREFIX}:publish`);
       ipcMain.removeHandler(`${ASSISTANT_CHANNEL_PREFIX}:ready`);
       ipcMain.removeAllListeners(`${ASSISTANT_CHANNEL_PREFIX}:act`);
       ipcMain.removeAllListeners(`${ASSISTANT_CHANNEL_PREFIX}:close`);
+      ipcMain.removeHandler(`${ASSISTANT_CHANNEL_PREFIX}:set-shortcut`);
       latestSnapshot = null;
     },
     /** Ask the main renderer to publish afresh — used when the overlay is shown. */

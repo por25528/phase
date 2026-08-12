@@ -11,10 +11,14 @@ export interface RelayWindow {
   webContents: { id: number; send(channel: string, payload?: unknown): void };
 }
 
+import type { ShortcutStatus } from './assistantShortcut.d.cts';
+
 export interface AssistantIpcDeps {
   getMainWindow(): RelayWindow | null;
   getAssistantWindow(): RelayWindow | null;
   hideAssistant(): void;
+  /** Absent when no global shortcut exists (tests, non-desktop builds). */
+  setShortcut?(accelerator: string): ShortcutStatus;
 }
 
 export interface AssistantIpc {

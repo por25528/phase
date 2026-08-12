@@ -1,6 +1,6 @@
 // Electron main process for Phase.
 // Wraps the built Vite app (dist/) in a native macOS window.
-const { app, BrowserWindow, shell, safeStorage, ipcMain } = require('electron')
+const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -11,6 +11,7 @@ const { createGoogleClient } = require('./googleClient.cjs')
 const { normalizeEvents } = require('./busyBlocks.cjs')
 const { createCalendarHandlers, registerCalendarIpc } = require('./calendarIpc.cjs')
 const { createAssistantIpc } = require('./assistantIpc.cjs')
+const { createAssistantShortcut } = require('./assistantShortcut.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
@@ -31,6 +32,28 @@ const assistantIpc = createAssistantIpc({
   hideAssistant: () => {
     if (assistantWindow && !assistantWindow.isDestroyed()) assistantWindow.hide()
   },
+  setShortcut: (accelerator) => assistantShortcut.setAccelerator(accelerator),
+})
+
+function toggleAssistantWindow() {
+  if (!assistantWindow || assistantWindow.isDestroyed()) return
+  if (assistantWindow.isVisible()) {
+    assistantWindow.hide()
+    return
+  }
+  // Ask the owner for a fresh snapshot before showing, so the overlay never
+  // opens onto stale advice — the cache still paints instantly meanwhile.
+  assistantIpc.requestSnapshot()
+  assistantWindow.show()
+}
+
+// Registration is renderer-driven: Electron cannot read Dexie, so the stored
+// chord arrives over validated IPC after hydration. Until then nothing is
+// registered — a shortcut the user may have changed must not fire its old one.
+const assistantShortcut = createAssistantShortcut({
+  register: (accelerator, handler) => globalShortcut.register(accelerator, handler),
+  unregister: (accelerator) => globalShortcut.unregister(accelerator),
+  onOpen: () => toggleAssistantWindow(),
 })
 
 // The encrypted store lives beside the app's other user data, NOT in the
@@ -198,4 +221,11 @@ app.whenReady().then(() => {
 // single-window personal tool it's friendlier to fully quit.
 app.on('window-all-closed', () => {
   app.quit()
+})
+
+// A global shortcut outlives its window unless explicitly released; leaving it
+// registered after quit is how a dead app keeps eating a system-wide chord.
+app.on('will-quit', () => {
+  assistantShortcut.dispose()
+  globalShortcut.unregisterAll()
 })

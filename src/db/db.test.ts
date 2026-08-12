@@ -771,3 +771,18 @@ describe('active focus session', () => {
     expect(keys).toEqual(['availability']);
   });
 });
+
+describe('assistant accelerator setting', () => {
+  it('defaults to Command+Space when absent or malformed', async () => {
+    const { loadAssistantAccelerator } = await import('./db');
+    expect(await loadAssistantAccelerator()).toBe('Command+Space');
+    await db.settings.put({ key: 'assistantAccelerator', value: 'Space' });
+    expect(await loadAssistantAccelerator()).toBe('Command+Space');
+  });
+
+  it('round-trips a valid chord', async () => {
+    const { loadAssistantAccelerator, saveAssistantAccelerator } = await import('./db');
+    await saveAssistantAccelerator('Control+Alt+K');
+    expect(await loadAssistantAccelerator()).toBe('Control+Alt+K');
+  });
+});

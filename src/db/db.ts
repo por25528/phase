@@ -13,6 +13,7 @@ import { decodeAssets, encodeAssets } from '../lib/backupAssets';
 import {
   parseActiveFocusSession, serializeActiveFocusSession, type ActiveFocusSession,
 } from '../lib/focusSession';
+import { parseStoredAccelerator } from '../lib/assistantAccelerator';
 
 /**
  * Single-row table. The fixed key is what makes "at most one cache" a schema
@@ -192,6 +193,23 @@ export async function saveActiveFocusSession(value: ActiveFocusSession | null): 
     key: ACTIVE_FOCUS_SESSION_KEY,
     value: serializeActiveFocusSession(value),
   });
+}
+
+/**
+ * The assistant's global shortcut. A device/OS binding, not user work, so it
+ * lives in `settings` and is deliberately NOT part of backup export/import —
+ * a chord that works on this Mac may be owned by something else on the next.
+ * The load is total: malformed rows read as the default.
+ */
+const ASSISTANT_ACCELERATOR_KEY = 'assistantAccelerator';
+
+export async function loadAssistantAccelerator(): Promise<string> {
+  const row = await db.settings.get(ASSISTANT_ACCELERATOR_KEY);
+  return parseStoredAccelerator(row?.value);
+}
+
+export async function saveAssistantAccelerator(value: string): Promise<void> {
+  await db.settings.put({ key: ASSISTANT_ACCELERATOR_KEY, value });
 }
 
 // Defaults ON: an all-day event usually does consume the day.
