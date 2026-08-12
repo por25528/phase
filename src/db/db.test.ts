@@ -727,3 +727,47 @@ describe('lives', () => {
     expect((await loadState()).lives.map((l) => l.id)).toEqual(['l1', 'l2']);
   });
 });
+
+describe('active focus session', () => {
+  const draft = {
+    id: 'f1',
+    ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+    title: 'Problem set 4',
+    startedAtMs: 1_700_000_000_000,
+    activeSinceMs: 1_700_000_000_000,
+    accumulatedMs: 0,
+    phase: 'active' as const,
+    expected: { kind: 'starter' as const, minutes: 30 as const },
+  };
+
+  it('loadActiveFocusSession returns null when absent', async () => {
+    const { loadActiveFocusSession } = await import('./db');
+    expect(await loadActiveFocusSession()).toBeNull();
+  });
+
+  it('loadActiveFocusSession returns null for a malformed row', async () => {
+    const { loadActiveFocusSession } = await import('./db');
+    await db.settings.put({ key: 'activeFocusSession', value: 'not json at all' });
+    expect(await loadActiveFocusSession()).toBeNull();
+    await db.settings.put({ key: 'activeFocusSession', value: JSON.stringify({ id: 'x' }) });
+    expect(await loadActiveFocusSession()).toBeNull();
+  });
+
+  it('saveActiveFocusSession writes only the activeFocusSession settings row', async () => {
+    const { saveActiveFocusSession, loadActiveFocusSession } = await import('./db');
+    await db.settings.put({ key: 'availability', value: '[]' });
+    await saveActiveFocusSession(draft);
+    const keys = (await db.settings.toArray()).map((row) => row.key).sort();
+    expect(keys).toEqual(['activeFocusSession', 'availability']);
+    expect(await loadActiveFocusSession()).toEqual(draft);
+  });
+
+  it('saveActiveFocusSession(null) deletes the row and leaves the rest alone', async () => {
+    const { saveActiveFocusSession } = await import('./db');
+    await db.settings.put({ key: 'availability', value: '[]' });
+    await saveActiveFocusSession(draft);
+    await saveActiveFocusSession(null);
+    const keys = (await db.settings.toArray()).map((row) => row.key);
+    expect(keys).toEqual(['availability']);
+  });
+});
