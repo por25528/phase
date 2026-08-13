@@ -367,3 +367,36 @@ describe('shelf window options', () => {
     expect(prod.target).not.toContain('index.html');
   });
 });
+
+/**
+ * main.cjs is the composition root: it alone may know BrowserWindow, screen,
+ * Tray, Menu, and nativeImage, and it composes the deep shelf modules behind
+ * their interfaces. These source contracts pin which modules it composes, how
+ * a login launch stays hidden, and how an explicit quit releases every global
+ * resource — the same source-reading technique the preload checks use.
+ */
+describe('main composition', () => {
+  const main = readFileSync(new URL('./main.cjs', import.meta.url), 'utf8');
+
+  it('composes the background Hub and shelf modules', () => {
+    expect(main).toContain('createAssistantWindowController');
+    expect(main).toContain('createAppLifecycle');
+    expect(main).toContain('createShellIpc');
+    expect(main).toContain('createMenuBar');
+    expect(main).not.toMatch(/window-all-closed[\s\S]{0,100}app\.quit/);
+  });
+
+  it('prewarms the shelf without showing the Hub on a login launch', () => {
+    expect(main).toMatch(/shouldShowMainAtLaunch\(app\.getLoginItemSettings\(\)\)/);
+    expect(main).toMatch(/assistantController\.create\(\)/);
+  });
+
+  it('releases every global resource on explicit quit', () => {
+    expect(main).toContain('assistantShortcut.dispose()');
+    expect(main).toContain('globalShortcut.unregisterAll()');
+    expect(main).toContain('assistantController?.dispose()');
+    expect(main).toContain('menuBar.dispose()');
+    expect(main).toContain('assistantIpc.dispose(ipcMain)');
+    expect(main).toContain('shellIpc.dispose(ipcMain)');
+  });
+});
