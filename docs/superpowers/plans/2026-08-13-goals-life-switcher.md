@@ -1184,6 +1184,10 @@ async function mountBoard(goals: Goal[], lives: Life[] = []): Promise<Store> {
     goals: structuredClone(goals), habits: [], tasks: [], sessions: [], lives: structuredClone(lives),
   });
   const store = await import('../../state/store');
+  // The store only boots against the database when `initStore` runs (App.tsx
+  // calls it; nothing else does). Without this the mocked `loadState` is never
+  // consumed, the store stays empty and the board renders onboarding.
+  await store.initStore();
   const { Goals } = await import('../Goals');
   const Host = () => { store.useAppStore(); return createElement(Goals); };
   await act(async () => { render(createElement(Host)); });
@@ -1208,7 +1212,7 @@ describe('Goals scoping', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Startup' }));
     expect(screen.queryByText('Pset 6')).toBeNull();
     expect(screen.getByText('Raise seed')).toBeTruthy();
-    expect(store.useAppStore.getState().activeLifeId).toBe('startup');
+    expect(store.getState().activeLifeId).toBe('startup');
   });
 
   it('offers Unassigned only while a loose goal is live', async () => {
@@ -1630,7 +1634,7 @@ describe('Goals header', () => {
     const store = await mountBoard(ONE);
     await userEvent.click(screen.getByRole('button', { name: 'Goals actions' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Manage lives' }));
-    expect(store.useAppStore.getState().settingsOpen).toBe(true);
+    expect(store.getState().settingsOpen).toBe(true);
   });
 });
 ```
