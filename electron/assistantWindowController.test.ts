@@ -34,7 +34,15 @@ interface FakeWindow {
   };
 }
 
-function fakeWindow(calls: string[] = []): FakeWindow {
+interface FakeWindowOptions {
+  /** Plain loader returning a controlled value; never a vi.fn, because a mock
+   *  attaches its own handler to a returned promise and masks the unhandled
+   *  rejection these reject-tests exist to catch. */
+  loadFileResult?: (path: string) => unknown;
+  loadURLResult?: (path: string) => unknown;
+}
+
+function fakeWindow(calls: string[] = [], opts: FakeWindowOptions = {}): FakeWindow {
   let visible = false;
   let destroyed = false;
   const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -49,6 +57,12 @@ function fakeWindow(calls: string[] = []): FakeWindow {
     (event: string, ...args: unknown[]) => {
       for (const listener of [...(map.get(event) ?? [])]) listener(...args);
     };
+  const loadURL = opts.loadURLResult
+    ? ((path: string) => opts.loadURLResult!(path)) as unknown as Fn
+    : vi.fn(async () => {});
+  const loadFile = opts.loadFileResult
+    ? ((path: string) => opts.loadFileResult!(path)) as unknown as Fn
+    : vi.fn(async () => {});
   return {
     setBounds: vi.fn(() => { calls.push('bounds'); }),
     setAlwaysOnTop: vi.fn(),
@@ -59,8 +73,8 @@ function fakeWindow(calls: string[] = []): FakeWindow {
     destroy: vi.fn(() => { destroyed = true; }),
     isVisible: vi.fn(() => visible),
     isDestroyed: vi.fn(() => destroyed),
-    loadURL: vi.fn(async () => {}),
-    loadFile: vi.fn(async () => {}),
+    loadURL,
+    loadFile,
     on: add(listeners),
     once(event, listener) {
       const wrapped = (...args: unknown[]) => {
@@ -321,6 +335,133 @@ describe('assistantWindowController', () => {
         message: expect.stringContaining('ERR_ABORTED'),
       }),
     );
+  });
+
+  it('swallows a rejected file load and recovers exactly once via did-fail-load', async () => {
+    let rejectLoad: (reason: unknown) => void = () => {};
+    const loadFailure = new Promise<unknown>((_resolve, reject) => {
+      rejectLoad = reject;
+    });
+    const loadPaths: string[] = [];
+    const first = fakeWindow([], {
+      loadFileResult: (path) => {
+        loadPaths.push(path);
+        return loadFailure;
+      },
+    });
+    const second = fakeWindow([]);
+    const createWindow = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const logError = vi.fn();
+    const controller = controllerWith(first, { createWindow, logError });
+
+    controller.showAndFocus();
+    expect(loadPaths).toEqual(['/x/assistant.html']);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      rejectLoad(new Error('file load failed'));
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+
+    expect(first.destroy).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
+    expect(controller.current()).toBe(first);
+
+    first.webContents.emit(
+      'did-fail-load',
+      {},
+      -3,
+      'ERR_ABORTED',
+      'file:///x/assistant.html',
+      true,
+      1,
+      1,
+    );
+    expect(first.destroy).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledTimes(1);
+    expect(controller.current()).toBeNull();
+    controller.showAndFocus();
+    expect(createWindow).toHaveBeenCalledTimes(2);
+    expect(controller.current()).toBe(second);
+  });
+
+  it('swallows a rejected url load and recovers exactly once via did-fail-load', async () => {
+    let rejectLoad: (reason: unknown) => void = () => {};
+    const loadFailure = new Promise<unknown>((_resolve, reject) => {
+      rejectLoad = reject;
+    });
+    const loadPaths: string[] = [];
+    const first = fakeWindow([], {
+      loadURLResult: (path) => {
+        loadPaths.push(path);
+        return loadFailure;
+      },
+    });
+    const second = fakeWindow([]);
+    const createWindow = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const logError = vi.fn();
+    const controller = controllerWith(first, {
+      createWindow,
+      logError,
+      entry: { kind: 'url', target: 'http://localhost:5173/assistant.html' },
+    });
+
+    controller.showAndFocus();
+    expect(loadPaths).toEqual(['http://localhost:5173/assistant.html']);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      rejectLoad(new Error('url load failed'));
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+
+    expect(first.destroy).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
+    expect(controller.current()).toBe(first);
+
+    first.webContents.emit(
+      'did-fail-load',
+      {},
+      -3,
+      'ERR_ABORTED',
+      'http://localhost:5173/assistant.html',
+      true,
+      1,
+      1,
+    );
+    expect(first.destroy).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledTimes(1);
+    expect(controller.current()).toBeNull();
+    controller.showAndFocus();
+    expect(createWindow).toHaveBeenCalledTimes(2);
+    expect(controller.current()).toBe(second);
+  });
+
+  it('supports a void loader', () => {
+    const loadPaths: string[] = [];
+    const win = fakeWindow([], {
+      loadFileResult: (path) => {
+        loadPaths.push(path);
+      },
+    });
+    const controller = controllerWith(win);
+    controller.showAndFocus();
+    expect(loadPaths).toEqual(['/x/assistant.html']);
+    win.emit('ready-to-show');
+    expect(win.show).toHaveBeenCalledTimes(1);
+    expect(controller.current()).toBe(win);
   });
 
   it('ignores did-fail-load for subframes', () => {

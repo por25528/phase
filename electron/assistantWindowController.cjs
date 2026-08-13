@@ -112,8 +112,14 @@ function createAssistantWindowController(deps) {
         },
       )
 
-      if (entry.kind === 'url') win.loadURL(entry.target)
-      else win.loadFile(entry.target)
+      // loadURL/loadFile reject alongside did-fail-load; that event is the
+      // authoritative state/log/destroy path, so this catch only swallows —
+      // an unhandled rejection must not reach the main process, but neither
+      // may it double-log, double-destroy, or clear a window the event (or a
+      // newer window) already owns. The guard keeps an injected loader that
+      // returns void from tripping over a missing .then.
+      const load = entry.kind === 'url' ? win.loadURL(entry.target) : win.loadFile(entry.target)
+      if (load && typeof load.then === 'function') load.then(undefined, () => {})
       return win
     } catch (error) {
       assistantWindow = null
