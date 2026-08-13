@@ -9,7 +9,7 @@
  * main process did not explicitly expose.
  */
 
-export interface ShellBridge {
+export interface PhaseShellBridge {
   /** False in the plain browser: every call is a no-op and nothing ever fires. */
   available: boolean;
   /** Ask the desktop shell to raise the assistant overlay. */
@@ -36,7 +36,7 @@ function preloadOf<T>(name: string): T | undefined {
 
 const noop = (): void => {};
 
-export function shellBridge(): ShellBridge {
+export function shellBridge(): PhaseShellBridge {
   const preload = preloadOf<ShellPreload>('phaseShell');
   if (!preload) {
     return {
