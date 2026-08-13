@@ -122,10 +122,19 @@ overlooked:
 ## Verification
 
 - `npm test` and `npx tsc -b`.
-- `AssistantSurface.test.tsx:112` asserts `Start with 30m` on a **running**
-  session. That assertion is the defect; it flips to the new string rather than
-  being deleted.
-- `assistantWindowController.test.ts` pins `height: 200` in seven places.
+- **The running status line has no test today.** `AssistantSurface.test.tsx:112`
+  asserts `Start with 30m`, but inside *"distinguishes history, planned
+  estimate, and starter language"*, which renders an **advice** snapshot — work
+  that has not started. That assertion is correct and stays exactly as it is.
+  The only test touching a session in `break` (line 238) clicks Continue and
+  never reads the status line. That absence is why the defect shipped, so the
+  work adds the missing assertion rather than flipping an existing one.
+- `assistantWindowController.test.ts` pins `height: 200` in eight places
+  (lines 125, 128, 129, 187, 193, 223, 245, 291). Several other `200`s and
+  `height:`s nearby are unrelated and must not be swept up: the cursor point
+  `{ x: -100, y: 200 }` (lines 202, 221), the work-area `height: 957`/`900`
+  fixtures (111, 186, 192, 204, 641), and `elapsedMin: 200` in
+  `AssistantSurface.test.tsx`.
 - Physical: the shelf is an `NSPanel` invisible to the usual accessibility
   tooling. Probe it through the System Events AX window list, per the standing
   note on verifying this surface, and confirm against a real session that no
@@ -139,6 +148,6 @@ overlooked:
 | `src/components/assistant/AssistantSurface.tsx` | delete `quietButton`; adopt `dialogStyles`; `optionRow`; button order; status line; `p-3`/`gap-2` |
 | `src/lib/assistantProtocol.ts` | add `elapsedAgainstExpected` |
 | `src/lib/assistantProtocol.test.ts` | **new file** — the module has no sibling test today, and `expectedTimeLabel` is currently covered only indirectly through `AssistantSurface.test.tsx`. Cases for all three `ExpectedTime` kinds, for both functions |
-| `src/components/assistant/AssistantSurface.test.tsx` | fix the `Start with 30m` assertion |
+| `src/components/assistant/AssistantSurface.test.tsx` | **add** a running-session status-line assertion and a button-order assertion. Nothing existing flips |
 | `electron/assistantWindow.cjs` | `HEIGHT` 200 → 190, comment |
-| `electron/assistantWindowController.test.ts` | seven `200`s |
+| `electron/assistantWindowController.test.ts` | five `200`s — not the cursor point |
