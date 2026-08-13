@@ -71,6 +71,27 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - Visual identity is locked — don't restyle unless explicitly asked. Colours come from the theme tokens: `designScale.test.ts` fails the build on a literal hex, on an arbitrary `text-[Nrem]`, and on a `fontSize` key that collides with a `colors` key (Tailwind emits both as `text-<key>`, and the colour silently wins). It also pins the two remaster type rules: `font-disp` (Fraunces) appears exactly once, on the wordmark, and all-caps is reserved for the three weekday strips. A section label is `text-meta font-semibold text-muted` — sentence case, UI face. And `border-dashed` is reserved for the drop preview and for a calendar block whose height is a guessed hour — spending it on ordinary empty states is how the drop signal stops meaning anything.
 - Hover-revealed row controls use the `.quiet-control` class, never a hand-rolled `opacity-0 group-hover:opacity-100`: it carries the `@media (hover: hover)` gate that keeps them reachable on touch, plus the 24px target floor. It needs a literal `group` ancestor (`group/name` does not match).
 - dnd-kit's `attributes` go on a dedicated drag handle, or through `containerDragAttributes` when the draggable is a container holding real buttons — `role="button"` around buttons is invalid and swallows their labels.
+- **The Goals board scopes to one life; the week never does.** `activeLifeId` is
+  in-memory view state beside `activeHorizon` — never persisted, so every load
+  starts at `All` — and `src/lib/lifeScope.ts` is the one vocabulary for it:
+  `resolveScope` (an unknown id is `'all'`, the same dangling licence
+  `Goal.lifeId` has), `lifeTabs` (empty when no life is named; a named life kept
+  when empty, `Unassigned` dropped when empty), `goalsInScope`, `nowLimit` and
+  `withScopeLife`. The cap is `NOW_WIP_LIMIT` per tab and, on `All`, the SUM of
+  the tabs beside it — so the figure can be checked against the strip by eye.
+  Today, Plan, the backlog rail and every capacity figure are deliberately NOT
+  scoped: this overturns D-7's refusal of a switcher and leaves its refusal of
+  per-life capacity standing.
+- **A partial board layout weaves the rest back.** `weaveHidden` (`lib/board.ts`)
+  re-inserts every goal absent from an incoming `setGoalBoard` layout at the
+  within-column index it held — the reason a scoped reorder cannot scramble the
+  other life's ranks, and why it is named for the general case rather than for
+  completion. `rankMoveTarget` is the keyboard half: `moveGoalRank` steps by
+  VISIBLE neighbours, so `Alt+↑` never swaps a card with one that is off screen.
+- **A column claims width in proportion to what it holds** (`lib/boardTracks.ts`),
+  and **every column equalises while something is in the air** — `handleDragOver`
+  moves ids live, so widths that tracked card count would reflow under the
+  cursor and an empty Now would be narrowest exactly when you need to hit it.
 
 ## Conventions
 

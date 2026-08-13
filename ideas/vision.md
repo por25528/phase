@@ -163,9 +163,16 @@ level of a column, which is not a choice anyone can make.
   costs the other, which is the trade you are already making invisibly.
 - **The remainder is real.** The week splits into life + life + what's left. It
   never sums to 100%, and loose tasks, errands and slack live in the leftover.
-- **Scoping exists only inside the planning flow** — one pass per life. There is
-  **no global board switcher**, so the collision is unavoidable by construction
-  and there is no mode to be lost in.
+- **Scoping exists inside the planning flow** — one pass per life — **and on the
+  Goals board.** This clause used to end "there is no global board switcher, so
+  the collision is unavoidable by construction". **Overturned 2026-08-13.** The
+  alternative it protected — D-16's budget line, which made the collision
+  physical instead of merely unavoidable — was built as slice 2a and failed when
+  rendered (open question 3). Refusing the switcher while its replacement does
+  not exist buys nothing and costs the complaint this decision opened with.
+  The board scopes; **the week still never does**, which is the half of this
+  decision that was never in question. See
+  `docs/superpowers/specs/2026-08-13-goals-life-switcher-design.md`.
 
 ### D-8 · The Now cap becomes hours, not slots
 
@@ -179,6 +186,12 @@ the honest answer to D-7: more than three is fine *if it fits*.
 **The debt:** three is a rule you can *feel*; "what fits" is a rule you have to
 *read*. The board must make the budget as physically obvious as three columns
 were. That bill comes due in the UI, not the schema.
+
+**Deferred 2026-08-13.** The cap became **three per life** rather than hours.
+Three is a rule you can feel, which is precisely what this entry said the hours
+had to replace — and the budget that would have measured "what fits" is the one
+that failed to render. A worse mechanism that ships beats a better one that
+clips every card on the board.
 
 ### D-9 · Day one asks for almost nothing
 
@@ -528,6 +541,11 @@ genuinely unknown, and none of them are answerable by deciding harder.
    arithmetic survives it — see
    `docs/superpowers/specs/2026-08-11-lives-budget-line-design.md`.
 
+   **Followed up 2026-08-13.** The geometry half was answered the other way it
+   named — *a geometry where Now claims width in proportion to what it holds* —
+   applied to the horizon columns rather than to card heights, and shipped with
+   the life switcher. The card is unchanged; only the columns move.
+
 ---
 
 ## Still refused
@@ -540,6 +558,8 @@ sub-projects, arbitrary databases — plus, from this session:
   decline." An inbox with good manners is still an inbox. (D-13)
 - **Per-life capacity.** You get one week and your lives share it. Any design
   that gives each life its own hours is lying. (D-7)
-- **A global board switcher.** A switcher is a device for not seeing the
-  collision, and the collision is the point. (D-7)
+- ~~**A global board switcher.**~~ **Adopted 2026-08-13** — see D-7. What
+  survives of the objection is the scope's *lifetime*: it is in-memory and
+  every load starts at `All`, so a mode is something you are in because you
+  chose it this session, never something you were restored into.
 - **Inferring work from calendars, activity or location.** (D-4)
