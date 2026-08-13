@@ -1,6 +1,7 @@
 import type { ExecutionAdvice } from './executionAdvisor';
 import type { AssistantProposal } from './assistantCommands';
 import type { ExpectedTime, WorkRef } from './expectedTime';
+import { fmtMinutes } from './effort';
 
 /**
  * The only data allowed to cross into the assistant overlay, and the only
@@ -63,4 +64,27 @@ export function expectedTimeLabel(expected: ExpectedTime): string {
     case 'estimate': return `Planned ${expected.minutes}m`;
     case 'starter': return `Start with ${expected.minutes}m`;
   }
+}
+
+/**
+ * The same expectation, restated for a session already under way.
+ *
+ * `expectedTimeLabel` is written as an INVITATION — "Start with 30m" — which is
+ * right on work that has not begun and wrong the moment it has: a paused
+ * session read `0m worked · on a break · Start with 30m`, inviting you to begin
+ * the thing you were already doing. This states progress instead. The range
+ * survives as a range, because "12m of 45–60m" is the only honest thing to say
+ * about a session whose evidence is a range.
+ *
+ * The elapsed side is `fmtMinutes` and the expected side is raw minutes. That
+ * looks mixed and is deliberate: each half is spelled the way the surface
+ * already spells it — `Log 3h 20m` on one, `Planned 30m` on the other — so
+ * neither this function nor `expectedTimeLabel` can drift from the button
+ * beside it.
+ */
+export function elapsedAgainstExpected(elapsedMin: number, expected: ExpectedTime): string {
+  const done = fmtMinutes(elapsedMin);
+  return expected.kind === 'history'
+    ? `${done} of ${expected.lowMin}–${expected.highMin}m`
+    : `${done} of ${expected.minutes}m`;
 }
