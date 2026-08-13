@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore, initStore, VIEW_LABELS } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Plan } from './views/Plan';
 import { Project } from './views/Project';
 import { QuickAdd } from './components/QuickAdd';
+import { AssistantHost } from './components/assistant/AssistantHost';
 import { ConfirmImportModal } from './components/ConfirmImportModal';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { SettingsModal } from './components/SettingsModal';
@@ -38,6 +39,7 @@ import {
   requestTaskCaptureForCommand,
   type TaskCaptureHostState,
 } from './lib/taskCapture';
+import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
 import {
   type Theme,
   resolveTheme,
@@ -61,6 +63,28 @@ const NAV_TABS = [
   ['goals', VIEW_LABELS.goals],
 ] as const;
 
+/**
+ * One resolver, two worlds: the desktop shell raises its own shelf window, the
+ * plain browser mounts the in-app panel. Kept apart from the command handler so
+ * the routing is a unit-testable fact instead of a branch inside App.
+ */
+export function openAssistantForEnvironment(
+  bridge: PhaseShellBridge,
+  openEmbedded: () => void,
+): void {
+  if (bridge.available) {
+    // Fire-and-forget: the shelf raises its own window, so a refusal must never
+    // fall through to the in-app panel. Catching here keeps the rejection quiet
+    // — Task 9's handlers turn the returned boolean into the surface decision.
+    void bridge.openAssistant().catch(() => {
+      // The desktop owns the assistant surface; an unhandled rejection would
+      // otherwise leak out of the command palette.
+    });
+    return;
+  }
+  openEmbedded();
+}
+
 export function App() {
   const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
@@ -74,9 +98,21 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The in-app assistant panel. Opens from ⌘K in the browser build; the desktop
+  // shell's global shortcut opens the floating overlay window instead —
+  // Command+Space never reaches Chromium, so it is deliberately NOT bound here.
+  // On desktop the ⌘K palette verb routes through `shell` below, so this flag
+  // is only ever the browser fallback's.
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  // The one shell bridge, created once: subscribing and re-subscribing on every
+  // render would make the desktop shell fire duplicate settings opens.
+  const shell = useMemo(() => shellBridge(), []);
   // Held between "a file was picked" and "the user typed REPLACE". The File is
   // captured here, so the input can be reset immediately and stay re-pickable.
   const [pendingImport, setPendingImport] = useState<File | null>(null);
+
+  // The menu bar's Settings item asks for this surface over the shell bridge.
+  useEffect(() => shell.onOpenSettings(() => setSettingsOpen(true)), [shell]);
 
   const reclaimSpace = () => {
     void actions.reclaimSpace()
@@ -215,6 +251,12 @@ export function App() {
    */
   function runPaletteCommand(id: string): void {
     switch (id) {
+      // The palette closes through its own completion flow; here we only choose
+      // which surface deserves the assistant — the shelf on desktop, the
+      // in-app panel in the browser. `setAssistantOpen` is never reached on
+      // desktop, so the Hub cannot grow its own assistant panel alongside the
+      // floating window.
+      case 'assistant': openAssistantForEnvironment(shell, () => setAssistantOpen(true)); return;
       case 'add-task': openTaskCapture(); return;
       case 'new-goal': actions.setGoalModal('new'); return;
       case 'import-goal': actions.setGoalModal('import'); return;
@@ -516,6 +558,7 @@ export function App() {
         }}
       />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AssistantHost open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <CommandPalette
         open={paletteOpen}

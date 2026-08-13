@@ -5,6 +5,7 @@ import { leafCount } from '../lib/board';
 import type { Asset, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
 import { makeBlock } from '../lib/blocks';
+import type { ActiveFocusSession } from '../lib/focusSession';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [], lives: [] })),
@@ -39,6 +40,10 @@ const dbMocks = vi.hoisted(() => ({
   saveCheckpointMigrationSnapshot: vi.fn(async () => {}),
   loadCheckpointMigrationSnapshot: vi.fn(async () => null),
   markCheckpointMigrationDone: vi.fn(async () => {}),
+  loadActiveFocusSession: vi.fn(async (): Promise<ActiveFocusSession | null> => null),
+  saveActiveFocusSession: vi.fn(async () => {}),
+  loadAssistantAccelerator: vi.fn(async () => 'Command+Space'),
+  saveAssistantAccelerator: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -4639,5 +4644,220 @@ describe('lives', () => {
     actions.removeLife('nope');
 
     expect(getState().lives).toBe(before);
+  });
+});
+
+describe('focus sessions', () => {
+  const MIN = 60_000;
+  const t0 = 1_700_000_000_000;
+  const focusGoal: Goal = {
+    id: 'g1', title: 'Algorithms',
+    nodes: [{ id: 'n1', title: 'Problem set 4' }],
+  };
+  const ref = { kind: 'step' as const, id: 'n1', goalId: 'g1' };
+  const starter = { kind: 'starter' as const, minutes: 30 as const };
+
+  async function focusStore(over: Partial<{ tasks: Task[] }> = {}) {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [focusGoal], habits: [], tasks: over.tasks ?? [], sessions: [], lives: [],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveActiveFocusSession.mockClear();
+    return store;
+  }
+
+  it('initStore hydrates the active draft', async () => {
+    const draft: ActiveFocusSession = {
+      id: 'f1', ref, title: 'Problem set 4', goalTitle: 'Algorithms',
+      startedAtMs: t0, activeSinceMs: null, accumulatedMs: 5 * MIN,
+      phase: 'break', expected: starter,
+    };
+    dbMocks.loadActiveFocusSession.mockResolvedValueOnce(draft);
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().activeFocusSession).toEqual(draft);
+  });
+
+  it('start, pause and resume write the setting only on transition', async () => {
+    const { actions, getState } = await focusStore();
+
+    expect(actions.startFocus(ref, starter, t0)).toBe(true);
+    expect(getState().activeFocusSession?.title).toBe('Problem set 4');
+    expect(getState().activeFocusSession?.goalTitle).toBe('Algorithms');
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(1);
+
+    // A second start while a draft is live is refused, not silently replaced.
+    expect(actions.startFocus(ref, starter, t0 + MIN)).toBe(false);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(1);
+
+    expect(actions.pauseFocus(t0 + 10 * MIN)).toBe(true);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(2);
+    // Pausing a paused session is not a transition and must not write.
+    expect(actions.pauseFocus(t0 + 11 * MIN)).toBe(false);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(2);
+
+    expect(actions.resumeFocus(t0 + 20 * MIN)).toBe(true);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(3);
+  });
+
+  it('a dangling ref cannot start a session', async () => {
+    const { actions, getState } = await focusStore();
+    expect(actions.startFocus({ kind: 'step', id: 'nope', goalId: 'g1' }, starter, t0)).toBe(false);
+    expect(getState().activeFocusSession).toBeNull();
+    expect(dbMocks.saveActiveFocusSession).not.toHaveBeenCalled();
+  });
+
+  it('normal completion logs one session and clears the draft', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+
+    expect(actions.completeFocus(t0 + 25 * MIN)).toBe('logged');
+
+    const sessions = getState().sessions;
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].minutes).toBe(25);
+    expect(sessions[0].nodeId).toBe('n1');
+    expect(getState().activeFocusSession).toBeNull();
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenLastCalledWith(null);
+  });
+
+  it('completing a session never completes the task', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(getState().goals[0].nodes[0].status).toBeUndefined();
+  });
+
+  it('stale completion parks the draft in confirming and appends nothing', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+
+    expect(actions.completeFocus(t0 + 200 * MIN)).toBe('needs-confirmation');
+
+    expect(getState().sessions).toHaveLength(0);
+    const draft = getState().activeFocusSession;
+    expect(draft?.phase).toBe('confirming');
+    expect(draft?.proposedMinutes).toBe(200);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: 'confirming' }),
+    );
+  });
+
+  it('confirming a positive adjusted duration appends one session', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 200 * MIN);
+
+    expect(actions.confirmFocus(90)).toBe(true);
+
+    expect(getState().sessions).toHaveLength(1);
+    expect(getState().sessions[0].minutes).toBe(90);
+    expect(getState().activeFocusSession).toBeNull();
+  });
+
+  it("choosing Didn't happen appends nothing and clears the draft", async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 200 * MIN);
+
+    expect(actions.confirmFocus(null)).toBe(true);
+
+    expect(getState().sessions).toHaveLength(0);
+    expect(getState().activeFocusSession).toBeNull();
+  });
+
+  it('discard clears the draft without logging', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+    expect(actions.discardFocus()).toBe(true);
+    expect(getState().sessions).toHaveLength(0);
+    expect(getState().activeFocusSession).toBeNull();
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenLastCalledWith(null);
+  });
+
+  it('focus completion preserves an already armed destructive undo', async () => {
+    const errand: Task = { id: 't1', title: 'Return library book', done: false, goalId: null };
+    const { actions, getState } = await focusStore({ tasks: [errand] });
+
+    actions.removeTask('t1');
+    expect(getState().pendingUndo?.label).toBe('Deleted "Return library book"');
+
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+
+    actions.undoLastDelete(); // pops the session log
+    actions.undoLastDelete(); // reaches the delete armed before the focus flow
+    expect(getState().tasks.map((t) => t.id)).toEqual(['t1']);
+  });
+
+  it('a non-owning second tab never writes the focus setting', async () => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(false);
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [focusGoal], habits: [], tasks: [], sessions: [], lives: [],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveActiveFocusSession.mockClear();
+
+    expect(store.actions.startFocus(ref, starter, t0)).toBe(true);
+    expect(store.getState().activeFocusSession).not.toBeNull();
+    expect(dbMocks.saveActiveFocusSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('assistant shortcut preference', () => {
+  beforeEach(() => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+  });
+
+  it('hydrates the stored accelerator', async () => {
+    dbMocks.loadAssistantAccelerator.mockResolvedValueOnce('Control+Alt+K');
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().assistantAccelerator).toBe('Control+Alt+K');
+  });
+
+  it('saves a valid change through the owner gate', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveAssistantAccelerator.mockClear();
+
+    expect(store.actions.setAssistantAccelerator('Control+Alt+K')).toBe(true);
+    expect(store.getState().assistantAccelerator).toBe('Control+Alt+K');
+    expect(dbMocks.saveAssistantAccelerator).toHaveBeenCalledWith('Control+Alt+K');
+  });
+
+  it('refuses an invalid accelerator instead of storing it', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveAssistantAccelerator.mockClear();
+
+    expect(store.actions.setAssistantAccelerator('Space')).toBe(false);
+    expect(store.getState().assistantAccelerator).toBe('Command+Space');
+    expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
+  });
+
+  it('a non-owning tab does not save a shortcut setting', async () => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(false);
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveAssistantAccelerator.mockClear();
+
+    expect(store.actions.setAssistantAccelerator('Control+Alt+K')).toBe(true);
+    expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
+  });
+
+  it('holds the ephemeral registration status without persisting anything', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    const status = { requested: 'Command+Space', active: null, registered: false, conflict: true };
+
+    store.actions.setAssistantShortcutStatus(status);
+
+    expect(store.getState().assistantShortcut).toEqual(status);
+    expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
   });
 });

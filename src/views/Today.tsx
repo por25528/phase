@@ -5,7 +5,10 @@ import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
-import { attentionItems, nowFocus, surfaceReason } from '../lib/todaySurface';
+import { attentionItems, surfaceReason } from '../lib/todaySurface';
+import { executionAdvice } from '../lib/executionAdvisor';
+import { expectedTimeFor, type WorkRef } from '../lib/expectedTime';
+import { expectedTimeLabel } from '../lib/assistantProtocol';
 import { proposalMinutes, proposeReplan, slippedWork } from '../lib/replan';
 import { ReplanPreview } from './today/ReplanPreview';
 import { clockLabel } from '../lib/clock';
@@ -32,7 +35,7 @@ import { weekOf } from '../lib/plan';
  * also answers nine others.
  */
 export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { goals, tasks, availability, allDayBlocks, actions } = useAppStore();
+  const { goals, tasks, sessions, availability, allDayBlocks, actions } = useAppStore();
   const today = useLocalDate();
   const [nowMinute, setNowMinute] = useState(() => {
     const d = new Date();
@@ -47,7 +50,20 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
   }, []);
 
   const sections = useMemo(() => buildDailyWork(goals, tasks, today), [goals, tasks, today]);
-  const focus = nowFocus(sections.commitments, nowMinute);
+  /**
+   * The one recommendation authority. Today used to choose its own top row
+   * with `nowFocus` directly; routing through the advisor keeps this page and
+   * the assistant answering "what now" identically, because they are the same
+   * projection.
+   */
+  const advice = useMemo(
+    () => executionAdvice({
+      goals, tasks, sessions, availability, blocks: [], allDayBlocks,
+      today, week: weekOf(today), now: { date: today, minute: nowMinute },
+    }),
+    [goals, tasks, sessions, availability, allDayBlocks, today, nowMinute],
+  );
+  const primary = advice.kind === 'work' ? advice.primary : null;
   const attention = useMemo(
     () => attentionItems(goals, sections, today, availability, [], allDayBlocks),
     [goals, sections, today, availability, allDayBlocks],
@@ -67,10 +83,15 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
   );
 
   const open = useMemo(() => sections.commitments.filter((i) => !i.done), [sections]);
-  // "Rest of today" means the REST. The Next block above it is already showing
-  // `focus.item`; listing it again put the same task on screen twice, and the
+  // The advisor's primary rendered from today's own rows when it is one of
+  // them — the checkbox, the clock and the estimate belong to the commitment.
+  const primaryItem = primary
+    ? [...open, ...sections.carryOvers].find((i) => i.key === primary.key) ?? null
+    : null;
+  // "Rest of today" means the REST. The Now block above it is already showing
+  // the primary; listing it again put the same task on screen twice, and the
   // section's own name promised otherwise.
-  const rest = focus ? open.filter((i) => i.key !== focus.item.key) : open;
+  const rest = primary ? open.filter((i) => i.key !== primary.key) : open;
   // Indexed against the list it is drawn in, not the one it was derived from.
   const divider = nowDividerIndex(rest, nowMinute);
   const doneCount = sections.completedToday.length;
@@ -113,6 +134,35 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
     else actions.revealInPlan('task', item.id);
   }
 
+  /** Begin a calm focus session on the primary. Time logs at completion, never here. */
+  function startSession(ref: WorkRef, title: string): void {
+    const started = actions.startFocus(ref, expectedTimeFor(ref, { goals, tasks, sessions }));
+    if (!started) actions.showToast(`Couldn't start a session on "${title}" — one is already running`);
+  }
+
+  function startSessionButton(ref: WorkRef, title: string) {
+    return (
+      <button
+        type="button"
+        onClick={() => startSession(ref, title)}
+        aria-label={`Start session on “${title}”`}
+        className="relative z-10 text-meta font-semibold text-muted hover:text-ink"
+      >
+        Start session
+      </button>
+    );
+  }
+
+  // A free-time primary is the offer's own first row, promoted: booking it is
+  // still the row's plain click, so the answer and the action stay one thing.
+  const offerInfo = offer.kind === 'offer' ? offer : null;
+  const primaryOffer = primary && !primaryItem && offerInfo
+    ? offerInfo.rows.find((row) => row.key === primary.key) ?? null
+    : null;
+  const restOffers = offerInfo
+    ? offerInfo.rows.filter((row) => row.key !== primary?.key)
+    : [];
+
   return (
     <div className="max-w-[720px] mx-auto">
       <div className="mb-[18px]">
@@ -145,40 +195,64 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
 
       {/* ── Now ──
-          Silent when there is nothing on today AND an offer below is about to
-          say what to do with the day. Two messages both saying "nothing" is how
-          this page became apologetic in the first place. */}
-      {(focus || offer.kind !== 'offer') && (
+          One answer, from the one recommendation authority. A commitment
+          renders with its own checkbox and clock; a free-time primary is the
+          offer's first row promoted, so its click still books it. */}
+      {(primaryItem || primaryOffer || !offerInfo) && (
       <section aria-label="Now" className="mb-[24px]">
-        {focus ? (
+        {primary && primaryItem ? (
           <>
             {/* The label is the emphasis now. The row below carries the clock,
                 the estimate and the title exactly as every other row does, so
                 the one thing worth doing sits on the same axis as the rest. */}
             <div className="px-[8px] mb-[2px] text-meta font-semibold text-ink-soft">
-              {focus.current ? 'Now' : 'Next'}
+              {primary.reason === 'scheduled-now' ? 'Now' : 'Next'}
             </div>
             <TaskRow
-              title={focus.item.title}
-              subtitle={focus.item.goalTitle}
+              title={primaryItem.title}
+              subtitle={primaryItem.goalTitle}
               emphasis
               time={
                 anyTimed
-                  ? (focus.item.startMin === undefined ? '' : clockLabel(focus.item.startMin))
+                  ? (primaryItem.startMin === undefined ? '' : clockLabel(primaryItem.startMin))
                   : undefined
               }
-              onOpen={() => openItem(focus.item)}
+              onOpen={() => openItem(primaryItem)}
               lead={
                 <TodayCheckbox
                   checked={false}
-                  onToggle={() => complete(focus.item)}
-                  ariaLabel={`Mark "${focus.item.title}" as done`}
+                  onToggle={() => complete(primaryItem)}
+                  ariaLabel={`Mark "${primaryItem.title}" as done`}
                 />
               }
               meta={
-                focus.item.estimateMin === undefined ? undefined : (
-                  <span className="tabular-nums">{fmtMinutes(focus.item.estimateMin)}</span>
-                )
+                <>
+                  <span className="tabular-nums">{expectedTimeLabel(primary.expected)}</span>
+                  {startSessionButton(primary.ref, primary.title)}
+                </>
+              }
+            />
+          </>
+        ) : primary && primaryOffer && offerInfo ? (
+          <>
+            {/* The free time IS the reason this row leads, so the heading that
+                names it moves up here with the row it explains. */}
+            <div className="px-[8px] mb-[2px] text-meta font-semibold text-ink-soft">
+              {offerHeading(offerInfo, today)}
+            </div>
+            <TaskRow
+              title={primaryOffer.title}
+              subtitle={primaryOffer.goalTitle}
+              emphasis
+              reserveLead
+              time={anyTimed ? '' : undefined}
+              onOpen={() => place(primaryOffer, offerInfo.date, offerInfo.today)}
+              ariaLabel={`Plan “${primaryOffer.title}” ${dayLabel(offerInfo.date, today)}`}
+              meta={
+                <>
+                  <span className="tabular-nums">{expectedTimeLabel(primary.expected)}</span>
+                  {startSessionButton(primary.ref, primary.title)}
+                </>
               }
             />
           </>
@@ -260,13 +334,15 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
         </section>
       )}
 
-      {offer.kind === 'offer' && (
+      {offerInfo && restOffers.length > 0 && (
         <section aria-label="Free time" className="mb-[24px]">
           <h2 className="text-meta font-semibold text-muted mb-[6px]">
-            {offerHeading(offer, today)}
+            {/* When the primary above already carries the free-time heading,
+                repeating the sentence would say it twice about the same time. */}
+            {primaryOffer ? 'Also possible' : offerHeading(offerInfo, today)}
           </h2>
           <ul>
-            {offer.rows.map((row) => {
+            {restOffers.map((row) => {
               const chip = dueChip(row.due, today);
               return (
                 <li key={row.key}>
@@ -275,8 +351,8 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
                     subtitle={row.goalTitle}
                     reserveLead
                     time={anyTimed ? '' : undefined}
-                    onOpen={() => place(row, offer.date, offer.today)}
-                    ariaLabel={`Plan “${row.title}” ${dayLabel(offer.date, today)}`}
+                    onOpen={() => place(row, offerInfo.date, offerInfo.today)}
+                    ariaLabel={`Plan “${row.title}” ${dayLabel(offerInfo.date, today)}`}
                     meta={
                       <>
                         {chip && (

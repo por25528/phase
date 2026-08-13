@@ -10,6 +10,10 @@ import { migrateNodeStatus } from '../lib/migrateNodeStatus';
 import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { decodeAssets, encodeAssets } from '../lib/backupAssets';
+import {
+  parseActiveFocusSession, serializeActiveFocusSession, type ActiveFocusSession,
+} from '../lib/focusSession';
+import { parseStoredAccelerator } from '../lib/assistantAccelerator';
 
 /**
  * Single-row table. The fixed key is what makes "at most one cache" a schema
@@ -161,6 +165,51 @@ export async function loadAvailability(): Promise<AvailabilityWindow[]> {
 
 export async function saveAvailability(windows: AvailabilityWindow[]): Promise<void> {
   await db.settings.put({ key: 'availability', value: serializeAvailability(windows) });
+}
+
+/**
+ * The in-progress focus draft, one settings row.
+ *
+ * Device-local by design: an unfinished sitting on this machine is not user
+ * work, so it rides in `settings` (like availability) rather than in a table,
+ * and it is deliberately NOT part of backup export/import — restoring a backup
+ * must not resurrect a half-run session from another day. Writes happen only
+ * on state TRANSITIONS (start, pause, resume, complete), never on a timer
+ * tick, and the load path is total: a malformed row reads as "no session".
+ */
+const ACTIVE_FOCUS_SESSION_KEY = 'activeFocusSession';
+
+export async function loadActiveFocusSession(): Promise<ActiveFocusSession | null> {
+  const row = await db.settings.get(ACTIVE_FOCUS_SESSION_KEY);
+  return parseActiveFocusSession(row?.value);
+}
+
+export async function saveActiveFocusSession(value: ActiveFocusSession | null): Promise<void> {
+  if (value === null) {
+    await db.settings.delete(ACTIVE_FOCUS_SESSION_KEY);
+    return;
+  }
+  await db.settings.put({
+    key: ACTIVE_FOCUS_SESSION_KEY,
+    value: serializeActiveFocusSession(value),
+  });
+}
+
+/**
+ * The assistant's global shortcut. A device/OS binding, not user work, so it
+ * lives in `settings` and is deliberately NOT part of backup export/import —
+ * a chord that works on this Mac may be owned by something else on the next.
+ * The load is total: malformed rows read as the default.
+ */
+const ASSISTANT_ACCELERATOR_KEY = 'assistantAccelerator';
+
+export async function loadAssistantAccelerator(): Promise<string> {
+  const row = await db.settings.get(ASSISTANT_ACCELERATOR_KEY);
+  return parseStoredAccelerator(row?.value);
+}
+
+export async function saveAssistantAccelerator(value: string): Promise<void> {
+  await db.settings.put({ key: ASSISTANT_ACCELERATOR_KEY, value });
 }
 
 // Defaults ON: an all-day event usually does consume the day.

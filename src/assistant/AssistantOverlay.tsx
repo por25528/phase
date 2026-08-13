@@ -1,0 +1,73 @@
+import { useEffect, useMemo, useState } from 'react';
+import { AssistantSurface } from '../components/assistant/AssistantSurface';
+import { assistantOverlayBridge } from '../lib/assistantBridge';
+import type { AssistantAction, AssistantSnapshot } from '../lib/assistantProtocol';
+import { useReducedMotion } from '../components/useReducedMotion';
+
+/**
+ * The floating window's whole application: subscribe, render, forward.
+ *
+ * Everything on screen arrives as an `AssistantSnapshot` over the validated
+ * relay, and every click leaves as an `AssistantAction` the same way. There is
+ * deliberately no store, no Dexie, no tab lock and no clock-driven state here
+ * — the main renderer stays the one writer, and `entryBoundary.test.ts` proves
+ * this graph cannot even reach those modules.
+ *
+ * Each window focus replays the entry animation by bumping `openCycle`, which
+ * also keys the container and resets the send-off state machine via
+ * `resetKey`, so a returned-to shelf can never still be inside a farewell.
+ */
+export function AssistantOverlay() {
+  const bridge = useMemo(() => assistantOverlayBridge(), []);
+  const [snapshot, setSnapshot] = useState<AssistantSnapshot>({ status: 'loading' });
+  const [openCycle, setOpenCycle] = useState(0);
+  const [opening, setOpening] = useState(false);
+  const reducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    const off = bridge.onSnapshot(setSnapshot);
+    // `ready` returns the relay's cached snapshot so the window paints
+    // instantly, and the relay separately asks the owner for a fresh one.
+    void bridge.ready().then(setSnapshot);
+    return off;
+  }, [bridge]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onFocus = () => {
+      setOpenCycle((cycle) => cycle + 1);
+      setOpening(!reducedMotion);
+      if (!reducedMotion) timer = setTimeout(() => setOpening(false), 160);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      if (timer) clearTimeout(timer);
+    };
+  }, [reducedMotion]);
+
+  function onAction(action: AssistantAction): void {
+    if (action.type === 'close') {
+      bridge.close();
+      return;
+    }
+    bridge.act(action);
+  }
+
+  return (
+    <div
+      key={openCycle}
+      className={[
+        'h-screen overflow-hidden rounded-card border border-line bg-panel text-ink shadow-card',
+        opening ? 'assistant-shelf-enter' : '',
+      ].join(' ')}
+    >
+      <AssistantSurface
+        snapshot={snapshot}
+        onAction={onAction}
+        presentation="shelf"
+        resetKey={openCycle}
+      />
+    </div>
+  );
+}

@@ -10,6 +10,8 @@ import {
   isSlotMigrationDone, saveSlotMigrationSnapshot, markSlotMigrationDone, loadSlotMigrationSnapshot,
   isCheckpointMigrationDone, saveCheckpointMigrationSnapshot, markCheckpointMigrationDone,
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
+  loadActiveFocusSession, saveActiveFocusSession,
+  loadAssistantAccelerator, saveAssistantAccelerator,
 } from '../db/db';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
@@ -57,6 +59,14 @@ import {
   insertSiblingAfter as treeInsertSiblingAfter,
 } from '../lib/tree';
 import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status';
+import {
+  startFocusSession, pauseFocusSession, resumeFocusSession, finishFocusSession,
+  discardFocusSession, type ActiveFocusSession,
+} from '../lib/focusSession';
+import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
+import {
+  DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
+} from '../lib/assistantAccelerator';
 import { canAddLife, nextLifeOrder } from '../lib/lives';
 
 /**
@@ -166,6 +176,21 @@ interface UIState {
   planMode: PlanMode;                 // week or month shape for the Plan view (device preference)
   goalsMode: GoalsMode;               // board or timeline shape for the Goals view (device preference)
   activeHorizon: number;              // narrow Projects-board horizon (UI only)
+  /**
+   * The in-progress focus draft, or null. In UIState rather than AppState
+   * deliberately: it is device-local working state, persisted surgically to
+   * its own settings row on TRANSITIONS only — never on a timer tick, and
+   * never inside `persist()`'s four-table write.
+   */
+  activeFocusSession: ActiveFocusSession | null;
+  /** The assistant's global shortcut — a device preference, like `planMode`. */
+  assistantAccelerator: string;
+  /**
+   * What the OS said when the chord was registered. Ephemeral and
+   * Electron-only: null in the browser, where there is no global shortcut to
+   * register and so nothing honest to report.
+   */
+  assistantShortcut: ShortcutStatus | null;
 }
 
 interface FullState extends AppState, UIState {}
@@ -204,6 +229,9 @@ let state: FullState = {
   planMode: 'week',
   goalsMode: 'board',
   activeHorizon: 0,
+  activeFocusSession: null,
+  assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
+  assistantShortcut: null,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
   // non-DOM contexts (tests).
@@ -289,6 +317,18 @@ function flushPendingNote(): void {
 function ifOwner(write: () => Promise<unknown>): void {
   if (!ownsTabLock) return;
   void write().catch(() => {});
+}
+
+/**
+ * The one seam every focus transition goes through: in-memory state first, then
+ * the surgical settings write, gated on lock ownership exactly as every other
+ * settings write is. Reads of elapsed time never come here — they are pure
+ * arithmetic over the draft's timestamps, which is what keeps a ticking clock
+ * from ever touching Dexie.
+ */
+function setFocusDraft(draft: ActiveFocusSession | null): void {
+  set({ activeFocusSession: draft });
+  ifOwner(() => saveActiveFocusSession(draft));
 }
 
 export interface EncodedAssetImage {
@@ -521,8 +561,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -591,6 +631,8 @@ export async function initStore(): Promise<void> {
       sidebarPanels,
       planMode,
       goalsMode,
+      activeFocusSession,
+      assistantAccelerator,
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -1751,6 +1793,118 @@ export const actions = {
       remaining,
     );
     return true;
+  },
+
+  // ---- focus sessions ----
+
+  /**
+   * Begin a focus draft on one piece of work. Refused while another draft is
+   * live — switching tasks is complete-then-start, composed by the caller, so
+   * an unfinished session can never be silently overwritten — and refused for
+   * a ref that resolves to nothing, because a phantom cannot be worked on.
+   */
+  startFocus(ref: WorkRef, expected: ExpectedTime, nowMs = Date.now()): boolean {
+    if (state.activeFocusSession) return false;
+    let title: string;
+    let goalTitle: string | undefined;
+    if (ref.kind === 'step') {
+      const goal = state.goals.find((g) => g.id === ref.goalId);
+      const node = goal ? findNode(goal.nodes, ref.id) : null;
+      if (!goal || !node || node.children?.length) return false;
+      title = node.title;
+      goalTitle = goal.title;
+    } else {
+      const task = state.tasks.find((t) => t.id === ref.id);
+      if (!task) return false;
+      title = task.title;
+      goalTitle = task.goalId
+        ? state.goals.find((g) => g.id === task.goalId)?.title
+        : undefined;
+    }
+    setFocusDraft(startFocusSession({
+      ref, title, ...(goalTitle === undefined ? {} : { goalTitle }), expected, nowMs,
+    }));
+    return true;
+  },
+
+  pauseFocus(nowMs = Date.now()): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft || draft.phase !== 'active') return false;
+    setFocusDraft(pauseFocusSession(draft, nowMs));
+    return true;
+  },
+
+  resumeFocus(nowMs = Date.now()): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft || draft.phase !== 'break') return false;
+    setFocusDraft(resumeFocusSession(draft, nowMs));
+    return true;
+  },
+
+  /**
+   * Complete the running session. A normal-length sitting logs through the
+   * existing `logSession` — same undo contract, same Session shape — and the
+   * draft is cleared only when that write was accepted. An implausibly long
+   * one parks in `confirming` instead: pressing Complete is confirmation
+   * enough for an ordinary sitting, but a session that "ran" nine hours is
+   * more likely a laptop lid than a marathon, and history must not be
+   * poisoned on that guess.
+   */
+  completeFocus(nowMs = Date.now()): 'logged' | 'needs-confirmation' | 'refused' {
+    const draft = state.activeFocusSession;
+    if (!draft || draft.phase === 'confirming') return 'refused';
+    const finish = finishFocusSession(draft, nowMs);
+    if (finish.kind === 'needs-confirmation') {
+      setFocusDraft(finish.session);
+      return 'needs-confirmation';
+    }
+    if (!actions.logSession(draft.ref.kind, draft.ref.id, finish.minutes)) return 'refused';
+    setFocusDraft(null);
+    return 'logged';
+  },
+
+  /**
+   * Resolve a `confirming` draft: a positive duration logs exactly that many
+   * minutes; null means "didn't happen" and logs nothing. Either way the
+   * draft is spent.
+   */
+  confirmFocus(minutes: number | null): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft || draft.phase !== 'confirming') return false;
+    if (minutes === null) {
+      setFocusDraft(null);
+      return true;
+    }
+    if (!Number.isFinite(minutes) || minutes <= 0) return false;
+    if (!actions.logSession(draft.ref.kind, draft.ref.id, minutes)) return false;
+    setFocusDraft(null);
+    return true;
+  },
+
+  discardFocus(): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft) return false;
+    setFocusDraft(discardFocusSession(draft));
+    return true;
+  },
+
+  /**
+   * Change the assistant's global shortcut preference. Validation is at the
+   * boundary — a chord that cannot anchor (no real modifier) is refused, not
+   * stored — and the write goes through the owner gate like every settings
+   * write. Actually registering it with the OS is Electron's job; the status
+   * that comes back lands in `setAssistantShortcutStatus`.
+   */
+  setAssistantAccelerator(next: string): boolean {
+    if (!isValidAccelerator(next)) return false;
+    set({ assistantAccelerator: next });
+    ifOwner(() => saveAssistantAccelerator(next));
+    return true;
+  },
+
+  /** Ephemeral registration status from the desktop shell. Never persisted. */
+  setAssistantShortcutStatus(status: ShortcutStatus | null): void {
+    set({ assistantShortcut: status });
   },
 
   /**
