@@ -304,7 +304,7 @@ export function withScopeLife<T extends Goal>(goal: T, scope: LifeScope): T {
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `npx vitest run src/lib/lifeScope.test.ts`
-Expected: PASS — 15 tests.
+Expected: PASS — 17 tests.
 
 - [ ] **Step 5: Typecheck, then commit**
 
