@@ -86,7 +86,7 @@ export function openAssistantForEnvironment(
 }
 
 export function App() {
-  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, actions } = useAppStore();
+  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, settingsOpen, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -97,7 +97,6 @@ export function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // The in-app assistant panel. Opens from ⌘K in the browser build; the desktop
   // shell's global shortcut opens the floating overlay window instead —
   // Command+Space never reaches Chromium, so it is deliberately NOT bound here.
@@ -112,7 +111,7 @@ export function App() {
   const [pendingImport, setPendingImport] = useState<File | null>(null);
 
   // The menu bar's Settings item asks for this surface over the shell bridge.
-  useEffect(() => shell.onOpenSettings(() => setSettingsOpen(true)), [shell]);
+  useEffect(() => shell.onOpenSettings(actions.openSettings), [shell]);
 
   const reclaimSpace = () => {
     void actions.reclaimSpace()
@@ -269,7 +268,7 @@ export function App() {
       case 'export': void actions.exportBackup(); return;
       case 'import': fileInputRef.current?.click(); return;
       case 'reclaim': reclaimSpace(); return;
-      case 'settings': setSettingsOpen(true); return;
+      case 'settings': actions.openSettings(); return;
     }
   }
 
@@ -390,7 +389,7 @@ export function App() {
             {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
             Theme: {THEME_LABEL[theme]}
           </HeaderMenuItem>
-          <HeaderMenuItem onClick={() => setSettingsOpen(true)}>
+          <HeaderMenuItem onClick={actions.openSettings}>
             <IconClock />
             Working hours
           </HeaderMenuItem>
@@ -493,11 +492,11 @@ export function App() {
           </div>
         ) : view === 'today' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[22px]">
-            <Today onOpenSettings={() => setSettingsOpen(true)} />
+            <Today onOpenSettings={actions.openSettings} />
           </div>
         ) : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[18px]">
-            <Plan onOpenSettings={() => setSettingsOpen(true)} />
+            <Plan onOpenSettings={actions.openSettings} />
           </div>
         ) : view === 'project' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[20px] pb-[90px]">
@@ -557,7 +556,7 @@ export function App() {
           setPendingImport(null);
         }}
       />
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal open={settingsOpen} onClose={actions.closeSettings} />
       <AssistantHost open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <CommandPalette

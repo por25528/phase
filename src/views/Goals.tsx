@@ -13,7 +13,8 @@ import {
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
-import { IconCheck, IconChevronRight, IconX } from '../components/Icons';
+import { IconCheck, IconChevronRight, IconColumns, IconDots, IconTimeline, IconX } from '../components/Icons';
+import { Popover, PopoverItem } from '../components/Popover';
 import { groupByColumn } from '../lib/board';
 import { columnTracks } from '../lib/boardTracks';
 import { focusSummary } from '../lib/plan';
@@ -21,7 +22,6 @@ import { fmtD } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { Timeline } from './Timeline';
-import { SegmentedSwitch } from '../components/SegmentedControl';
 import { NewGoalModal } from './goals/NewGoalModal';
 import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
@@ -347,18 +347,21 @@ export function Goals() {
         </div>
         <div className="flex-none flex items-center gap-[8px] self-start">
           <ViewModeSwitch mode={goalsMode} onChange={actions.setGoalsMode} />
-          <button
-            className="text-body font-medium text-ink-soft border border-line-2 px-[12px] py-[7px] rounded-field hover:bg-hover"
-            onClick={() => setModal('import')}
+          <Popover
+            label="Goals actions"
+            role="menu"
+            align="end"
+            panelWidth={184}
+            triggerClassName="w-[26px] h-[26px] grid place-items-center rounded-[6px] text-muted hover:text-ink hover:bg-hover"
+            trigger={<IconDots size={13} />}
           >
-            Import goal
-          </button>
-          <button
-            className="text-body font-semibold text-paper bg-ink px-[13px] py-[7px] rounded-field hover:bg-ink-hover"
-            onClick={() => setModal('new')}
-          >
-            + New goal
-          </button>
+            {(close) => (
+              <>
+                <PopoverItem close={close} onSelect={() => setModal('import')}>Import goal</PopoverItem>
+                <PopoverItem close={close} onSelect={actions.openSettings}>Manage lives</PopoverItem>
+              </>
+            )}
+          </Popover>
         </div>
       </div>
 
@@ -583,24 +586,41 @@ export function Goals() {
 
 // ── View mode ─────────────────────────────────────────────────────────────────
 /**
- * Board or Timeline. A segmented control, not two nav destinations: both show
- * the same goals, and switching between them changes the representation and
- * nothing about the data — which is exactly the distinction the old top-level
- * Timeline tab destroyed by sitting beside Plan and Goals as a peer.
+ * Board or Timeline. Icon-only now that the header carries a tab strip: two
+ * words plus two more controls above the first card was the chrome soup this
+ * pass exists to drain.
+ *
+ * `Icons.tsx` makes every glyph `aria-hidden` on purpose — an icon never
+ * carries the name, the control around it does. So each segment keeps its
+ * `title` for the pointer and an explicit `aria-label` for everyone else.
+ * These two are the only route between the page's two modes, so losing their
+ * names would be a real regression, not a cosmetic one.
  */
 const MODES = [
   { value: 'board', label: 'Board' },
   { value: 'timeline', label: 'Timeline' },
 ] as const;
 
-function ViewModeSwitch({
-  mode,
-  onChange,
-}: {
-  mode: GoalsMode;
-  onChange: (mode: GoalsMode) => void;
-}) {
-  return <SegmentedSwitch label="Goals view" value={mode} options={MODES} onChange={onChange} />;
+function ViewModeSwitch({ mode, onChange }: { mode: GoalsMode; onChange: (mode: GoalsMode) => void }) {
+  return (
+    <div role="group" aria-label="Goals view" className="inline-flex gap-[2px] bg-chip p-[2px] rounded-[6px]">
+      {MODES.map((m) => (
+        <button
+          key={m.value}
+          type="button"
+          title={m.label}
+          aria-label={m.label}
+          aria-pressed={mode === m.value}
+          onClick={() => onChange(m.value)}
+          className={`min-w-[28px] min-h-[24px] grid place-items-center rounded-[4px] transition-colors ${
+            mode === m.value ? 'bg-raised text-ink shadow-card' : 'text-muted hover:text-ink'
+          }`}
+        >
+          {m.value === 'board' ? <IconColumns size={13} /> : <IconTimeline size={13} />}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // ── Completed section ─────────────────────────────────────────────────────────

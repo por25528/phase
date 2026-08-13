@@ -167,3 +167,35 @@ describe('board geometry', () => {
     expect(screen.queryAllByText('Nothing here')).toHaveLength(0);
   });
 });
+
+describe('Goals header', () => {
+  const ONE: Goal[] = [{ id: 'a', title: 'A', nodes: [], column: 0 }];
+
+  it('offers no New goal button in the page header', async () => {
+    await mountBoard(ONE);
+    // The top command shelf owns ⌘N; the page header must not duplicate it.
+    // (The onboarding empty state keeps its own — nothing competes with it there.)
+    expect(screen.queryAllByRole('button', { name: /New goal/ })).toHaveLength(0);
+  });
+
+  it('keeps the view toggle named even though it is icon-only', async () => {
+    await mountBoard(ONE);
+    expect(screen.getByRole('button', { name: 'Board' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Timeline' })).toBeTruthy();
+  });
+
+  it('puts Import goal and Manage lives in the overflow', async () => {
+    await mountBoard(ONE);
+    expect(screen.queryByText('Import goal')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Goals actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Import goal' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Manage lives' })).toBeTruthy();
+  });
+
+  it('opens Settings from Manage lives', async () => {
+    const store = await mountBoard(ONE);
+    await userEvent.click(screen.getByRole('button', { name: 'Goals actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Manage lives' }));
+    expect(store.getState().settingsOpen).toBe(true);
+  });
+});

@@ -153,6 +153,7 @@ interface UIState {
   openStepId: string | null;
   projectTab: ProjectTab;
   goalModal: GoalModal;
+  settingsOpen: boolean;              // the Settings dialog — in the store so any surface can open it
   // Task/habit the Plan view should scroll to + highlight — the same idea as
   // `focusNodeId`, for the two kinds that have no page of their own.
   revealItem: RevealTarget | null;
@@ -226,6 +227,7 @@ let state: FullState = {
   areaTab: 'steps',
   projectTabByGoal: {},
   goalModal: null,
+  settingsOpen: false,
   revealItem: null,
   newNodeId: null,
   expanded: new Set(),
@@ -2810,6 +2812,9 @@ export const actions = {
     }
     set({ goalModal: kind, view: 'goals', openGoalId: null, openStepId: null });
   },
+
+  openSettings(): void { set({ settingsOpen: true }); },
+  closeSettings(): void { set({ settingsOpen: false }); },
 
   /**
    * Switch tabs, and remember the choice for THIS goal.

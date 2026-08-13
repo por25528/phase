@@ -301,6 +301,27 @@ export function IconGrip(p: IconProps) {
   );
 }
 
+// ── Views ─────────────────────────────────────────────────────────────────────
+
+/** The Goals board — three horizon columns. Lucide `columns-3`. */
+export function IconColumns(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M15 4v16" />
+    </Icon>
+  );
+}
+
+/** The Goals timeline — spans against a calendar. Lucide `gantt-chart`. */
+export function IconTimeline(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M4 6h10M4 12h16M4 18h7" />
+    </Icon>
+  );
+}
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 export function IconSun(p: IconProps) {
