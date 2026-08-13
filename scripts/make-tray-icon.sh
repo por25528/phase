@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Generate the monochrome menu-bar template images from build/phase-tray.svg.
-# Uses only macOS-native tools: qlmanage (SVG raster), sips (resize) and a
-# Swift/ImageIO post-processor (maskize) that turns the opaque white document
-# page into a real template mask (neutral black RGB, alpha from inverse
-# luminance), preserving the antialiased silhouette. Every failure aborts the
+# Uses only macOS-native tools: qlmanage (SVG raster) and a Swift/ImageIO
+# post-processor (maskize) that turns the opaque white document page into a
+# real template mask (neutral black RGB, alpha from inverse luminance),
+# preserving the antialiased silhouette. qlmanage's SVG thumbnail is degenerate
+# — whatever -s is requested the glyph rasterizes to a few pixels in the page
+# corner — so maskize crops the non-white content bounds and scales the crop
+# aspect-fit into each target with quiet even padding. Every failure aborts the
 # script with a non-zero exit.
 set -euo pipefail
 
@@ -20,12 +23,11 @@ if ! command -v swift >/dev/null 2>&1; then
 fi
 
 mkdir -p "$ASSET_DIR"
-qlmanage -t -s 36 -o "$WORK_DIR" "$SOURCE" >/dev/null 2>&1
+qlmanage -t -s 288 -o "$WORK_DIR" "$SOURCE" >/dev/null 2>&1
 RAW="$WORK_DIR/$(basename "$SOURCE").png"
 test -f "$RAW"
 
-sips -z 18 18 "$RAW" --out "$WORK_DIR/tray-18.png" >/dev/null
-swift "$SCRIPT_DIR/maskize.swift" "$WORK_DIR/tray-18.png" "$WORK_DIR/tray-18-mask.png" 18 18
+swift "$SCRIPT_DIR/maskize.swift" "$RAW" "$WORK_DIR/tray-18-mask.png" 18 18
 mv "$WORK_DIR/tray-18-mask.png" "$ASSET_DIR/phaseTemplate.png"
 
 swift "$SCRIPT_DIR/maskize.swift" "$RAW" "$WORK_DIR/tray-36-mask.png" 36 36

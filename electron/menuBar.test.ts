@@ -312,6 +312,10 @@ describe('tray icon template mask pixels', () => {
       let transparent = 0;
       let visible = 0;
       let antialiased = 0;
+      let minX = png.width;
+      let minY = png.height;
+      let maxX = -1;
+      let maxY = -1;
       for (let y = 0; y < png.height; y += 1) {
         for (let x = 0; x < png.width; x += 1) {
           const px = pixelAt(png.rgba, png.width * 4, x, y);
@@ -321,10 +325,16 @@ describe('tray icon template mask pixels', () => {
             transparent += 1;
           } else {
             visible += 1;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
             if (px.a < 255) antialiased += 1;
           }
         }
       }
+      const bboxW = maxX - minX + 1;
+      const bboxH = maxY - minY + 1;
 
       // Background pixels carry alpha 0...
       expect(transparent).toBeGreaterThan(0);
@@ -336,6 +346,22 @@ describe('tray icon template mask pixels', () => {
       expect(visible).toBeLessThan(png.width * png.height);
       // Antialiasing survived the raster round-trip (partial alpha exists).
       expect(antialiased).toBeGreaterThan(0);
+      // The glyph is large enough to be seen: its alpha bbox uses a useful
+      // majority of the canvas in both dimensions. qlmanage's degenerate
+      // render crops this to a handful of corner pixels, so this fails on the
+      // tiny raw thumbnail unless the postprocessor crops and scales it up.
+      expect(bboxW).toBeGreaterThanOrEqual(Math.ceil(width * 0.6));
+      expect(bboxH).toBeGreaterThanOrEqual(Math.ceil(height * 0.6));
+      // The glyph is centered with quiet even padding: it is not pinned to
+      // the top or left edge, and it clears the right and bottom edges too.
+      expect(minX).toBeGreaterThan(0);
+      expect(minY).toBeGreaterThan(0);
+      expect(maxX).toBeLessThan(width - 1);
+      expect(maxY).toBeLessThan(height - 1);
+      // A visible-pixel count meaningfully above a few stray pixels: a real
+      // glyph fills at least a tenth of the canvas, where qlmanage's raw
+      // render left single-digit counts.
+      expect(visible).toBeGreaterThan((width * height) / 10);
     });
   }
 });
