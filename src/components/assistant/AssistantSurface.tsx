@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type {
   AssistantAction, AssistantFocusView, AssistantSnapshot,
 } from '../../lib/assistantProtocol';
-import { expectedTimeLabel } from '../../lib/assistantProtocol';
+import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
 import type { AssistantProposal } from '../../lib/assistantCommands';
 import { ASSISTANT_EXAMPLES } from '../../lib/assistantCommands';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
@@ -178,10 +178,8 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
         </p>
       ) : (
         <p className="text-meta text-muted">
-          {fmtMinutes(focus.elapsedMin)} worked
-          {focus.phase === 'break' ? ' · on a break' : ''}
-          {' · '}
-          {expectedTimeLabel(focus.expected)}
+          {elapsedAgainstExpected(focus.elapsedMin, focus.expected)}
+          {focus.phase === 'break' ? ' · On a break' : ''}
         </p>
       )}
     </div>

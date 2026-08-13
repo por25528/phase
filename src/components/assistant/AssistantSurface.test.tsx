@@ -271,6 +271,44 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'confirm-focus', minutes: null });
   });
 
+  it('states progress on a running session instead of inviting a start', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'break',
+            elapsedMin: 0, expected: { kind: 'starter', minutes: 30 },
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByText('0m of 30m · On a break')).toBeTruthy();
+    // The invitation belongs to work that has not started. This one has.
+    expect(screen.queryByText(/Start with/)).toBeNull();
+    expect(screen.queryByText(/worked/)).toBeNull();
+  });
+
+  it('drops the break clause once the session is active and keeps a range a range', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'active',
+            elapsedMin: 12,
+            expected: { kind: 'history', lowMin: 45, highMin: 60, confidence: 'high', sampleCount: 6 },
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByText('12m of 45–60m')).toBeTruthy();
+    const line = screen.getByText('12m of 45–60m');
+    expect(line.textContent).toBe('12m of 45–60m');
+  });
+
   it('requires an explicit Confirm on a proposal', () => {
     const onAction = vi.fn();
     render(
