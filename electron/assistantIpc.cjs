@@ -83,6 +83,7 @@ function validFocus(focus) {
   if (focus === null) return true;
   return !!focus
     && typeof focus === 'object'
+    && validRef(focus.ref)
     && shortString(focus.title)
     && optionalShortString(focus.goalTitle)
     && (focus.phase === 'active' || focus.phase === 'break' || focus.phase === 'confirming')

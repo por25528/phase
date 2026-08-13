@@ -17,6 +17,8 @@ import type { ExpectedTime, WorkRef } from './expectedTime';
 
 /** What the surface knows about the running focus session. A projection, not the draft. */
 export interface AssistantFocusView {
+  /** The one acknowledgement that a requested session really started. */
+  ref: WorkRef;
   title: string;
   goalTitle?: string;
   phase: 'active' | 'break' | 'confirming';

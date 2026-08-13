@@ -68,6 +68,18 @@ const SNAPSHOT = {
   proposal: null,
 };
 
+const FOCUSED_SNAPSHOT = {
+  ...SNAPSHOT,
+  activeFocus: {
+    ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+    title: 'Problem set 4',
+    goalTitle: 'Algorithms',
+    phase: 'active',
+    elapsedMin: 0,
+    expected: { kind: 'estimate', minutes: 45 },
+  },
+};
+
 describe('publish', () => {
   it('accepts a snapshot only from the main window sender', () => {
     const { ipcMain, overlay, ipc } = relay();
@@ -114,6 +126,30 @@ describe('publish', () => {
       ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
       expect(ipc.latest(), JSON.stringify(snapshot)?.slice(0, 60)).toBeNull();
     }
+  });
+
+  it('requires a valid work reference on an active focus projection', () => {
+    const { ipcMain, ipc } = relay();
+
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, FOCUSED_SNAPSHOT);
+    expect(ipc.latest()).toEqual(FOCUSED_SNAPSHOT);
+
+    const missing = {
+      ...FOCUSED_SNAPSHOT,
+      activeFocus: { ...FOCUSED_SNAPSHOT.activeFocus, ref: undefined },
+    };
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, missing);
+    expect(ipc.latest()).toEqual(FOCUSED_SNAPSHOT);
+
+    const malformed = {
+      ...FOCUSED_SNAPSHOT,
+      activeFocus: {
+        ...FOCUSED_SNAPSHOT.activeFocus,
+        ref: { kind: 'step', id: 'n1' },
+      },
+    };
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, malformed);
+    expect(ipc.latest()).toEqual(FOCUSED_SNAPSHOT);
   });
 });
 

@@ -107,6 +107,7 @@ describe('AssistantSurface', () => {
       <AssistantSurface
         snapshot={ready({
           activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
             title: 'Problem set 4', goalTitle: 'Algorithms', phase: 'active',
             elapsedMin: 25, expected: { kind: 'estimate', minutes: 45 },
           },
@@ -126,6 +127,7 @@ describe('AssistantSurface', () => {
       <AssistantSurface
         snapshot={ready({
           activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
             title: 'Problem set 4', phase: 'break',
             elapsedMin: 25, expected: { kind: 'starter', minutes: 30 },
           },
@@ -140,6 +142,7 @@ describe('AssistantSurface', () => {
       <AssistantSurface
         snapshot={ready({
           activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
             title: 'Problem set 4', phase: 'confirming',
             elapsedMin: 200, expected: { kind: 'starter', minutes: 30 },
             proposedMinutes: 200,
@@ -243,6 +246,7 @@ describe('AssistantSurface', () => {
       <AssistantSurface
         snapshot={ready({
           activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
             title: 'Problem set 4', phase: 'active',
             elapsedMin: 5, expected: { kind: 'starter', minutes: 30 },
           },

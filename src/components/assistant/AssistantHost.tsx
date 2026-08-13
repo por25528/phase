@@ -77,6 +77,7 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
     });
     const activeFocus: AssistantFocusView | null = activeFocusSession
       ? {
+          ref: activeFocusSession.ref,
           title: activeFocusSession.title,
           ...(activeFocusSession.goalTitle === undefined ? {} : { goalTitle: activeFocusSession.goalTitle }),
           phase: activeFocusSession.phase,
@@ -127,6 +128,7 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
   function onAction(action: AssistantAction): void {
     switch (action.type) {
       case 'start-focus': {
+        setNotice(null);
         const started = actions.startFocus(
           action.ref,
           expectedTimeFor(action.ref, { goals, tasks, sessions }),

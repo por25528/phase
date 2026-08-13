@@ -150,6 +150,49 @@ describe('AssistantHost', () => {
     expect(store.getState().activeFocusSession?.ref.id).toBe('t2');
   });
 
+  it('publishes the reference of the work that actually started', async () => {
+    const publish = vi.fn();
+    (window as unknown as Record<string, unknown>).phaseAssistant = {
+      publish,
+      onRequestSnapshot: vi.fn(() => () => {}),
+      onAction: vi.fn(() => () => {}),
+      configureShortcut: vi.fn(async () => ({
+        requested: 'Command+Space',
+        active: 'Command+Space',
+        registered: true,
+        conflict: false,
+      })),
+    };
+
+    try {
+      const store = await mountHost({
+        tasks: [{
+          id: 't1',
+          title: 'Draft essay',
+          done: false,
+          goalId: null,
+          date: TODAY,
+        }],
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+      });
+
+      expect(store.getState().activeFocusSession?.ref).toEqual({
+        kind: 'task',
+        id: 't1',
+        goalId: null,
+      });
+      expect(publish).toHaveBeenLastCalledWith(expect.objectContaining({
+        activeFocus: expect.objectContaining({
+          ref: { kind: 'task', id: 't1', goalId: null },
+        }),
+      }));
+    } finally {
+      delete (window as unknown as Record<string, unknown>).phaseAssistant;
+    }
+  });
+
   it('keeps completion and scheduling separate: completing a session checks nothing', async () => {
     const store = await mountHost({
       tasks: [{ id: 't1', title: 'Draft essay', done: false, goalId: null, date: TODAY }],
