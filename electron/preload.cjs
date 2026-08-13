@@ -41,3 +41,24 @@ contextBridge.exposeInMainWorld('phaseAssistant', {
   /** Push the hydrated accelerator preference; resolves with registration status. */
   configureShortcut: (accelerator) => ipcRenderer.invoke('phase-assistant:set-shortcut', accelerator),
 });
+
+// The MAIN renderer's door to the desktop shell: raise the assistant overlay,
+// hear the shell asking for the settings surface, and read/write the OS
+// login-item. Fixed channels only — nothing here accepts a channel name, and
+// every ipcRenderer call names a literal 'phase-shell:…' channel, so a
+// compromised renderer still has no escape hatch. shellIpc.test.ts pins the
+// main-process side; assistantIpc.test.ts pins this surface.
+contextBridge.exposeInMainWorld('phaseShell', {
+  /** Ask the shell to raise the assistant overlay; resolves true when it ran. */
+  openAssistant: () => ipcRenderer.invoke('phase-shell:open-assistant'),
+  /** Fires when the shell wants the settings surface open. Returns unsubscribe. */
+  onOpenSettings: (fn) => {
+    const listener = () => fn();
+    ipcRenderer.on('phase-shell:open-settings', listener);
+    return () => ipcRenderer.removeListener('phase-shell:open-settings', listener);
+  },
+  /** Resolves the OS login-item state, or null when the shell refused. */
+  getLaunchAtLogin: () => ipcRenderer.invoke('phase-shell:get-launch-at-login'),
+  /** Set the OS login-item state; resolves the applied state, or null when refused. */
+  setLaunchAtLogin: (enabled) => ipcRenderer.invoke('phase-shell:set-launch-at-login', enabled),
+});

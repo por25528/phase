@@ -279,6 +279,19 @@ describe('preload surfaces', () => {
     }
   });
 
+  it('the main preload exposes a narrow phaseShell speaking the phase-shell prefix', () => {
+    expect(mainPreload).toContain('phaseShell');
+    expect(mainPreload).toContain('phase-shell:open-assistant');
+    expect(mainPreload).toContain('phase-shell:open-settings');
+    expect(mainPreload).toContain('phase-shell:get-launch-at-login');
+    expect(mainPreload).toContain('phase-shell:set-launch-at-login');
+  });
+
+  it('phaseShell subscriptions are fixed-channel and return an unsubscribe', () => {
+    expect(mainPreload).toContain("ipcRenderer.on('phase-shell:open-settings'");
+    expect(mainPreload).toContain("ipcRenderer.removeListener('phase-shell:open-settings'");
+  });
+
   it('the overlay preload requires nothing but electron', () => {
     for (const match of overlayPreload.matchAll(/require\(([^)]+)\)/g)) {
       expect(match[1].trim()).toBe("'electron'");
