@@ -368,7 +368,7 @@ describe('AssistantSurface', () => {
     render(
       <AssistantSurface snapshot={ready({ advice: { kind: 'clear' } })} onAction={() => {}} />,
     );
-    expect(screen.getByText('What fits in 30m?')).toBeTruthy();
+    expect(screen.getByText(/^Try: What fits in 30m\?/)).toBeTruthy();
     expect(screen.queryByRole('log')).toBeNull();
   });
 
