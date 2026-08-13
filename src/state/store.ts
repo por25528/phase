@@ -29,7 +29,8 @@ import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
 import { sampleProject } from '../lib/sampleProject';
-import { weaveHidden, leafCount } from '../lib/board';
+import { weaveHidden, leafCount, rankMoveTarget } from '../lib/board';
+import { goalsInScope, resolveScope, type LifeScope } from '../lib/lifeScope';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
 import { formatEstimateValue } from '../lib/estimateInput';
@@ -177,6 +178,19 @@ interface UIState {
   goalsMode: GoalsMode;               // board or timeline shape for the Goals view (device preference)
   activeHorizon: number;              // narrow Projects-board horizon (UI only)
   /**
+   * Which life the Goals board is showing. In-memory only — no settings row,
+   * no `ifOwner` write, and every load starts at `'all'`.
+   *
+   * It is `activeHorizon`, not `goalsMode`. A switcher is a mode, and the
+   * failure `ideas/vision.md` D-7 named was *a mode to be lost in* — a danger
+   * in proportion to how long you can sit in one without having chosen it. A
+   * scope you picked this session is one you remember picking; a scope
+   * restored silently from a fortnight ago is one you can mistake for the
+   * whole board, and the mistake it produces is believing you have no startup
+   * work.
+   */
+  activeLifeId: LifeScope;
+  /**
    * The in-progress focus draft, or null. In UIState rather than AppState
    * deliberately: it is device-local working state, persisted surgically to
    * its own settings row on TRANSITIONS only — never on a timer tick, and
@@ -229,6 +243,7 @@ let state: FullState = {
   planMode: 'week',
   goalsMode: 'board',
   activeHorizon: 0,
+  activeLifeId: 'all',
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
   assistantShortcut: null,
@@ -1491,14 +1506,25 @@ export const actions = {
       cols[Math.min(Math.max(g.column ?? 0, 0), HORIZON_COUNT - 1)].push(g.id);
     }
     const list = cols[col];
+    /*
+     * Neighbours are what the reader can SEE.
+     *
+     * This used to step through every active goal, so under a life scope
+     * `Alt+↑` swapped the card with one that is not on screen — the card
+     * visibly did not move, and the toast said it did. `rankMoveTarget`
+     * returns the full-list index of the neighbouring VISIBLE card, so every
+     * hidden goal keeps its place and the move is exactly one slot.
+     */
+    const scope = resolveScope(state.activeLifeId, state.lives);
+    const visibleIds = new Set(goalsInScope(state.goals, scope, state.lives).map((g) => g.id));
     const from = list.indexOf(goalId);
-    const to = from + delta;
+    const to = rankMoveTarget(list, visibleIds, goalId, delta);
     // Already against the end it is being pushed towards: silent, so holding
     // the chord down cannot spray toasts or arm undo entries for nothing.
     // Reported as `false` rather than merely being quiet, because the caller
     // rings the card — highlight, scroll, focus — and a ring for a write that
     // never happened is the bug `moveToHorizon` guards against above.
-    if (from === -1 || to < 0 || to >= list.length) return false;
+    if (from === -1 || to === null) return false;
     list.splice(to, 0, ...list.splice(from, 1));
     const before = structuredClone(state.goals);
     actions.setGoalBoard(cols);
@@ -2666,6 +2692,12 @@ export const actions = {
     const next = Math.min(Math.max(horizon, 0), HORIZON_COUNT - 1);
     if (next === state.activeHorizon) return;
     set({ activeHorizon: next });
+  },
+
+  setGoalScope(scope: LifeScope): void {
+    const next = resolveScope(scope, state.lives);
+    if (next === state.activeLifeId) return;
+    set({ activeLifeId: next });
   },
 
   goToToday() {

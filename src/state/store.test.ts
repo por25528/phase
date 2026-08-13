@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
 import { leafCount } from '../lib/board';
+import { resolveScope } from '../lib/lifeScope';
 import type { Asset, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
 import { DEFAULT_AVAILABILITY } from '../lib/availability';
 import { makeBlock } from '../lib/blocks';
@@ -4859,5 +4860,45 @@ describe('assistant shortcut preference', () => {
 
     expect(store.getState().assistantShortcut).toEqual(status);
     expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
+  });
+});
+
+describe('goal scope', () => {
+  it('starts at all on every boot, because it is never persisted', async () => {
+    const s = await freshStore();
+    expect(s.getState().activeLifeId).toBe('all');
+    // No settings row backs it — `db.ts` is untouched by this feature, so a
+    // second boot cannot restore a scope. Asserted as the absence of a saver:
+    // if one is ever added, this line is where the decision gets re-argued.
+    expect('saveGoalScope' in (await import('../db/db'))).toBe(false);
+  });
+
+  it('falls back to all when the active life is deleted', async () => {
+    const s = await freshStore();
+    s.actions.addLife('Uni');
+    const id = s.getState().lives[0].id;
+    s.actions.setGoalScope(id);
+    expect(s.getState().activeLifeId).toBe(id);
+    s.actions.removeLife(id);
+    expect(resolveScope(s.getState().activeLifeId, s.getState().lives)).toBe('all');
+  });
+
+  it('ranks over the visible cards only', async () => {
+    const s = await freshStore();
+    s.actions.addLife('Uni');
+    const uni = s.getState().lives[0].id;
+    // Column 0, in order: s1 (unassigned), u1, u2.
+    s.actions.addGoals([
+      { id: 's1', title: 's1', nodes: [], column: 0 },
+      { id: 'u1', title: 'u1', nodes: [], column: 0, lifeId: uni },
+      { id: 'u2', title: 'u2', nodes: [], column: 0, lifeId: uni },
+    ]);
+    s.actions.setGoalScope(uni);
+    expect(s.actions.moveGoalRank('u2', -1)).toBe(true);
+    const order = s.getState().goals.filter((g) => g.column === 0).map((g) => g.id);
+    // u2 took u1's slot; s1 kept the position it held.
+    expect(order).toEqual(['s1', 'u2', 'u1']);
+    // u2 is now first among the VISIBLE cards, so it refuses to go further.
+    expect(s.actions.moveGoalRank('u2', -1)).toBe(false);
   });
 });
