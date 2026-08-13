@@ -90,7 +90,7 @@ function OtherOptions({ children }: { children: ReactNode }) {
 
 function Skeleton() {
   return (
-    <div role="status" aria-label="Preparing your next step" className="flex flex-col gap-3 p-4">
+    <div role="status" aria-label="Preparing your next step" className="flex flex-col gap-2 p-3">
       <div data-testid="skeleton-row" className="h-8 rounded-field bg-fill" />
       <div data-testid="skeleton-row" className="h-16 rounded-card bg-fill" />
       <div data-testid="skeleton-row" className="h-8 rounded-field bg-fill" />
@@ -394,7 +394,7 @@ export function AssistantSurface({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
       <input
         autoFocus
         aria-label="Ask Phase"

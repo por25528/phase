@@ -3,11 +3,17 @@
 
 const path = require('node:path')
 
-// Compact and fixed: the shelf is 620 × 200 and never grows, so a long
+// Compact and fixed: the shelf is 620 × 190 and never grows, so a long
 // proposal list scrolls inside the pane instead of forming a tower under the
 // shortcut.
+//
+// 190 is what the surface needs, not a round number: it is the tallest real
+// state — a running session with its goal title and an "Other options" row —
+// plus nothing. The window is unresizable, so this constant is the only thing
+// standing between a state and a scrollbar; if a state grows, measure it and
+// move the number rather than letting the pane scroll.
 const WIDTH = 620
-const HEIGHT = 200
+const HEIGHT = 190
 const TOP_GAP = 18
 
 /**
