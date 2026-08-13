@@ -26,10 +26,12 @@ import { ImportGoalModal } from './goals/ImportGoalModal';
 import { GoalCardVisual, BoardCard } from './goals/BoardCard';
 import { FocusSummary, type FocusFilter } from './goals/FocusSummary';
 import { Column } from './goals/Column';
+import { LifeTabs } from './goals/LifeTabs';
 import { HORIZON_LABELS } from './goals/styles';
 import type { Goal } from '../db/types';
 import type { GoalsMode } from '../db/db';
 import { needsDateConfirmation, confirmableDateGoalIds } from '../lib/schedule';
+import { goalsInScope, lifeTabs, nowLimit, resolveScope, withScopeLife } from '../lib/lifeScope';
 
 // Commitment horizons, left → right = Now … Someday. Column order IS the model:
 // a project's column is its horizon; height within a column is rank in-horizon.
@@ -39,7 +41,7 @@ const COL_COUNT = COLUMNS.length;
 // ── Goals view ────────────────────────────────────────────────────────────────
 
 export function Goals() {
-  const { goals, lives, dateReviewDismissed, activeHorizon, goalsMode, goalModal, actions } = useAppStore();
+  const { goals, lives, activeLifeId, dateReviewDismissed, activeHorizon, goalsMode, goalModal, actions } = useAppStore();
   // Which composer is up lives in the store: ⌘K can ask for one from anywhere,
   // and a modal only its own page can open is one the palette has to lie about.
   const modal = goalModal;
@@ -66,12 +68,20 @@ export function Goals() {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const goalById = useMemo(() => new Map(goals.map((g) => [g.id, g])), [goals]);
-  const active = useMemo(() => goals.filter((g) => !g.completedAt), [goals]);
+
+  // The scope, and the goals it admits. Resolved rather than read: `removeLife`
+  // can delete the life we are looking at, and an unknown id is 'all'.
+  const scope = useMemo(() => resolveScope(activeLifeId, lives), [activeLifeId, lives]);
+  const tabs = useMemo(() => lifeTabs(lives, goals), [lives, goals]);
+  const scoped = useMemo(() => goalsInScope(goals, scope, lives), [goals, scope, lives]);
+  const scopeLabel = tabs.find((t) => t.scope === scope)?.label ?? 'All';
+
+  const active = useMemo(() => scoped.filter((g) => !g.completedAt), [scoped]);
   const unconfirmed = useMemo(() => active.filter(needsDateConfirmation), [active]);
   const confirmableCount = useMemo(() => confirmableDateGoalIds(active).length, [active]);
   const completed = useMemo(
-    () => goals.filter((g) => g.completedAt).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
-    [goals],
+    () => scoped.filter((g) => g.completedAt).sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
+    [scoped],
   );
 
   // Board columns are built from active projects only; completed projects live
@@ -156,12 +166,19 @@ export function Goals() {
     setColumns(groupByColumn(active, COL_COUNT));
   }
 
+  // Two different nothings. `isEmpty` is "you have never made a goal" and earns
+  // the onboarding block; `scopeEmpty` is "this life holds nothing", which must
+  // NOT offer Load example — the example lands in a life you are not looking at.
   const isEmpty = goals.length === 0;
+  const scopeEmpty = !isEmpty && active.length === 0 && completed.length === 0;
   const activeGoal = activeId ? goalById.get(activeId) : null;
 
   // Focus summary + spotlight filter. Buttons expose their goalId match sets, so
   // dimming is a pure set membership check — no attention predicate re-derived.
-  const summary = useMemo(() => focusSummary(goals, currentDate), [goals, currentDate]);
+  const summary = useMemo(
+    () => focusSummary(scoped, currentDate, nowLimit(scope, tabs)),
+    [scoped, currentDate, scope, tabs],
+  );
   const matchIds = useMemo(() => {
     if (!filter) return null;
     const src = {
@@ -336,6 +353,12 @@ export function Goals() {
         </div>
       </div>
 
+      {tabs.length > 0 && (
+        <div className="mt-[12px]">
+          <LifeTabs tabs={tabs} scope={scope} onChange={actions.setGoalScope} />
+        </div>
+      )}
+
       {timeline ? (
         <div className="mt-[14px]">
           <Timeline />
@@ -379,6 +402,20 @@ export function Goals() {
         </div>
       )}
 
+      {scopeEmpty && (
+        <div className="mt-[18px] grid place-items-center py-[36px] px-[20px] text-center">
+          <p className="text-ink-soft text-lead max-w-[420px] mb-[14px] leading-[1.6]">
+            No goals in {scopeLabel} yet.
+          </p>
+          <button
+            className="text-body font-semibold text-paper bg-ink px-[14px] py-[8px] rounded-field hover:bg-ink-hover"
+            onClick={() => setModal('new')}
+          >
+            + New goal
+          </button>
+        </div>
+      )}
+
       {unconfirmed.length > 0 && !dateReviewDismissed && (
         <div className="mt-[16px] flex items-center gap-[10px] rounded-card border border-line-2 bg-panel px-[13px] py-[10px] shadow-card">
           <p className="flex-1 text-ui text-ink-soft">
@@ -412,7 +449,7 @@ export function Goals() {
       )}
 
       {/* Focus summary — the board's four attention signals */}
-      {!isEmpty && (
+      {!isEmpty && !scopeEmpty && (
         <FocusSummary
           summary={summary}
           active={filtering ? filter : null}
@@ -422,7 +459,7 @@ export function Goals() {
       )}
 
       {/* Narrow horizon switcher — one horizon at a time under ~920px */}
-      {!isEmpty && !wide && (
+      {!isEmpty && !scopeEmpty && !wide && (
         <div role="group" aria-label="Show horizon" className="mt-[16px] flex gap-[4px] p-[4px] bg-hover rounded-[11px]">
           {COLUMNS.map((col, i) => (
             <button
@@ -443,7 +480,7 @@ export function Goals() {
       )}
 
       {/* Commitment-horizon board */}
-      {!isEmpty && (
+      {!isEmpty && !scopeEmpty && (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -453,8 +490,9 @@ export function Goals() {
           onDragCancel={handleDragCancel}
         >
           <div
+            id="goalsBoard"
             className={`mt-[20px] items-start pb-[8px] ${
-              wide ? 'grid grid-cols-4 gap-[14px] xl:gap-[18px]' : 'flex gap-[18px]'
+              wide ? 'grid gap-[14px] xl:gap-[18px]' : 'flex gap-[18px]'
             }`}
           >
             {COLUMNS.map((col, i) => {
@@ -507,13 +545,17 @@ export function Goals() {
         open={modal === 'new'}
         onClose={() => setModal(null)}
         onAdd={(goal) => {
-          actions.addGoals([goal]);
+          // Created on the Startup board ⇒ belongs to Startup. A goal that
+          // landed in another life would be a lie told by the only surface
+          // that knows which board you were standing on.
+          const placed = withScopeLife(goal, scope);
+          actions.addGoals([placed]);
           setModal(null);
           // Straight into the workspace. Creation used to end on the board with
           // a toast, which is the one place the new goal is a card among
           // fifteen others and the least useful place to be standing when the
           // next thing to do is break it down.
-          actions.openProject(goal.id);
+          actions.openProject(placed.id);
         }}
       />
       <ImportGoalModal
