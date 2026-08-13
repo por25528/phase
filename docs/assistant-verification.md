@@ -1,6 +1,7 @@
-# Student execution assistant — verification
+# Student execution assistant and top command shelf — verification
 
-Verification record for the vertical slice implemented by
+This document records both the original student-execution vertical slice and
+the later top-command-shelf macOS gate. The first section covers the slice implemented by
 `docs/superpowers/plans/2026-08-12-student-execution-assistant.md`
 (commits `801203d..208ce96` plus this document's commit), run on
 2026-08-12 on macOS (Darwin 25.5.0), Node/Vitest 3.2.6, Electron 43.
@@ -209,8 +210,8 @@ the Hub hidden in the background instead of quitting on close.
   `release/mac-arm64/Phase.app` and `release/Phase-0.0.0-arm64.dmg` (code
   signing skipped, identity set to null).
 - **`git diff --check`**: clean.
-- **Security scan** (`rg` for `TODO|FIXME|TBD|coming soon|chat history|homework
-  table|NSPanel|screen-saver|generic.*ipc|ipcRenderer.(send|invoke)([^'"']` over
+- **Security scan** (`rg` for implementation placeholders, AppKit/window-level
+  fallbacks, and parameterized `ipcRenderer.send`/`ipcRenderer.invoke` calls over
   `src electron assistant.html`): no hits (rg exits 1).
 - **Scope scan** (`rg` for `from 'state|db'|initStore|persist|Dexie|tabLock`
   over `src/assistant`, `AssistantSurface.tsx`, `useAssistantSendoff.ts`):
@@ -260,8 +261,8 @@ Each of the plan's twelve macOS acceptance items is tagged **automated**,
    Reduce Motion is observed off (0) and was not altered; exercising the reduced
    path requires a human to toggle the system setting and restore it, which this
    run must not do. The 350 ms reduced-motion path is pinned by
-   `useAssistantSendoff.test.tsx` ("uses a one-second fallback and a 350ms
-   reduced-motion path").
+   `useAssistantSendoff.test.tsx` ("reduced motion closes at exactly 350ms with
+   no leaving choreography"); the same file separately pins the 1000 ms fallback.
 8. **Closing the Hub hides it; menu bar and Command–Space still work** — still
    manual. The Hub window is present in the accessibility tree, but confirming
    the hidden-background lifecycle needs an eyes-on pass and physical keys.
@@ -286,6 +287,14 @@ Each of the plan's twelve macOS acceptance items is tagged **automated**,
     observed at the process level: the prior Phase instance
     (`/Applications/Phase.app`) quit via `tell application "Phase" to quit` with
     zero remaining processes before the release app was launched.
+
+### Remaining physical acceptance gate
+
+A human should run items 1–12 above from the installed build. The shortest
+high-value pass is: summon/toggle with Command–Space; verify Escape and blur;
+start and reopen a session; close the Hub and use all menu-bar actions; confirm
+launch-at-login preserves the chosen OS state; then exercise Reduce Motion,
+fullscreen/Spaces/Stage Manager, display reconnect, and both quit routes.
 
 ## Observed (launch-level)
 
