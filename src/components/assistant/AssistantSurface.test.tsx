@@ -305,7 +305,9 @@ describe('AssistantSurface', () => {
         onAction={() => {}}
       />,
     );
-    expect(screen.getByText('12m of 45–60m')).toBeTruthy();
+    // toBe, not toContain: asserting the whole line proves the break clause is
+    // absent without ever matching the "Take break" BUTTON, which an active
+    // session always renders and which a naive /break/i query would find.
     const line = screen.getByText('12m of 45–60m');
     expect(line.textContent).toBe('12m of 45–60m');
   });
