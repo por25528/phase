@@ -391,6 +391,11 @@ describe('main composition', () => {
     expect(main).toMatch(/assistantController\.create\(\)/);
   });
 
+  it('reads Electron nativeTheme dark mode as a boolean property', () => {
+    expect(main).toContain('shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,');
+    expect(main).not.toContain('nativeTheme.shouldUseDarkColors()');
+  });
+
   it('releases every global resource on explicit quit', () => {
     expect(main).toContain('assistantShortcut.dispose()');
     expect(main).toContain('globalShortcut.unregisterAll()');

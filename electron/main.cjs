@@ -309,7 +309,7 @@ app.whenReady().then(() => {
     getCursorScreenPoint: () => screen.getCursorScreenPoint(),
     getDisplayNearestPoint: (point) => screen.getDisplayNearestPoint(point),
     beforeShow: () => assistantIpc.requestSnapshot(),
-    shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors(),
+    shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,
     logError: (...args) => console.error(...args),
   })
   assistantController.create()
