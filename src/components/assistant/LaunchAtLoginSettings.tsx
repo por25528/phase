@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { shellBridge } from '../../lib/shellBridge';
 
 /**
@@ -11,6 +11,9 @@ import { shellBridge } from '../../lib/shellBridge';
  * the switch keeps the OLD value until the shell reports the applied one, and a
  * refusal preserves the old value with a one-line warning rather than silently
  * pretending the toggle took.
+ *
+ * The skeleton is presentational: the live `status` role belongs to the Good
+ * luck send-off and the app's notices, and a placeholder announces nothing.
  */
 export function LaunchAtLoginSettings() {
   const bridge = useMemo(() => shellBridge(), []);
@@ -18,19 +21,22 @@ export function LaunchAtLoginSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
+  // One guard shared by the async read and the async write: a promise that
+  // settles after the row unmounts must not setState on a dead component.
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     if (!bridge.available) return;
-    let cancelled = false;
     void bridge.getLaunchAtLogin().then((value) => {
-      if (cancelled) return;
+      if (!mountedRef.current) return;
       // A null read means the shell refused to report; the default (off) is the
       // only honest thing left, and the row must never stay stuck on its skeleton.
       if (value !== null) setEnabled(value);
       setLoading(false);
     });
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
     };
   }, [bridge]);
 
@@ -40,9 +46,7 @@ export function LaunchAtLoginSettings() {
     // One quiet bar where the row will land — a skeleton, never a spinner or a
     // blank flash, and never taller than the control it is replacing.
     return (
-      <div role="status" aria-label="Checking launch at login">
-        <div className="h-[42px] rounded-field bg-fill" />
-      </div>
+      <div aria-hidden="true" data-testid="launch-skeleton" className="h-[42px] rounded-field bg-fill" />
     );
   }
 
@@ -50,6 +54,7 @@ export function LaunchAtLoginSettings() {
     setSaving(true);
     setError(false);
     void bridge.setLaunchAtLogin(!enabled).then((value) => {
+      if (!mountedRef.current) return;
       if (value === null) {
         // The OS refused: keep the old value and say so, in words.
         setError(true);

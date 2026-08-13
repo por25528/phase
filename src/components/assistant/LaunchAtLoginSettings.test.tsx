@@ -90,11 +90,41 @@ describe('LaunchAtLoginSettings', () => {
     render(<LaunchAtLoginSettings />);
 
     expect(screen.queryByRole('switch')).toBeNull();
-    expect(screen.getByRole('status')).toBeTruthy();
+    // The skeleton is presentational: the live `status` role belongs to the
+    // Good luck send-off and the app's notices, never to a placeholder that
+    // announces nothing.
+    expect(screen.getByTestId('launch-skeleton')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
 
     await act(async () => { resolveRead(true); });
     const toggle = await screen.findByRole('switch', { name: 'Launch Phase at login' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('ignores a write that resolves after the row unmounts', async () => {
+    let resolveSet: (value: boolean | null) => void = () => {};
+    bridgeMock.mockReturnValue(fixture({
+      setLaunchAtLogin: vi.fn(() => new Promise<boolean | null>((resolve) => { resolveSet = resolve; })),
+    }));
+    const errors: unknown[][] = [];
+    const onError = vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); });
+    try {
+      const { unmount } = render(<LaunchAtLoginSettings />);
+      const toggle = await screen.findByRole('switch', { name: 'Launch Phase at login' });
+      fireEvent.click(toggle);
+      expect(toggle.hasAttribute('disabled')).toBe(true);
+
+      unmount();
+      await act(async () => { resolveSet(true); });
+
+      // The deferred write settled on a dead component: no act warning, no
+      // unmounted-update warning, no leftover DOM.
+      expect(errors).toHaveLength(0);
+      expect(screen.queryByRole('switch')).toBeNull();
+      expect(screen.queryByTestId('launch-skeleton')).toBeNull();
+    } finally {
+      onError.mockRestore();
+    }
   });
 
   it('treats a null read as the default and never leaves the row stuck loading', async () => {
