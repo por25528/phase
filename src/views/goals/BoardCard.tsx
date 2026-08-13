@@ -3,9 +3,10 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Goal, Life } from '../../db/types';
 import { IconDots } from '../../components/Icons';
+import { ProgressBar } from '../../components/ProgressBar';
 import { fmtD } from '../../lib/dates';
 import { blockedLeafCount, firstBlockedLeaf } from '../../lib/board';
-import { fmtMinutes, goalEffort } from '../../lib/effort';
+import { effortCaption, effortCount, effortPct, goalEffort } from '../../lib/effort';
 import {
   nearestMeaningfulDate,
   attentionBadge,
@@ -62,6 +63,7 @@ function CardFace({
   life?: Life | null;
 }) {
   const effort = goalEffort(goal);
+  const caption = effortCaption(effort);
   const next = nextOpenAction(goal, today);
   const dateInfo = nearestMeaningfulDate(goal, today);
   const badge = suppressDateBadge && needsDateConfirmation(goal)
@@ -94,35 +96,39 @@ function CardFace({
       </div>
 
       {/*
-        The old card deliberately consolidated an unconditional "Next · …" line
-        with a due chip, percentage, full progress bar and weekly planned
-        sentence. Its three state fallbacks — "All tasks complete", "All open
-        tasks are blocked" and "No tasks yet" — duplicated what the badge,
-        effort line and blocked indicator already said. This conditional line
-        names a real next task only, so it is one actionable sentence in the
-        card's title/effort/next/badge shape, not a return to the dashboard
-        stack. The bar in particular claimed to be the card's primary object
-        while measuring a figure that silently changes basis; minutes have one
-        meaning and are what a person plans against.
+        A meter and its two lines of figures — and yes, this card deleted a
+        progress bar once. That bar drew `goalPct`, which switches between an
+        estimate-weighted mean and an equal one depending on whether every
+        sibling set happens to be estimated, so it made the card's most
+        confident-looking object its least stable number. `goalPctBasis` exists
+        because that figure has to disclose which rule produced it, and a bar
+        cannot.
+
+        This one draws `effortPct` — a flat leaf count, one basis always, and
+        the SAME fraction `effortCount` prints at its right edge. The meter
+        therefore states nothing the card was not already stating in text,
+        which is the whole licence for drawing it. It is a readout, not a
+        headline: `text-meta text-muted`, the tone the caption below it takes.
+
+        The caption is kept off the meter's row deliberately. `55m left` and
+        `11 unestimated` are caveats about the ESTIMATE rather than about
+        progress, and running all three together on one line — which is what
+        this used to be — made a person read them as one quantity.
+
+        The old card's other consolidations are still gone: no weekly-planned
+        sentence, and no "All tasks complete" / "No tasks yet" fallbacks, which
+        duplicated the badge and the blocked indicator below.
       */}
       {effort.total > 0 && (
-        <p className="text-compact text-ink-soft tabular-nums">
-          {effort.done === effort.total
-            ? 'Every task done'
-            : /*
-               * `0m left` is not a measurement — it is the absence of one, and
-               * printing it beside "4 unestimated" made a goal nobody had
-               * estimated read as a goal with no work left in it. The count is
-               * always true; the minutes are stated only once something has
-               * actually been estimated.
-               */
-              effort.remainingMin > 0
-                ? `${fmtMinutes(effort.remainingMin)} left · ${effort.done}/${effort.total}`
-                : `${effort.done}/${effort.total}`}
-          {effort.unestimated > 0 && (
-            <span className="text-muted"> · {effort.unestimated} unestimated</span>
-          )}
-        </p>
+        <div className="flex flex-col gap-[4px]">
+          <div className="flex items-center gap-[8px]">
+            <ProgressBar pct={effortPct(effort)} />
+            <span className="text-meta text-muted tabular-nums flex-none">
+              {effortCount(effort)}
+            </span>
+          </div>
+          {caption && <p className="text-meta text-muted tabular-nums">{caption}</p>}
+        </div>
       )}
 
       {/* Only when it names a real task. The three state sentences this can

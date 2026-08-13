@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode } from '../db/types';
-import { describeEffort, fmtMinutes, goalEffort } from './effort';
+import {
+  describeEffort,
+  effortCaption,
+  effortCount,
+  effortPct,
+  fmtMinutes,
+  goalEffort,
+} from './effort';
 
 const goal = (nodes: GoalNode[]): Goal => ({ id: 'g', title: 'G', nodes });
 const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
@@ -118,5 +125,74 @@ describe('describeEffort', () => {
       expect(describeEffort({ remainingMin: 0, unestimated, total: 6, done: 2 }))
         .not.toMatch(/\b0m\b/);
     }
+  });
+});
+
+// ── The board card's three parts ──────────────────────────────────────────────
+
+describe('effortPct', () => {
+  it('counts by task, on one basis, whatever the estimates look like', () => {
+    // The same 1-of-4 goal, once fully estimated and once not. `goalPct` would
+    // report two different numbers here — weighted vs equal mean — which is the
+    // instability the card refuses to draw as a bar.
+    const estimated = goalEffort(goal([
+      leaf('a', { estimateMin: 600, status: 'done' }),
+      leaf('b', { estimateMin: 10 }),
+      leaf('c', { estimateMin: 10 }),
+      leaf('d', { estimateMin: 10 }),
+    ]));
+    const bare = goalEffort(goal([
+      leaf('a', { status: 'done' }), leaf('b'), leaf('c'), leaf('d'),
+    ]));
+
+    expect(effortPct(estimated)).toBe(25);
+    expect(effortPct(bare)).toBe(25);
+  });
+
+  it('is zero for a goal with no tasks rather than dividing by nothing', () => {
+    expect(effortPct({ remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBe(0);
+  });
+
+  it('reaches a full bar only when every task is done', () => {
+    expect(effortPct({ remainingMin: 0, unestimated: 0, total: 13, done: 12 })).toBeLessThan(100);
+    expect(effortPct({ remainingMin: 0, unestimated: 0, total: 13, done: 13 })).toBe(100);
+  });
+});
+
+describe('effortCount', () => {
+  it('prints the fraction the bar is drawing', () => {
+    expect(effortCount({ remainingMin: 55, unestimated: 11, total: 13, done: 2 })).toBe('2/13');
+  });
+
+  it('says Done at full rather than repeating the fraction', () => {
+    expect(effortCount({ remainingMin: 0, unestimated: 0, total: 13, done: 13 })).toBe('Done');
+  });
+
+  it('does not call an empty goal done', () => {
+    expect(effortCount({ remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBe('0/0');
+  });
+});
+
+describe('effortCaption', () => {
+  it('states the minutes and the caveat together', () => {
+    expect(effortCaption({ remainingMin: 55, unestimated: 11, total: 13, done: 2 }))
+      .toBe('55m left · 11 unestimated');
+  });
+
+  it('omits the minutes entirely when nothing has been estimated', () => {
+    // Same rule as `describeEffort`: `0m left` is the absence of a measurement,
+    // not a small one, and it contradicts the qualifier standing beside it.
+    expect(effortCaption({ remainingMin: 0, unestimated: 4, total: 6, done: 2 }))
+      .toBe('4 unestimated');
+  });
+
+  it('drops the caveat once everything is sized', () => {
+    expect(effortCaption({ remainingMin: 90, unestimated: 0, total: 6, done: 2 }))
+      .toBe('1h 30m left');
+  });
+
+  it('returns null rather than an empty line when it has nothing to add', () => {
+    // A fully-estimated, fully-done goal: the meter and its count say it all.
+    expect(effortCaption({ remainingMin: 0, unestimated: 0, total: 6, done: 6 })).toBeNull();
   });
 });
