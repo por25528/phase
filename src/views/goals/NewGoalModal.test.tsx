@@ -15,6 +15,15 @@ function mount() {
 
 const title = () => screen.getByRole('textbox', { name: /What do you want to finish/ });
 
+/**
+ * Type is a segmented radio group, not a `<select>`, so "what is it showing?"
+ * is answered by which radio is checked rather than by reading `.value` off the
+ * collapsed control. That is also the stronger assertion: a select's value is
+ * legible only to the DOM, while `checked` is what a screen reader announces.
+ */
+const chosenType = () =>
+  (screen.getAllByRole('radio') as HTMLInputElement[]).find((r) => r.checked)?.value;
+
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => cleanup());
 
@@ -50,24 +59,39 @@ describe('creating a goal', () => {
 
     await user.type(title(), 'Physics Final');
 
-    expect((screen.getByLabelText('Type') as HTMLSelectElement).value).toBe('study');
+    expect(chosenType()).toBe('study');
+  });
+
+  /**
+   * A `<select>` showed one of three options and hid the rest behind a click,
+   * so the guess was legible but the alternatives were not. Laying all three out
+   * is what makes "shown as a control rather than applied silently" true in the
+   * pixels and not just in the DOM.
+   */
+  it('shows what it picked over, not only what it picked', async () => {
+    const { user } = mount();
+
+    await user.type(title(), 'Physics Final');
+
+    expect(screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).value))
+      .toEqual(['study', 'project', 'general']);
   });
 
   it('re-guesses while you are still typing', async () => {
     const { user } = mount();
 
     await user.type(title(), 'Repaint the kitchen');
-    expect((screen.getByLabelText('Type') as HTMLSelectElement).value).toBe('general');
+    expect(chosenType()).toBe('general');
   });
 
   it('stops guessing once the user has chosen', async () => {
     const { user, onAdd } = mount();
 
     await user.type(title(), 'Physics Final');
-    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'project' } });
+    await user.click(screen.getByRole('radio', { name: 'Project' }));
     await user.type(title(), ' revision');
 
-    expect((screen.getByLabelText('Type') as HTMLSelectElement).value).toBe('project');
+    expect(chosenType()).toBe('project');
     await user.keyboard('{Enter}');
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ type: 'project' }));
   });

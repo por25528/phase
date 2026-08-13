@@ -13,13 +13,31 @@ import { parseDateInput } from '../lib/dateInput';
  * Idle it shows `Aug 2`, exactly as cards do. On focus it swaps to ISO
  * (`2026-08-02`) — unambiguous and easy to type — and commits on blur or Enter.
  * Escape reverts. Unparseable text snaps back rather than writing a wrong date.
+ *
+ * `size` exists because `className` is APPENDED, not merged, and Tailwind has no
+ * last-one-wins rule. New goal passed the dialogs' field class in and shipped an
+ * input carrying `rounded-[6px]` AND `rounded-field`, `text-meta` AND `text-ui`,
+ * `px-[5px]` AND `px-[8px]`. Which half of each pair applied was decided by the
+ * order Tailwind happened to emit them in — today the caller's intent wins all
+ * four, by luck, and a rename would flip any of them silently. `w-[86px]`
+ * collided with nothing, so it survived unopposed: the deadline was the one
+ * field in that dialog still sized for a table row, clipping its own "No
+ * deadline" placeholder. Callers pick a size now instead of patching one.
  */
+const SIZES = {
+  /** Inline in a row, a popover or the docked inspector — the original. */
+  inline: 'w-[86px] min-h-[24px] px-[5px] rounded-[6px] text-meta',
+  /** A form field in a dialog — deliberately identical to `fieldCls`, `leading` included. */
+  field: 'w-full min-h-[30px] leading-[21px] px-[8px] py-[5px] rounded-field text-ui',
+} as const;
+
 export function DateField({
   value,
   onCommit,
   ariaLabel,
   placeholder = 'Aug 2',
   className = '',
+  size = 'inline',
   inputRef,
 }: {
   /** 'YYYY-MM-DD', or '' for empty. */
@@ -27,7 +45,9 @@ export function DateField({
   onCommit: (next: string) => void;
   ariaLabel: string;
   placeholder?: string;
+  /** Positioning only — anything that sets radius, padding, width or type size belongs in `size`. */
   className?: string;
+  size?: keyof typeof SIZES;
   inputRef?: React.RefObject<HTMLInputElement | null>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -83,7 +103,7 @@ export function DateField({
           ref.current?.blur();
         }
       }}
-      className={`rounded-[6px] border border-line-2 px-[5px] min-h-[24px] text-meta text-ink bg-transparent outline-none focus-visible:border-accent w-[86px] ${className}`}
+      className={`border border-line-2 text-ink bg-transparent outline-none focus-visible:border-accent ${SIZES[size]} ${className}`}
     />
   );
 }

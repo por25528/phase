@@ -42,6 +42,13 @@
     --c-paper: 250 249 247;         /* #FAF9F7 */
     --c-chip: 241 239 234;          /* #F1EFEA */
     --c-chip-ink: 110 106 97;       /* #6E6A61 */
+    /* The selected segment of a segmented control: one step UP from the `chip`
+       track it sits in. It needs its own token because "up" is not a fixed
+       colour — no existing token is brighter than `chip` in both themes, so
+       `panel` (white here, #0D0D0E there) made the pill rise out of the track in
+       light and sink into it in dark, inverting the one thing the control uses
+       to say which option is on. */
+    --c-raised: 255 255 255;        /* #FFFFFF — chip is 241 */
     --c-warn: 158 89 44;            /* #9E592C — 4.53:1 on warn-tint */
     --c-warn-tint: 246 234 223;     /* #F6EADF */
 
@@ -109,6 +116,10 @@
     --c-paper: 10 10 11;            /* #0A0A0B */
     --c-chip: 27 27 29;             /* #1B1B1D */
     --c-chip-ink: 154 151 143;      /* #9A978F */
+    /* Up means brighter here too — the same step, in the direction this theme
+       calls up. `shadow-card` is a drop, and a drop is invisible on OLED, so on
+       dark the surface itself has to carry the elevation. */
+    --c-raised: 44 44 48;           /* #2C2C30 — chip is 27 */
     --c-warn: 208 138 78;           /* #D08A4E */
     --c-warn-tint: 36 26 18;        /* #241A12 */
 
@@ -133,10 +144,19 @@
     min-height: 100vh;
     width: 100%;
   }
+  /* No `border: none` here.
+     It is the SHORTHAND, so it set `border-style: none` — and Tailwind's
+     `border` utility only sets `border-width`, trusting preflight's
+     `border-style: solid` on `*`. A width against a `none` style computes to
+     0px, so every <button> in the app that asked for a border silently had
+     none: the header's Search control has carried `border border-line-2` and a
+     `hover:border-muted` for a hairline that has never once painted, while the
+     ⌘K <kbd> inside it, wearing the same classes on a non-button, drew fine.
+     Preflight already gives buttons `border-width: 0` with a solid style, so
+     dropping the line changes nothing except that the utility now works. */
   button {
     font-family: inherit;
     cursor: pointer;
-    border: none;
     background: none;
     color: inherit;
   }
@@ -219,6 +239,26 @@
   }
   .note-prose > div {
     @apply min-h-[120px] outline-none;
+  }
+
+  /* The task page's note is the DOCUMENT, not a field on it.
+     The box above is right for the docked inspector, where the note is one
+     control among several and the border says "you are typing in this one". On
+     a page whose whole job is the note, a box that appears when you start
+     writing is a form asserting itself over a document — Notion and Obsidian
+     both give the body no chrome at all. Dropping the padding also lets the
+     first line sit on the same left edge as the title and the properties,
+     which is what makes the page read as one column rather than a stack.
+
+     Two classes deliberately, not source order: `.note-prose.note-page` is
+     specificity 0,2,0 against `.note-prose`'s 0,1,0, so it wins wherever it
+     lands in the file. A single-class override here would work only for as
+     long as nobody reordered the rules. */
+  .note-prose.note-page {
+    @apply border-0 px-0;
+  }
+  .note-prose.note-page > div {
+    @apply min-h-[220px];
   }
   .note-prose > div > h1 {
     @apply mb-2 mt-4 font-disp text-h1 leading-tight text-ink;

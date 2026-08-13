@@ -112,10 +112,23 @@ describe('rowActionGroups', () => {
 describe('taskPageActions', () => {
   const leaf = { canIndent: true, canOutdent: true };
 
-  it('offers rename, indent, outdent and delete', () => {
+  it('offers rename, breakdown, indent, outdent and delete', () => {
     expect(taskPageActions(leaf).map((a) => a.id)).toEqual([
-      'rename', 'indent', 'outdent', 'delete',
+      'rename', 'breakdown', 'indent', 'outdent', 'delete',
     ]);
+  });
+
+  /**
+   * The row's menu must NOT grow it. `ProposalPanel` is leaf-only and lives on
+   * the page, so a tree row offering the verb would open a surface the row has
+   * nowhere to put.
+   */
+  it('keeps breakdown off the tree row, where the panel cannot open', () => {
+    const ctx: RowActionContext = {
+      isContainer: false, isDone: false, isMilestone: false,
+      canIndent: true, canOutdent: true,
+    };
+    expect(rowActions(ctx).map((a) => a.id)).not.toContain('breakdown');
   });
 
   it('omits the verbs the page already shows as chips', () => {
@@ -131,12 +144,12 @@ describe('taskPageActions', () => {
 
   it('drops indent for a first sibling and outdent at the root', () => {
     const stuck = { ...leaf, canIndent: false, canOutdent: false };
-    expect(taskPageActions(stuck).map((a) => a.id)).toEqual(['rename', 'delete']);
+    expect(taskPageActions(stuck).map((a) => a.id)).toEqual(['rename', 'breakdown', 'delete']);
   });
 
-  it('groups rename apart from the move verbs and from delete', () => {
+  it('groups rename, breakdown, the move verbs and delete apart', () => {
     expect(taskPageActionGroups(leaf).map((g) => g.map((a) => a.id))).toEqual([
-      ['rename'], ['indent', 'outdent'], ['delete'],
+      ['rename'], ['breakdown'], ['indent', 'outdent'], ['delete'],
     ]);
   });
 });

@@ -114,3 +114,55 @@ export function describeEffort(e: GoalEffort): string | null {
   }
   return parts.join(' · ');
 }
+
+/**
+ * The board card's three-part restatement of the same figures: a fraction to
+ * DRAW, a fraction to PRINT, and the estimate's caveats.
+ *
+ * `describeEffort` above is the goal header's one long sentence, and a card has
+ * neither the width for it nor the same job. These are separate rather than a
+ * shorter variant of it because the card splits the figures across two lines by
+ * design — see `effortCaption`.
+ */
+
+/**
+ * Completion as a percentage, counted by TASK.
+ *
+ * Deliberately not `goalPct`. That figure switches between an estimate-weighted
+ * mean and an equal one depending on whether every sibling set happens to be
+ * estimated, which is exactly why the card's previous progress bar was deleted:
+ * a bar is the most confident-looking object on a card, and it was drawing the
+ * least stable number on it. This is a flat leaf count with one basis, and it is
+ * the same figure `effortCount` prints beside the bar — so the meter states
+ * nothing the card was not already saying, which is the only licence it has to
+ * be there.
+ */
+export function effortPct(e: GoalEffort): number {
+  if (e.total === 0) return 0;
+  return (e.done / e.total) * 100;
+}
+
+/** The figure at the meter's right edge: `2/13`, or `Done` at full. */
+export function effortCount(e: GoalEffort): string {
+  if (e.total > 0 && e.done === e.total) return 'Done';
+  return `${e.done}/${e.total}`;
+}
+
+/**
+ * What the meter cannot say: `55m left · 11 unestimated`.
+ *
+ * These are caveats about the ESTIMATE, not about progress, and they are kept
+ * off the meter's own row on purpose — sitting adjacent to the count is what
+ * made the old single line read as one quantity when it was three.
+ *
+ * Minutes are omitted when nothing has been estimated, on the same grounds as
+ * `describeEffort`: `0m left` is not a small amount of work remaining, it is
+ * nobody having said how much there is. Returns null when neither part applies,
+ * so the caller renders no line at all rather than an empty one.
+ */
+export function effortCaption(e: GoalEffort): string | null {
+  const parts: string[] = [];
+  if (e.remainingMin > 0) parts.push(`${fmtMinutes(e.remainingMin)} left`);
+  if (e.unestimated > 0) parts.push(`${e.unestimated} unestimated`);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}

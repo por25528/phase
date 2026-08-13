@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { SegmentedSwitch } from '../components/SegmentedControl';
 import { useAppStore } from '../state/store';
 import { todayStr, parseD, addDays, fmtD } from '../lib/dates';
 import {
@@ -77,6 +78,14 @@ function useLabelW(): number {
  * whose graduations densify as you zoom; past DAY_DETAIL_MIN it becomes the
  * DaysLane day strip.
  */
+/** Fit frames the selection; the other three are fixed scales. */
+const ZOOMS = [
+  { value: 'fit', label: 'Fit', title: 'Frame the selected goals' },
+  { value: 'week', label: 'Week' },
+  { value: 'month', label: 'Month' },
+  { value: 'quarter', label: 'Quarter' },
+] as const;
+
 export function Timeline() {
   const { goals, pxPerDay, actions } = useAppStore();
   const reduced = useReducedMotion();
@@ -456,8 +465,12 @@ export function Timeline() {
 
   return (
     <div>
-      <h1 className="text-h1 font-semibold tracking-[-0.015em] mb-[16px]">Timeline</h1>
-
+      {/* No <h1> here. This was a top-level tab once and kept its page title
+          after becoming a MODE of Goals, so the view rendered a "Timeline"
+          heading under the "Goals" one — two page titles, the lower repeating
+          the segment you pressed to get here, which the Goals subtitle already
+          restates in words ("laid out against the calendar"). The switch
+          reports the mode with `aria-pressed`, so AT loses nothing. */}
       <div className="flex flex-wrap items-center justify-between gap-[8px] mb-[10px]">
         <div className="flex flex-wrap items-center gap-[6px] min-w-0">
           <button
@@ -512,32 +525,23 @@ export function Timeline() {
 
           {/* Fit and the three presets are the same mutually-exclusive zoom
               state, so they are one segmented control. Fit used to sit ~1200px
-              away in the left group, as a differently-shaped chip. */}
-          <div
-            className="flex border border-line-2 rounded-[6px] overflow-hidden text-ui font-medium"
-            title="Pinch or ⌃/⌘-scroll the timeline to zoom freely"
-          >
-            <button
-              type="button"
-              onClick={fitProjects}
-              disabled={visibleGoals.length === 0}
-              title="Frame the selected goals"
-              aria-pressed={atFitScale}
-              className={`px-[12px] py-[4px] border-r border-line-2 transition-colors duration-100 disabled:opacity-40 ${
-                atFitScale ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'
-              }`}
-            >
-              Fit
-            </button>
-            {(['week', 'month', 'quarter'] as ZoomLevel[]).map(z => (
-              <button key={z} type="button" onClick={() => actions.setScale(PX_PER_DAY[z])}
-                aria-pressed={Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5}
-                className={`px-[12px] py-[4px] transition-colors duration-100 ${
-                  Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5 ? 'bg-accent-tint text-ink' : 'text-ink-soft hover:bg-hover'}`}>
-                {z[0].toUpperCase() + z.slice(1)}
-              </button>
-            ))}
-          </div>
+              away in the left group, as a differently-shaped chip.
+
+              It wore `bg-accent-tint` for "you are at this zoom", which index.css
+              defines as ACTION — and being at a zoom level is not an act. Now it
+              wears the same raised pill every other segmented control in the app
+              uses, and `value` is null between presets, which is a state a
+              radio group could not have expressed. */}
+          <SegmentedSwitch
+            label="Timeline zoom"
+            value={atFitScale ? 'fit' : (['week', 'month', 'quarter'] as ZoomLevel[])
+              .find((z) => Math.abs(pxPerDay - PX_PER_DAY[z]) < 0.5) ?? null}
+            options={ZOOMS.map((o) =>
+              o.value === 'fit' ? { ...o, disabled: visibleGoals.length === 0 } : o,
+            )}
+            onChange={(z) => (z === 'fit' ? fitProjects() : actions.setScale(PX_PER_DAY[z]))}
+            size="sm"
+          />
         </div>
       </div>
 

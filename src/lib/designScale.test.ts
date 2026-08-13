@@ -202,6 +202,60 @@ describe('design scale', () => {
     const colors = Object.keys(extend.colors ?? {});
     expect(fontSizes.filter((key) => colors.includes(key))).toEqual([]);
   });
+
+  /**
+   * A raised surface has to be raised in BOTH themes.
+   *
+   * A segmented control says which option is on by lifting it off its track, so
+   * the pill must be a step UP from the track — and "up" is not a fixed colour.
+   * Board/Timeline used `panel` over `hover`: brighter in light (255 over 243)
+   * and DARKER in dark (13 under 22), so the selected segment rose on one theme
+   * and sank on the other. Nothing failed, because each value on its own is a
+   * perfectly good token; only the RELATIONSHIP was wrong.
+   *
+   * `raised` exists to be that step, so the relationship is what gets asserted.
+   */
+  it('keeps `raised` above `chip` in both themes', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const scope = (theme: string): string =>
+      theme === 'dark' ? css.split('.dark {')[1] : css.split(':root {')[1].split('.dark {')[0];
+    const luminance = (theme: string, token: string): number => {
+      const raw = new RegExp(`--c-${token}:\\s*([\\d ]+);`).exec(scope(theme));
+      expect(raw, `--c-${token} missing from ${theme}`).toBeTruthy();
+      const [r, g, b] = raw![1].trim().split(/\s+/).map(Number);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    for (const theme of ['root', 'dark']) {
+      expect(
+        luminance(theme, 'raised') > luminance(theme, 'chip'),
+        `--c-raised must be lighter than --c-chip in ${theme}`,
+      ).toBe(true);
+    }
+  });
+
+  /**
+   * A base reset may not touch `border` with the SHORTHAND.
+   *
+   * `button { border: none }` reads as "buttons start unbordered", which
+   * preflight already guarantees. What it actually does is set
+   * `border-style: none` — and Tailwind's `border` utility only sets
+   * `border-width`, trusting preflight's solid style. A 1px width against a
+   * `none` style computes to 0px, so the utility goes quiet on that element
+   * with nothing in the class list to explain it. The header's Search control
+   * carried `border border-line-2 hover:border-muted` for a hairline that never
+   * once painted, while the `<kbd>` nested inside it drew the same classes
+   * correctly, because a `<kbd>` is not a `<button>`.
+   *
+   * The longhands stay allowed: `border-width: 0` is what a reset should say if
+   * that is what it means, and it leaves the style alone.
+   */
+  it('resets no border with a shorthand — it silently kills the utility', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const shorthands = [...css.matchAll(
+      /(?:^|[;{])\s*(border(?:-(?:top|right|bottom|left))?)\s*:\s*([^;}]+)/g,
+    )].map(([, property, value]) => `${property}: ${value.trim()}`);
+    expect(shorthands).toEqual([]);
+  });
 });
 
 /**
