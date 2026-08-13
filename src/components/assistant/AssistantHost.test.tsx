@@ -68,7 +68,7 @@ async function mountHost(over: {
 }
 
 async function submit(text: string) {
-  const input = screen.getByRole('textbox', { name: 'Ask the assistant' });
+  const input = screen.getByRole('textbox', { name: 'Ask Phase' });
   await act(async () => {
     fireEvent.change(input, { target: { value: text } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -77,6 +77,15 @@ async function submit(text: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The embedded surface reads Reduce Motion, so a stable matchMedia is required.
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  });
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date(2026, 6, 15, 10, 0, 0));
 });
@@ -89,7 +98,7 @@ describe('AssistantHost', () => {
   it('opens in the browser even when no Electron bridge exists', async () => {
     expect('phaseAssistant' in window).toBe(false);
     await mountHost();
-    expect(screen.getByRole('textbox', { name: 'Ask the assistant' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Ask Phase' })).toBeTruthy();
   });
 
   it('a confirmed capture calls exactly one approved store action', async () => {
@@ -138,6 +147,10 @@ describe('AssistantHost', () => {
         { kind: 'starter', minutes: 30 },
         Date.now() - 25 * 60_000,
       );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Other options' }));
     });
 
     await act(async () => {

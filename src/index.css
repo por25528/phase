@@ -340,8 +340,41 @@
   }
 }
 
+/* The assistant shelf drifts in from a notch above its resting spot — a 6px
+   settle, not a slide, so it reads as arriving rather than scrolling. */
+@keyframes assistant-shelf-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.assistant-shelf-enter {
+  animation: assistant-shelf-enter 160ms ease-out both;
+}
+
+/* The send-off's "Good luck!" fades in where the shelf content was; no
+   translation, because a moving status reads as an object leaving its slot. */
+@keyframes assistant-sendoff-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.assistant-sendoff-enter {
+  animation: assistant-sendoff-enter 160ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 /* The habit row measures its RAIL, not the viewport.

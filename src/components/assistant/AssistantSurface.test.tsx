@@ -1,9 +1,21 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssistantSurface } from './AssistantSurface';
 import type { AssistantSnapshot } from '../../lib/assistantProtocol';
 import type { RecommendedWork } from '../../lib/executionAdvisor';
+
+// The surface reads Reduce Motion, so it needs a stable matchMedia.
+beforeEach(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  });
+});
 
 afterEach(cleanup);
 
@@ -41,19 +53,27 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
   });
 
-  it('renders at most two alternatives, quietly', () => {
-    const alts = [
-      work({ key: 'step:n2', title: 'Read chapter 5', reason: 'free-time' }),
-      work({ key: 'step:n3', title: 'Pitch deck', reason: 'free-time' }),
+  it('keeps alternatives behind Other options and reveals at most two', () => {
+    const alternatives = [
+      work({ key: 'step:n2', title: 'Read chapter 5' }),
+      work({ key: 'step:n3', title: 'Pitch deck' }),
+      work({ key: 'step:n4', title: 'Email advisor' }),
     ];
     render(
       <AssistantSurface
-        snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives: alts } })}
+        snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives } })}
         onAction={() => {}}
       />,
     );
+
+    expect(screen.queryByText('Read chapter 5')).toBeNull();
+    const disclosure = screen.getByRole('button', { name: 'Other options' });
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('Read chapter 5')).toBeTruthy();
     expect(screen.getByText('Pitch deck')).toBeTruthy();
+    expect(screen.queryByText('Email advisor')).toBeNull();
     // The alternatives are not headings — one focal point on the page.
     expect(screen.getAllByRole('heading')).toHaveLength(1);
   });
@@ -99,6 +119,41 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({
       type: 'start-focus', ref: { kind: 'step', id: 'n1', goalId: 'g1' },
     });
+  });
+
+  it('disables Start session while the owner has not acknowledged it', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    const start = screen.getByRole('button', { name: 'Start session' });
+    fireEvent.click(start);
+    fireEvent.click(start);
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(start.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('shows only Good luck during the confirmed send-off', () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    const { rerender } = render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    rerender(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: work().ref,
+            title: work().title,
+            goalTitle: work().goalTitle,
+            phase: 'active',
+            elapsedMin: 0,
+            expected: work().expected,
+          },
+        })}
+        onAction={onAction}
+      />,
+    );
+    expect(screen.getByRole('status').textContent).toBe('Good luck!');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    vi.useRealTimers();
   });
 
   it('exposes the approved verbs for an active session', () => {
@@ -193,10 +248,17 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'choose-subject', proposalId: 'p2', subjectId: 'n2' });
   });
 
+  it('focuses the Phase command field with the approved prompt', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    const input = screen.getByRole('textbox', { name: 'Ask Phase' });
+    expect(input.getAttribute('placeholder')).toBe('Ask Phase or add something…');
+    expect(document.activeElement).toBe(input);
+  });
+
   it('submits typed input as one action', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
-    const input = screen.getByRole('textbox', { name: 'Ask the assistant' });
+    const input = screen.getByRole('textbox', { name: 'Ask Phase' });
     fireEvent.change(input, { target: { value: 'Add lab report Friday' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onAction).toHaveBeenCalledWith({ type: 'submit-input', text: 'Add lab report Friday' });
