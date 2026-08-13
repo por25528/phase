@@ -11,6 +11,7 @@ import { fmtMinutes } from '../../lib/effort';
 import { fmtD } from '../../lib/dates';
 import { useReducedMotion } from '../useReducedMotion';
 import { useAssistantSendoff } from './useAssistantSendoff';
+import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 
 /**
  * The one assistant surface, rendered in two places: inside the app by
@@ -48,9 +49,15 @@ function SectionLabel({ children }: { children: string }) {
   return <p className="text-meta font-semibold text-muted">{children}</p>;
 }
 
-function quietButton(extra = ''): string {
-  return `rounded-field border border-line bg-panel px-3 py-1.5 text-ui text-ink hover:bg-hover ${extra}`;
-}
+/**
+ * A row in a list of choices — a subject to disambiguate, an alternative to
+ * switch to. Deliberately NOT one of the three dialog variants: those three
+ * answer "which of these commits", and a list of things to pick from is not a
+ * commit at all. Left-aligned and full-width, because it is read as a row.
+ */
+const optionRow =
+  'w-full rounded-field border border-line bg-panel px-3 py-1.5 text-left text-ui text-ink '
+  + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
 
 /** The one primary/action arrangement: two columns on the shelf, one stack embedded. */
 function bodyClass(shelf: boolean): string {
@@ -111,7 +118,7 @@ function ProposalPanel({ proposal, onAction }: {
             <button
               key={choice.ref.id}
               type="button"
-              className={quietButton('text-left')}
+              className={optionRow}
               onClick={() => onAction({
                 type: 'choose-subject', proposalId: proposal.id, subjectId: choice.ref.id,
               })}
@@ -144,17 +151,17 @@ function ProposalPanel({ proposal, onAction }: {
       <div className="mt-2 flex gap-2">
         <button
           type="button"
-          className={quietButton('border-line-2 font-medium')}
-          onClick={() => onAction({ type: 'confirm-proposal', id: proposal.id })}
-        >
-          Confirm
-        </button>
-        <button
-          type="button"
-          className={quietButton('text-muted')}
+          className={ghostBtn}
           onClick={() => onAction({ type: 'cancel-proposal' })}
         >
           Cancel
+        </button>
+        <button
+          type="button"
+          className={primaryBtn}
+          onClick={() => onAction({ type: 'confirm-proposal', id: proposal.id })}
+        >
+          Confirm
         </button>
       </div>
     </div>
@@ -184,41 +191,52 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
       )}
     </div>
   );
+  // The filled button is whatever moves the session forward from where you
+  // are: on a break you came back to resume, mid-session you came to finish,
+  // and `confirming` is a question whose expected answer is yes. It sits last,
+  // under the reading edge, exactly as dialogFooter puts a commit button last.
   const actions = focus.phase === 'confirming' ? (
     <div className="flex gap-2">
       <button
         type="button"
-        className={quietButton('border-line-2 font-medium')}
+        className={ghostBtn}
+        onClick={() => onAction({ type: 'confirm-focus', minutes: null })}
+      >
+        Didn&apos;t happen
+      </button>
+      <button
+        type="button"
+        className={primaryBtn}
         onClick={() => onAction({ type: 'confirm-focus', minutes: focus.proposedMinutes ?? focus.elapsedMin })}
       >
         Log {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)}
       </button>
+    </div>
+  ) : focus.phase === 'active' ? (
+    <div className="flex gap-2">
+      <button type="button" className={secondaryBtn} onClick={() => onAction({ type: 'pause-focus' })}>
+        Take break
+      </button>
       <button
         type="button"
-        className={quietButton('text-muted')}
-        onClick={() => onAction({ type: 'confirm-focus', minutes: null })}
+        className={primaryBtn}
+        onClick={() => onAction({ type: 'complete-focus' })}
       >
-        Didn&apos;t happen
+        Complete session
       </button>
     </div>
   ) : (
     <div className="flex gap-2">
       <button
         type="button"
-        className={quietButton('border-line-2 font-medium')}
+        className={secondaryBtn}
         onClick={() => onAction({ type: 'complete-focus' })}
       >
         Complete session
       </button>
-      {focus.phase === 'active' ? (
-        <button type="button" className={quietButton()} onClick={() => onAction({ type: 'pause-focus' })}>
-          Take break
-        </button>
-      ) : (
-        <button type="button" className={quietButton()} onClick={() => onAction({ type: 'resume-focus' })}>
-          Continue
-        </button>
-      )}
+      <button type="button" className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
+        Continue
+      </button>
     </div>
   );
   return (
@@ -233,7 +251,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
             <button
               key={alt.key}
               type="button"
-              className={quietButton('text-left')}
+              className={optionRow}
               onClick={() => onAction({ type: 'switch-focus', ref: alt.ref })}
             >
               <span className="text-ink-soft">{alt.title}</span>
@@ -296,7 +314,7 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
         <button
           type="button"
           disabled={pending}
-          className={quietButton('border-line-2 font-medium disabled:cursor-default disabled:opacity-60')}
+          className={primaryBtn}
           onClick={() => onStart(primary.ref)}
         >
           Start session
@@ -309,7 +327,7 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
               key={alt.key}
               type="button"
               disabled={pending}
-              className={quietButton('text-left disabled:cursor-default disabled:opacity-60')}
+              className={optionRow}
               onClick={() => onStart(alt.ref)}
             >
               <span className="text-ink-soft">{alt.title}</span>

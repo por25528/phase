@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssistantSurface } from './AssistantSurface';
 import type { AssistantSnapshot } from '../../lib/assistantProtocol';
 import type { RecommendedWork } from '../../lib/executionAdvisor';
+import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 
 // The surface reads Reduce Motion, so it needs a stable matchMedia.
 beforeEach(() => {
@@ -418,6 +419,108 @@ describe('AssistantSurface', () => {
     for (const button of screen.getAllByRole('button')) {
       const name = button.getAttribute('aria-label') ?? button.textContent;
       expect(name?.trim()).toBeTruthy();
+    }
+  });
+
+  it('gives an active session one filled primary, last, and an outlined partner', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'active',
+            elapsedMin: 25, expected: { kind: 'estimate', minutes: 45 },
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    const complete = screen.getByRole('button', { name: 'Complete session' });
+    const pause = screen.getByRole('button', { name: 'Take break' });
+    expect(complete.className).toBe(primaryBtn);
+    expect(pause.className).toBe(secondaryBtn);
+    // The commit button lands under the reading edge, per dialogFooter.
+    expect([...complete.parentElement!.children].map((b) => b.textContent))
+      .toEqual(['Take break', 'Complete session']);
+  });
+
+  it('moves the filled treatment to Continue on a break', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'break',
+            elapsedMin: 25, expected: { kind: 'starter', minutes: 30 },
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    const resume = screen.getByRole('button', { name: 'Continue' });
+    expect(resume.className).toBe(primaryBtn);
+    expect(screen.getByRole('button', { name: 'Complete session' }).className).toBe(secondaryBtn);
+    expect([...resume.parentElement!.children].map((b) => b.textContent))
+      .toEqual(['Complete session', 'Continue']);
+  });
+
+  it('leaves the dismissive answer borderless', () => {
+    const { rerender } = render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'confirming',
+            elapsedMin: 200, expected: { kind: 'starter', minutes: 30 },
+            proposedMinutes: 200,
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Log 3h 20m' }).className).toBe(primaryBtn);
+    expect(screen.getByRole('button', { name: "Didn't happen" }).className).toBe(ghostBtn);
+
+    rerender(
+      <AssistantSurface
+        snapshot={ready({
+          proposal: { kind: 'capture', id: 'p1', title: 'Lab report', goalId: null, date: null },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    const confirm = screen.getByRole('button', { name: 'Confirm' });
+    expect(confirm.className).toBe(primaryBtn);
+    expect(screen.getByRole('button', { name: 'Cancel' }).className).toBe(ghostBtn);
+    expect([...confirm.parentElement!.children].map((b) => b.textContent))
+      .toEqual(['Cancel', 'Confirm']);
+  });
+
+  it('starts a session on a filled primary', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Start session' }).className).toBe(primaryBtn);
+  });
+
+  it('keeps a list of choices as rows rather than a fourth button variant', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          proposal: {
+            kind: 'choose-subject', id: 'p2', verb: 'complete',
+            choices: [
+              { ref: { kind: 'step', id: 'n1', goalId: 'g1' }, title: 'Lab report', goalTitle: 'Algorithms' },
+              { ref: { kind: 'step', id: 'n2', goalId: 'g2' }, title: 'Lab report', goalTitle: 'Biology' },
+            ],
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    for (const name of [/Algorithms/, /Biology/]) {
+      const row = screen.getByRole('button', { name });
+      expect(row.className).toContain('text-left');
+      expect(row.className).not.toBe(primaryBtn);
+      expect(row.className).not.toBe(secondaryBtn);
     }
   });
 });
