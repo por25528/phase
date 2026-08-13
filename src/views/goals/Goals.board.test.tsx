@@ -134,3 +134,36 @@ describe('Goals scoping', () => {
     expect(screen.queryByText('Load example')).toBeNull();
   });
 });
+
+describe('board geometry', () => {
+  it('gives the loaded column the width and slims the empty ones', async () => {
+    await mountBoard([
+      { id: 'a', title: 'A', nodes: [], column: 3 },
+      { id: 'b', title: 'B', nodes: [], column: 3 },
+    ]);
+    const board = document.getElementById('goalsBoard') as HTMLElement;
+    expect(board.style.gridTemplateColumns).toBe('88px 88px 88px minmax(200px, 2fr)');
+  });
+
+  it('weights two loaded columns against each other', async () => {
+    await mountBoard([
+      { id: 'a', title: 'A', nodes: [], column: 0 },
+      { id: 'b', title: 'B', nodes: [], column: 3 },
+      { id: 'c', title: 'C', nodes: [], column: 3 },
+    ]);
+    const board = document.getElementById('goalsBoard') as HTMLElement;
+    expect(board.style.gridTemplateColumns)
+      .toBe('minmax(200px, 1fr) 88px 88px minmax(200px, 2fr)');
+  });
+
+  it('draws no dashed border on an empty column', async () => {
+    await mountBoard([{ id: 'a', title: 'A', nodes: [], column: 0 }]);
+    expect(document.querySelector('.border-dashed')).toBeNull();
+  });
+
+  it('says nothing in a slim column — the label and the count are the whole story', async () => {
+    await mountBoard([{ id: 'a', title: 'A', nodes: [], column: 0 }]);
+    // Now holds the card; the other three are slim and must not each repeat it.
+    expect(screen.queryAllByText('Nothing here')).toHaveLength(0);
+  });
+});

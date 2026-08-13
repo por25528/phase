@@ -1,12 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-
-// Column hints for the quiet horizons — they explain *why* the schedule signals
-// go silent there (horizon gating, spec §2.2), so the calm reads as intentional.
-const HINTS: Record<number, string> = {
-  2: 'Quiet by design — schedule pressure is hidden off Now / Next.',
-  3: 'Ideas — no "define a task" nag until you commit them.',
-};
+import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
 
 export function Column({
   col,
@@ -14,6 +7,7 @@ export function Column({
   ids,
   children,
   solo,
+  slim,
   nowLimit,
 }: {
   col: { id: string; label: string };
@@ -21,12 +15,12 @@ export function Column({
   ids: string[];
   children: React.ReactNode;
   solo?: boolean; // rendered alone in the narrow horizon switcher → full width, no divider
+  slim?: boolean; // wide board, nothing in the column → label and count only, no message
   nowLimit: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const isNow = index === 0;
   const over = isNow && ids.length > nowLimit;
-  const hint = HINTS[index];
 
   return (
     <section className={solo ? 'w-full' : `min-w-0 ${index > 0 ? 'border-l border-line pl-[14px] xl:pl-[18px]' : ''}`}>
@@ -46,22 +40,20 @@ export function Column({
           {isNow ? `${ids.length} / ${nowLimit}` : ids.length}
         </span>
       </header>
-      {hint && (
-        <p className="text-kbd text-muted italic px-[2px] -mt-[6px] mb-[12px] leading-[1.4]">{hint}</p>
-      )}
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+      <SortableContext items={ids} strategy={rectSortingStrategy}>
         <div
           ref={setNodeRef}
-          className={`flex flex-col gap-[11px] min-h-[140px] rounded-card p-[6px] -m-[6px] transition-colors ${
+          className={`grid gap-[11px] min-h-[140px] rounded-card p-[6px] -m-[6px] transition-colors ${
             isOver ? 'bg-hover' : ''
           }`}
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(188px, 1fr))' }}
         >
           {children}
           {/* No dashed box. A dashed border is the app's DROP-TARGET signal —
               it is what `DayColumn` draws while something is in the air — and
               spending it on "nothing is here" in four columns at once is how it
               stops meaning anything. An empty column is empty. */}
-          {ids.length === 0 && (
+          {ids.length === 0 && !slim && (
             <p className="min-h-[80px] pt-[10px] text-faint text-meta text-center px-[10px]">
               Nothing here
             </p>

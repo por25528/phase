@@ -15,6 +15,7 @@ import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
 import { IconCheck, IconChevronRight, IconX } from '../components/Icons';
 import { groupByColumn } from '../lib/board';
+import { columnTracks } from '../lib/boardTracks';
 import { focusSummary } from '../lib/plan';
 import { fmtD } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
@@ -90,6 +91,14 @@ export function Goals() {
   const columnsRef = useRef(columns);
   columnsRef.current = columns;
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Widths follow what each column holds — except while something is in the
+  // air, when they all equalise so an empty Now is a full-size drop target and
+  // nothing moves under the cursor. See lib/boardTracks.ts.
+  const gridTemplateColumns = useMemo(
+    () => columnTracks(columns.map((c) => c.length), { dragging: activeId !== null }),
+    [columns, activeId],
+  );
 
   // Re-sync from the store whenever goals change and we're NOT mid-drag
   // (covers add / delete / complete / drawer edits from elsewhere).
@@ -493,12 +502,13 @@ export function Goals() {
             id="goalsBoard"
             className={`mt-[20px] items-start pb-[8px] ${
               wide ? 'grid gap-[14px] xl:gap-[18px]' : 'flex gap-[18px]'
-            }`}
+            } ${wide && !reducedMotion ? 'transition-[grid-template-columns] duration-150' : ''}`}
+            style={wide ? { gridTemplateColumns } : undefined}
           >
             {COLUMNS.map((col, i) => {
               if (!wide && i !== activeHorizon) return null;
               return (
-              <Column key={col.id} col={col} index={i} ids={columns[i] ?? []} solo={!wide} nowLimit={summary.slots.limit}>
+              <Column key={col.id} col={col} index={i} ids={columns[i] ?? []} solo={!wide} slim={wide && (columns[i] ?? []).length === 0} nowLimit={summary.slots.limit}>
                 {(columns[i] ?? []).map((id) => {
                   const g = goalById.get(id);
                   if (!g) return null;
