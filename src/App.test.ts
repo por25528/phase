@@ -74,4 +74,34 @@ describe('desktop entry-point routing', () => {
     expect(browser.openAssistant).not.toHaveBeenCalled();
     expect(openEmbedded).toHaveBeenCalledTimes(1);
   });
+
+  it('swallows a rejected shelf request on desktop and never opens the embedded host', async () => {
+    // A plain rejected promise (not a vi.fn mock, which swallows the signal)
+    // so an unhandled rejection is actually observable.
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const desktop: PhaseShellBridge = {
+        available: true,
+        openAssistant: async () => {
+          throw new Error('shell unavailable');
+        },
+        onOpenSettings: () => () => {},
+        getLaunchAtLogin: async () => false,
+        setLaunchAtLogin: async () => true,
+      };
+      const openEmbedded = vi.fn();
+      openAssistantForEnvironment(desktop, openEmbedded);
+
+      // Let the fire-and-forget chain settle: the rejection must be caught here
+      // (never an unhandled-rejection), and desktop must not fall back to the
+      // in-app panel — the shelf owns that surface.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toHaveLength(0);
+      expect(openEmbedded).not.toHaveBeenCalled();
+    } finally {
+      process.removeListener('unhandledRejection', onUnhandled);
+    }
+  });
 });

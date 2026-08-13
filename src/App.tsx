@@ -73,7 +73,13 @@ export function openAssistantForEnvironment(
   openEmbedded: () => void,
 ): void {
   if (bridge.available) {
-    void bridge.openAssistant();
+    // Fire-and-forget: the shelf raises its own window, so a refusal must never
+    // fall through to the in-app panel. Catching here keeps the rejection quiet
+    // — Task 9's handlers turn the returned boolean into the surface decision.
+    void bridge.openAssistant().catch(() => {
+      // The desktop owns the assistant surface; an unhandled rejection would
+      // otherwise leak out of the command palette.
+    });
     return;
   }
   openEmbedded();

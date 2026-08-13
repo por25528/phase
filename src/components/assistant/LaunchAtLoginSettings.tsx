@@ -28,13 +28,21 @@ export function LaunchAtLoginSettings() {
   useEffect(() => {
     mountedRef.current = true;
     if (!bridge.available) return;
-    void bridge.getLaunchAtLogin().then((value) => {
-      if (!mountedRef.current) return;
-      // A null read means the shell refused to report; the default (off) is the
-      // only honest thing left, and the row must never stay stuck on its skeleton.
-      if (value !== null) setEnabled(value);
-      setLoading(false);
-    });
+    void bridge.getLaunchAtLogin()
+      .then((value) => {
+        if (!mountedRef.current) return;
+        // A null read means the shell refused to report; the default (off) is the
+        // only honest thing left, and the row must never stay stuck on its skeleton.
+        if (value !== null) setEnabled(value);
+        setLoading(false);
+      })
+      .catch(() => {
+        // A rejected read is the shell refusing outright: the same default and
+        // the same warning, and still never a row stuck on its skeleton.
+        if (!mountedRef.current) return;
+        setLoading(false);
+        setError(true);
+      });
     return () => {
       mountedRef.current = false;
     };
@@ -53,16 +61,24 @@ export function LaunchAtLoginSettings() {
   const toggle = () => {
     setSaving(true);
     setError(false);
-    void bridge.setLaunchAtLogin(!enabled).then((value) => {
-      if (!mountedRef.current) return;
-      if (value === null) {
-        // The OS refused: keep the old value and say so, in words.
+    void bridge.setLaunchAtLogin(!enabled)
+      .then((value) => {
+        if (!mountedRef.current) return;
+        if (value === null) {
+          // The OS refused: keep the old value and say so, in words.
+          setError(true);
+        } else {
+          setEnabled(value);
+        }
+        setSaving(false);
+      })
+      .catch(() => {
+        // A rejected write is the OS refusing outright: keep the old value,
+        // say so in words, and hand the switch back to the user.
+        if (!mountedRef.current) return;
         setError(true);
-      } else {
-        setEnabled(value);
-      }
-      setSaving(false);
-    });
+        setSaving(false);
+      });
   };
 
   return (

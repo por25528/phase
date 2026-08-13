@@ -134,4 +134,83 @@ describe('LaunchAtLoginSettings', () => {
     const toggle = await screen.findByRole('switch', { name: 'Launch Phase at login' });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
   });
+
+  it('stops the skeleton, keeps the default off, and shows the exact warning when the read rejects', async () => {
+    bridgeMock.mockReturnValue(fixture({
+      getLaunchAtLogin: vi.fn(async () => {
+        throw new Error('shell down');
+      }),
+    }));
+    render(<LaunchAtLoginSettings />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe("Phase couldn't change this setting.");
+    expect(screen.queryByTestId('launch-skeleton')).toBeNull();
+    const toggle = await screen.findByRole('switch', { name: 'Launch Phase at login' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('re-enables the switch, preserves the old value, and shows the exact warning when the write rejects', async () => {
+    bridgeMock.mockReturnValue(fixture({
+      getLaunchAtLogin: vi.fn(async () => true),
+      setLaunchAtLogin: vi.fn(async () => {
+        throw new Error('shell down');
+      }),
+    }));
+    render(<LaunchAtLoginSettings />);
+
+    const toggle = await screen.findByRole('switch', { name: 'Launch Phase at login' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(toggle);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe("Phase couldn't change this setting.");
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(toggle.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('is quiet when the read rejects after the row unmounts', async () => {
+    let rejectRead: (reason: unknown) => void = () => {};
+    bridgeMock.mockReturnValue(fixture({
+      getLaunchAtLogin: vi.fn(() => new Promise<boolean | null>((_, reject) => { rejectRead = reject; })),
+    }));
+    const errors: unknown[][] = [];
+    const onError = vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); });
+    try {
+      const { unmount } = render(<LaunchAtLoginSettings />);
+      expect(screen.getByTestId('launch-skeleton')).toBeTruthy();
+
+      unmount();
+      await act(async () => { rejectRead(new Error('shell down')); });
+
+      // The rejected read settled on a dead component: no warning, no act error.
+      expect(errors).toHaveLength(0);
+      expect(screen.queryByTestId('launch-skeleton')).toBeNull();
+    } finally {
+      onError.mockRestore();
+    }
+  });
+
+  it('is quiet when the write rejects after the row unmounts', async () => {
+    let rejectSet: (reason: unknown) => void = () => {};
+    bridgeMock.mockReturnValue(fixture({
+      setLaunchAtLogin: vi.fn(() => new Promise<boolean | null>((_, reject) => { rejectSet = reject; })),
+    }));
+    const errors: unknown[][] = [];
+    const onError = vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args); });
+    try {
+      const { unmount } = render(<LaunchAtLoginSettings />);
+      const toggle = await screen.findByRole('switch', { name: 'Launch Phase at login' });
+      fireEvent.click(toggle);
+
+      unmount();
+      await act(async () => { rejectSet(new Error('shell down')); });
+
+      // The rejected write settled on a dead component: no warning, no act error.
+      expect(errors).toHaveLength(0);
+      expect(screen.queryByRole('switch')).toBeNull();
+    } finally {
+      onError.mockRestore();
+    }
+  });
 });
