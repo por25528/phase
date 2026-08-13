@@ -248,9 +248,8 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
   );
 }
 
-function AdvicePanel({ snapshot, onAction, shelf, pending, onStart }: {
+function AdvicePanel({ snapshot, shelf, pending, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
-  onAction: Props['onAction'];
   shelf: boolean;
   pending: boolean;
   onStart: (ref: RecommendedWork['ref']) => void;
@@ -311,8 +310,9 @@ function AdvicePanel({ snapshot, onAction, shelf, pending, onStart }: {
             <button
               key={alt.key}
               type="button"
-              className={quietButton('text-left')}
-              onClick={() => onAction({ type: 'start-focus', ref: alt.ref })}
+              disabled={pending}
+              className={quietButton('text-left disabled:cursor-default disabled:opacity-60')}
+              onClick={() => onStart(alt.ref)}
             >
               <span className="text-ink-soft">{alt.title}</span>
               {alt.goalTitle && <span className="ml-2 text-meta text-muted">{alt.goalTitle}</span>}
@@ -400,8 +400,6 @@ export function AssistantSurface({
         )}
         {snapshot.proposal ? (
           <ProposalPanel proposal={snapshot.proposal} onAction={onAction} />
-        ) : snapshot.notice?.tone === 'neutral' ? (
-          <p className="text-body text-ink">{snapshot.notice.text}</p>
         ) : snapshot.activeFocus ? (
           <FocusPanel
             focus={snapshot.activeFocus}
@@ -409,10 +407,11 @@ export function AssistantSurface({
             onAction={onAction}
             shelf={shelf}
           />
+        ) : snapshot.notice?.tone === 'neutral' ? (
+          <p className="text-body text-ink">{snapshot.notice.text}</p>
         ) : (
           <AdvicePanel
             snapshot={snapshot}
-            onAction={onAction}
             shelf={shelf}
             pending={sendoff.pending}
             onStart={sendoff.start}

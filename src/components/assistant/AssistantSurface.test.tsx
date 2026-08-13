@@ -156,6 +156,65 @@ describe('AssistantSurface', () => {
     vi.useRealTimers();
   });
 
+  it('routes an alternative Start session through the same send-off as the primary', () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    const alternative = work({ key: 'step:n2', title: 'Read chapter 5' });
+    const { rerender } = render(
+      <AssistantSurface
+        snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives: [alternative] } })}
+        onAction={onAction}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Other options' }));
+    const alt = screen.getByRole('button', { name: /Read chapter 5/ });
+    fireEvent.click(alt);
+    fireEvent.click(alt);
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith({ type: 'start-focus', ref: alternative.ref });
+    expect(alt.hasAttribute('disabled')).toBe(true);
+
+    rerender(
+      <AssistantSurface
+        snapshot={ready({
+          advice: { kind: 'work', primary: work(), alternatives: [alternative] },
+          activeFocus: {
+            ref: alternative.ref,
+            title: alternative.title,
+            goalTitle: alternative.goalTitle,
+            phase: 'active',
+            elapsedMin: 0,
+            expected: alternative.expected,
+          },
+        })}
+        onAction={onAction}
+      />,
+    );
+    expect(screen.getByRole('status').textContent).toBe('Good luck!');
+    expect(screen.queryByRole('textbox')).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('keeps the running session controls above a neutral notice', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', goalTitle: 'Algorithms', phase: 'active',
+            elapsedMin: 25, expected: { kind: 'estimate', minutes: 45 },
+          },
+          notice: { tone: 'neutral', text: 'Nothing needs you right now.' },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete session' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Take break' })).toBeTruthy();
+    expect(screen.queryByText('Nothing needs you right now.')).toBeNull();
+  });
+
   it('exposes the approved verbs for an active session', () => {
     const onAction = vi.fn();
     render(
