@@ -71,16 +71,26 @@ view state. It is **not** part of `AppState` and never rides in `persist()` —
 which life you are looking at is not user content, exactly as `PlanMode` and
 `GoalsMode` are not.
 
-It persists across restarts through the `db.settings` table, mirroring
-`GOALS_MODE_KEY` exactly: `loadGoalScope()` / `saveGoalScope()`, a total parse
-with `'all'` as the default, and the write wrapped in `ifOwner` like every
-other settings write.
+**It does not persist. Every load starts at `All`.** It is `activeHorizon`, not
+`goalsMode`: in-memory only, no `db.settings` row, no `loadGoalScope`, no
+`saveGoalScope`, and therefore no `ifOwner` write and no `db.ts` change at all.
 
-**The stored id may dangle.** Delete the active life and the setting names
-something that no longer exists. Every reader resolves that to `'all'` at read
-time — the same licence `Goal.lifeId` and `Session.nodeId` already hold, and
-what keeps `removeLife` a two-slice edit that rewrites no goal and needs no
-change here.
+That is the one concession D-7 still gets. A switcher is a mode, and the
+specific failure the vision named was *a mode to be lost in* — which is a
+danger in proportion to how long you can sit in it without having chosen it.
+A scope you picked this session is a scope you remember picking. A scope
+restored silently from a fortnight ago is one you can mistake for the whole
+board, and the mistake it produces is believing you have no startup work. The
+cost is re-picking after a restart; the alternative is a board that lies by
+omission on first paint, and the two are not comparable.
+
+**The scope may still dangle mid-session.** `removeLife` can delete the life you
+are looking at. Every reader resolves an unknown id to `'all'` — the same
+licence `Goal.lifeId` and `Session.nodeId` already hold, and what keeps
+`removeLife` a two-slice edit that rewrites no goal and needs no change here.
+Undo restores the life; the scope has already fallen back to `All` and stays
+there, because silently re-entering a scope the user has been shown their way
+out of is the surprise this whole section is avoiding.
 
 ## 3 · The pure logic
 
@@ -92,7 +102,7 @@ Two new modules in `src/lib`, each with a sibling test, per the house rule.
 export type LifeScope = 'all' | 'unassigned' | string;
 export interface LifeTab { scope: LifeScope; label: string }
 
-resolveScope(stored: string | undefined, lives: Life[]): LifeScope
+resolveScope(current: LifeScope, lives: Life[]): LifeScope
 lifeTabs(lives: Life[], goals: Goal[]): LifeTab[]
 goalsInScope(goals: Goal[], scope: LifeScope, lives: Life[]): Goal[]
 nowLimit(scope: LifeScope, tabs: LifeTab[]): number
@@ -344,7 +354,8 @@ drift this codebase does not tolerate.
 `src/components/Icons.tsx` (`IconColumns`, `IconTimeline`),
 `src/lib/board.ts` (`weaveHidden`, `rankMoveTarget`), `src/lib/plan.ts`
 (`focusSummary` limit param), `src/state/store.ts` (`activeLifeId`,
-`setGoalScope`, `moveGoalRank`), `src/db/db.ts` (scope persistence),
-`ideas/vision.md`, `CLAUDE.md`.
+`setGoalScope`, `moveGoalRank`), `ideas/vision.md`, `CLAUDE.md`.
 
-**Untouched:** every capacity, schedule and block module.
+**Untouched:** every capacity, schedule and block module — and `src/db/db.ts`,
+because the scope does not persist, so there is no settings row and no
+migration.
