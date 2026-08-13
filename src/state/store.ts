@@ -29,7 +29,7 @@ import { migrateSlots, describeMigration } from '../lib/migrateSlots';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
 import { sampleProject } from '../lib/sampleProject';
-import { weaveCompleted, leafCount } from '../lib/board';
+import { weaveHidden, leafCount } from '../lib/board';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
 import { formatEstimateValue } from '../lib/estimateInput';
@@ -1403,10 +1403,10 @@ export const actions = {
   // list of goal ids in column c (0 = leftmost/highest). Rebuilds the goals
   // array in column-major order and stamps each goal's `column`.
   setGoalBoard(columns: string[][]) {
-    // Weave completed projects (hidden from the board, so absent from `columns`)
-    // back into their column at the position they held, before the rebuild — so a
+    // Weave hidden projects — completed, or outside the active life scope — back
+    // into their column at the position they held, before the rebuild — so a
     // drag never appends them to the end and loses their place (spec §2.5).
-    const woven = weaveCompleted(state.goals, columns);
+    const woven = weaveHidden(state.goals, columns);
     const byId = new Map(state.goals.map((g) => [g.id, g]));
     const seen = new Set<string>();
     const goals: Goal[] = [];
@@ -1436,7 +1436,7 @@ export const actions = {
     // reopening restores its place (spec §2.5). The rebuild below skips
     // archived projects when collecting `cols` and then pushes this one in
     // anyway, which looks like a duplicate — `setGoalBoard`'s `seen` dedupe and
-    // `weaveCompleted` are what make that correct rather than accidental.
+    // `weaveHidden` are what make that correct rather than accidental.
     const target = Math.min(Math.max(column, 0), HORIZON_COUNT - 1);
     // Choosing the horizon it is already in is not a move. Without this it
     // toasted "Moved X to Now" and armed a whole-goals-slice undo for a write
@@ -1478,7 +1478,7 @@ export const actions = {
    * horizons but no ordering, so ranking was mouse-only.
    *
    * Archived projects are left out of `cols` — they are not on the board, and
-   * `weaveCompleted` restores them around whatever the live order becomes. So
+   * `weaveHidden` restores them around whatever the live order becomes. So
    * "the neighbour" means the next LIVE project, which is the one on screen.
    */
   moveGoalRank(goalId: string, delta: number): boolean {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leafCount, blockedLeafCount, firstBlockedLeaf, groupByColumn, weaveCompleted } from './board';
+import { leafCount, blockedLeafCount, firstBlockedLeaf, groupByColumn, weaveHidden, rankMoveTarget } from './board';
 import type { Goal, GoalNode } from '../db/types';
 
 // ---- helpers ----
@@ -157,29 +157,74 @@ describe('groupByColumn', () => {
   });
 });
 
-// ---- weaveCompleted ----
+// ---- weaveHidden ----
 
-describe('weaveCompleted', () => {
+describe('weaveHidden', () => {
   const done = (id: string, column: number): Goal => ({ ...makeGoal(id, column), completedAt: '2026-07-01' });
 
   it('re-inserts a hidden goal at its within-column index after an active reorder', () => {
     const goals = [makeGoal('A', 0), done('B', 0), makeGoal('C', 0)];
     // actives dragged to [C, A]; completed B omitted from the layout
-    expect(weaveCompleted(goals, [['C', 'A'], [], [], []])).toEqual([['C', 'B', 'A'], [], [], []]);
+    expect(weaveHidden(goals, [['C', 'A'], [], [], []])).toEqual([['C', 'B', 'A'], [], [], []]);
   });
 
   it('pins a hidden goal at the top when it was first', () => {
     const goals = [done('A', 0), makeGoal('B', 0), makeGoal('C', 0)];
-    expect(weaveCompleted(goals, [['C', 'B'], [], [], []])).toEqual([['A', 'C', 'B'], [], [], []]);
+    expect(weaveHidden(goals, [['C', 'B'], [], [], []])).toEqual([['A', 'C', 'B'], [], [], []]);
   });
 
   it('keeps a hidden goal in its own column, not Now', () => {
     const goals = [makeGoal('A', 0), done('L', 2), makeGoal('M', 2)];
-    expect(weaveCompleted(goals, [['A'], [], ['M'], []])).toEqual([['A'], [], ['L', 'M'], []]);
+    expect(weaveHidden(goals, [['A'], [], ['M'], []])).toEqual([['A'], [], ['L', 'M'], []]);
   });
 
   it('is a no-op when nothing is hidden', () => {
     const goals = [makeGoal('A', 0), makeGoal('B', 1)];
-    expect(weaveCompleted(goals, [['A'], ['B'], [], []])).toEqual([['A'], ['B'], [], []]);
+    expect(weaveHidden(goals, [['A'], ['B'], [], []])).toEqual([['A'], ['B'], [], []]);
+  });
+});
+
+describe('weaveHidden', () => {
+  const g = (id: string, column: number): Goal => ({ id, title: id, nodes: [], column });
+
+  it('pins a hidden goal at the within-column index it held', () => {
+    // The scoped-board case: 'a' shows University, 's' shows Startup.
+    const goals = [g('s1', 3), g('u1', 3), g('s2', 3), g('u2', 3), g('u3', 3)];
+    const reordered = [[], [], [], ['u3', 'u1', 'u2']];
+    expect(weaveHidden(goals, reordered)[3]).toEqual(['s1', 'u3', 's2', 'u1', 'u2']);
+  });
+
+  it('is identity when nothing is hidden', () => {
+    const goals = [g('a', 0), g('b', 0)];
+    expect(weaveHidden(goals, [['b', 'a'], [], [], []])[0]).toEqual(['b', 'a']);
+  });
+});
+
+describe('rankMoveTarget', () => {
+  const visible = (...ids: string[]) => new Set(ids);
+
+  it('steps over a hidden neighbour', () => {
+    // Full column order: u1, s1, u2. University sees [u1, u2].
+    const list = ['u1', 's1', 'u2'];
+    // Moving u2 up lands on u1's index, not s1's.
+    expect(rankMoveTarget(list, visible('u1', 'u2'), 'u2', -1)).toBe(0);
+  });
+
+  it('moves one visible slot when everything is visible', () => {
+    const list = ['a', 'b', 'c'];
+    expect(rankMoveTarget(list, visible('a', 'b', 'c'), 'b', -1)).toBe(0);
+    expect(rankMoveTarget(list, visible('a', 'b', 'c'), 'b', 1)).toBe(2);
+  });
+
+  it('is null at both ends of the VISIBLE list, not the full one', () => {
+    const list = ['s1', 'u1', 'u2', 's2'];
+    const vis = visible('u1', 'u2');
+    expect(rankMoveTarget(list, vis, 'u1', -1)).toBeNull();
+    expect(rankMoveTarget(list, vis, 'u2', 1)).toBeNull();
+  });
+
+  it('is null for a goal that is absent or invisible', () => {
+    expect(rankMoveTarget(['a', 'b'], visible('a', 'b'), 'zz', -1)).toBeNull();
+    expect(rankMoveTarget(['a', 'b'], visible('a'), 'b', -1)).toBeNull();
   });
 });
