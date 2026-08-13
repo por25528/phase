@@ -2,6 +2,7 @@ import { Modal } from './Modal';
 import { AvailabilitySettings } from '../views/plan/AvailabilitySettings';
 import { LivesSettings } from '../views/goals/LivesSettings';
 import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings';
+import { LaunchAtLoginSettings } from './assistant/LaunchAtLoginSettings';
 import { useAppStore } from '../state/store';
 
 /**
@@ -52,6 +53,8 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           actions.setAssistantAccelerator(next);
         }}
       />
+      {/* Desktop only: the row renders nothing in the plain browser. */}
+      <LaunchAtLoginSettings />
     </Modal>
   );
 }

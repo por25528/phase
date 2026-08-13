@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore, initStore, VIEW_LABELS } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
@@ -39,6 +39,7 @@ import {
   requestTaskCaptureForCommand,
   type TaskCaptureHostState,
 } from './lib/taskCapture';
+import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
 import {
   type Theme,
   resolveTheme,
@@ -62,6 +63,22 @@ const NAV_TABS = [
   ['goals', VIEW_LABELS.goals],
 ] as const;
 
+/**
+ * One resolver, two worlds: the desktop shell raises its own shelf window, the
+ * plain browser mounts the in-app panel. Kept apart from the command handler so
+ * the routing is a unit-testable fact instead of a branch inside App.
+ */
+export function openAssistantForEnvironment(
+  bridge: PhaseShellBridge,
+  openEmbedded: () => void,
+): void {
+  if (bridge.available) {
+    void bridge.openAssistant();
+    return;
+  }
+  openEmbedded();
+}
+
 export function App() {
   const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
@@ -75,13 +92,21 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // The in-app assistant panel. Opens from ⌘K in every build; the desktop
+  // The in-app assistant panel. Opens from ⌘K in the browser build; the desktop
   // shell's global shortcut opens the floating overlay window instead —
   // Command+Space never reaches Chromium, so it is deliberately NOT bound here.
+  // On desktop the ⌘K palette verb routes through `shell` below, so this flag
+  // is only ever the browser fallback's.
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // The one shell bridge, created once: subscribing and re-subscribing on every
+  // render would make the desktop shell fire duplicate settings opens.
+  const shell = useMemo(() => shellBridge(), []);
   // Held between "a file was picked" and "the user typed REPLACE". The File is
   // captured here, so the input can be reset immediately and stay re-pickable.
   const [pendingImport, setPendingImport] = useState<File | null>(null);
+
+  // The menu bar's Settings item asks for this surface over the shell bridge.
+  useEffect(() => shell.onOpenSettings(() => setSettingsOpen(true)), [shell]);
 
   const reclaimSpace = () => {
     void actions.reclaimSpace()
@@ -220,7 +245,12 @@ export function App() {
    */
   function runPaletteCommand(id: string): void {
     switch (id) {
-      case 'assistant': setAssistantOpen(true); return;
+      // The palette closes through its own completion flow; here we only choose
+      // which surface deserves the assistant — the shelf on desktop, the
+      // in-app panel in the browser. `setAssistantOpen` is never reached on
+      // desktop, so the Hub cannot grow its own assistant panel alongside the
+      // floating window.
+      case 'assistant': openAssistantForEnvironment(shell, () => setAssistantOpen(true)); return;
       case 'add-task': openTaskCapture(); return;
       case 'new-goal': actions.setGoalModal('new'); return;
       case 'import-goal': actions.setGoalModal('import'); return;

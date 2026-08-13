@@ -1,12 +1,15 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { App } from './App';
+import { App, openAssistantForEnvironment } from './App';
 import { actions } from './state/store';
+import type { PhaseShellBridge } from './lib/shellBridge';
 
 afterEach(() => {
-  vi.runOnlyPendingTimers();
-  vi.useRealTimers();
+  if (vi.isFakeTimers()) {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  }
 });
 
 describe('App toast announcements', () => {
@@ -42,5 +45,33 @@ describe('the in-app assistant', () => {
     vi.useFakeTimers();
     const html = renderToStaticMarkup(createElement(App));
     expect(html).not.toContain('Ask the assistant');
+  });
+});
+
+describe('desktop entry-point routing', () => {
+  function fixture(available: boolean): PhaseShellBridge {
+    return {
+      available,
+      openAssistant: vi.fn(async () => true),
+      onOpenSettings: () => () => {},
+      getLaunchAtLogin: async () => (available ? false : null),
+      setLaunchAtLogin: async () => (available ? true : null),
+    };
+  }
+
+  it('opens the native shelf on desktop and never the embedded host', () => {
+    const desktop = fixture(true);
+    const openEmbedded = vi.fn();
+    openAssistantForEnvironment(desktop, openEmbedded);
+    expect(desktop.openAssistant).toHaveBeenCalledTimes(1);
+    expect(openEmbedded).not.toHaveBeenCalled();
+  });
+
+  it('opens the embedded host once in the browser and never the shelf', () => {
+    const browser = fixture(false);
+    const openEmbedded = vi.fn();
+    openAssistantForEnvironment(browser, openEmbedded);
+    expect(browser.openAssistant).not.toHaveBeenCalled();
+    expect(openEmbedded).toHaveBeenCalledTimes(1);
   });
 });
