@@ -24,10 +24,17 @@ function assistantShelfBounds(workArea) {
   }
 }
 
+// The native window title. Set at creation rather than left to
+// assistant.html's <title>, because a tiling window manager matches its rules
+// the instant the window appears — before the renderer has loaded a page to be
+// titled by — and an untitled shelf is one it files as an ordinary window.
+const TITLE = 'Phase Assistant'
+
 function assistantWindowOptions(preloadPath, platform = process.platform, darkMode = false) {
   const transparent = platform === 'darwin'
   return {
     ...(platform === 'darwin' ? { type: 'panel' } : {}),
+    title: TITLE,
     width: WIDTH,
     height: HEIGHT,
     minWidth: WIDTH,
@@ -44,6 +51,9 @@ function assistantWindowOptions(preloadPath, platform = process.platform, darkMo
     fullscreenable: false,
     minimizable: false,
     maximizable: false,
+    // Summoned, never carried: the controller owns the placement, so the panel
+    // itself is immovable and a drag on its frameless surface goes nowhere.
+    movable: false,
     hasShadow: true,
     transparent,
     // macOS: transparent so the rounded CSS surface paints without square

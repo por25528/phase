@@ -1,5 +1,6 @@
 export interface AssistantWindowOptions {
   type?: 'panel';
+  title: string;
   width: number;
   height: number;
   minWidth: number;
@@ -16,6 +17,7 @@ export interface AssistantWindowOptions {
   minimizable: boolean;
   maximizable: boolean;
   fullscreenable: boolean;
+  movable: boolean;
   hasShadow: boolean;
   transparent: boolean;
   backgroundColor: string;

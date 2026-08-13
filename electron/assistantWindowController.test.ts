@@ -150,6 +150,21 @@ describe('assistantWindowOptions', () => {
     expect(assistantWindowOptions('/x/preload.cjs', 'linux').type).toBeUndefined();
   });
 
+  // The shelf is summoned, never carried: it is fixed where the controller
+  // puts it, so nothing — a drag on the transparent surface, or a tiling
+  // window manager reaching in — relocates it. The title is set at creation
+  // rather than left to assistant.html's <title>, because a window manager
+  // matches its rules the moment the window appears, which is before the
+  // renderer has loaded a page to be titled by.
+  it('is fixed in place and titled from birth, so a window manager can single it out', () => {
+    for (const platform of ['darwin', 'linux'] as const) {
+      expect(assistantWindowOptions('/x/preload.cjs', platform)).toMatchObject({
+        movable: false,
+        title: 'Phase Assistant',
+      });
+    }
+  });
+
   it('uses transparent macOS corners and a theme-matched fallback first frame', () => {
     expect(assistantWindowOptions('/x/preload.cjs', 'darwin', false)).toMatchObject({
       transparent: true,
@@ -209,6 +224,27 @@ describe('assistantWindowController', () => {
       false,
     );
     expect(calls).toEqual(['bounds', 'snapshot', 'show', 'focus', 'web-focus']);
+  });
+
+  // Fixed placement is not the same as placed once. Something outside Phase
+  // may have moved the panel between summons, so every reveal re-derives the
+  // bounds rather than trusting where the window was left.
+  it('re-centres on every reveal, not only the first', () => {
+    const calls: string[] = [];
+    const win = fakeWindow(calls);
+    const controller = controllerWith(win, {}, calls);
+    controller.create();
+    win.emit('ready-to-show');
+
+    controller.showAndFocus();
+    controller.hide();
+    controller.showAndFocus();
+
+    expect(win.setBounds).toHaveBeenCalledTimes(2);
+    expect(win.setBounds).toHaveBeenLastCalledWith(
+      { x: 446, y: 18, width: 620, height: 200 },
+      false,
+    );
   });
 
   it('prewarms hidden at startup and reveals only after ready-to-show', () => {
