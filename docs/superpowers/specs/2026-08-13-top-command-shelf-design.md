@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-13
 
-**Status:** Approved direction; written-spec review pending
+**Status:** Approved on 2026-08-13; implementation governed by the macOS acceptance gate
 
 **Scope:** Replace the assistant's normal-window feel with a Wispr Flow-style,
 top-center command shelf while preserving Phase's single-writer data model.
