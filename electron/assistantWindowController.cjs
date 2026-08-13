@@ -92,11 +92,25 @@ function createAssistantWindowController(deps) {
         }
       })
       win.on('closed', () => clearWindow(win))
-      win.webContents.on('render-process-gone', () => {
+      // A renderer that stops answering is an unusable shelf: clear the handle
+      // so the next verb rebuilds, and destroy the hidden window exactly once.
+      // Both terminal paths share the stale-event guard and the destroy gate.
+      const failRenderer = (context) => {
         if (assistantWindow !== win) return
         clearWindow(win)
         if (!win.isDestroyed()) win.destroy()
-      })
+        logError('[phase-assistant] shelf window unavailable', new Error(context))
+      }
+      win.webContents.on('render-process-gone', () => failRenderer('renderer process gone'))
+      win.webContents.on(
+        'did-fail-load',
+        (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+          // Only the top frame's failure makes the window unusable; a failed
+          // subframe leaves the main page intact.
+          if (isMainFrame === false) return
+          failRenderer(`${errorDescription} (${validatedURL})`)
+        },
+      )
 
       if (entry.kind === 'url') win.loadURL(entry.target)
       else win.loadFile(entry.target)

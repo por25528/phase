@@ -292,6 +292,132 @@ describe('assistantWindowController', () => {
     expect(createWindow).toHaveBeenCalledTimes(2);
   });
 
+  it('recovers a pending main-frame load failure and recreates on the next show', () => {
+    const first = fakeWindow([]);
+    const second = fakeWindow([]);
+    const createWindow = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const logError = vi.fn();
+    const controller = controllerWith(first, { createWindow, logError });
+    controller.showAndFocus();
+    first.webContents.emit(
+      'did-fail-load',
+      {},
+      -3,
+      'ERR_ABORTED',
+      'file:///x/assistant.html',
+      true,
+      1,
+      1,
+    );
+    expect(first.destroy).toHaveBeenCalledTimes(1);
+    expect(controller.current()).toBeNull();
+    expect(controller.isShowing()).toBe(false);
+    controller.showAndFocus();
+    expect(createWindow).toHaveBeenCalledTimes(2);
+    expect(controller.current()).toBe(second);
+    expect(logError).toHaveBeenCalledWith(
+      '[phase-assistant] shelf window unavailable',
+      expect.objectContaining({
+        message: expect.stringContaining('ERR_ABORTED'),
+      }),
+    );
+  });
+
+  it('ignores did-fail-load for subframes', () => {
+    const win = fakeWindow([]);
+    const controller = controllerWith(win);
+    controller.showAndFocus();
+    win.webContents.emit(
+      'did-fail-load',
+      {},
+      -3,
+      'ERR_ABORTED',
+      'file:///x/assistant.html',
+      false,
+      1,
+      1,
+    );
+    expect(win.destroy).not.toHaveBeenCalled();
+    expect(controller.current()).toBe(win);
+    expect(controller.isShowing()).toBe(false);
+  });
+
+  it('destroys exactly once when terminal events pile up', () => {
+    const win = fakeWindow([]);
+    const controller = controllerWith(win);
+    controller.showAndFocus();
+    win.webContents.emit(
+      'did-fail-load',
+      {},
+      -3,
+      'ERR_ABORTED',
+      'file:///x/assistant.html',
+      true,
+      1,
+      1,
+    );
+    win.webContents.emit('render-process-gone', {}, 'crashed');
+    win.webContents.emit(
+      'did-fail-load',
+      {},
+      -106,
+      'ERR_INTERNET_DISCONNECTED',
+      'file:///x/assistant.html',
+      true,
+      1,
+      1,
+    );
+    expect(win.destroy).toHaveBeenCalledTimes(1);
+    expect(controller.current()).toBeNull();
+  });
+
+  it('destroys exactly once for repeated main-frame load failures', () => {
+    const win = fakeWindow([]);
+    const controller = controllerWith(win);
+    controller.showAndFocus();
+    win.webContents.emit(
+      'did-fail-load',
+      {},
+      -3,
+      'ERR_ABORTED',
+      'file:///x/assistant.html',
+      true,
+      1,
+      1,
+    );
+    win.webContents.emit(
+      'did-fail-load',
+      {},
+      -106,
+      'ERR_INTERNET_DISCONNECTED',
+      'file:///x/assistant.html',
+      true,
+      1,
+      1,
+    );
+    expect(win.destroy).toHaveBeenCalledTimes(1);
+    expect(controller.current()).toBeNull();
+  });
+
+  it('ignores a stale did-fail-load after dispose', () => {
+    const win = fakeWindow([]);
+    const controller = controllerWith(win);
+    controller.showAndFocus();
+    controller.dispose();
+    win.webContents.emit(
+      'did-fail-load',
+      {},
+      -3,
+      'ERR_ABORTED',
+      'file:///x/assistant.html',
+      true,
+      1,
+      1,
+    );
+    expect(win.destroy).toHaveBeenCalledTimes(1);
+    expect(controller.current()).toBeNull();
+  });
+
   it('cancels a pending show and destroys exactly once on dispose', () => {
     const win = fakeWindow([]);
     const controller = controllerWith(win);
