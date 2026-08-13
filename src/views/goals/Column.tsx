@@ -1,6 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { NOW_WIP_LIMIT } from '../../lib/plan';
 
 // Column hints for the quiet horizons — they explain *why* the schedule signals
 // go silent there (horizon gating, spec §2.2), so the calm reads as intentional.
@@ -15,16 +14,18 @@ export function Column({
   ids,
   children,
   solo,
+  nowLimit,
 }: {
   col: { id: string; label: string };
   index: number;
   ids: string[];
   children: React.ReactNode;
   solo?: boolean; // rendered alone in the narrow horizon switcher → full width, no divider
+  nowLimit: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
   const isNow = index === 0;
-  const over = isNow && ids.length > NOW_WIP_LIMIT;
+  const over = isNow && ids.length > nowLimit;
   const hint = HINTS[index];
 
   return (
@@ -42,7 +43,7 @@ export function Column({
             over ? 'text-warn font-semibold' : 'text-muted'
           }`}
         >
-          {isNow ? `${ids.length} / ${NOW_WIP_LIMIT}` : ids.length}
+          {isNow ? `${ids.length} / ${nowLimit}` : ids.length}
         </span>
       </header>
       {hint && (

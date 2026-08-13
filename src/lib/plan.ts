@@ -325,7 +325,7 @@ export interface FocusSummary {
   blocked: { count: number; goalIds: string[] };
 }
 
-export function focusSummary(goals: Goal[], today: string): FocusSummary {
+export function focusSummary(goals: Goal[], today: string, limit: number = NOW_WIP_LIMIT): FocusSummary {
   const active = activeGoals(goals);
   const week = weekOf(today);
 
@@ -354,7 +354,7 @@ export function focusSummary(goals: Goal[], today: string): FocusSummary {
   }
 
   return {
-    slots: { used: slots.length, limit: NOW_WIP_LIMIT, goalIds: slots },
+    slots: { used: slots.length, limit, goalIds: slots },
     needsFirstStep: { count: needsFirstStep.length, goalIds: needsFirstStep },
     behind: { count: behind.length, goalIds: behind },
     plannedRemaining: { count: plannedCount, goalIds: plannedIds },

@@ -990,3 +990,15 @@ describe('formatLoggedMinutes', () => {
     expect(formatLoggedMinutes(200)).toBe('3h 20m');
   });
 });
+
+describe('focusSummary limit', () => {
+  const now = (id: string): Goal => ({ id, title: id, nodes: [], column: 0 });
+
+  it('defaults to the three-slot cap', () => {
+    expect(focusSummary([now('a')], '2026-08-13').slots.limit).toBe(3);
+  });
+
+  it('reports the scoped cap it is given', () => {
+    expect(focusSummary([now('a')], '2026-08-13', 6).slots.limit).toBe(6);
+  });
+});

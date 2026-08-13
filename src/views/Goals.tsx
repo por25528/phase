@@ -460,7 +460,7 @@ export function Goals() {
             {COLUMNS.map((col, i) => {
               if (!wide && i !== activeHorizon) return null;
               return (
-              <Column key={col.id} col={col} index={i} ids={columns[i] ?? []} solo={!wide}>
+              <Column key={col.id} col={col} index={i} ids={columns[i] ?? []} solo={!wide} nowLimit={summary.slots.limit}>
                 {(columns[i] ?? []).map((id) => {
                   const g = goalById.get(id);
                   if (!g) return null;
