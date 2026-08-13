@@ -15,6 +15,7 @@ interface Options {
 const MESSAGE_AND_HOLD_MS = 660;
 const FALLBACK_CLOSE_MS = 1000;
 const REDUCED_CLOSE_MS = 350;
+const PENDING_TIMEOUT_MS = 5000;
 
 function sameRef(left: WorkRef, right: WorkRef): boolean {
   return left.kind === right.kind
@@ -66,6 +67,15 @@ export function useAssistantSendoff({
     startSnapshot.current = snapshot;
     setStage('pending');
     onStartRef.current(ref);
+    timers.current.push(
+      setTimeout(() => {
+        if (stageRef.current === 'pending' && requestedRef.current === ref) {
+          requestedRef.current = null;
+          startSnapshot.current = null;
+          setStage('idle');
+        }
+      }, PENDING_TIMEOUT_MS),
+    );
   }, [setStage, snapshot]);
 
   const finishExit = useCallback(() => {

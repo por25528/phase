@@ -56,6 +56,8 @@ describe('useAssistantSendoff', () => {
     expect(onStart).toHaveBeenCalledWith(REF);
     expect(result.current.stage).toBe('pending');
     expect(result.current.pending).toBe(true);
+    act(() => vi.advanceTimersByTime(5000));
+    expect(result.current.stage).toBe('idle');
   });
 
   it('ignores the exact snapshot object that was present at start', () => {
@@ -76,6 +78,8 @@ describe('useAssistantSendoff', () => {
     rerender({ snapshot: initial });
     expect(result.current.stage).toBe('pending');
     expect(onClose).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(result.current.stage).toBe('idle');
   });
 
   it('a different activeFocus.ref neither confirms nor closes', () => {
@@ -100,6 +104,8 @@ describe('useAssistantSendoff', () => {
     rerender({ snapshot: focused({ kind: 'step', id: 'n1', goalId: 'other' }) });
     expect(result.current.stage).toBe('pending');
     expect(onClose).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(result.current.stage).toBe('idle');
   });
 
   it('leaves after 660ms, then finishExit closes once and sets hidden', () => {
@@ -255,6 +261,67 @@ describe('useAssistantSendoff', () => {
     unmount();
     act(() => vi.advanceTimersByTime(2000));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('a stalled send-off recovers to idle at 5000ms and allows a retry', () => {
+    const onStart = vi.fn();
+    const onClose = vi.fn();
+    const initial = ready();
+    const { result } = renderHook(() => useAssistantSendoff({
+      snapshot: initial,
+      reducedMotion: false,
+      resetKey: 0,
+      onStart,
+      onClose,
+    }));
+
+    act(() => result.current.start(REF));
+    expect(result.current.stage).toBe('pending');
+
+    act(() => vi.advanceTimersByTime(4999));
+    expect(result.current.stage).toBe('pending');
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current.stage).toBe('idle');
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => result.current.start(REF));
+    expect(onStart).toHaveBeenCalledTimes(2);
+    expect(result.current.stage).toBe('pending');
+
+    act(() => vi.advanceTimersByTime(5000));
+    expect(result.current.stage).toBe('idle');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('an ack just before the timeout keeps message and the stale pending timer cannot reset it', () => {
+    const onStart = vi.fn();
+    const onClose = vi.fn();
+    const initial = ready();
+    const { result, rerender } = renderHook(
+      ({ snapshot }) => useAssistantSendoff({
+        snapshot,
+        reducedMotion: false,
+        resetKey: 0,
+        onStart,
+        onClose,
+      }),
+      { initialProps: { snapshot: initial } },
+    );
+
+    act(() => result.current.start(REF));
+    act(() => vi.advanceTimersByTime(4999));
+    expect(result.current.stage).toBe('pending');
+
+    rerender({ snapshot: focused(REF) });
+    expect(result.current.stage).toBe('message');
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current.stage).toBe('message');
+    act(() => vi.advanceTimersByTime(1000));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(result.current.stage).toBe('hidden');
   });
 
   it('keeps current callbacks in refs so identity changes do not corrupt timing', () => {
