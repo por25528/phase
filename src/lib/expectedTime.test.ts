@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { expectedTimeFor } from './expectedTime';
 import type { WorkRef } from './expectedTime';
+import { loggedForNode } from './actuals';
 import type { Goal, Session, Task } from '../db/types';
 
 const day = '2026-07-28';
@@ -153,5 +154,38 @@ describe('expectedTimeFor', () => {
     const ref: WorkRef = { kind: 'step', id: 'nope', goalId: 'cs' };
     expect(expectedTimeFor(ref, { goals: [goal], tasks: [], sessions: [log('n0', 60)] }))
       .toEqual({ kind: 'starter', minutes: 30 });
+  });
+});
+
+describe('low-focus sessions', () => {
+  const physics: Goal = {
+    id: 'g1', title: 'Physics 201',
+    nodes: [
+      { id: 'n1', title: 'Lab 1', status: 'done' },
+      { id: 'n2', title: 'Lab 2', status: 'done' },
+      { id: 'n3', title: 'Lab 3' },
+    ],
+  };
+
+  it('are not evidence about how long work takes', () => {
+    const ordinary: Session[] = [log('n1', 40), log('n2', 45)];
+    const withSlog: Session[] = [
+      ...ordinary,
+      session({ id: `s${sessionSeq++}`, nodeId: 'n2', minutes: 90, focus: 'low' }),
+    ];
+
+    const target: WorkRef = { kind: 'step', id: 'n3', goalId: 'g1' };
+    const before = expectedTimeFor(target, { goals: [physics], tasks: [], sessions: ordinary });
+    const after = expectedTimeFor(target, { goals: [physics], tasks: [], sessions: withSlog });
+
+    // The 90-minute slog in a loud room must not teach Phase that a lab takes 90.
+    expect(after).toEqual(before);
+  });
+
+  it('still count as time actually spent', () => {
+    const sessions: Session[] = [
+      session({ id: `s${sessionSeq++}`, nodeId: 'n1', minutes: 90, focus: 'low' }),
+    ];
+    expect(loggedForNode(sessions, 'n1')).toBe(90);
   });
 });

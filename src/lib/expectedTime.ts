@@ -139,15 +139,24 @@ function resolveTarget(ref: WorkRef, input: ExpectedTimeInput): ResolvedTarget |
   return { kind: 'step', goalId: goal.id, title: leaf.title, estimateMin: leaf.estimateMin };
 }
 
+/**
+ * The sessions allowed to TEACH. See `Session.focus` — a low-focus sitting is
+ * a fact about time spent and not a prediction about how long the work takes.
+ */
+function evidenceSessions(sessions: Session[]): Session[] {
+  return sessions.filter((s) => s.focus !== 'low');
+}
+
 /** Every completed, timed item in the target's goal group. */
 function gatherSamples(target: ResolvedTarget, input: ExpectedTimeInput): Array<{ title: string; minutes: number }> {
   const samples: Array<{ title: string; minutes: number }> = [];
+  const teaching = evidenceSessions(input.sessions);
   if (target.kind === 'step') {
     for (const goal of input.goals) {
       if (goal.id !== target.goalId) continue;
       walkLeaves(goal, (n) => {
         if (!isDone(n)) return;
-        const minutes = loggedForNode(input.sessions, n.id);
+        const minutes = loggedForNode(teaching, n.id);
         if (minutes > 0) samples.push({ title: n.title, minutes });
       });
     }
@@ -155,7 +164,7 @@ function gatherSamples(target: ResolvedTarget, input: ExpectedTimeInput): Array<
     for (const task of input.tasks) {
       if (task.goalId !== target.goalId) continue;
       if (!task.done) continue;
-      const minutes = loggedForTask(input.sessions, task.id);
+      const minutes = loggedForTask(teaching, task.id);
       if (minutes > 0) samples.push({ title: task.title, minutes });
     }
   }

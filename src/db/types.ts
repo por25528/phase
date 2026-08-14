@@ -226,6 +226,25 @@ export interface Session {
    */
   nodeId?: string;
   taskId?: string;
+  /**
+   * Written only when the session ran at LOW focus, and read by exactly one
+   * thing: `expectedTime`, which refuses to learn from it. Nothing in the UI
+   * displays this field — there is no trend, no badge and no readout.
+   *
+   * A 90-minute slog through a 45-minute task in a loud room is not evidence
+   * that the task takes 90 minutes, and without this the focus level would
+   * quietly inflate every future estimate on exactly the days the student was
+   * already struggling.
+   *
+   * Only `'low'` is ever stored. Medium and high are the norm, and a field
+   * whose value on most rows means "nothing special" is a field that should be
+   * absent — the same reason `status` never writes `'todo'`.
+   *
+   * ACTUALS ARE UNTOUCHED: `loggedForNode`/`loggedForTask` and every capacity
+   * figure count these minutes in full. The time really happened; it is
+   * disqualified as a PREDICTOR, never as a fact.
+   */
+  focus?: 'low';
 }
 
 export interface AppState {
