@@ -203,3 +203,83 @@ describe('executionAdvice', () => {
     });
   });
 });
+
+describe('the focus lens', () => {
+  /**
+   * Two free-time candidates: one long, one short, in that canonical order.
+   *
+   * They are two GOALS and not two leaves of one, because `todayPlan` offers
+   * the first item of each group and never a project's queue — one goal here
+   * would contribute one candidate and the lens would have nothing to choose
+   * between.
+   */
+  function twoSizes(): Goal[] {
+    return [
+      goal({
+        id: 'g1', title: 'Physics 201',
+        nodes: [{ id: 'n1', title: 'Lab report', estimateMin: 45 }],
+      }),
+      goal({
+        id: 'g2', title: 'Advising',
+        nodes: [{ id: 'n2', title: 'Reply to Dr. Chen', estimateMin: 10 }],
+      }),
+    ];
+  }
+
+  it('changes nothing when no level is given, so Today is untouched', () => {
+    const withoutLens = executionAdvice(input({ goals: twoSizes() }));
+    const withHigh = executionAdvice(input({ goals: twoSizes(), focusLevel: 'high' }));
+    expect(withoutLens).toEqual(withHigh);
+  });
+
+  it('offers the first SHORT candidate at low, without re-ordering the queue', () => {
+    const advice = executionAdvice(input({ goals: twoSizes(), focusLevel: 'low' }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Reply to Dr. Chen');
+    expect(advice.beyondFocus).toBeUndefined();
+  });
+
+  it('offers the queue head at medium, where the long one clears the cap', () => {
+    const advice = executionAdvice(input({ goals: twoSizes(), focusLevel: 'medium' }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Lab report');
+  });
+
+  it('never hides a commitment, however long it is', () => {
+    const g = goal({
+      id: 'g1', title: 'History 340',
+      nodes: [{
+        id: 'n1', title: 'Seminar prep', plannedWeek: week, estimateMin: 90,
+        blocks: [{ id: 'b1', date: today, startMin: 540, minutes: 90 }],
+      }],
+    });
+    const advice = executionAdvice(input({
+      goals: [g], focusLevel: 'low', now: { date: today, minute: 570 },
+    }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Seminar prep');
+    expect(advice.primary.reason).toBe('scheduled-now');
+  });
+
+  it('flags beyondFocus and still offers the real head when the lens empties', () => {
+    const g = goal({
+      id: 'g1', title: 'Dissertation',
+      nodes: [{ id: 'n1', title: 'Thesis chapter 2', estimateMin: 120 }],
+    });
+    const advice = executionAdvice(input({ goals: [g], focusLevel: 'low' }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Thesis chapter 2');
+    expect(advice.beyondFocus).toBe(true);
+    // It offers the head, not a consolation list.
+    expect(advice.alternatives).toEqual([]);
+  });
+
+  it('says clear rather than beyondFocus when there was nothing to begin with', () => {
+    const advice = executionAdvice(input({ focusLevel: 'low' }));
+    expect(advice.kind).toBe('clear');
+  });
+});

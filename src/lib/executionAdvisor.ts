@@ -4,6 +4,7 @@ import { buildDailyWork, type DailyWorkItem } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { todayPlan } from './todayPlan';
 import { expectedTimeFor, type ExpectedTime, type WorkRef } from './expectedTime';
+import { admits, type FocusLevel } from './focusLens';
 import { isPlanningHorizon } from './horizons';
 import { walkLeaves } from './plan';
 import { stepStatus } from './status';
@@ -43,7 +44,18 @@ export interface RecommendedWork {
 }
 
 export type ExecutionAdvice =
-  | { kind: 'work'; primary: RecommendedWork; alternatives: RecommendedWork[] }
+  | {
+      kind: 'work';
+      primary: RecommendedWork;
+      alternatives: RecommendedWork[];
+      /**
+       * The level in force admitted nothing, so `primary` is the unfiltered
+       * head of the queue. The surface says so out loud — "Nothing light left"
+       * is a different sentence from "nothing needs you", and re-sorting to
+       * find a lighter task would be the second opinion this module refuses.
+       */
+      beyondFocus?: true;
+    }
   /** Availability was never set — the same distinct verdict `todayPlan` keeps. */
   | { kind: 'needs-hours' }
   | { kind: 'clear' };
@@ -58,6 +70,13 @@ export interface ExecutionAdviceInput {
   today: string; // 'YYYY-MM-DD'
   week: string;  // Monday of the current week
   now: Now;
+  /**
+   * How much focus the room supports. ABSENT means no lens at all, which is
+   * what every surface other than the shelf passes: a mood set in a café must
+   * not rewrite the Today page you check on the train home — the same boundary
+   * the life switcher holds when the board scopes and the week does not.
+   */
+  focusLevel?: FocusLevel;
 }
 
 /** The most quiet alternatives shown beside the primary. Two is the cap, and the point. */
@@ -194,10 +213,20 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
   const { pool, noHours } = orderedCandidates(input);
   if (pool.length === 0) return noHours ? { kind: 'needs-hours' } : { kind: 'clear' };
 
-  const [first, ...rest] = pool;
-  const primary = withExpected(first, input);
+  // Evidence is attached to the whole pool because membership depends on it.
+  // Both callers memoize this, so the cost is per-change and not per-frame.
+  const queue = pool.map((c) => withExpected(c, input));
+  const level = input.focusLevel;
+  const admitted = level === undefined
+    ? queue
+    : queue.filter((w) => admits(level, w.reason, w.expected));
 
-  const alternatives: Candidate[] = rest.slice(0, MAX_ALTERNATIVES);
+  // An emptied lens offers the real head, flagged — never a re-sort.
+  const beyondFocus = admitted.length === 0;
+  const visible = beyondFocus ? queue.slice(0, 1) : admitted;
+
+  const [primary, ...rest] = visible;
+  const alternatives: RecommendedWork[] = rest.slice(0, MAX_ALTERNATIVES);
   if (rest.length > MAX_ALTERNATIVES) {
     /*
      * Alternative two may diversify by life: the first LATER candidate from a
@@ -217,6 +246,7 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
   return {
     kind: 'work',
     primary,
-    alternatives: alternatives.map((c) => withExpected(c, input)),
+    alternatives,
+    ...(beyondFocus ? { beyondFocus: true as const } : {}),
   };
 }
