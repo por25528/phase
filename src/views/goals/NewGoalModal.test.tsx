@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal } from '../../db/types';
@@ -98,33 +98,32 @@ describe('creating a goal', () => {
 
   /**
    * `datesConfirmed` exists for IMPORTED dates nobody has read. A date the user
-   * just typed needs no review, and asking for one would make the first thing a
-   * new goal does be a warning about itself.
+   * just picked needs no review, and asking for one would make the first thing
+   * a new goal does be a warning about itself.
+   *
+   * The `fireEvent.focus/change/keyDown` dance this replaces was working around
+   * `DateField`'s draft lifecycle. A grid has no draft: the click IS the value.
    */
-  it('treats a typed deadline as already confirmed', async () => {
+  it('treats a picked deadline as already confirmed', async () => {
     const { onAdd, user } = mount();
 
     await user.type(title(), 'Physics Final');
-    /*
-     * `fireEvent`, not `user.type`, for the date. `DateField` only starts
-     * tracking a draft once `onFocus` has run, and typing a string ending in
-     * `{Enter}` races that under load — the Enter arrives before React has
-     * committed `editing`, and the field commits an empty draft. Driving
-     * focus → change → Enter explicitly is deterministic and is the same three
-     * events a person produces.
-     */
-    const deadline = screen.getByLabelText('Deadline');
-    fireEvent.focus(deadline);
-    fireEvent.change(deadline, { target: { value: '2099-08-24' } });
-    fireEvent.keyDown(deadline, { key: 'Enter' });
+    await user.click(screen.getByRole('button', { name: /^Deadline:/ }));
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    await user.click(screen.getByRole('button', { name: /^Sep 24, / }));
 
     await user.click(title());
     await user.keyboard('{Enter}');
 
-    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
-      deadline: '2099-08-24',
-      datesConfirmed: true,
-    }));
+    const created = onAdd.mock.calls[0][0];
+    expect(created.deadline).toMatch(/^\d{4}-09-24$/);
+    expect(created.datesConfirmed).toBe(true);
+  });
+
+  it('offers no textbox for the deadline at all', () => {
+    mount();
+    expect(screen.queryByRole('textbox', { name: 'Deadline' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Deadline: not set' })).toBeTruthy();
   });
 
   it('creates no deadline at all when none was typed', async () => {
