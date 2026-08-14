@@ -23,6 +23,7 @@ function renderCard(over: Partial<Goal> = {}) {
         onRank: vi.fn(),
         onDelete: vi.fn(),
         onRename,
+        onSetDeadline: vi.fn(),
         reducedMotion: false,
         dimmed: false,
         matched: false,

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Goal, Life } from '../../db/types';
+import { DatePopover } from '../../components/DatePopover';
 import { IconDots } from '../../components/Icons';
 import { InlineEdit } from '../../components/InlineEdit';
 import { Popover, PopoverItem, PopoverSeparator } from '../../components/Popover';
@@ -41,6 +42,13 @@ export function storedDateRangeLabel(goal: Pick<Goal, 'start' | 'deadline'>): st
   return '';
 }
 
+/** A date chip's tone. Past is the only thing that changes it. */
+function chipTone(past: boolean): string {
+  return `text-meta px-[6px] py-[3px] rounded-[6px] whitespace-nowrap tabular-nums flex-none mt-[1px] ${
+    past ? 'text-warn bg-warn-tint' : 'text-chip-ink bg-chip'
+  }`;
+}
+
 // ── Card face (shared by the sortable card + the drag overlay) ─────────────────
 // Title + dated-with-kind → next open action → this-week commitment (Now only) →
 // compact progress → one attention badge. Expected % is intentionally gone (Q8).
@@ -50,6 +58,7 @@ function CardFace({
   suppressDateBadge = false,
   life,
   titleSlot,
+  deadlineControl,
 }: {
   goal: Goal;
   today: string;
@@ -68,6 +77,13 @@ function CardFace({
    * drag overlay passes none and keeps its `<h3>`.
    */
   titleSlot?: React.ReactNode;
+  /**
+   * The interactive deadline control, when there is one. Present on the real
+   * card and absent on the drag overlay, which must stay inert — so `CardFace`
+   * keeps drawing a plain `Due ·` chip when nothing is passed, and the two
+   * never need to be different components.
+   */
+  deadlineControl?: React.ReactNode;
 }) {
   const effort = goalEffort(goal);
   const caption = effortCaption(effort);
@@ -93,15 +109,14 @@ function CardFace({
             {goal.title}
           </h3>
         )}
-        {dateInfo && (
-          <span
-            className={`text-meta px-[6px] py-[3px] rounded-[6px] whitespace-nowrap tabular-nums flex-none mt-[1px] ${
-              dateInfo.past ? 'text-warn bg-warn-tint' : 'text-chip-ink bg-chip'
-            }`}
-          >
-            {dateInfo.kind === 'checkpoint' ? 'Milestone' : 'Due'} · {fmtD(dateInfo.date)}
+        {dateInfo?.kind === 'checkpoint' && (
+          <span className={chipTone(dateInfo.past)}>
+            Milestone · {fmtD(dateInfo.date)}
           </span>
         )}
+        {deadlineControl ?? (dateInfo?.kind === 'deadline' && (
+          <span className={chipTone(dateInfo.past)}>Due · {fmtD(dateInfo.date)}</span>
+        ))}
       </div>
 
       {/*
@@ -196,6 +211,12 @@ export function GoalCardVisual({ goal, today, overlay }: { goal: Goal; today: st
 
 // ── Sortable card ─────────────────────────────────────────────────────────────
 
+/** The tone the chip would have taken — a deadline already gone reads warn. */
+function dateChipPast(goal: Goal, today: string): boolean {
+  const info = nearestMeaningfulDate(goal, today);
+  return info?.kind === 'deadline' && info.past;
+}
+
 export function BoardCard({
   goal,
   today,
@@ -204,6 +225,7 @@ export function BoardCard({
   onRank,
   onDelete,
   onRename,
+  onSetDeadline,
   reducedMotion,
   dimmed,
   matched,
@@ -221,6 +243,7 @@ export function BoardCard({
   onRank: (id: string, delta: number) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onSetDeadline: (id: string, deadline: string | undefined) => void;
   reducedMotion: boolean;
   dimmed: boolean;
   matched: boolean;
@@ -235,6 +258,7 @@ export function BoardCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: goal.id });
   const [renaming, setRenaming] = useState(false);
+  const deadlineRef = useRef<HTMLButtonElement>(null);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -315,6 +339,33 @@ export function BoardCard({
             />
           </div>
         ) : undefined}
+        deadlineControl={
+          <div
+            className="flex-none mt-[1px]"
+            onPointerDown={stopPointer}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DatePopover
+              value={goal.deadline ?? ''}
+              today={today}
+              onCommit={(next) => onSetDeadline(goal.id, next || undefined)}
+              ariaLabel="Deadline"
+              // With no date there is no chip to click, so the affordance is
+              // hover-revealed — through `.quiet-control`, which carries the
+              // `@media (hover: hover)` gate that keeps it reachable on touch,
+              // and the 24px target floor. A hand-rolled reveal has neither.
+              placeholder="Due"
+              prefix="Due · "
+              size="chip"
+              triggerRef={deadlineRef}
+              triggerClassName={
+                goal.deadline
+                  ? chipTone(dateChipPast(goal, today))
+                  : 'quiet-control text-muted hover:bg-hover hover:text-ink'
+              }
+            />
+          </div>
+        }
       />
 
       {/*
@@ -347,6 +398,15 @@ export function BoardCard({
             <>
               <PopoverItem close={close} onSelect={() => setRenaming(true)}>
                 Rename
+              </PopoverItem>
+              {/*
+                The same popover the chip opens, reached by keyboard. `close()`
+                runs before `onSelect`, so the menu is gone before the picker
+                opens and there is no nesting — the pattern `GoalTree` already
+                uses for `⇧S` and its schedule popover.
+              */}
+              <PopoverItem close={close} onSelect={() => deadlineRef.current?.click()}>
+                Deadline…
               </PopoverItem>
               <PopoverSeparator />
 

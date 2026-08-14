@@ -32,6 +32,7 @@ function renderCard({
         onRank: vi.fn(),
         onDelete: vi.fn(),
         onRename: vi.fn(),
+        onSetDeadline: vi.fn(),
         reducedMotion: false,
         dimmed: false,
         matched: false,

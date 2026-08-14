@@ -525,6 +525,13 @@ export function Goals() {
                       onRank={moveRank}
                       onDelete={actions.removeGoal}
                       onRename={actions.renameGoal}
+                      onSetDeadline={(id, deadline) => {
+                        const g = goalById.get(id);
+                        // `start` passed through: `setGoalDates` deletes any
+                        // field it is not given, so omitting it would silently
+                        // drop a start date the user never touched.
+                        if (g) actions.setGoalDates(id, g.start, deadline);
+                      }}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}
