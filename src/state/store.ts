@@ -223,7 +223,10 @@ interface UIState {
   assistantShortcut: ShortcutStatus | null;
 }
 
-interface FullState extends AppState, UIState {}
+// Exported for the agent surface: `agentReads`/`agentWrites` are handed the
+// value of `getState()` so they stay pure and testable with a fixture, and a
+// handler cannot name its own argument without this.
+export interface FullState extends AppState, UIState {}
 
 let state: FullState = {
   goals: [],
