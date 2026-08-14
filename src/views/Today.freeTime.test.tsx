@@ -303,3 +303,72 @@ describe('the shared primary', () => {
     expect(label.className).toContain('text-meta font-semibold text-muted');
   });
 });
+
+/**
+ * The rule `GoalTree` already produced, arriving late on the one surface that
+ * never got it: a plain row click OPENS, and the mutation lives on a control
+ * you can see.
+ *
+ * Two sections of this page already agree — Rest of today and Carried over both
+ * open on click, and Carried over puts its booking on a separate verb. The
+ * offer rows were the last place where the largest click target on the page ran
+ * the one action that writes a block, which is why that path had to arm an undo
+ * for a press the user never knew they had made.
+ */
+describe('an offer row opens; a verb books', () => {
+  const twoProjects: Goal[] = [
+    { id: 'g1', title: 'Thesis', column: 0, nodes: [{ id: 'n1', title: 'Draft the intro', estimateMin: 60 }] },
+    { id: 'g2', title: 'Grant', column: 0, nodes: [{ id: 'n2', title: 'Chase the referee', estimateMin: 30 }] },
+  ];
+
+  /** Every block on every node, so "did anything get booked?" is one question. */
+  const blockCount = (store: Awaited<ReturnType<typeof mountToday>>) =>
+    store.getState().goals.flatMap((g) => g.nodes).flatMap((n) => blocksOf(n)).length;
+
+  it('opens the task when the primary offer row is clicked, and books nothing', async () => {
+    const store = await mountToday();
+
+    await act(async () => {
+      // Title + subtitle, which is what `TaskRow` composes when no explicit
+      // `ariaLabel` is passed — the same name Rest of today and Carried over
+      // rows already carry. That sameness is the point of the change.
+      screen.getByRole('button', { name: 'Draft the introThesis' }).click();
+    });
+
+    expect(blockCount(store)).toBe(0);
+    expect(store.getState().openGoalId).toBe('g1');
+  });
+
+  it('opens the task when a Free time row is clicked, and books nothing', async () => {
+    const store = await mountToday({ goals: twoProjects });
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Chase the refereeGrant' }).click();
+    });
+
+    expect(blockCount(store)).toBe(0);
+    expect(store.getState().openGoalId).toBe('g2');
+  });
+
+  /**
+   * The day stops living only in the heading. `dayLabel` is already computed
+   * for the accessible name, so a screen reader was told which day the click
+   * booked and a sighted reader was not.
+   */
+  it('names the day on the verb, capitalised the way the carry-over verb is', async () => {
+    await mountToday();
+
+    const verb = screen.getByRole('button', { name: 'Plan “Draft the intro” today' });
+    expect(verb.textContent).toBe('Today');
+  });
+
+  it('still books through the verb', async () => {
+    const store = await mountToday();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Plan “Draft the intro” today' }).click();
+    });
+
+    expect(blockCount(store)).toBe(1);
+  });
+});

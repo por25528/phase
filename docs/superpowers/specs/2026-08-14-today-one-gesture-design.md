@@ -105,14 +105,30 @@ reserved for saying *what a section is*.
 free-time heading, repeating the capacity sentence would state it twice about
 the same hours.
 
-## 3. Durations are bare
+## 3. `Start with 30m` — NOT as first drafted
 
-Today renders `fmtMinutes(primary.expected)` — `30m` — where it rendered
-`expectedTimeLabel(primary.expected)`. The page already prints every other
-duration this way, in the same `meta` slot, in the same `tabular-nums`.
+This section originally said to render `fmtMinutes(primary.expected)` and print
+a bare `30m`. That is wrong twice over, and the code says so:
 
-`Start session` keeps its name. The button is the verb and the figure beside it
-is the readout, which is the split the row already uses everywhere else.
+- `expectedTimeLabel` is a THREE-case union whose prefix carries the figure's
+  PROVENANCE — `Usually 45–90m` from history, `Planned 60m` from an estimate,
+  `Start with 30m` from a default. A bare duration throws that away, and the
+  history case is a RANGE that a single number cannot say at all.
+- `expected` is an `ExpectedTime` object, not minutes. `fmtMinutes(expected)`
+  does not typecheck.
+
+The real defect is narrower: only the `starter` case collides, because it is the
+one that opens with the same verb as the `Start session` button beside it. The
+other two never do.
+
+So the fix is the STRING, not the call: `starter` becomes `Suggested 30m`,
+which makes all three cases parallel — Usually / Planned / Suggested — and
+removes the doubled verb without losing what the prefix is for.
+
+**That reaches a third surface.** `expectedTimeLabel` renders in
+`AssistantSurface` as well as Today, two tests pin the literal `Start with 30m`,
+and CLAUDE.md quotes it. This is therefore held back from this pass and raised
+separately rather than smuggled in under a Today heading.
 
 ## Testing
 

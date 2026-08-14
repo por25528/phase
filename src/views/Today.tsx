@@ -15,7 +15,7 @@ import { clockLabel } from '../lib/clock';
 import { fmtMinutes } from '../lib/effort';
 import { dateKicker, greeting } from '../lib/today';
 import { useLocalDate } from '../hooks/useLocalDate';
-import { dayLabel, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
+import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
 import { dueChip } from '../lib/backlog';
 import { weekOf } from '../lib/plan';
 import { rowBtn } from '../components/dialogStyles';
@@ -147,9 +147,39 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
     else if (row.goalId) actions.scheduleNode(row.goalId, row.id, date, aim);
   }
 
-  function openItem(item: DailyWorkItem): void {
+  /**
+   * Open the thing a row names — what a plain click does in every section.
+   *
+   * Typed as the three fields opening needs rather than as `DailyWorkItem`,
+   * because the offer rows are `ProposalRow`s and open exactly the same way.
+   * The only difference between the two is how each spells "belongs to no
+   * project" — `string | null` on one, `string | undefined` on the other — and
+   * that is a fact about their storage, not about opening.
+   */
+  function openItem(item: { kind: 'step' | 'task'; id: string; goalId?: string | null }): void {
     if (item.kind === 'step' && item.goalId) actions.openProject(item.goalId, item.id);
     else actions.revealInPlan('task', item.id);
+  }
+
+  /**
+   * The verb that books an offer — the carry-over `Today` button, for the day
+   * the offer is actually about.
+   *
+   * `relative z-10` is not decoration: `TaskRow`'s stretched click target
+   * covers `meta`, so an interactive child there has to sit above it or the
+   * row swallows the press. `startSessionButton` already does exactly this.
+   */
+  function planButton(row: ProposalRow, date: string, isToday: boolean) {
+    return (
+      <button
+        type="button"
+        onClick={() => place(row, date, isToday)}
+        aria-label={`Plan “${row.title}” ${dayLabel(date, today)}`}
+        className={`relative z-10 quiet-control ${rowBtn}`}
+      >
+        {dayVerb(date, today)}
+      </button>
+    );
   }
 
   /** Begin a calm focus session on the primary. Time logs at completion, never here. */
@@ -254,21 +284,26 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
         ) : primary && primaryOffer && offerInfo ? (
           <>
             {/* The free time IS the reason this row leads, so the heading that
-                names it moves up here with the row it explains. */}
-            <div className="px-[8px] mb-[2px] text-meta font-semibold text-muted">
-              {offerHeading(offerInfo, today)}
-            </div>
+                names it moves up here with the row it explains. A label, and
+                then the capacity sentence under it — the eyebrow slot says
+                WHAT a section is, and "no time left today, but Monday has 9h"
+                is why the offer exists, not what it is called. */}
+            <div className="px-[8px] mb-[2px] text-meta font-semibold text-muted">Free time</div>
+            <p className="px-[8px] mb-[6px] text-meta text-muted">{offerHeading(offerInfo, today)}</p>
             <TaskRow
               title={primaryOffer.title}
               subtitle={primaryOffer.goalTitle}
               emphasis
               reserveLead
               time={anyTimed ? '' : undefined}
-              onOpen={() => place(primaryOffer, offerInfo.date, offerInfo.today)}
-              ariaLabel={`Plan “${primaryOffer.title}” ${dayLabel(offerInfo.date, today)}`}
+              /* Opens, like every other row on this page. The booking is the
+                 button in `meta`; it used to be this click, which bound the one
+                 action that writes a block to the largest target on the page. */
+              onOpen={() => openItem(primaryOffer)}
               meta={
                 <>
                   <span className="tabular-nums">{expectedTimeLabel(primary.expected)}</span>
+                  {planButton(primaryOffer, offerInfo.date, offerInfo.today)}
                   {startSessionButton(primary.ref, primary.title)}
                 </>
               }
@@ -354,11 +389,18 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
 
       {offerInfo && restOffers.length > 0 && (
         <section aria-label="Free time" className="mb-[24px]">
+          {/* When the primary above already carries the free-time heading,
+              repeating the sentence would say it twice about the same time —
+              so the capacity line belongs to whichever of the two is showing
+              it, and never to both. */}
           <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">
-            {/* When the primary above already carries the free-time heading,
-                repeating the sentence would say it twice about the same time. */}
-            {primaryOffer ? 'Also possible' : offerHeading(offerInfo, today)}
+            {primaryOffer ? 'Also possible' : 'Free time'}
           </h2>
+          {!primaryOffer && (
+            <p className="px-[8px] -mt-[4px] mb-[6px] text-meta text-muted">
+              {offerHeading(offerInfo, today)}
+            </p>
+          )}
           <ul>
             {restOffers.map((row) => {
               const chip = dueChip(row.due, today);
@@ -369,8 +411,8 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
                     subtitle={row.goalTitle}
                     reserveLead
                     time={anyTimed ? '' : undefined}
-                    onOpen={() => place(row, offerInfo.date, offerInfo.today)}
-                    ariaLabel={`Plan “${row.title}” ${dayLabel(offerInfo.date, today)}`}
+                    /* Opens. The verb below books — see `planButton`. */
+                    onOpen={() => openItem(row)}
                     meta={
                       <>
                         {chip && (
@@ -379,6 +421,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
                         {row.estimateMin !== undefined && (
                           <span className="tabular-nums">{fmtMinutes(row.estimateMin)}</span>
                         )}
+                        {planButton(row, offerInfo.date, offerInfo.today)}
                       </>
                     }
                   />
