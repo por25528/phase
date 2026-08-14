@@ -238,4 +238,20 @@ describe('carryOverRows', () => {
   it('is empty and silent when nothing slipped', () => {
     expect(carryOverRows([], TODAY)).toEqual({ rows: [], overflow: 0 });
   });
+
+  /**
+   * The row Now is already showing is on screen. Listing it here as well would
+   * be the same task twice, and counting it as withheld would claim the page is
+   * hiding something it is not.
+   */
+  it('leaves out a row already on screen, and never counts it as withheld', () => {
+    const many = Array.from(
+      { length: MAX_CARRY_OVER + 2 },
+      (_, i) => task(`t${i}`, `2026-08-0${i + 1}`),
+    );
+    const out = carryOverRows(many, TODAY, new Set(['task:t0']));
+    expect(out.rows.map((r) => r.id)).not.toContain('t0');
+    expect(out.rows).toHaveLength(MAX_CARRY_OVER);
+    expect(out.overflow).toBe(1);
+  });
 });

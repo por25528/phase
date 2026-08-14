@@ -5,7 +5,7 @@ import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
-import { attentionItems, surfaceReason } from '../lib/todaySurface';
+import { attentionItems, carriedFrom, carryOverRows, surfaceReason } from '../lib/todaySurface';
 import { executionAdvice } from '../lib/executionAdvisor';
 import { expectedTimeFor, type WorkRef } from '../lib/expectedTime';
 import { expectedTimeLabel } from '../lib/assistantProtocol';
@@ -98,8 +98,16 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
   const doneCount = sections.completedToday.length;
   // Reserve one clock column for every task row whenever any commitment carries a clock.
   const anyTimed = open.some((i) => i.startMin !== undefined);
-  // What the page is already saying, so the offer below does not repeat it.
-  const shown = useMemo(() => new Set(open.map((i) => i.key)), [open]);
+  // What the page is already saying, so the offer below does not repeat it —
+  // the carry-overs included, now that the section below lists them and offers
+  // the same placement under the same word. This is the advisor's own `seen`
+  // set, restated: `executionAdvisor` excludes commitments AND carry-overs from
+  // its own `todayPlan` call, and a page that excluded less than the advisor it
+  // is required to agree with would re-offer work another section is showing.
+  const shown = useMemo(
+    () => new Set([...open, ...sections.carryOvers].map((i) => i.key)),
+    [open, sections],
+  );
 
   // What to do with the time that is still free — the answer this surface used
   // to withhold on exactly the day it mattered most.
@@ -110,6 +118,15 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       exclude: shown,
     }),
     [goals, tasks, availability, allDayBlocks, today, nowMinute, shown],
+  );
+
+  // The work the page used to name and refuse to show. Below the day's own
+  // plan, which outranks yesterday's leftovers, and above the exceptions. The
+  // primary is excluded because a carry-over is a candidate the advisor may
+  // lead with, and Now is already showing that row.
+  const carried = useMemo(
+    () => carryOverRows(sections.carryOvers, today, primary ? new Set([primary.key]) : new Set()),
+    [sections, today, primary],
   );
 
   function complete(item: DailyWorkItem): void {
@@ -369,6 +386,67 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
               );
             })}
           </ul>
+        </section>
+      )}
+
+      {/* ── Carried over ──
+          One row per slipped commitment, oldest first. The verb is `place`,
+          the same one the offer rows above use, so "put this on today" means
+          exactly one thing on this page — and `scheduleTask`/`scheduleNode`
+          vacate the stale sitting and arm the undo without help. */}
+      {carried.rows.length > 0 && (
+        <section aria-label="Carried over" className="mb-[24px]">
+          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Carried over</h2>
+          <ul>
+            {carried.rows.map((item) => (
+              <li key={item.key}>
+                <TaskRow
+                  title={item.title}
+                  subtitle={item.goalTitle}
+                  onOpen={() => openItem(item)}
+                  lead={
+                    <TodayCheckbox
+                      checked={false}
+                      onToggle={() => complete(item)}
+                      ariaLabel={`Mark "${item.title}" as done`}
+                    />
+                  }
+                  meta={
+                    <>
+                      {/* No `surfaceReason` chip: the heading is the reason. */}
+                      {carriedFrom(item, today) && <span>{carriedFrom(item, today)}</span>}
+                      <button
+                        type="button"
+                        onClick={() => place(
+                          {
+                            key: item.key,
+                            kind: item.kind,
+                            id: item.id,
+                            ...(item.goalId ? { goalId: item.goalId } : {}),
+                            title: item.title,
+                            goalTitle: item.goalTitle ?? '',
+                          },
+                          today,
+                          true,
+                        )}
+                        aria-label={`Plan “${item.title}” today`}
+                        className={`relative z-10 quiet-control ${rowBtn}`}
+                      >
+                        Today
+                      </button>
+                    </>
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+          {carried.overflow > 0 && (
+            /* Static text. A link here would be the dead end this section
+               retires — five rows have already been shown. */
+            <p className="px-[8px] mt-[4px] text-meta text-muted">
+              +{carried.overflow} more
+            </p>
+          )}
         </section>
       )}
 

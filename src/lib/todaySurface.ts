@@ -211,12 +211,18 @@ export function carriedFrom(item: DailyWorkItem, today: string): string | null {
  * Oldest first, for `slippedWork`'s reason: the thing that slipped furthest has
  * waited longest, and a section that leads with yesterday buries the week-old
  * one underneath it.
+ *
+ * `exclude` carries the keys the page is already showing — a carry-over is a
+ * candidate the advisor may lead with, and the row sitting in Now is on screen:
+ * listing it again would be the same task twice. It is dropped in the same pass
+ * as a finished one, BEFORE the cap, so it is never counted as withheld either.
  */
 export function carryOverRows(
   carryOvers: DailyWorkItem[],
   today: string,
+  exclude: ReadonlySet<string> = new Set(),
 ): { rows: DailyWorkItem[]; overflow: number } {
-  const open = carryOvers.filter((i) => !i.done);
+  const open = carryOvers.filter((i) => !i.done && !exclude.has(i.key));
   const ordered = [...open].sort((a, b) => {
     const ad = carriedDate(a) ?? today;
     const bd = carriedDate(b) ?? today;
