@@ -3,7 +3,7 @@ import { Popover } from './Popover';
 import { IconCalendar, IconChevronRight } from './Icons';
 import { CONTROL_H, CONTROL_LINE } from './dialogStyles';
 import { deadlinePresets, paddedMonthGrid, shiftYm, ymLabel, ymOf } from '../lib/calendar';
-import { addDays, fmtD, parseD } from '../lib/dates';
+import { addDays, fmtD, fmtDY, parseD } from '../lib/dates';
 
 /**
  * A date, picked rather than spelled.
@@ -83,7 +83,7 @@ export function DatePopover({
             that clears AA.
           */}
           <span className={`flex-1 min-w-0 truncate ${value ? 'text-ink' : 'text-muted'}`}>
-            {value ? `${prefix}${fmtD(value)}` : placeholder}
+            {value ? `${prefix}${fmtDY(value, today)}` : placeholder}
           </span>
           <span className="flex-none text-faint inline-flex rotate-90" aria-hidden="true">
             <IconChevronRight size={11} />

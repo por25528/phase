@@ -7,7 +7,7 @@ import { IconDots } from '../../components/Icons';
 import { InlineEdit } from '../../components/InlineEdit';
 import { Popover, PopoverItem, PopoverSeparator } from '../../components/Popover';
 import { ProgressBar } from '../../components/ProgressBar';
-import { fmtD } from '../../lib/dates';
+import { fmtD, fmtDY } from '../../lib/dates';
 import { blockedLeafCount, firstBlockedLeaf } from '../../lib/board';
 import { effortCaption, effortCount, effortPct, goalEffort } from '../../lib/effort';
 import {
@@ -111,11 +111,11 @@ function CardFace({
         )}
         {dateInfo?.kind === 'checkpoint' && (
           <span className={chipTone(dateInfo.past)}>
-            Milestone · {fmtD(dateInfo.date)}
+            Milestone · {fmtDY(dateInfo.date, today)}
           </span>
         )}
         {deadlineControl ?? (dateInfo?.kind === 'deadline' && (
-          <span className={chipTone(dateInfo.past)}>Due · {fmtD(dateInfo.date)}</span>
+          <span className={chipTone(dateInfo.past)}>Due · {fmtDY(dateInfo.date, today)}</span>
         ))}
       </div>
 

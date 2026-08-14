@@ -77,3 +77,18 @@ export function streak(habit: Habit): number {
   while (habit.checkins.includes(d)) { n++; d = addDays(d, -1); }
   return n;
 }
+
+/**
+ * A date, with the year only when the year is not obvious.
+ *
+ * `fmtD` prints `Jun 30`, which is right almost everywhere — inside a week
+ * grid, a month cell or a project header the year is fixed by the surface. On
+ * a Someday card it is not: the board can hold a goal due this June and one due
+ * June two years out, and it printed them identically.
+ *
+ * `fmtD` itself is untouched. Most of its callers sit inside a context that
+ * already fixes the year, and a suffix there would be noise.
+ */
+export function fmtDY(s: string, today: string): string {
+  return s.slice(0, 4) === today.slice(0, 4) ? fmtD(s) : `${fmtD(s)}, ${s.slice(0, 4)}`;
+}

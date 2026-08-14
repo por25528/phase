@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { millisecondsUntilNextLocalMidnight, weekDates } from './dates';
+import { fmtD, fmtDY, millisecondsUntilNextLocalMidnight, weekDates } from './dates';
 
 describe('millisecondsUntilNextLocalMidnight', () => {
   it('returns the remaining local-clock time through the next day boundary', () => {
@@ -39,5 +39,26 @@ describe('weekDates (Monday-based)', () => {
   it('returns 7 consecutive days', () => {
     const w = weekDates('2026-07-15');
     expect(w).toHaveLength(7);
+  });
+});
+
+/**
+ * `Due · Jun 30` on a Someday card means June 2027 as often as June 2026, and
+ * the two are the same six characters. On the board's most-read chip that is
+ * not an inconvenience, it is misinformation.
+ */
+describe('fmtDY', () => {
+  it('says nothing extra inside the current year', () => {
+    expect(fmtDY('2026-06-30', '2026-08-14')).toBe('Jun 30');
+    expect(fmtDY('2026-06-30', '2026-08-14')).toBe(fmtD('2026-06-30'));
+  });
+
+  it('names the year outside it, in both directions', () => {
+    expect(fmtDY('2027-06-30', '2026-08-14')).toBe('Jun 30, 2027');
+    expect(fmtDY('2025-12-31', '2026-08-14')).toBe('Dec 31, 2025');
+  });
+
+  it('compares years and not distance — Dec 31 and Jan 1 are a day apart', () => {
+    expect(fmtDY('2027-01-01', '2026-12-31')).toBe('Jan 1, 2027');
   });
 });
