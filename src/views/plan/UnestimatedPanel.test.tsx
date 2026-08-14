@@ -107,6 +107,19 @@ describe('pricing the week’s unestimated work', () => {
     expect(screen.getByText('Debug figure-8')).toBeTruthy();
   });
 
+  /**
+   * The rail is 249px, so a long title MUST clip — that is settled. What was
+   * not is that the clipped text had no way back: sixteen truncating spans
+   * across Plan carried no `title`, while `EventBlock` was already telling a
+   * screen reader the whole string. A tooltip costs no layout, which is why it
+   * is the fix rather than fighting the rail for pixels.
+   */
+  it('keeps a clipped title readable', async () => {
+    await mountPanel();
+    expect(screen.getByText('Implement AppendEntries').getAttribute('title'))
+      .toBe('Implement AppendEntries');
+  });
+
   it('marks the ones already on the grid', async () => {
     await mountPanel();
     // An unestimated block is drawn at the default slot length, so it looks

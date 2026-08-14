@@ -102,9 +102,13 @@ full value in a `title`:
 | `sidebar/Backlog.tsx:292` | the project heading a group sits under |
 | `sidebar/Habits.tsx:251` | a habit's name |
 | `EventBlock.tsx` | a placed block's title |
-| `MonthCell.tsx:79` | a month chip |
 | `RecapPanel.tsx:76,90` | a logged leaf's title |
 | `UnestimatedPanel.tsx:74` | an unestimated item's title |
+
+`MonthCell` is deliberately absent: it already carries
+`title={`${it.title} · ${clockLabel(it.startMin)}`}`, which the first survey of
+this missed because the attribute sits on a different line from the `truncate`
+class. It was listed here in error and needed no change.
 
 Deliberately NOT every `truncate` in the view. `AvailabilitySettings`'s day
 label, `BlockComposer`'s clock and the goal-title subtitles beside a leaf are

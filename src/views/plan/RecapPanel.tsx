@@ -73,7 +73,7 @@ export function RecapPanel() {
             {r.nowComplete.map((e) => (
               <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-body">
                 <span className="text-accent inline-flex" aria-hidden="true"><IconCheck size={13} /></span>
-                <span className="flex-1 min-w-0 truncate">{e.leafTitle}</span>
+                <span title={e.leafTitle} className="flex-1 min-w-0 truncate">{e.leafTitle}</span>
                 <span className="text-meta text-muted truncate">{e.goalTitle}</span>
               </div>
             ))}
@@ -87,7 +87,7 @@ export function RecapPanel() {
             </h3>
             {r.unfinished.map((e) => (
               <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-body">
-                <span className="flex-1 min-w-0 truncate">{e.leafTitle}</span>
+                <span title={e.leafTitle} className="flex-1 min-w-0 truncate">{e.leafTitle}</span>
                 <span className="text-meta text-muted truncate">{e.goalTitle}</span>
                 <button
                   type="button"

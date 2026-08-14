@@ -135,9 +135,26 @@ export function WeekGrid({
         const index = days.indexOf(today);
         if (index >= 0) {
           const colWidth = (node.scrollWidth - AXIS_WIDTH_PX) / days.length;
+          /*
+           * The LEAST scrolling that uncovers today — not a centring.
+           *
+           * The axis is `sticky left-0`, so it always covers the leftmost
+           * `AXIS_WIDTH_PX` of the viewport, and a column is fully visible once
+           * its right edge sits at or before `scrollLeft + clientWidth`.
+           * Solving for that edge is the whole formula, and it falls out to 0
+           * whenever today already fits.
+           *
+           * Centring was never the requirement; "today is on screen" was. On a
+           * 1061px window the overflow is 81px — three-quarters of one column —
+           * and Friday already sat entirely inside the viewport. Centring asked
+           * for 198, the browser clamped to 81, and Monday left the screen
+           * while the header above still read `Aug 10 – Aug 16`. Nothing said a
+           * day was missing, and the `‹` a person reaches for pages to the
+           * previous WEEK.
+           */
           const targetLeft = Math.max(
             0,
-            AXIS_WIDTH_PX + index * colWidth - (node.clientWidth - AXIS_WIDTH_PX - colWidth) / 2,
+            AXIS_WIDTH_PX + (index + 1) * colWidth - node.clientWidth,
           );
           if (Math.abs(node.scrollLeft - targetLeft) >= 1) {
             programmaticX.current = true;
