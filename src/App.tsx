@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAppStore, initStore, getState, VIEW_LABELS } from './state/store';
+import { useAppStore, initStore, getState, actions as storeActions, VIEW_LABELS } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Plan } from './views/Plan';
@@ -43,6 +43,7 @@ import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
 import { createAgentBridge } from './lib/agentBridge';
 import { validAgentRequest, errorResponse } from './lib/agentProtocol';
 import { handleAgentRead } from './lib/agentReads';
+import { handleAgentWrite } from './lib/agentWrites';
 import {
   type Theme,
   resolveTheme,
@@ -170,7 +171,15 @@ export function App() {
    *
    * It reads `getState()` rather than this render's props: the effect
    * subscribes ONCE, so an answer shaped from the first render's snapshot
-   * would go stale the moment anything was edited.
+   * would go stale the moment anything was edited. `storeActions` is the
+   * module singleton for the same reason — the destructured `actions` above is
+   * the identical object, but taking it from the render would read as though
+   * this depended on one.
+   *
+   * Reads answer first and writes are the FALL-THROUGH, which is why
+   * `handleAgentRead` returns `null` rather than an error: the two halves never
+   * list the fourteen verbs twice, so a verb cannot be a read here and a write
+   * there.
    */
   useEffect(() => {
     const bridge = createAgentBridge();
@@ -181,7 +190,10 @@ export function App() {
         return;
       }
       const read = handleAgentRead(request, getState());
-      bridge.reply(id, read ?? errorResponse('Not implemented yet.'));
+      bridge.reply(id, read ?? handleAgentWrite(request, {
+        actions: storeActions,
+        getState,
+      }));
     });
   }, []);
 

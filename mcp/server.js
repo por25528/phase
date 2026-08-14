@@ -5,6 +5,7 @@
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
@@ -45,6 +46,96 @@ const READS = {
 for (const [tool, description] of Object.entries(READS)) {
   server.tool(tool, description, {}, async () => ({
     content: [{ type: 'text', text: await ask({ tool }) }],
+  }));
+}
+
+// One piece of work. `goalId` is the project holding a step, and `null` for a
+// loose task — nullable rather than optional, because that is the pairing the
+// app checks and a schema that let it go missing would invite a call that
+// always fails.
+const REF = z.object({
+  kind: z.enum(['step', 'task']),
+  id: z.string(),
+  goalId: z.string().nullable(),
+});
+
+// One project object, or a list of them — the top level `parseGoalImport`
+// accepts. The fields inside are deliberately not restated: that schema lives
+// in docs/import-schema.md, the parser owns it, and a copy here would drift.
+const PROJECT = z.union([
+  z.record(z.string(), z.unknown()),
+  z.array(z.record(z.string(), z.unknown())),
+]);
+
+// The verbs that change something. Every shape here is for the MODEL's benefit
+// only — `validAgentRequest` inside the app is the validation, because a socket
+// is not a trusted caller and this process is on the wrong side of that seam to
+// be trusted either.
+//
+// `schedule` advertises no `minutes`: a fresh sitting is sized from the
+// estimate, only `resize*` changes a block's own length, and that needs the id
+// of a bar that already exists. The handler refuses the field and points at
+// `estimate`, so a schema offering it would advertise a call that always fails.
+const WRITES = {
+  create_project: [
+    'Create a project from a JSON tree. See docs/import-schema.md for the format.',
+    { project: PROJECT },
+  ],
+  add_task: [
+    'Add a step to a project. Pass parentId to nest it under an existing step; omit it for a top-level one.',
+    { goalId: z.string(), parentId: z.string().optional(), title: z.string() },
+  ],
+  rename: [
+    'Rename a step, or the group holding one.',
+    { nodeId: z.string(), title: z.string() },
+  ],
+  estimate: [
+    'Set how long a task should take, in minutes. Pass null to clear it.',
+    { nodeId: z.string(), minutes: z.number().nullable() },
+  ],
+  set_status: [
+    'Set a step to todo, doing, blocked or done. Pass blockedOn to say what it is blocked by.',
+    {
+      nodeId: z.string(),
+      status: z.enum(['todo', 'doing', 'blocked', 'done']),
+      blockedOn: z.string().optional(),
+    },
+  ],
+  complete_task: [
+    'Tick a task or step as done.',
+    { ref: REF },
+  ],
+  schedule: [
+    'Book a sitting for a task on a day. Its length comes from the estimate, so set that first. startMin is the minute of the day to aim for; the nearest free slot wins.',
+    { ref: REF, day: z.string(), startMin: z.number().optional() },
+  ],
+  delete: [
+    'Delete a task or step. Reversible with undo_last until the next edit inside Phase.',
+    { ref: REF },
+  ],
+  undo_last: [
+    'Reverse the last change. Only works if nothing has been edited in Phase since.',
+    {},
+  ],
+};
+
+// `get_project` is a READ, and it lands here because it takes an argument —
+// the loop above had no schema vocabulary to express one.
+const ARGUMENT_READS = {
+  get_project: [
+    'The full step tree for one project: statuses, estimates and scheduled sittings.',
+    { goalId: z.string() },
+  ],
+};
+
+for (const [tool, [description, schema]] of [
+  ...Object.entries(ARGUMENT_READS),
+  ...Object.entries(WRITES),
+]) {
+  // `tool` last: the arguments are already stripped to the schema, so this
+  // cannot be overwritten by a caller, and saying so costs nothing.
+  server.tool(tool, description, schema, async (args) => ({
+    content: [{ type: 'text', text: await ask({ ...args, tool }) }],
   }));
 }
 
