@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  loggedForNode, loggedForTask, compareEstimate, projectCalibration,
+  loggedForNode, loggedForTask, loggedForItemOn, compareEstimate, projectCalibration,
   weekEffort, describeCalibration, MIN_CALIBRATION_SAMPLES,
 } from './actuals';
 import type { Goal, Session, Task } from '../db/types';
@@ -288,5 +288,46 @@ describe('describeCalibration', () => {
   it('treats a near-1 ratio as about right', () => {
     expect(describeCalibration({ samples: 8, ratio: 1.05 })).toBe('estimates are about right');
     expect(describeCalibration({ samples: 8, ratio: 0.92 })).toBe('estimates are about right');
+  });
+});
+
+describe('loggedForItemOn', () => {
+  const step = { kind: 'step' as const, id: 'n1' };
+  const task = { kind: 'task' as const, id: 't1' };
+
+  it('sums only the sessions logged on that date', () => {
+    const sessions = [
+      session({ id: 'a', nodeId: 'n1', date: '2026-07-28', minutes: 30 }),
+      session({ id: 'b', nodeId: 'n1', date: '2026-07-28', minutes: 15 }),
+      session({ id: 'c', nodeId: 'n1', date: '2026-07-27', minutes: 90 }),
+    ];
+    expect(loggedForItemOn(sessions, step, '2026-07-28')).toBe(45);
+  });
+
+  it('counts a task session that carries no nodeId', () => {
+    const sessions = [session({ id: 'a', taskId: 't1', date: '2026-07-28', minutes: 20 })];
+    expect(loggedForItemOn(sessions, task, '2026-07-28')).toBe(20);
+  });
+
+  /**
+   * The two ids are documented as mutually exclusive and `logSession` writes
+   * only one, but `importStateFromFile` does not sanitise sessions. Without the
+   * precedence rule a hand-edited backup would charge the same minutes twice.
+   */
+  it('charges a session carrying both ids to the node only', () => {
+    const sessions = [
+      session({ id: 'a', nodeId: 'n1', taskId: 't1', date: '2026-07-28', minutes: 60 }),
+    ];
+    expect(loggedForItemOn(sessions, step, '2026-07-28')).toBe(60);
+    expect(loggedForItemOn(sessions, task, '2026-07-28')).toBe(0);
+  });
+
+  it('is zero when nothing was logged, or nothing on that day', () => {
+    expect(loggedForItemOn([], step, '2026-07-28')).toBe(0);
+    expect(loggedForItemOn(
+      [session({ id: 'a', nodeId: 'n1', date: '2026-07-01', minutes: 60 })],
+      step,
+      '2026-07-28',
+    )).toBe(0);
   });
 });

@@ -45,6 +45,35 @@ export function loggedForTask(sessions: Session[], taskId: string): number {
 }
 
 /**
+ * Minutes logged against one commitment ON one day.
+ *
+ * `loggedForNode` and `loggedForTask` answer all-time, which is the right
+ * question beside an estimate and the wrong one beside a row that says "you
+ * finished this today". This is the same read, scoped to a date.
+ *
+ * `nodeId` takes precedence for the reason `loggedForTask` states: the two ids
+ * are documented as mutually exclusive and `logSession` writes only one, but
+ * `importStateFromFile` does not sanitise sessions, so a hand-edited backup
+ * carrying both would have its minutes counted twice.
+ */
+export function loggedForItemOn(
+  sessions: Session[],
+  item: { kind: 'task' | 'step'; id: string },
+  date: string,
+): number {
+  let total = 0;
+  for (const s of sessions) {
+    if (s.date !== date || s.minutes <= 0) continue;
+    if (item.kind === 'step') {
+      if (s.nodeId === item.id) total += s.minutes;
+    } else if (s.nodeId === undefined && s.taskId === item.id) {
+      total += s.minutes;
+    }
+  }
+  return total;
+}
+
+/**
  * How an estimate compared to the time it actually took.
  *
  * `ratio` is actual ÷ estimated, so 1.5 means the work ran half again as long
