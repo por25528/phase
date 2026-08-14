@@ -524,6 +524,7 @@ export function Goals() {
                       onMove={moveToHorizon}
                       onRank={moveRank}
                       onDelete={actions.removeGoal}
+                      onRename={actions.renameGoal}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}

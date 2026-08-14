@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Goal, Life } from '../../db/types';
 import { IconDots } from '../../components/Icons';
+import { InlineEdit } from '../../components/InlineEdit';
 import { Popover, PopoverItem, PopoverSeparator } from '../../components/Popover';
 import { ProgressBar } from '../../components/ProgressBar';
 import { fmtD } from '../../lib/dates';
@@ -47,6 +49,7 @@ function CardFace({
   today,
   suppressDateBadge = false,
   life,
+  titleSlot,
 }: {
   goal: Goal;
   today: string;
@@ -58,6 +61,13 @@ function CardFace({
   suppressDateBadge?: boolean;
   /** The life the goal belongs to, or null/unassigned — printed as nothing. */
   life?: Life | null;
+  /**
+   * Replaces the title when the card is being renamed. A slot rather than a
+   * `renaming` flag plus two callbacks: `CardFace` does not need to know what
+   * an edit IS, only that something else is drawing the title this time. The
+   * drag overlay passes none and keeps its `<h3>`.
+   */
+  titleSlot?: React.ReactNode;
 }) {
   const effort = goalEffort(goal);
   const caption = effortCaption(effort);
@@ -72,15 +82,17 @@ function CardFace({
   return (
     <>
       <div className="flex items-start gap-[8px]">
-        <h3
-          title={goal.title}
-          // Three lines, not two: course goals are "<course> — <assignment>"
-          // and two lines clipped at "…— Pse…", losing the only thing that
-          // distinguishes Pset 6 from Pset 7.
-          className="text-title font-semibold tracking-[-0.01em] leading-[1.24] flex-1 min-w-0 line-clamp-3"
-        >
-          {goal.title}
-        </h3>
+        {titleSlot ?? (
+          <h3
+            title={goal.title}
+            // Three lines, not two: course goals are "<course> — <assignment>"
+            // and two lines clipped at "…— Pse…", losing the only thing that
+            // distinguishes Pset 6 from Pset 7.
+            className="text-title font-semibold tracking-[-0.01em] leading-[1.24] flex-1 min-w-0 line-clamp-3"
+          >
+            {goal.title}
+          </h3>
+        )}
         {dateInfo && (
           <span
             className={`text-meta px-[6px] py-[3px] rounded-[6px] whitespace-nowrap tabular-nums flex-none mt-[1px] ${
@@ -191,6 +203,7 @@ export function BoardCard({
   onMove,
   onRank,
   onDelete,
+  onRename,
   reducedMotion,
   dimmed,
   matched,
@@ -207,6 +220,7 @@ export function BoardCard({
   /** Re-rank within the current horizon: -1 up, +1 down. */
   onRank: (id: string, delta: number) => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   reducedMotion: boolean;
   dimmed: boolean;
   matched: boolean;
@@ -220,6 +234,7 @@ export function BoardCard({
   onSetLife: (goalId: string, lifeId: string | null) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: goal.id });
+  const [renaming, setRenaming] = useState(false);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -278,21 +293,30 @@ export function BoardCard({
         matched ? 'shadow-today' : 'shadow-card hover:shadow-today'
       } ${highlighted ? 'ring-2 ring-accent' : ''}`}
     >
-      <CardFace goal={goal} today={today} suppressDateBadge life={life} />
+      <CardFace
+        goal={goal}
+        today={today}
+        suppressDateBadge
+        life={life}
+        titleSlot={renaming ? (
+          // Both handlers, for two different escapes: the pointer must not
+          // reach dnd-kit's listeners on the root, and the click must not
+          // reach the root's open-the-goal handler.
+          <div
+            className="flex-1 min-w-0"
+            onPointerDown={stopPointer}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <InlineEdit
+              value={goal.title}
+              className="text-title font-semibold tracking-[-0.01em] leading-[1.24]"
+              onCommit={(v) => { setRenaming(false); onRename(goal.id, v); }}
+              onCancel={() => setRenaming(false)}
+            />
+          </div>
+        ) : undefined}
+      />
 
-      {/*
-        No action footer, and no date-confirmation sub-card.
-
-        `Plan next task` and `Open goal` both duplicated what clicking the card
-        already does, so a card offered three overlapping entry paths to the
-        same place — and the confirmation panel turned data hygiene into the
-        board's dominant visual state, one tinted sub-card per card. The batch
-        review banner above the board does that job once, for all of them, and
-        the badge still says "Dates unconfirmed" here.
-
-        What is left is the overflow, revealed on hover in the corner, holding
-        the two things the card body cannot do: move it, and delete it.
-      */}
       {/*
         The overflow, revealed on hover, holding what the card body cannot do:
         rename it, re-date it, move it, and delete it.
@@ -321,6 +345,11 @@ export function BoardCard({
         >
           {(close) => (
             <>
+              <PopoverItem close={close} onSelect={() => setRenaming(true)}>
+                Rename
+              </PopoverItem>
+              <PopoverSeparator />
+
               <div className="px-[12px] py-[3px] text-meta text-muted">Move to</div>
               {HORIZON_LABELS.map((label, i) => (
                 <PopoverItem

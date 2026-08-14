@@ -20,6 +20,7 @@ function renderCard(nodes: GoalNode[]) {
         onMove: vi.fn(),
         onRank: vi.fn(),
         onDelete: vi.fn(),
+        onRename: vi.fn(),
         reducedMotion: false,
         dimmed: false,
         matched: false,
