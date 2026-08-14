@@ -252,11 +252,23 @@ describe('flip', () => {
   function stubLayout({ triggerTop, panelHeight, viewport }: {
     triggerTop: number; panelHeight: number; viewport: number;
   }) {
-    const rect = Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
+    /*
+     * Captured and put BACK, never deleted.
+     *
+     * `delete Element.prototype.getBoundingClientRect` removes jsdom's OWN
+     * implementation rather than the stub on top of it, so every test declared
+     * after this block ran against a prototype with no such method. The next
+     * one added died on `getBoundingClientRect is not a function` raised from
+     * inside the flip effect — pointing at the component, not at the helper
+     * that had broken it.
+     */
+    const rect = Object.getOwnPropertyDescriptor(Element.prototype, 'getBoundingClientRect')!;
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')!;
+    Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
       configurable: true,
       value: () => ({ top: triggerTop, bottom: triggerTop + 24, left: 0, right: 0, width: 0, height: 24 }),
     });
-    const height = Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
       configurable: true,
       get: () => panelHeight,
     });
@@ -267,10 +279,9 @@ describe('flip', () => {
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: px });
     setViewport(viewport);
     return () => {
-      delete (Element.prototype as { getBoundingClientRect?: unknown }).getBoundingClientRect;
-      delete (HTMLElement.prototype as { offsetHeight?: unknown }).offsetHeight;
+      Object.defineProperty(Element.prototype, 'getBoundingClientRect', rect);
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', height);
       setViewport(prev);
-      void rect; void height;
     };
   }
 
@@ -311,5 +322,35 @@ describe('flip', () => {
 
     expect(panelClasses()).toContain('top-[calc(100%+4px)]');
     restore();
+  });
+});
+
+/**
+ * Elevation is a PROP, not a class the caller appends.
+ *
+ * `panelClassName` is concatenated, and Tailwind has no last-one-wins rule, so
+ * `shadow-card shadow-today` would leave which shadow applies to the order the
+ * stylesheet happened to emit them in. Swapping the class is what makes the
+ * choice real — the same reason `DateField` takes a `size`.
+ */
+describe('elevation', () => {
+  const panelClass = () => screen.getByRole('dialog').getAttribute('class') ?? '';
+
+  it('matches the surface it opens over by default', async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Estimate' }));
+
+    expect(panelClass()).toContain('shadow-card');
+    expect(panelClass()).not.toContain('shadow-today');
+  });
+
+  it('floats above it when the panel will overhang', async () => {
+    const user = userEvent.setup();
+    mount({ elevation: 'overlay' });
+    await user.click(screen.getByRole('button', { name: 'Estimate' }));
+
+    expect(panelClass()).toContain('shadow-today');
+    expect(panelClass()).not.toContain('shadow-card');
   });
 });

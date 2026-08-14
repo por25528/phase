@@ -21,6 +21,11 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
  * it does not trap focus, and 1–7 over an open estimate popover should still
  * mean what they mean on the surface underneath.
  */
+const ELEVATION = {
+  panel: 'shadow-card',
+  overlay: 'shadow-today',
+} as const;
+
 export function Popover({
   label,
   align = 'start',
@@ -29,6 +34,7 @@ export function Popover({
   triggerClassName = '',
   panelClassName = '',
   panelWidth,
+  elevation = 'panel',
   role = 'dialog',
   triggerRef: externalTriggerRef,
   onOpenChange,
@@ -43,6 +49,21 @@ export function Popover({
   triggerClassName?: string;
   panelClassName?: string;
   panelWidth?: number;
+  /**
+   * How far off the surface the panel floats.
+   *
+   * `panel` is the default and matches the card it opens over. `overlay` is for
+   * a panel big enough to OVERHANG whatever opened it — the calendar is taller
+   * than the New goal dialog, so it ran 420px past the dialog's bottom edge
+   * wearing the same `shadow-card` the dialog wore, and read as the dialog
+   * coming apart rather than as a layer above it.
+   *
+   * A prop rather than a `panelClassName` the caller appends: class lists are
+   * APPENDED, not cascaded, so `shadow-card shadow-today` would leave which one
+   * applies to the order Tailwind happened to emit them in. Same reason
+   * `DateField` and `DatePopover` take a `size` instead of a class.
+   */
+  elevation?: keyof typeof ELEVATION;
   /** `menu` for a list of verbs, `dialog` for a property editor. */
   role?: 'dialog' | 'menu';
   /**
@@ -167,7 +188,7 @@ export function Popover({
           style={panelWidth ? { width: `${panelWidth}px` } : undefined}
           className={`absolute z-40 ${
             flip ? 'bottom-[calc(100%+4px)]' : 'top-[calc(100%+4px)]'
-          } ${align === 'end' ? 'right-0' : 'left-0'} bg-panel border border-line-2 rounded-card shadow-card py-[5px] ${panelClassName}`}
+          } ${align === 'end' ? 'right-0' : 'left-0'} bg-panel border border-line-2 rounded-card ${ELEVATION[elevation]} py-[5px] ${panelClassName}`}
         >
           {children(close)}
         </div>

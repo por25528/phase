@@ -69,7 +69,16 @@ export function DatePopover({
       // and the panel it opens can never drift about what is selected.
       label={`${ariaLabel}: ${value ? dayLabel(value) : 'not set'}`}
       role="dialog"
-      panelWidth={252}
+      // 268, not 252: the three shortcuts came to ~241px inside a 236px content
+      // box, so the last one wrapped and the footer read as two ragged lines.
+      // Sized against the LONGEST set — `deadlinePresets` drops one in December,
+      // so the three-shortcut case is the one to fit.
+      panelWidth={268}
+      // Taller than the New goal dialog it opens inside, so it overhangs
+      // whatever opened it. Wearing the dialog's own `shadow-card` while
+      // running 420px past its bottom edge read as the dialog coming apart;
+      // a floating layer needs to sit visibly above the one it covers.
+      elevation="overlay"
       triggerRef={triggerRef}
       triggerClassName={`inline-flex items-center text-left ${SIZES[size]} ${triggerClassName}`}
       trigger={
@@ -282,22 +291,34 @@ function Calendar({
         ))}
       </div>
 
-      <div className="mt-[6px] pt-[6px] border-t border-line flex flex-wrap gap-[4px]">
-        {deadlinePresets(today).map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() => onPick(preset.date)}
-            className="text-meta text-ink-soft px-[7px] py-[3px] rounded-field hover:bg-hover hover:text-ink"
-          >
-            {preset.label}
-          </button>
-        ))}
+      {/*
+        Two rows, not one wrapping row.
+
+        Clearing is not a fourth shortcut. It removes the value the other three
+        set, and as a peer in the same wrap it both pushed the shortcuts onto a
+        second line and read as another date to pick. `ScheduleMenu` already
+        makes this split for the same verb — shortcuts, then Clear, last and
+        quieter. One hairline for the whole footer, because two in a panel this
+        small is more rule than content.
+      */}
+      <div className="mt-[6px] pt-[6px] border-t border-line">
+        <div className="flex flex-wrap gap-[4px]">
+          {deadlinePresets(today).map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => onPick(preset.date)}
+              className="text-meta text-ink-soft px-[7px] py-[3px] rounded-field hover:bg-hover hover:text-ink"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
         {value && (
           <button
             type="button"
             onClick={onClear}
-            className="text-meta text-muted px-[7px] py-[3px] rounded-field hover:bg-hover hover:text-ink"
+            className="mt-[2px] w-full text-left text-meta text-muted px-[7px] py-[3px] rounded-field hover:bg-hover hover:text-ink"
           >
             {clearLabel}
           </button>
