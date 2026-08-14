@@ -1419,10 +1419,14 @@ git commit -m "feat(agent): writes that call actions and refuse to lie"
 
 - [ ] **Step 1: Fall through from reads to writes**
 
-Replace the effect body from Task 6, Step 3:
+Replace the effect body from Task 6, Step 3. **The `validAgentRequest` guard must survive this edit** — it is the only inbound validation between an untrusted socket and `actions`, and this step rewrites the exact block that holds it:
 
 ```tsx
 return bridge.onRequest((id, request) => {
+  if (!validAgentRequest(request)) {
+    bridge.reply(id, errorResponse('Not a request Phase understands.'));
+    return;
+  }
   const read = handleAgentRead(request, getState());
   bridge.reply(id, read ?? handleAgentWrite(request, { actions, getState }));
 });
@@ -1464,6 +1468,17 @@ server.tool(
 ```
 
 Add `create_project`, `add_task`, `rename`, `estimate`, `schedule` and `delete` in the same shape. `create_project`'s description must point at the schema: *"Create a project from a JSON tree. See docs/import-schema.md for the format."*
+
+**Also add `get_project` here.** Task 6 exposed only the four no-argument reads, because it had no zod dependency to express an argument. It is a read, but it lands in this task:
+
+```js
+server.tool(
+  'get_project',
+  'The full step tree for one project: statuses, estimates and scheduled sittings.',
+  { goalId: z.string() },
+  async (args) => ({ content: [{ type: 'text', text: await ask({ tool: 'get_project', ...args }) }] }),
+);
+```
 
 - [ ] **Step 3: Verify end to end**
 
