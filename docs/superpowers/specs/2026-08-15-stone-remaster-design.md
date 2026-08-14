@@ -220,11 +220,24 @@ legibility and neutrality for documents people must not misread. That is the
 "textbook" quality being aimed at, and character in the body face would compete
 with Fraunces above it.
 
-**Fraunces is display-only and the boundary is hard.** Three roles: the
-wordmark, a page title (`text-page` on `TaskPage`, `AreaPage`), and headings
-typed inside a note (`.note-prose h1/h2/h3`). Row titles, card titles, property
-labels, buttons and section labels are all `font-ui`. This is the rule §9's
-guard rewrite has to encode.
+**Fraunces is display-only and the boundary is hard.** Three roles, and **two
+of them already ship**:
+
+| Role | Where | Status |
+|---|---|---|
+| the wordmark | `App.tsx:375` | already `font-disp` |
+| headings typed inside a note | `index.css:264,267,270` — `.note-prose > div > h1/h2/h3` | already `font-disp` |
+| a document's own title | `TaskPage.tsx:210,220` — `text-page` | **new** |
+
+Row titles, card titles, property labels, buttons and section labels are all
+`font-ui`. `AreaPage` does **not** carry a `text-page` title and does not get
+Fraunces; `text-page` appears at exactly two sites, both in `TaskPage.tsx`.
+
+The note headings are invisible to the current guard because `offenders()`
+scans `.tsx`/`.ts` only and `.note-prose` lives in `index.css`. That is why a
+rule reading "`font-disp` appears once" has been passing while Fraunces was in
+fact rendering in two roles. §9's rewrite makes the allowlist say what is
+actually true.
 
 ## 4. The type scale — 17 keys to 11
 
@@ -287,10 +300,31 @@ label also gets quieter, not louder: 10.08px semibold sentence case becomes
 8.75px medium uppercase, so it recedes behind the content it introduces while
 becoming more distinct from it.
 
+**The voice moves into a constant before it changes.** `text-meta font-semibold
+text-muted` is hand-copied at **36 sites**, which is the condition that lets a
+voice drift. `src/components/sectionLabel.ts` exports the string, every heading
+points at it, and the change then happens in one line — the same move
+`dialogStyles.ts` already makes for buttons.
+
+**Five of those 36 are not section labels** and keep the old classes written
+out in full. They share the string by coincidence, not by role:
+
+| Site | What it actually is |
+|---|---|
+| `TaskPage.tsx:419` | a button — carries `hover:bg-hover hover:text-ink` |
+| `RecapPanel.tsx:115` | a button — carries `hover:text-ink` |
+| `Timeline.tsx:584` | a sticky row label in the left column |
+| `Timeline.tsx:617` | a sticky row label in the left column |
+| `AssistantSurface.tsx:77` | "Focus", sitting beside its control |
+
+That leaves **31 conversions**: `Today.tsx` ×7, `OverviewTab.tsx` ×5,
+`SettingsModal.tsx` ×3, `ShortcutsOverlay.tsx` ×3, `RecapPanel.tsx` ×2,
+`StepPanel.tsx` ×2, and one each in `CardSection.tsx`, `AssistantSurface.tsx`,
+`Goals.tsx`, `Backlog.tsx`, `PlanSidebar.tsx`, `WeekHeader.tsx`, `NotesTab.tsx`,
+`CalendarTab.tsx`, `UnestimatedPanel.tsx`.
+
 **This is a component-touching change** and the second of the two consented
-exceptions to token-only scope. Approximately 12 sites: `Today.tsx` ×7, plus
-`Plan.tsx`, `Backlog.tsx`, `Goals.tsx` and the project tabs. It requires the
-`uppercase` guard rewrite in §9.
+exceptions to token-only scope. It requires the `uppercase` guard rewrite in §9.
 
 Uppercase remains forbidden everywhere except (a) the three weekday strips and
 (b) a label carrying `font-mono`. Uppercase without mono stays a build failure.
@@ -338,20 +372,24 @@ already correct:
 | `src/assistant/main.tsx` | same |
 | `package.json` | `+public-sans`, `+ibm-plex-mono`, `−inter` |
 | `src/lib/designScale.test.ts` | guard rewrites (§9) |
-| `src/lib/projectColour.test.ts` | new band, new dark panel |
+| `src/lib/contrast.ts` | **new** — shared `luminance` / `contrastRatio` / `themeTokens` (§10) |
+| `src/lib/contrast.test.ts` | **new** — unit tests for the above |
+| `src/lib/projectColour.test.ts` | new dark panel; drop its private helpers for `contrast.ts` |
 | `src/lib/paletteContrast.test.ts` | **new** (§10) |
-| ~12 section-label sites | §5 |
-| 4 `[11px]` sites | §6 |
+| `src/components/sectionLabel.ts` | **new** — the one section-label class string (§5) |
+| 31 section-label sites | §5 |
+| 4 `[11px]` sites | `Timeline.tsx` ×3, `Goals.tsx` ×1 (§6) |
 
 ## 9. Guards that must change
 
 `designScale.test.ts` is the reason this remaster is safe to attempt, and three
 of its rules are now wrong.
 
-1. **`font-disp` outside `App.tsx` fails.** Fraunces now has three roles.
-   Replace the single-site rule with an allowlist: `font-disp` is permitted on
-   the wordmark, on `text-page` titles, and on `.note-prose` headings in
-   `index.css`. Anywhere else still fails.
+1. **`font-disp` outside `App.tsx` fails.** The `.tsx` allowlist becomes
+   `['App.tsx', 'views/project/TaskPage.tsx']`. `.note-prose`'s headings are
+   not covered because `offenders()` scans `.tsx`/`.ts` only — a fact the
+   rewritten comment must state, so the next reader does not conclude the rule
+   is broader than it is. Anywhere else still fails.
 2. **`uppercase` outside the three weekday strips fails.** Replace with:
    permitted in the three weekday strips, or on an element also carrying
    `font-mono`. Uppercase in the UI face still fails.
@@ -370,6 +408,15 @@ fails on the new panel.
 
 `paletteContrast.test.ts` is new, and it exists because every ratio in §1 is
 currently a comment. Comments do not fail builds.
+
+**It shares its maths rather than restating it.** `projectColour.test.ts`
+already carries private `channels`, `luminance` and `ratio` helpers, and
+`designScale.test.ts` carries a third, cruder luminance (an unlinearised
+channel sum, adequate for its `raised > chip` ordering check but wrong for a
+ratio). Extract `luminance`, `contrastRatio` and `themeTokens` into
+`src/lib/contrast.ts` — pure functions taking a CSS **string**, so the file
+read stays in the tests — and have both suites import them. Three
+implementations of one formula is how two of them end up wrong.
 
 For both themes, assert:
 
@@ -399,9 +446,10 @@ aliased `fontSize` keys pointed at their survivors, `[11px]`'s four sites,
 guard rewrites, `paletteContrast.test.ts`. Visually final. No `.tsx` changes
 beyond the four radius sites.
 
-**Commit 2 — section labels.** The ~12 sites and the `uppercase` guard change.
-Separate because it is the one change that alters a documented voice, and it
-should be reviewable and revertible on its own.
+**Commit 2 — section labels.** `sectionLabel.ts`, the 31 conversions, the 5
+documented exclusions, and the `uppercase` guard change. Separate because it is
+the one change that alters a documented voice, and it should be reviewable and
+revertible on its own.
 
 **Commit 3 — CLAUDE.md.** The bullets listing `designScale.test.ts`'s rules,
 the section-label definition, the OLED dark description and the accent
