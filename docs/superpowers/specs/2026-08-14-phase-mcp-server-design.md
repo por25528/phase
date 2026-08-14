@@ -89,10 +89,20 @@ exists to prevent. `mcp/server.js` formats; it never decides.
 | Tool | Spends | Answers |
 |---|---|---|
 | `today` | `executionAdvisor`, `buildDailyWork` | now, carried over, free-time offer, finished today |
-| `week` | `weekCapacity`, `isOverCommitted` | planned vs to-place vs free |
+| `week` | `weekCapacity` | planned vs to-place vs free, as figures — no verdict |
 | `backlog` | `backlogGroups` | what is queued, by project |
 | `list_projects` | `effort.ts`, `health.ts`, `pct.ts` | remaining minutes and a health sentence per goal |
 | `get_project` | the goal tree | steps, statuses, estimates, blocks |
+
+The `week` row named `isOverCommitted` as a second function to spend when this
+was written, which was wrong on both halves. It is not a `src/lib` function —
+it lives in `src/views/plan/capacityLabel.ts`, above the seam, so `agentReads.ts`
+cannot spend it without inverting the layering `src/lib` exists to hold. And the
+verdict is not the read's to pass: `week` returns the `WeekCapacity` object
+whole, every figure intact, and whoever reads it makes the comparison
+(`plannedMin + backlogMin > freeMin`) themselves. That is the same rule the rest
+of the table states, applied where the view's own helper is on the far side of
+it.
 
 ### Writes
 

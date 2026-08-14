@@ -109,8 +109,11 @@ export function handleAgentRead(
       return okResponse({ advice: executionAdvice(adviceInput(state, now)) });
     }
     case 'week': {
-      // The whole object, no verdict — `isOverCommitted` is a comparison the
-      // caller makes, not a function this can spend.
+      // The whole object, no verdict. `isOverCommitted` does exist, but it
+      // lives in `src/views/plan/capacityLabel.ts` — above this seam — so
+      // spending it here would invert the layering, and the comparison it
+      // makes (`plannedMin + backlogMin > freeMin`) is the caller's to make
+      // from figures this response already carries.
       const now = nowOf();
       return okResponse({ capacity: weekCapacity(capacityInput(state, now)) });
     }

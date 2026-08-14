@@ -159,6 +159,28 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   remainder closes the shelf. The one thing that does NOT hug is the send-off,
   which pins the card's own measured height while it plays — a farewell that
   collapsed to its two words would read as the window closing twice.
+- **The agent surface is a CALLER of `actions`, never a second path to the
+  data.** `mcp/server.js` reaches the app over a `0600` Unix socket in
+  `userData`; `agentSocket.cjs` frames it, `agentIpc.cjs` relays it to the
+  renderer, and the renderer — still the only writer, still holding the Web Lock
+  — dispatches through `agentReads.ts`/`agentWrites.ts` into the same `actions`
+  the UI calls. `validAgentRequest` runs THERE and nowhere earlier: the two
+  Electron modules import nothing from `src/` by design, so the renderer is the
+  first side of the seam that can spend it. Every read SPENDS the lib function
+  its view spends and re-derives nothing, so Claude Code and the Today page
+  cannot disagree about the day — and `week` therefore returns the
+  `WeekCapacity` object whole and passes no verdict, because `isOverCommitted`
+  lives in `src/views/plan/` and a lib module reaching up for it would invert
+  the layering. A write is one action call, and it refuses rather than lies: a
+  frozen project, an already-ticked task and a full day are all errors, and
+  `persistFailed` is re-read after every mutation because in-memory state
+  advances even when nothing landed. `undo_last` exists because a write from a
+  terminal is the ultimate distance write — it spends `undoLastDelete`, but
+  gates on `pendingUndo` rather than popping the stack blind the way in-app `⌘Z`
+  does, so it reports the label of what it reversed or admits the sweep already
+  cleared it. That gate is also why its window is the TOAST's, narrower than
+  `⌘Z`'s: reversing something you are not looking at needs the offer to still be
+  standing. `docs/mcp-server.md` is the setup and the limits.
 
 ## Conventions
 
