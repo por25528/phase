@@ -251,7 +251,7 @@ export function validAgentRequest(value: unknown): value is AgentRequest {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/agentProtocol.test.ts`
-Expected: PASS — 8 tests.
+Expected: PASS — 9 tests (8 validator cases plus the response-helper case).
 
 - [ ] **Step 5: Typecheck and commit**
 
