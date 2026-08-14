@@ -4,12 +4,32 @@ import type { WorkRef } from '../../lib/expectedTime';
 
 export type AssistantSendoffStage = 'idle' | 'pending' | 'message' | 'leaving' | 'hidden';
 
+/**
+ * The stages that show the farewell instead of the shelf. The surface branches
+ * on this and the notification below fires on it, so the two cannot drift into
+ * disagreeing about when the shelf's content is gone.
+ */
+export function isLeavingStage(stage: AssistantSendoffStage): boolean {
+  return stage === 'message' || stage === 'leaving' || stage === 'hidden';
+}
+
 interface Options {
   snapshot: AssistantSnapshot;
   reducedMotion: boolean;
   resetKey: number;
   onStart(ref: WorkRef): void;
   onClose(): void;
+  /**
+   * The send-off began, or was abandoned — fired SYNCHRONOUSLY at the
+   * transition rather than from an effect after it, which is the whole point.
+   * The overlay measures its card in here, and a measurement is only worth
+   * anything while the DOM still holds the body the farewell is about to
+   * replace. An effect would run after that body is gone.
+   *
+   * Optional, and only the floating window passes it: the embedded surface
+   * sits in a panel that was never sized to its content.
+   */
+  onSendoffChange?(leaving: boolean): void;
 }
 
 const MESSAGE_AND_HOLD_MS = 660;
@@ -29,6 +49,7 @@ export function useAssistantSendoff({
   resetKey,
   onStart,
   onClose,
+  onSendoffChange,
 }: Options) {
   const [stage, setStageState] = useState<AssistantSendoffStage>('idle');
   const stageRef = useRef<AssistantSendoffStage>('idle');
@@ -37,14 +58,22 @@ export function useAssistantSendoff({
   const previousResetKey = useRef(resetKey);
   const onStartRef = useRef(onStart);
   const onCloseRef = useRef(onClose);
+  const onSendoffChangeRef = useRef(onSendoffChange);
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const closed = useRef(false);
   onStartRef.current = onStart;
   onCloseRef.current = onClose;
+  onSendoffChangeRef.current = onSendoffChange;
 
   const setStage = useCallback((next: AssistantSendoffStage) => {
+    const was = isLeavingStage(stageRef.current);
     stageRef.current = next;
     setStageState(next);
+    // Before the re-render, not after it: the caller is here to look at a DOM
+    // that still holds the shelf. Only the crossing is reported — `message` to
+    // `leaving` to `hidden` is one farewell, not three.
+    const now = isLeavingStage(next);
+    if (now !== was) onSendoffChangeRef.current?.(now);
   }, []);
 
   const clearTimers = useCallback(() => {

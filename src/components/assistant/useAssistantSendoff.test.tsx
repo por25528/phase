@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssistantSnapshot } from '../../lib/assistantProtocol';
 import type { WorkRef } from '../../lib/expectedTime';
-import { useAssistantSendoff } from './useAssistantSendoff';
+import { useAssistantSendoff, type AssistantSendoffStage } from './useAssistantSendoff';
 
 const REF = { kind: 'step', id: 'n1', goalId: 'g1' } as const;
 
@@ -322,6 +322,67 @@ describe('useAssistantSendoff', () => {
     act(() => vi.advanceTimersByTime(1000));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(result.current.stage).toBe('hidden');
+  });
+
+  it('reports the crossing into the farewell and back, once each way', () => {
+    const onSendoffChange = vi.fn();
+    const initial = ready();
+    const { result, rerender } = renderHook(
+      ({ snapshot, resetKey }) => useAssistantSendoff({
+        snapshot,
+        reducedMotion: false,
+        resetKey,
+        onStart: vi.fn(),
+        onClose: vi.fn(),
+        onSendoffChange,
+      }),
+      { initialProps: { snapshot: initial, resetKey: 0 } },
+    );
+
+    // Pending is still the shelf: the button is disabled, nothing has replaced it.
+    act(() => result.current.start(REF));
+    expect(onSendoffChange).not.toHaveBeenCalled();
+
+    rerender({ snapshot: focused(REF), resetKey: 0 });
+    expect(result.current.stage).toBe('message');
+    expect(onSendoffChange).toHaveBeenCalledTimes(1);
+    expect(onSendoffChange).toHaveBeenLastCalledWith(true);
+
+    // message → leaving → hidden is one farewell, not three.
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.stage).toBe('hidden');
+    expect(onSendoffChange).toHaveBeenCalledTimes(1);
+
+    rerender({ snapshot: focused(REF), resetKey: 1 });
+    expect(result.current.stage).toBe('idle');
+    expect(onSendoffChange).toHaveBeenCalledTimes(2);
+    expect(onSendoffChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('fires the crossing before the stage it announces has rendered', () => {
+    // The overlay measures its card in this callback, and a measurement is
+    // only worth taking while the DOM still holds the body about to be
+    // replaced. Reading `pending` here is what proves nothing has re-rendered
+    // yet; an effect on the stage would have run after the farewell was up.
+    const stagesAtCall: AssistantSendoffStage[] = [];
+    const initial = ready();
+    const { result, rerender } = renderHook(
+      ({ snapshot }) => useAssistantSendoff({
+        snapshot,
+        reducedMotion: false,
+        resetKey: 0,
+        onStart: vi.fn(),
+        onClose: vi.fn(),
+        onSendoffChange: () => stagesAtCall.push(result.current.stage),
+      }),
+      { initialProps: { snapshot: initial } },
+    );
+
+    act(() => result.current.start(REF));
+    rerender({ snapshot: focused(REF) });
+    expect(stagesAtCall).toEqual(['pending']);
+
+    act(() => vi.advanceTimersByTime(1000));
   });
 
   it('keeps current callbacks in refs so identity changes do not corrupt timing', () => {

@@ -8,7 +8,7 @@ import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { FOCUS_LEVELS, FOCUS_WORD, type FocusLevel } from '../../lib/focusLens';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
-import { useAssistantSendoff } from './useAssistantSendoff';
+import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
 import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 
@@ -33,6 +33,13 @@ interface Props {
   presentation?: 'embedded' | 'shelf';
   /** Increment to reset the send-off state machine (the overlay replays on every focus). */
   resetKey?: number;
+  /**
+   * The farewell has taken over the surface, or has given it back. Fired at the
+   * transition, while the shelf's own body is still on screen — the floating
+   * window measures its card here so the send-off can keep that footprint.
+   * Embedded callers pass nothing and behave exactly as they did.
+   */
+  onSendoffChange?: (leaving: boolean) => void;
 }
 
 const REASON_WORD: Record<AdviceReason, string> = {
@@ -303,6 +310,7 @@ export function AssistantSurface({
   onAction,
   presentation = 'embedded',
   resetKey = 0,
+  onSendoffChange,
 }: Props) {
   const reducedMotion = useReducedMotion();
   const sendoff = useAssistantSendoff({
@@ -311,6 +319,7 @@ export function AssistantSurface({
     resetKey,
     onStart: (ref) => onAction({ type: 'start-focus', ref }),
     onClose: () => onAction({ type: 'close' }),
+    onSendoffChange,
   });
   const shelf = presentation === 'shelf';
 
@@ -329,7 +338,7 @@ export function AssistantSurface({
 
   if (snapshot.status === 'loading') return <Skeleton />;
 
-  if (sendoff.stage === 'message' || sendoff.stage === 'leaving' || sendoff.stage === 'hidden') {
+  if (isLeavingStage(sendoff.stage)) {
     return (
       <div
         role="status"
