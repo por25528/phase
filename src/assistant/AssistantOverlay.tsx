@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AssistantSurface } from '../components/assistant/AssistantSurface';
 import { assistantOverlayBridge } from '../lib/assistantBridge';
+import { shelfSizing } from '../lib/assistantShell';
 import type { AssistantAction, AssistantSnapshot } from '../lib/assistantProtocol';
 import { useReducedMotion } from '../components/useReducedMotion';
 
@@ -23,6 +24,20 @@ export function AssistantOverlay() {
   const [openCycle, setOpenCycle] = useState(0);
   const [opening, setOpening] = useState(false);
   const reducedMotion = useReducedMotion();
+  const sizing = shelfSizing(navigator.userAgent);
+
+  // `index.css` gives every page a `bg-bg` body, and a card that filled the
+  // window hid it completely. A hugging one does not: without this the
+  // remainder under the card is an opaque page-coloured band — the exact "white
+  // band" hugging exists to remove — rather than the transparent window behind
+  // it. Set here and not in `index.css` because only this page has a remainder,
+  // and gated on the same predicate that decides whether there is one.
+  useEffect(() => {
+    if (sizing !== 'hug') return;
+    const previous = document.body.style.backgroundColor;
+    document.body.style.backgroundColor = 'transparent';
+    return () => { document.body.style.backgroundColor = previous; };
+  }, [sizing]);
 
   useEffect(() => {
     const off = bridge.onSnapshot(setSnapshot);
@@ -56,18 +71,30 @@ export function AssistantOverlay() {
 
   return (
     <div
-      key={openCycle}
-      className={[
-        'h-screen overflow-hidden rounded-card border border-line bg-panel text-ink shadow-card',
-        opening ? 'assistant-shelf-enter' : '',
-      ].join(' ')}
+      className="h-screen"
+      // The window is fixed at its tallest state; on macOS everything the card
+      // does not cover is transparent, so a press there is a press on the
+      // desktop as far as the user is concerned. Closing is the honest answer.
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) bridge.close();
+      }}
     >
-      <AssistantSurface
-        snapshot={snapshot}
-        onAction={onAction}
-        presentation="shelf"
-        resetKey={openCycle}
-      />
+      <div
+        key={openCycle}
+        data-shelf
+        className={[
+          sizing === 'fill' ? 'h-full' : '',
+          'overflow-hidden rounded-card border border-line bg-panel text-ink shadow-card',
+          opening ? 'assistant-shelf-enter' : '',
+        ].join(' ')}
+      >
+        <AssistantSurface
+          snapshot={snapshot}
+          onAction={onAction}
+          presentation="shelf"
+          resetKey={openCycle}
+        />
+      </div>
     </div>
   );
 }
