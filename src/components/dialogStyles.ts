@@ -103,3 +103,19 @@ export const fieldCls =
   `w-full ${CONTROL_H} ${CONTROL_LINE} rounded-field border border-line-2 bg-transparent px-[8px] py-[5px] text-ui text-ink outline-none focus-visible:border-accent`;
 
 export const labelCls = 'text-meta font-medium text-muted';
+
+/**
+ * An action that lives inside a list row.
+ *
+ * `primaryBtn` is 33px, sized for a dialog footer; a filled button of that
+ * height inside a row would break the row rhythm and reverse the decision that
+ * made the section label the emphasis and put Now on the same axis as every
+ * other row. Outlined and row-height reads as an action rather than as
+ * metadata without reopening that.
+ *
+ * 31px: 1 + 4 + 21 + 4 + 1. Two less than `CONTROL_H`, because a row is not a
+ * dialog — and stated here so the two cannot drift into "nearly the same".
+ */
+export const rowBtn =
+  `${CONTROL_LINE} inline-flex items-center justify-center px-[10px] py-[4px] rounded-field `
+  + 'border border-line-2 bg-panel text-ui font-semibold text-ink hover:bg-hover';

@@ -18,6 +18,7 @@ import { useLocalDate } from '../hooks/useLocalDate';
 import { dayLabel, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
 import { dueChip } from '../lib/backlog';
 import { weekOf } from '../lib/plan';
+import { rowBtn } from '../components/dialogStyles';
 
 /**
  * What to do now.
@@ -146,7 +147,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
         type="button"
         onClick={() => startSession(ref, title)}
         aria-label={`Start session on “${title}”`}
-        className="relative z-10 text-meta font-semibold text-muted hover:text-ink"
+        className={`relative z-10 ${rowBtn}`}
       >
         Start session
       </button>
@@ -187,7 +188,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           <button
             type="button"
             onClick={() => setReplanOpen(true)}
-            className="text-ui font-semibold text-ink px-[10px] py-[5px] rounded-field border border-line-2 bg-panel hover:bg-hover"
+            className={rowBtn}
           >
             Replan
           </button>
@@ -205,7 +206,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
             {/* The label is the emphasis now. The row below carries the clock,
                 the estimate and the title exactly as every other row does, so
                 the one thing worth doing sits on the same axis as the rest. */}
-            <div className="px-[8px] mb-[2px] text-meta font-semibold text-ink-soft">
+            <div className="px-[8px] mb-[2px] text-meta font-semibold text-muted">
               {primary.reason === 'scheduled-now' ? 'Now' : 'Next'}
             </div>
             <TaskRow
@@ -237,7 +238,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           <>
             {/* The free time IS the reason this row leads, so the heading that
                 names it moves up here with the row it explains. */}
-            <div className="px-[8px] mb-[2px] text-meta font-semibold text-ink-soft">
+            <div className="px-[8px] mb-[2px] text-meta font-semibold text-muted">
               {offerHeading(offerInfo, today)}
             </div>
             <TaskRow
@@ -273,7 +274,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           10:00 standup at six in the evening. */}
       {rest.length > 0 && (
         <section aria-label="Today’s plan" className="mb-[24px]">
-          <h2 className="text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
+          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
           <ul>
             {rest.map((item, i) => (
               <li key={item.key}>
@@ -336,7 +337,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
 
       {offerInfo && restOffers.length > 0 && (
         <section aria-label="Free time" className="mb-[24px]">
-          <h2 className="text-meta font-semibold text-muted mb-[6px]">
+          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">
             {/* When the primary above already carries the free-time heading,
                 repeating the sentence would say it twice about the same time. */}
             {primaryOffer ? 'Also possible' : offerHeading(offerInfo, today)}
@@ -374,7 +375,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       {/* ── Attention ── */}
       {attention.length > 0 && (
         <section aria-label="Attention">
-          <h2 className="text-meta font-semibold text-muted mb-[6px]">Attention</h2>
+          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Attention</h2>
           <ul>
             {attention.map((a) => (
               <li key={a.id}>

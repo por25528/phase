@@ -273,4 +273,33 @@ describe('the shared primary', () => {
     expect(screen.getByText(/Nothing committed to today/)).toBeTruthy();
     expect(screen.queryByText('Stretch')).toBeNull();
   });
+
+  /**
+   * The one action the surface exists to offer used to render as `text-meta
+   * text-muted` — eleven-pixel grey text, quieter than the row it sat on.
+   */
+  it('renders Start session as a button rather than as metadata', async () => {
+    await mountToday();
+
+    const btn = screen.getByRole('button', { name: 'Start session on “Draft the intro”' });
+    expect(btn.className).toContain('border');
+    expect(btn.className).not.toContain('text-muted');
+  });
+
+  /** Three labels, three left edges, two colours. One of each now. */
+  it('sits every section label on its rows’ axis, in the one label style', async () => {
+    await mountToday({
+      goals: [{
+        id: 'g1', title: 'Thesis', column: 0,
+        nodes: [
+          { id: 'n1', title: 'Draft the intro', plannedWeek: '2026-07-13' },
+          { id: 'n2', title: 'Revise the intro', plannedWeek: '2026-07-13' },
+        ],
+      }],
+    });
+
+    const label = screen.getByText('Rest of today');
+    expect(label.className).toContain('px-[8px]');
+    expect(label.className).toContain('text-meta font-semibold text-muted');
+  });
 });
