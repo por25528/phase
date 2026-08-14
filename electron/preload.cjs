@@ -62,3 +62,18 @@ contextBridge.exposeInMainWorld('phaseShell', {
   /** Set the OS login-item state; resolves the applied state, or null when refused. */
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke('phase-shell:set-launch-at-login', enabled),
 });
+
+// The MAIN renderer's half of the agent bridge: hear a request that arrived
+// over the socket, answer it once. Fixed channels only — nothing here accepts
+// a channel name. agentIpc.test.ts reads this file to stop the two lists
+// drifting, exactly as calendarIpc.test.ts does for the calendar door.
+contextBridge.exposeInMainWorld('phaseAgent', {
+  /** Fires with an id and a request to execute. Returns unsubscribe. */
+  onRequest: (fn) => {
+    const listener = (_event, envelope) => fn(envelope.id, envelope.request);
+    ipcRenderer.on('phase-agent:request', listener);
+    return () => ipcRenderer.removeListener('phase-agent:request', listener);
+  },
+  /** Answer exactly one request. */
+  reply: (id, response) => ipcRenderer.invoke('phase-agent:reply', { id, response }),
+});

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it, expect, vi } from 'vitest';
 
@@ -83,5 +84,21 @@ describe('createAgentIpc', () => {
     expect(ipcMain.channels()).toEqual([`${AGENT_CHANNEL_PREFIX}:reply`]);
     ipc.dispose(ipcMain);
     expect(ipcMain.channels()).toEqual([]);
+  });
+});
+
+/**
+ * A sandboxed preload cannot `require` this module for the prefix, so
+ * preload.cjs writes the two channel names out by hand — and drift would be a
+ * silent "function is not a function" in the renderer rather than a build
+ * error. calendarIpc.test.ts guards the calendar door the same way.
+ */
+describe('preload drift', () => {
+  it('exposes exactly the two agent channels the relay uses', () => {
+    const preload = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
+    expect(preload).toContain(`${AGENT_CHANNEL_PREFIX}:request`);
+    expect(preload).toContain(`${AGENT_CHANNEL_PREFIX}:reply`);
+    // The renderer must never be handed a channel-name parameter.
+    expect(preload).not.toMatch(/phaseAgent[\s\S]*?ipcRenderer\.(invoke|send|on)\(\s*channel/);
   });
 });
