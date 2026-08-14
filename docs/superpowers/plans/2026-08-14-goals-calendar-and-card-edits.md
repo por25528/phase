@@ -1605,7 +1605,13 @@ Add to the `<BoardCard … />` call:
 - [ ] **Step 6: Run the tests**
 
 Run: `npx vitest run src/views/goals/`
-Expected: PASS. Add `onSetDeadline: vi.fn(),` to the four older `BoardCard.*` test files' prop objects, as in Task 6 Step 5.
+
+Expected: PASS. Add `onSetDeadline: vi.fn(),` to the prop object of the **three** test files that construct `BoardCard` directly — `BoardCard.life.test.tsx`, `BoardCard.progress.test.tsx`, and `BoardCard.rename.test.tsx` (created in Task 6).
+
+This corrects two errors in the earlier draft, both established empirically during Task 6:
+
+- It is **not** "the four older files". `BoardCard.keyboard.test.tsx` and `BoardCard.unblock.test.tsx` render through the Goals view and inherit the prop, so they need no edit — `grep -c "createElement(BoardCard"` returns 0 for both.
+- Task 6's copy of `BoardCard.rename.test.tsx` deliberately **omits** `onSetDeadline` because that prop does not exist yet and TypeScript rejects it with TS2769. This task is what makes it required, so this is where that line gets added.
 
 - [ ] **Step 7: Typecheck and commit**
 
