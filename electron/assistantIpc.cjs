@@ -11,9 +11,7 @@ const ASSISTANT_CHANNEL_PREFIX = 'phase-assistant';
 
 // Generous for real titles, hostile to payload smuggling.
 const MAX_TEXT = 500;
-const MAX_INPUT_TEXT = 2000;
 const MAX_ALTERNATIVES = 2;
-const MAX_CHOICES = 5;
 const MAX_MINUTES = 24 * 60 * 7; // a week of minutes bounds every duration
 
 function shortString(value, max = MAX_TEXT) {
@@ -92,44 +90,6 @@ function validFocus(focus) {
     && (focus.proposedMinutes === undefined || boundedMinutes(focus.proposedMinutes));
 }
 
-function validSubject(subject) {
-  return !!subject
-    && typeof subject === 'object'
-    && validRef(subject.ref)
-    && shortString(subject.title)
-    && optionalShortString(subject.goalTitle);
-}
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function validDate(value) {
-  return typeof value === 'string' && DATE_RE.test(value);
-}
-
-function validProposal(proposal) {
-  if (proposal === null) return true;
-  if (!proposal || typeof proposal !== 'object' || !shortString(proposal.id)) return false;
-  switch (proposal.kind) {
-    case 'capture':
-      return shortString(proposal.title)
-        && (proposal.goalId === null || shortString(proposal.goalId))
-        && (proposal.date === null || validDate(proposal.date))
-        && (proposal.estimateMin === undefined || boundedMinutes(proposal.estimateMin));
-    case 'complete':
-      return validSubject(proposal.subject);
-    case 'schedule':
-      return validSubject(proposal.subject) && validDate(proposal.date);
-    case 'choose-subject':
-      return (proposal.verb === 'complete' || proposal.verb === 'schedule')
-        && (proposal.date === undefined || validDate(proposal.date))
-        && Array.isArray(proposal.choices)
-        && proposal.choices.length <= MAX_CHOICES
-        && proposal.choices.every(validSubject);
-    default:
-      return false;
-  }
-}
-
 function validNotice(notice) {
   if (notice === undefined) return true;
   return !!notice
@@ -144,7 +104,6 @@ function validSnapshot(snapshot) {
   if (snapshot.status !== 'ready') return false;
   return validAdvice(snapshot.advice)
     && validFocus(snapshot.activeFocus)
-    && validProposal(snapshot.proposal)
     && validNotice(snapshot.notice);
 }
 
@@ -157,17 +116,10 @@ function validAction(action) {
     case 'pause-focus':
     case 'resume-focus':
     case 'complete-focus':
-    case 'cancel-proposal':
     case 'close':
       return true;
     case 'confirm-focus':
       return action.minutes === null || (boundedMinutes(action.minutes) && action.minutes > 0);
-    case 'submit-input':
-      return shortString(action.text, MAX_INPUT_TEXT);
-    case 'confirm-proposal':
-      return shortString(action.id);
-    case 'choose-subject':
-      return shortString(action.proposalId) && shortString(action.subjectId);
     default:
       return false;
   }

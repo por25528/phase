@@ -2,13 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../state/store';
 import { AssistantSurface } from './AssistantSurface';
 import { assistantMainBridge } from '../../lib/assistantBridge';
-import {
-  executionAdvice, rankedWork, workThatFits, type ExecutionAdviceInput,
-} from '../../lib/executionAdvisor';
+import { executionAdvice } from '../../lib/executionAdvisor';
 import { expectedTimeFor } from '../../lib/expectedTime';
-import {
-  ASSISTANT_EXAMPLES, interpretAssistantInput, proposeAssistant, type AssistantProposal,
-} from '../../lib/assistantCommands';
 import type {
   AssistantAction, AssistantFocusView, AssistantSnapshot,
 } from '../../lib/assistantProtocol';
@@ -20,12 +15,10 @@ import { todayStr } from '../../lib/dates';
  * The sole adapter between `AssistantAction` and the store.
  *
  * Everything a snapshot contains is derived here from hydrated state and the
- * local clock, and every confirmed proposal lands on an EXISTING store action —
- * `addTask`, `toggleLeaf`/`toggleTask`, `scheduleNode`/`scheduleTask`,
- * `startFocus` and friends — never on a new write path. The only state of its
- * own is the ephemeral conversation-shaped pair (current proposal, current
- * notice), which is exactly the state that must NOT persist: the assistant
- * keeps no history.
+ * local clock, and every verb lands on an EXISTING store action — `startFocus`,
+ * `pauseFocus`/`resumeFocus`, `completeFocus`/`confirmFocus` — never on a new
+ * write path. The only state of its own is the ephemeral notice, which is
+ * exactly the state that must NOT persist: the assistant keeps no history.
  *
  * Works with no Electron at all: in the browser this renders the surface as an
  * anchored in-app panel and the desktop relay simply never engages.
@@ -46,7 +39,6 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
     goals, tasks, sessions, availability, allDayBlocks, activeFocusSession,
     assistantAccelerator, hydration, actions,
   } = useAppStore();
-  const [proposal, setProposal] = useState<AssistantProposal | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
 
   // Escape is CONSUMED, exactly as Popover consumes it: App listens on the
@@ -62,11 +54,6 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, onClose]);
-
-  const adviceInput = (today: string): ExecutionAdviceInput => ({
-    goals, tasks, sessions, availability, blocks: [], allDayBlocks,
-    today, week: weekOf(today), now: { date: today, minute: nowMinute() },
-  });
 
   const snapshot: AssistantSnapshot = useMemo(() => {
     if (hydration !== 'ready') return { status: 'loading' };
@@ -90,40 +77,9 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
       status: 'ready',
       advice,
       activeFocus,
-      proposal,
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, proposal, notice]);
-
-  function commit(current: AssistantProposal): void {
-    if (current.kind === 'capture') {
-      actions.addTask(current.title, current.date, current.goalId, current.estimateMin);
-      setProposal(null);
-      setNotice({ tone: 'neutral', text: `Added "${current.title}".` });
-      return;
-    }
-    if (current.kind === 'complete') {
-      if (current.subject.ref.kind === 'step') actions.toggleLeaf(current.subject.ref.id);
-      else actions.toggleTask(current.subject.ref.id);
-      setProposal(null);
-      setNotice({ tone: 'neutral', text: `Completed "${current.subject.title}".` });
-      return;
-    }
-    if (current.kind === 'schedule') {
-      const { ref } = current.subject;
-      // The store resolves the slot and refuses honestly; aiming at minute 0
-      // means "the earliest gap that fits", the palette's own rule.
-      const placed = ref.kind === 'step'
-        ? actions.scheduleNode(ref.goalId, ref.id, current.date, 0)
-        : actions.scheduleTask(ref.id, current.date, 0);
-      if (!placed) {
-        setNotice({ tone: 'warning', text: `No room for "${current.subject.title}" that day.` });
-        return;
-      }
-      setProposal(null);
-      setNotice({ tone: 'neutral', text: `Scheduled "${current.subject.title}".` });
-    }
-  }
+  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, notice]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {
@@ -157,48 +113,6 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
         actions.startFocus(action.ref, expectedTimeFor(action.ref, { goals, tasks, sessions }));
         return;
       }
-      case 'submit-input': {
-        setNotice(null);
-        const today = todayStr();
-        const intent = interpretAssistantInput(action.text, goals, today);
-        if (intent.kind === 'fits') {
-          const fits = workThatFits(intent.minutes, rankedWork(adviceInput(today)));
-          setProposal(null);
-          setNotice({
-            tone: 'neutral',
-            text: fits.length === 0
-              ? `Nothing on your plate fits ${intent.minutes}m with confidence.`
-              : `Fits ${intent.minutes}m: ${fits.slice(0, 3).map((w) => w.title).join(' · ')}`,
-          });
-          return;
-        }
-        if (intent.kind === 'examples') {
-          setProposal(null);
-          setNotice({ tone: 'neutral', text: `Try: ${ASSISTANT_EXAMPLES.join(' · ')}` });
-          return;
-        }
-        setProposal(proposeAssistant(intent, goals, tasks));
-        return;
-      }
-      case 'confirm-proposal': {
-        if (proposal && proposal.id === action.id) commit(proposal);
-        return;
-      }
-      case 'choose-subject': {
-        if (!proposal || proposal.kind !== 'choose-subject' || proposal.id !== action.proposalId) return;
-        const choice = proposal.choices.find((c) => c.ref.id === action.subjectId);
-        if (!choice) return;
-        setProposal(
-          proposal.verb === 'complete' || proposal.date === undefined
-            ? { kind: 'complete', id: proposal.id, subject: choice }
-            : { kind: 'schedule', id: proposal.id, subject: choice, date: proposal.date },
-        );
-        return;
-      }
-      case 'cancel-proposal':
-        setProposal(null);
-        setNotice(null);
-        return;
       case 'close':
         onClose();
     }

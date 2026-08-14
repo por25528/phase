@@ -1,5 +1,4 @@
 import type { ExecutionAdvice } from './executionAdvisor';
-import type { AssistantProposal } from './assistantCommands';
 import type { ExpectedTime, WorkRef } from './expectedTime';
 import { fmtMinutes } from './effort';
 
@@ -36,7 +35,6 @@ export type AssistantSnapshot =
       status: 'ready';
       advice: ExecutionAdvice;
       activeFocus: AssistantFocusView | null;
-      proposal: AssistantProposal | null;
       notice?: { tone: 'neutral' | 'warning'; text: string };
     };
 
@@ -47,10 +45,6 @@ export type AssistantAction =
   | { type: 'complete-focus' }
   | { type: 'confirm-focus'; minutes: number | null }
   | { type: 'switch-focus'; ref: WorkRef }
-  | { type: 'submit-input'; text: string }
-  | { type: 'confirm-proposal'; id: string }
-  | { type: 'choose-subject'; proposalId: string; subjectId: string }
-  | { type: 'cancel-proposal' }
   | { type: 'close' };
 
 /**

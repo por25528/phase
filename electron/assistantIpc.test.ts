@@ -65,7 +65,6 @@ const SNAPSHOT = {
     alternatives: [],
   },
   activeFocus: null,
-  proposal: null,
 };
 
 const FOCUSED_SNAPSHOT = {
@@ -195,11 +194,14 @@ describe('act', () => {
     const bad = [
       null,
       { type: 'drop-tables' },
-      { type: 'submit-input' },
-      { type: 'submit-input', text: 'x'.repeat(10_000) },
       { type: 'start-focus', ref: { kind: 'wormhole', id: 'n1' } },
       { type: 'confirm-focus', minutes: Infinity },
-      { type: 'confirm-proposal' },
+      // The retired typed vocabulary, WELL FORMED: the verb itself is gone, so
+      // an old overlay build cannot smuggle one past a shape check.
+      { type: 'submit-input', text: 'Add lab report Friday' },
+      { type: 'confirm-proposal', id: 'p1' },
+      { type: 'choose-subject', proposalId: 'p1', subjectId: 'n1' },
+      { type: 'cancel-proposal' },
     ];
     for (const action of bad) {
       ipcMain.emit('phase-assistant:act', OVERLAY_ID, action);

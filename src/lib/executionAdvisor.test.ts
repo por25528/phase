@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { executionAdvice, workThatFits, type ExecutionAdviceInput, type RecommendedWork } from './executionAdvisor';
+import { executionAdvice, type ExecutionAdviceInput } from './executionAdvisor';
 import { buildDailyWork } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { proposalRows } from './todayPlan';
@@ -201,28 +201,5 @@ describe('executionAdvice', () => {
     expect(advice.primary.expected).toEqual({
       kind: 'history', lowMin: 50, highMin: 90, confidence: 'medium', sampleCount: 2,
     });
-  });
-});
-
-describe('workThatFits', () => {
-  const work = (key: string, expected: RecommendedWork['expected']): RecommendedWork => ({
-    key, ref: { kind: 'task', id: key, goalId: null }, title: key, reason: 'free-time', expected,
-  });
-
-  it('includes history ranges whose high end fits', () => {
-    const fits = work('h1', { kind: 'history', lowMin: 20, highMin: 25, confidence: 'medium', sampleCount: 2 });
-    const tooBig = work('h2', { kind: 'history', lowMin: 20, highMin: 45, confidence: 'high', sampleCount: 5 });
-    expect(workThatFits(30, [fits, tooBig])).toEqual([fits]);
-  });
-
-  it('includes planned estimates that fit', () => {
-    const fits = work('e1', { kind: 'estimate', minutes: 30 });
-    const tooBig = work('e2', { kind: 'estimate', minutes: 40 });
-    expect(workThatFits(30, [fits, tooBig])).toEqual([fits]);
-  });
-
-  it('does not claim a starter-only item fits', () => {
-    const starter = work('s1', { kind: 'starter', minutes: 30 });
-    expect(workThatFits(30, [starter])).toEqual([]);
   });
 });

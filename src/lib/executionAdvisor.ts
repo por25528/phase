@@ -190,15 +190,6 @@ function withExpected(c: Candidate, input: ExecutionAdviceInput): RecommendedWor
   };
 }
 
-/**
- * The full canonical queue with evidence attached — what "what fits in 30m?"
- * filters, so the fits answer can never disagree with the advice about what is
- * worth doing.
- */
-export function rankedWork(input: ExecutionAdviceInput): RecommendedWork[] {
-  return orderedCandidates(input).pool.map((c) => withExpected(c, input));
-}
-
 export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
   const { pool, noHours } = orderedCandidates(input);
   if (pool.length === 0) return noHours ? { kind: 'needs-hours' } : { kind: 'clear' };
@@ -228,23 +219,4 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
     primary,
     alternatives: alternatives.map((c) => withExpected(c, input)),
   };
-}
-
-/**
- * The candidates whose evidence says they fit inside `minutes`.
- *
- * A history range fits when its HIGH end does — "probably 20 to 25 minutes"
- * fits half an hour; "20 to 45" does not claim to. A planned estimate fits at
- * face value. A starter is deliberately never a fit: 30 minutes is an
- * invitation to begin, not evidence about length, and claiming it fits would
- * dress a default up as a prediction.
- */
-export function workThatFits(minutes: number, works: RecommendedWork[]): RecommendedWork[] {
-  return works.filter((w) => {
-    switch (w.expected.kind) {
-      case 'history': return w.expected.highMin <= minutes;
-      case 'estimate': return w.expected.minutes <= minutes;
-      case 'starter': return false;
-    }
-  });
 }
