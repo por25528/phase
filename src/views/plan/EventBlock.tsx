@@ -125,7 +125,7 @@ export function EventBlock({
       {compact ? (
         <div className="truncate">
           <span className="text-muted text-tiny tabular-nums mr-[4px]">{clockLabel(block.startMin)}</span>
-          <span className="font-medium">{block.title}</span>
+          <span title={block.title} className="font-medium">{block.title}</span>
         </div>
       ) : (
         <>

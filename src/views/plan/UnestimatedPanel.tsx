@@ -71,6 +71,7 @@ export function UnestimatedPanel({
               type="button"
               onClick={() => actions.revealInPlan(item.kind, item.id)}
               aria-label={`Show "${item.title}" in the week`}
+              title={item.title}
               className="flex-1 min-w-0 text-left truncate rounded-[4px] hover:text-ink"
             >
               {item.title}

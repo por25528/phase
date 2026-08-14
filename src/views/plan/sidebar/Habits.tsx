@@ -248,7 +248,7 @@ function SortableHabitRow({
       >
         <TodayCheckbox checked={done} onToggle={onToggle} ariaLabel={`Mark "${hb.title}" done today`} />
       </span>
-      <span className={`flex-1 min-w-[90px] truncate text-lead font-medium ${done ? 'text-muted' : 'text-ink'}`}>
+      <span title={hb.title} className={`flex-1 min-w-[90px] truncate text-lead font-medium ${done ? 'text-muted' : 'text-ink'}`}>
         {hb.title}
       </span>
       {missed && (

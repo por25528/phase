@@ -99,7 +99,10 @@ function BacklogRow({
       <span aria-hidden="true" className="flex-none text-faint-2">
         <IconGrip size={12} />
       </span>
-      <span className="flex-1 min-w-0 truncate">{item.title}</span>
+      {/* The rail is 249px and a chip costs it ~44px, so a long title MUST
+          clip — that is settled. What was not is that the clipped text had no
+          way back: `Book the gr…` names nothing. A `title` costs no layout. */}
+      <span title={item.title} className="flex-1 min-w-0 truncate">{item.title}</span>
       {/* Only inside the next week, and always for anything overdue. Printing a
           date on every row would make the urgent ones harder to find, not
           easier — the sort already put them on top; this says why. */}
@@ -289,7 +292,7 @@ export function Backlog({
         capped.map((group, i) => (
           <div key={group.key} className={i === 0 ? '' : 'mt-[14px]'}>
             <div className="flex items-baseline gap-[6px] px-[6px]">
-              <span className="text-body font-semibold text-ink flex-1 min-w-0 truncate">
+              <span title={group.goalTitle} className="text-body font-semibold text-ink flex-1 min-w-0 truncate">
                 {group.goalTitle}
               </span>
               {group.goalId && (

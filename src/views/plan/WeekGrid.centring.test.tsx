@@ -69,7 +69,7 @@ function mount(week = DAYS) {
 
 const resize = () => act(() => { observers.forEach((cb) => cb()); });
 
-describe('centring on today', () => {
+describe('bringing today into view', () => {
   it('does nothing while the whole week fits', () => {
     const { scroller } = mount();
     makeScrollable(scroller, { scrollWidth: 800, clientWidth: 800 });
@@ -81,11 +81,37 @@ describe('centring on today', () => {
    * The gap the ResizeObserver exists to close: not scrollable at mount, then
    * the window is dragged narrower.
    */
-  it('centres the first time it becomes scrollable', () => {
+  it('scrolls the first time it becomes scrollable', () => {
     const { scroller } = mount();
     makeScrollable(scroller, { scrollWidth: 780, clientWidth: 420 });
     resize();
     expect(scroller.scrollLeft).toBeGreaterThan(0);
+  });
+
+  /**
+   * The defect this replaced centring over.
+   *
+   * The overflow is 81px — three-quarters of one column — and Thursday already
+   * sits entirely inside the viewport, so no scrolling is required to see it.
+   * Centring asked for far more than that, the browser clamped to the maximum,
+   * and MONDAY left the screen while the header still named it. Scrolling the
+   * minimum means a day is never given up for a day that was already visible.
+   */
+  it('does not move at all when today already fits', () => {
+    const { scroller } = mount();
+    makeScrollable(scroller, { scrollWidth: 780, clientWidth: 699 });
+    resize();
+    expect(scroller.scrollLeft).toBe(0);
+  });
+
+  /** Still brings today in when it genuinely is cut off, and no further. */
+  it('scrolls exactly far enough to uncover today, and no further', () => {
+    const { scroller } = mount();
+    makeScrollable(scroller, { scrollWidth: 780, clientWidth: 420 });
+    resize();
+    // colWidth = (780 - 46) / 7 = 104.857; Thursday is index 3, so its right
+    // edge is 46 + 4 * 104.857 = 465.43, and the viewport ends at 420.
+    expect(scroller.scrollLeft).toBeCloseTo(45.43, 1);
   });
 
   it('centres only once — a second resize leaves the position alone', () => {
