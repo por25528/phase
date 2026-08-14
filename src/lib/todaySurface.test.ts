@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode } from '../db/types';
 import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
-import { MAX_ATTENTION, attentionItems, nowFocus, surfaceReason } from './todaySurface';
+import {
+  MAX_ATTENTION, MAX_CARRY_OVER, attentionItems, carriedFrom, carryOverRows, nowFocus, surfaceReason,
+} from './todaySurface';
 
 const TODAY = '2026-08-12';
 
@@ -169,5 +171,71 @@ describe('surfaceReason', () => {
   it('says nothing where the row already says it', () => {
     expect(at('pinned-today')).toBeNull();
     expect(at('task-today')).toBeNull();
+  });
+});
+
+describe('carriedFrom', () => {
+  const task = (date: string) => item({ kind: 'task', source: 'carry-over', scheduledDate: date });
+  const step = (week: string) => item({ kind: 'step', source: 'carry-over', plannedWeek: week });
+
+  it('counts days for anything inside a week', () => {
+    expect(carriedFrom(task('2026-08-11'), TODAY)).toBe('Yesterday');
+    expect(carriedFrom(task('2026-08-09'), TODAY)).toBe('3d ago');
+  });
+
+  /**
+   * A step's date is a WEEK commitment and is only ever accurate to the week.
+   * Reporting "9d ago" about it would be a precision the stored value does not
+   * have, so the phrasing changes at the 7-day boundary rather than tapering.
+   */
+  it('counts weeks beyond seven days', () => {
+    expect(carriedFrom(step('2026-08-03'), TODAY)).toBe('Last week');
+    expect(carriedFrom(step('2026-07-20'), TODAY)).toBe('3w ago');
+  });
+
+  it('reads a task from its date and a step from its planned week', () => {
+    expect(carriedFrom(task('2026-08-10'), TODAY)).toBe('2d ago');
+    expect(carriedFrom(step('2026-08-10'), TODAY)).toBe('2d ago');
+  });
+
+  it('says nothing for an item carrying no date at all', () => {
+    expect(carriedFrom(item({ source: 'carry-over' }), TODAY)).toBeNull();
+  });
+});
+
+describe('carryOverRows', () => {
+  const task = (id: string, date: string) =>
+    item({ id, key: `task:${id}`, kind: 'task', source: 'carry-over', scheduledDate: date });
+  const step = (id: string, week: string) =>
+    item({ id, key: `step:${id}`, kind: 'step', source: 'carry-over', plannedWeek: week });
+
+  /** The thing that slipped furthest has waited longest — `slippedWork`'s rule. */
+  it('orders oldest first across both kinds', () => {
+    const out = carryOverRows([
+      task('recent', '2026-08-11'),
+      step('old', '2026-07-27'),
+      task('middle', '2026-08-05'),
+    ], TODAY);
+    expect(out.rows.map((r) => r.id)).toEqual(['old', 'middle', 'recent']);
+    expect(out.overflow).toBe(0);
+  });
+
+  it('caps the list and reports what it withheld', () => {
+    const many = Array.from({ length: 8 }, (_, i) => task(`t${i}`, `2026-08-0${i + 1}`));
+    const out = carryOverRows(many, TODAY);
+    expect(out.rows).toHaveLength(MAX_CARRY_OVER);
+    expect(out.overflow).toBe(3);
+  });
+
+  it('drops anything already finished', () => {
+    const out = carryOverRows([
+      task('done', '2026-08-01'),
+      task('open', '2026-08-02'),
+    ].map((r) => (r.id === 'done' ? { ...r, done: true } : r)), TODAY);
+    expect(out.rows.map((r) => r.id)).toEqual(['open']);
+  });
+
+  it('is empty and silent when nothing slipped', () => {
+    expect(carryOverRows([], TODAY)).toEqual({ rows: [], overflow: 0 });
   });
 });

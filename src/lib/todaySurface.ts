@@ -2,7 +2,7 @@ import type { AvailabilityWindow, BusyBlock, Goal } from '../db/types';
 import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
 import { goalEffort } from './effort';
 import { goalHealth, type Health } from './health';
-import { fmtD } from './dates';
+import { fmtD, parseD } from './dates';
 import { firstBlockedLeaf } from './board';
 
 /**
@@ -171,4 +171,59 @@ export function surfaceReason(item: DailyWorkItem): string | null {
     case 'carry-over': return 'Carried over';
     default: return null;
   }
+}
+
+/**
+ * The most carry-over rows Today will draw.
+ *
+ * A section listing everything overdue is the second backlog rail this surface
+ * must not become. Five is the same number `PROPOSAL_MAX` settled on, for the
+ * same reason: past it, a list stops being a decision.
+ */
+export const MAX_CARRY_OVER = 5;
+
+/** The date a carry-over slipped from: a task's day, a step's week. */
+function carriedDate(item: DailyWorkItem): string | undefined {
+  return item.kind === 'task' ? item.scheduledDate : item.plannedWeek;
+}
+
+/**
+ * How long ago a carry-over slipped — the one fact justifying its row.
+ *
+ * Days inside a week, weeks beyond it. The boundary is a boundary rather than a
+ * taper because a step's date is a WEEK commitment: it is only ever accurate to
+ * the week, and "9d ago" would claim a precision the stored value does not have.
+ */
+export function carriedFrom(item: DailyWorkItem, today: string): string | null {
+  const from = carriedDate(item);
+  if (!from) return null;
+  const days = Math.round((parseD(today).getTime() - parseD(from).getTime()) / 86_400_000);
+  if (days <= 0) return null;
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  return weeks === 1 ? 'Last week' : `${weeks}w ago`;
+}
+
+/**
+ * The rows Today draws, and the count it withheld.
+ *
+ * Oldest first, for `slippedWork`'s reason: the thing that slipped furthest has
+ * waited longest, and a section that leads with yesterday buries the week-old
+ * one underneath it.
+ */
+export function carryOverRows(
+  carryOvers: DailyWorkItem[],
+  today: string,
+): { rows: DailyWorkItem[]; overflow: number } {
+  const open = carryOvers.filter((i) => !i.done);
+  const ordered = [...open].sort((a, b) => {
+    const ad = carriedDate(a) ?? today;
+    const bd = carriedDate(b) ?? today;
+    return ad.localeCompare(bd);
+  });
+  return {
+    rows: ordered.slice(0, MAX_CARRY_OVER),
+    overflow: Math.max(0, ordered.length - MAX_CARRY_OVER),
+  };
 }
