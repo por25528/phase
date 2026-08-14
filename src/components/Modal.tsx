@@ -46,6 +46,15 @@ export function Modal({
     function onKey(e: KeyboardEvent) {
       if (!modalRegistry.isTopmost(modalId)) return;
       if (e.key === 'Escape') {
+        // An open anchored panel owns Escape first. `Popover` consumes the key
+        // to dismiss itself, but it cannot stop this handler: both listen on
+        // `window` in the capture phase, `stopPropagation` does not reach a
+        // listener on the same target, and the modal registered first because
+        // it opened first. So one press closed the popover AND this dialog —
+        // which the New goal calendar made reachable the moment a popover was
+        // first nested inside a modal. Deferring here is what leaves Escape
+        // meaning "close the thing on top".
+        if ((e.target as Element | null)?.closest?.('[data-popover-open]')) return;
         e.stopPropagation();
         onCloseRef.current();
         return;

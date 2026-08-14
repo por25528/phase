@@ -164,3 +164,27 @@ describe('the keyboard', () => {
     expect(screen.getByText('September 2026')).toBeTruthy();
   });
 });
+
+/**
+ * Caught by running the app, not by a test: on a board card the chip is a
+ * readout that happens to be clickable, and the glyphs cost the card title
+ * about 100px it could not spare.
+ */
+describe('what the chip spends its width on', () => {
+  it('keeps the glyphs in a dialog field, where they say it is a control', () => {
+    mount({ value: '2026-08-30', size: 'field' });
+    expect(trigger().querySelectorAll('svg')).toHaveLength(2);
+  });
+
+  /**
+   * `flex-none` on the card's chip means every pixel the chip takes comes out
+   * of the title. An icon plus a chevron clipped "Learn distributed systems…"
+   * to "Learn distribute system…" — cut mid-word, which is the loss the
+   * title's three-line clamp exists to prevent.
+   */
+  it('drops them on a card chip, which has a title to feed', () => {
+    mount({ value: '2026-08-30', size: 'chip', prefix: 'Due · ' });
+    expect(trigger().querySelectorAll('svg')).toHaveLength(0);
+    expect(trigger().textContent).toBe('Due · Aug 30');
+  });
+});

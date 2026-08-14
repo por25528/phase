@@ -74,9 +74,24 @@ export function DatePopover({
       triggerClassName={`inline-flex items-center text-left ${SIZES[size]} ${triggerClassName}`}
       trigger={
         <>
-          <span className="flex-none text-muted inline-flex" aria-hidden="true">
-            <IconCalendar size={13} />
-          </span>
+          {/*
+            The glyphs are the FIELD's, not the chip's.
+
+            In a dialog they say "this is the control that sets the deadline",
+            which a lone date string in a form would not. On a board card the
+            chip is a readout that happens to be clickable, and the card has a
+            title to feed: an icon plus a chevron took it from ~110px to
+            ~215px of a ~415px card, and because the chip is `flex-none` the
+            title absorbed all of it — "Learn distributed systems…" clipped to
+            "Learn distribute system…", cut mid-word. That is the exact loss
+            the three-line clamp on the title exists to prevent, so the chip
+            gives the width back and keeps only what it was already stating.
+          */}
+          {size === 'field' && (
+            <span className="flex-none text-muted inline-flex" aria-hidden="true">
+              <IconCalendar size={13} />
+            </span>
+          )}
           {/*
             An unset value is `text-muted` and never `text-faint`. It is read,
             and it is the only affordance for setting one, so it takes the tone
@@ -85,9 +100,11 @@ export function DatePopover({
           <span className={`flex-1 min-w-0 truncate ${value ? 'text-ink' : 'text-muted'}`}>
             {value ? `${prefix}${fmtDY(value, today)}` : placeholder}
           </span>
-          <span className="flex-none text-faint inline-flex rotate-90" aria-hidden="true">
-            <IconChevronRight size={11} />
-          </span>
+          {size === 'field' && (
+            <span className="flex-none text-faint inline-flex rotate-90" aria-hidden="true">
+              <IconChevronRight size={11} />
+            </span>
+          )}
         </>
       }
     >

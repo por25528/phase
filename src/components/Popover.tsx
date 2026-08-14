@@ -130,7 +130,21 @@ export function Popover({
   }, [open, triggerRef]);
 
   return (
-    <div ref={wrapRef} className="relative inline-flex">
+    /*
+     * `data-popover-open` is how `Modal` knows to keep its hands off Escape.
+     *
+     * Both components listen for `keydown` on `window` in the CAPTURE phase,
+     * and `stopPropagation` does not stop a listener on the SAME target — that
+     * would need `stopImmediatePropagation`. Capture listeners on one node run
+     * in registration order, and the modal always registers first because it
+     * opened first, so the modal handled Escape before this ever ran: one press
+     * closed the calendar AND the New goal dialog behind it.
+     *
+     * The attribute is on the WRAPPER, so it covers the trigger as well as the
+     * panel, and it is absent while closed — a focused trigger on a shut
+     * popover must not swallow the key that should close the dialog.
+     */
+    <div ref={wrapRef} data-popover-open={open ? '' : undefined} className="relative inline-flex">
       <button
         ref={triggerRef}
         type="button"
