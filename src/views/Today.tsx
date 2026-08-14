@@ -13,6 +13,7 @@ import { proposalMinutes, proposeReplan, slippedWork } from '../lib/replan';
 import { ReplanPreview } from './today/ReplanPreview';
 import { clockLabel } from '../lib/clock';
 import { fmtMinutes } from '../lib/effort';
+import { loggedForItemOn } from '../lib/actuals';
 import { dateKicker, greeting } from '../lib/today';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
@@ -519,10 +520,51 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
         </section>
       )}
 
-      {doneCount > 0 && (
-        <p className="mt-[24px] text-meta text-muted">
-          {doneCount} finished today.
-        </p>
+      {/* ── Done today ──
+          Last, because work that is done cannot outrank work that is not.
+          It renders only when something was actually finished, so it is a
+          record of the day and never filler on an empty one.
+
+          No cap, unlike `Carried over`: that section's input is unbounded
+          backlog, this one's is bounded by a day of one person's work, and
+          telling someone who finished eleven things that five of them counted
+          would undercut the only section that exists to show what they did.
+
+          The order is `buildDailyWork`'s and makes NO chronological claim —
+          `doneAt` is a date with no time in it. Sorting this list by when
+          things were finished needs a completion timestamp, which the spec
+          refuses; read that refusal before reaching for one. */}
+      {sections.completedToday.length > 0 && (
+        <section aria-label="Done today" className="mt-[24px]">
+          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Done today</h2>
+          <ul>
+            {sections.completedToday.map((item) => {
+              const logged = loggedForItemOn(sessions, item, today);
+              return (
+                <li key={item.key}>
+                  <TaskRow
+                    title={item.title}
+                    subtitle={item.goalTitle}
+                    completed
+                    onOpen={() => openItem(item)}
+                    lead={
+                      <TodayCheckbox
+                        checked
+                        onToggle={() => complete(item)}
+                        ariaLabel={`Mark "${item.title}" as not done`}
+                      />
+                    }
+                    meta={
+                      logged > 0
+                        ? <span className="tabular-nums">{fmtMinutes(logged)}</span>
+                        : undefined
+                    }
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
       <ReplanPreview
