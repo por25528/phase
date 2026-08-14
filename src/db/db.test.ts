@@ -738,6 +738,7 @@ describe('active focus session', () => {
     accumulatedMs: 0,
     phase: 'active' as const,
     expected: { kind: 'starter' as const, minutes: 30 as const },
+    focusLevel: 'medium' as const,
   };
 
   it('loadActiveFocusSession returns null when absent', async () => {

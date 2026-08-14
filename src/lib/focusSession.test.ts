@@ -25,6 +25,7 @@ function start(over: Partial<Parameters<typeof startFocusSession>[0]> = {}): Act
     title: 'Problem set 4',
     goalTitle: 'Algorithms',
     expected: starter,
+    focusLevel: 'medium',
     nowMs: t0,
     ...over,
   });
@@ -130,5 +131,59 @@ describe('focusSession', () => {
     const paused = pauseFocusSession(s, t0 - 10 * MIN);
     expect(paused.accumulatedMs).toBe(0);
     expect(elapsedFocusMinutes(s, t0 - 5 * MIN)).toBe(0);
+  });
+});
+
+describe('the focus level a session ran at', () => {
+  it('is frozen at start, so moving the dial does not relabel work already done', () => {
+    const session = startFocusSession({
+      ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      expected: { kind: 'estimate', minutes: 45 },
+      focusLevel: 'low',
+      nowMs: 1_000,
+    });
+    expect(session.focusLevel).toBe('low');
+  });
+
+  it('survives a serialize/parse round trip', () => {
+    const session = startFocusSession({
+      ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      expected: { kind: 'estimate', minutes: 45 },
+      focusLevel: 'high',
+      nowMs: 1_000,
+    });
+    const parsed = parseActiveFocusSession(serializeActiveFocusSession(session));
+    expect(parsed?.focusLevel).toBe('high');
+  });
+
+  it('reads a draft written before this field existed as medium', () => {
+    const legacy = JSON.stringify({
+      id: 'f1',
+      ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      startedAtMs: 1_000,
+      activeSinceMs: 1_000,
+      accumulatedMs: 0,
+      phase: 'active',
+      expected: { kind: 'estimate', minutes: 45 },
+    });
+    expect(parseActiveFocusSession(legacy)?.focusLevel).toBe('medium');
+  });
+
+  it('reads a malformed level as medium rather than as no session', () => {
+    const odd = JSON.stringify({
+      id: 'f1',
+      ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      startedAtMs: 1_000,
+      activeSinceMs: 1_000,
+      accumulatedMs: 0,
+      phase: 'active',
+      expected: { kind: 'estimate', minutes: 45 },
+      focusLevel: 'sideways',
+    });
+    expect(parseActiveFocusSession(odd)?.focusLevel).toBe('medium');
   });
 });

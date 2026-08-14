@@ -64,6 +64,7 @@ import {
   startFocusSession, pauseFocusSession, resumeFocusSession, finishFocusSession,
   discardFocusSession, type ActiveFocusSession,
 } from '../lib/focusSession';
+import { DEFAULT_FOCUS_LEVEL } from '../lib/focusLens';
 import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
 import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
@@ -1850,7 +1851,10 @@ export const actions = {
         : undefined;
     }
     setFocusDraft(startFocusSession({
-      ref, title, ...(goalTitle === undefined ? {} : { goalTitle }), expected, nowMs,
+      ref, title, ...(goalTitle === undefined ? {} : { goalTitle }),
+      // The standing dial does not exist yet; until it does, every draft starts
+      // at the default. Replaced by `state.focusLevel` when the store grows one.
+      expected, focusLevel: DEFAULT_FOCUS_LEVEL, nowMs,
     }));
     return true;
   },

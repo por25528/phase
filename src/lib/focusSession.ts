@@ -1,4 +1,5 @@
 import type { ExpectedTime, WorkRef } from './expectedTime';
+import { DEFAULT_FOCUS_LEVEL, isFocusLevel, type FocusLevel } from './focusLens';
 import { uid } from './tree';
 
 /**
@@ -30,6 +31,12 @@ export interface ActiveFocusSession {
   accumulatedMs: number;
   phase: 'active' | 'break' | 'confirming';
   expected: ExpectedTime;
+  /**
+   * The level the dial was at when this began. Frozen, exactly as `title` and
+   * `expected` are: moving the dial mid-session must not relabel work already
+   * done. It reaches history as `Session.focus` and nowhere else.
+   */
+  focusLevel: FocusLevel;
   /** Set while confirming: the elapsed minutes the user is being asked about. */
   proposedMinutes?: number;
 }
@@ -52,6 +59,7 @@ export interface StartFocusInput {
   title: string;
   goalTitle?: string;
   expected: ExpectedTime;
+  focusLevel: FocusLevel;
   nowMs: number;
 }
 
@@ -66,6 +74,7 @@ export function startFocusSession(input: StartFocusInput): ActiveFocusSession {
     accumulatedMs: 0,
     phase: 'active',
     expected: input.expected,
+    focusLevel: input.focusLevel,
   };
 }
 
@@ -199,6 +208,10 @@ export function parseActiveFocusSession(raw: unknown): ActiveFocusSession | null
     accumulatedMs: s.accumulatedMs,
     phase: s.phase as ActiveFocusSession['phase'],
     expected: s.expected,
+    // Absent or malformed reads as the default rather than as "no session":
+    // a draft written before this field existed is still a real session, and
+    // losing it would cost the user time they actually worked.
+    focusLevel: isFocusLevel(s.focusLevel) ? s.focusLevel : DEFAULT_FOCUS_LEVEL,
     ...(s.proposedMinutes === undefined ? {} : { proposedMinutes: s.proposedMinutes }),
   };
 }
