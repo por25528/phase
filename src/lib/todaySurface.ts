@@ -66,7 +66,7 @@ export function nowFocus(items: DailyWorkItem[], nowMinute: number): NowFocus | 
 
 // ── Attention ─────────────────────────────────────────────────────────────────
 
-export type AttentionKind = 'carry-over' | 'at-risk' | 'blocked';
+export type AttentionKind = 'at-risk' | 'blocked';
 
 export interface AttentionItem {
   id: string;
@@ -98,22 +98,13 @@ export const MAX_ATTENTION = 3;
 
 export function attentionItems(
   goals: Goal[],
-  sections: DailyWorkSections,
+  _sections: DailyWorkSections,
   today: string,
   windows: AvailabilityWindow[],
   blocks: BusyBlock[],
   allDayBlocks: boolean,
 ): AttentionItem[] {
   const out: AttentionItem[] = [];
-
-  const carried = sections.carryOvers.filter((i) => !i.done).length;
-  if (carried > 0) {
-    out.push({
-      id: 'carry-over',
-      kind: 'carry-over',
-      text: `${carried} task${carried === 1 ? '' : 's'} slipped from an earlier day`,
-    });
-  }
 
   /*
    * Verdicts, in severity order, and only the two that need acting on.
