@@ -142,6 +142,21 @@ export function dayLabel(date: string, today: string): string {
 }
 
 /**
+ * The same day, as a BUTTON says it.
+ *
+ * `dayLabel` is a fragment inside a sentence — `Plan “X” today` — so it is
+ * lowercase. A button is not a sentence, and the carry-over verb one section
+ * below already reads `Today`. Deriving this from `dayLabel` rather than
+ * writing a second table is what stops the two verbs naming the same act two
+ * different ways. `fmtD` is already capitalised, so the same rule covers all
+ * three cases.
+ */
+export function dayVerb(date: string, today: string): string {
+  const label = dayLabel(date, today);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/**
  * The one sentence above the rows.
  *
  * It always names the day the click will book, because the offer's whole claim

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AvailabilityWindow, Goal, Task } from '../db/types';
-import { PLAN_DAY_HORIZON, PROPOSAL_MAX, nextFreeDay, offerHeading, proposalRows, todayPlan } from './todayPlan';
+import { PLAN_DAY_HORIZON, PROPOSAL_MAX, dayLabel, dayVerb, nextFreeDay, offerHeading, proposalRows, todayPlan } from './todayPlan';
 import { backlogGroups } from './backlog';
 import { makeBlock } from './blocks';
 
@@ -273,5 +273,21 @@ describe('offerHeading', () => {
   it('dates anything further out', () => {
     expect(offerHeading({ date: '2026-07-20', today: false, freeMin: 480 }, TODAY))
       .toBe('No time left today — Jul 20 has 8h free');
+  });
+});
+
+/**
+ * The button form of the same day. It exists so the offer verb and the
+ * carry-over verb cannot drift: both say `Today` for the same act.
+ */
+describe('dayVerb', () => {
+  it('capitalises the sentence fragment dayLabel returns', () => {
+    expect(dayLabel('2026-07-15', '2026-07-15')).toBe('today');
+    expect(dayVerb('2026-07-15', '2026-07-15')).toBe('Today');
+    expect(dayVerb('2026-07-16', '2026-07-15')).toBe('Tomorrow');
+  });
+
+  it('leaves an already-capitalised date alone', () => {
+    expect(dayVerb('2026-08-17', '2026-07-15')).toBe('Aug 17');
   });
 });
