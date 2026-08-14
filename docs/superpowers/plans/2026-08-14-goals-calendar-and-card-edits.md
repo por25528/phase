@@ -1142,6 +1142,11 @@ git commit -m "refactor(goals): the card menu is the popover primitive, not a fo
 - Modify: `src/views/Goals.tsx:519-533` (pass `onRename`)
 - Test: `src/views/goals/BoardCard.rename.test.tsx` (create)
 
+**Carried forward from Task 5 — two things that task could not leave clean:**
+
+1. **Re-add the React import.** Task 5 removed `useState` because nothing used it once the hand-rolled menu was gone, and `noUnusedLocals` fails the build on a stale import. This task is what needs it back, so add `import { useState } from 'react';` at the top of `BoardCard.tsx`.
+2. **Trim the stale comment block** above the overflow menu (~lines 296–308), the one ending *"the two things the card body cannot do: move it, and delete it."* Task 5 replaced the menu and supplied its own comment, so that block now both duplicates it and contradicts it — the card body will do four things after this task, not two. Delete the stale block; keep the one Task 5 added.
+
 **Interfaces:**
 - Consumes: `InlineEdit` from `components/InlineEdit.tsx`; `renameGoal(goalId: string, title: string)` from the store.
 - Produces:
