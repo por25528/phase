@@ -8,6 +8,7 @@ const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut, screen,
 const path = require('node:path')
 const fs = require('node:fs')
 const http = require('node:http')
+const net = require('node:net')
 const { createSecretStore } = require('./secrets.cjs')
 const { createPkce } = require('./pkce.cjs')
 const { createOAuth } = require('./oauth.cjs')
@@ -21,6 +22,8 @@ const { createAssistantWindowController } = require('./assistantWindowController
 const { createAppLifecycle, shouldShowMainAtLaunch } = require('./appLifecycle.cjs')
 const { createShellIpc } = require('./shellIpc.cjs')
 const { createMenuBar } = require('./menuBar.cjs')
+const { createAgentIpc } = require('./agentIpc.cjs')
+const { createAgentSocket } = require('./agentSocket.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
@@ -79,6 +82,10 @@ const lifecycle = createAppLifecycle({
     menuBar.dispose()
     assistantIpc.dispose(ipcMain)
     shellIpc.dispose(ipcMain)
+    // Close before the process goes: a socket node left behind would advertise
+    // a door that answers nothing. dispose() also settles anything in flight.
+    agentIpc.dispose(ipcMain)
+    agentSocket.close()
     assistantController = null
     menuBar = null
   },
@@ -168,6 +175,22 @@ const shellIpc = createShellIpc({
       return null
     }
   },
+})
+
+// The agent bridge: a Unix socket in userData is the only door into the app
+// from another process, and the renderer behind it is still the one writer.
+// The socket carries nothing but framed JSON to `agentIpc.call`, which never
+// rejects — a Hub that is gone answers "Phase is not running" rather than
+// leaving a client hanging.
+const agentIpc = createAgentIpc({ getMainWindow: () => mainWindow })
+
+// 0600, and inside userData rather than /tmp: filesystem permissions ARE the
+// boundary here, so there is no port to discover and no token to invent.
+const agentSocket = createAgentSocket({
+  socketPath: path.join(app.getPath('userData'), 'agent.sock'),
+  handle: (request) => agentIpc.call(request),
+  net,
+  fs,
 })
 
 // The encrypted store lives beside the app's other user data, NOT in the
@@ -289,6 +312,15 @@ app.whenReady().then(() => {
   } catch (err) {
     // Same rule: the app opens even if the shell bridge cannot.
     console.error('[phase-shell] IPC registration failed', err)
+  }
+  try {
+    agentIpc.register(ipcMain)
+    agentSocket.listen()
+  } catch (err) {
+    // Same rule, and it matters most here: the agent surface is a convenience
+    // reached from a terminal, and a planner that refused to open because a
+    // socket could not bind would be the tail wagging the dog.
+    console.error('[phase-agent] socket registration failed', err)
   }
 
   lifecycle.register()

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAppStore, initStore, VIEW_LABELS } from './state/store';
+import { useAppStore, initStore, getState, VIEW_LABELS } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Plan } from './views/Plan';
@@ -40,6 +40,9 @@ import {
   type TaskCaptureHostState,
 } from './lib/taskCapture';
 import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
+import { createAgentBridge } from './lib/agentBridge';
+import { validAgentRequest, errorResponse } from './lib/agentProtocol';
+import { handleAgentRead } from './lib/agentReads';
 import {
   type Theme,
   resolveTheme,
@@ -154,6 +157,32 @@ export function App() {
 
   useEffect(() => {
     initStore();
+  }, []);
+
+  /**
+   * The renderer's half of the agent bridge — the store owner answering a
+   * question that arrived over the socket.
+   *
+   * The guard is HERE and nowhere earlier: `agentSocket.cjs` and
+   * `agentIpc.cjs` import nothing from `src/` by design, so the renderer is
+   * the first side of the seam that can spend `validAgentRequest`. A request
+   * from another process is untrusted until it has.
+   *
+   * It reads `getState()` rather than this render's props: the effect
+   * subscribes ONCE, so an answer shaped from the first render's snapshot
+   * would go stale the moment anything was edited.
+   */
+  useEffect(() => {
+    const bridge = createAgentBridge();
+    if (!bridge.available) return;
+    return bridge.onRequest((id, request) => {
+      if (!validAgentRequest(request)) {
+        bridge.reply(id, errorResponse('Not a request Phase understands.'));
+        return;
+      }
+      const read = handleAgentRead(request, getState());
+      bridge.reply(id, read ?? errorResponse('Not implemented yet.'));
+    });
   }, []);
 
   // Live-follow the OS theme: keep the effective-icon in sync, and when the
