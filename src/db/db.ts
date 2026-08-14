@@ -14,6 +14,9 @@ import {
   parseActiveFocusSession, serializeActiveFocusSession, type ActiveFocusSession,
 } from '../lib/focusSession';
 import { parseStoredAccelerator } from '../lib/assistantAccelerator';
+import {
+  parseStoredFocusLevel, serializeFocusLevel, type StoredFocusLevel,
+} from '../lib/focusLens';
 
 /**
  * Single-row table. The fixed key is what makes "at most one cache" a schema
@@ -210,6 +213,25 @@ export async function loadAssistantAccelerator(): Promise<string> {
 
 export async function saveAssistantAccelerator(value: string): Promise<void> {
   await db.settings.put({ key: ASSISTANT_ACCELERATOR_KEY, value });
+}
+
+/**
+ * The standing focus level and the day it was set.
+ *
+ * A device preference like `assistantAccelerator`, and deliberately NOT part
+ * of backup export/import: the room you were in on this machine on Tuesday is
+ * not a fact about your plan. The load is total — a malformed row reads as
+ * nothing stored, which `focusLevelFor` turns into the default.
+ */
+const FOCUS_LEVEL_KEY = 'focusLevel';
+
+export async function loadStoredFocusLevel(): Promise<StoredFocusLevel | null> {
+  const row = await db.settings.get(FOCUS_LEVEL_KEY);
+  return parseStoredFocusLevel(row?.value);
+}
+
+export async function saveStoredFocusLevel(stored: StoredFocusLevel): Promise<void> {
+  await db.settings.put({ key: FOCUS_LEVEL_KEY, value: serializeFocusLevel(stored) });
 }
 
 // Defaults ON: an all-day event usually does consume the day.
