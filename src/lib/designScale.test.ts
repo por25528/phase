@@ -280,11 +280,13 @@ describe('type roles', () => {
    * A letter-spaced uppercase mono eyebrow over every group is a second
    * typeface doing a job a font weight already does. The survivors are the
    * weekday strips on the calendars, which is what a terse uppercase micro
-   * label is genuinely for.
+   * label is genuinely for — including the date picker's, which is a weekday
+   * strip by the same definition as the other three.
    */
   it('reserves uppercase for terse date labels', () => {
     const files = offenders(/uppercase/g).map((h) => h.split(':')[0]);
     expect([...new Set(files)].sort()).toEqual([
+      'components/DatePopover.tsx',
       'views/plan/MonthGrid.tsx',
       'views/plan/WeekGrid.tsx',
       'views/timeline/DaysLane.tsx',

@@ -95,17 +95,19 @@ describe('attentionItems', () => {
     expect(attention([goal('fine')])).toEqual([]);
   });
 
-  it('names work that slipped from an earlier day', () => {
+  /**
+   * Carry-overs are rows on the page now. A count in the exceptions region
+   * beside the rows themselves is the same fact stated twice, and its click
+   * had nowhere to go but Plan.
+   */
+  it('leaves slipped work to the section that lists it', () => {
     const s = sections({ carryOvers: [item({ id: 'x' }), item({ id: 'y' })] });
-    expect(attention([goal('fine')], s)[0]).toMatchObject({
-      kind: 'carry-over',
-      text: '2 tasks slipped from an earlier day',
-    });
+    expect(attention([goal('fine')], s)).toEqual([]);
   });
 
-  it('does not count a carry-over that has since been finished', () => {
-    const s = sections({ carryOvers: [item({ id: 'x', done: true })] });
-    expect(attention([goal('fine')], s)).toEqual([]);
+  it('gives every exception a goal to open', () => {
+    const doomed = goal('Physics Final', { nodes: [leaf('a', { estimateMin: 100_000 })] });
+    expect(attention([doomed]).every((a) => a.goalId !== undefined)).toBe(true);
   });
 
   it('names a goal that cannot fit before its deadline', () => {
@@ -147,11 +149,9 @@ describe('attentionItems', () => {
    */
   it('never shows more than three, however bad the week is', () => {
     const doomed = (id: string) => goal(id, { nodes: [leaf('a', { estimateMin: 100_000 })] });
-    const s = sections({ carryOvers: [item({ id: 'x' })] });
-    const out = attention([doomed('a'), doomed('b'), doomed('c'), doomed('d')], s);
+    const out = attention([doomed('a'), doomed('b'), doomed('c'), doomed('d')]);
     expect(out).toHaveLength(MAX_ATTENTION);
-    // The thing that already slipped outranks the thing that might.
-    expect(out[0].kind).toBe('carry-over');
+    expect(out[0].kind).toBe('at-risk');
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { ymOf, ymOfWeek, weekShowingMonth, shiftYm, ymLabel, monthGrid } from './calendar';
+import { ymOf, ymOfWeek, weekShowingMonth, shiftYm, ymLabel, monthGrid, paddedMonthGrid, deadlinePresets } from './calendar';
 import { weekOf } from './plan';
+import { addDays } from './dates';
 
 describe('which month a week belongs to', () => {
   it('is the month of its Thursday, not of its Monday', () => {
@@ -75,5 +76,56 @@ describe('monthGrid (Monday-first)', () => {
     for (const week of grid) expect(week).toHaveLength(7);
     expect(grid.flat()).toContain('2026-07-01');
     expect(grid.flat()).toContain('2026-07-31');
+  });
+});
+
+describe('the grid a picker needs', () => {
+  it('is always six rows of seven, whatever the month', () => {
+    for (const ym of ['2026-08', '2026-02', '2021-02', '2026-05', '2027-01']) {
+      const weeks = paddedMonthGrid(ym);
+      expect(weeks.length, ym).toBe(6);
+      weeks.forEach((w) => expect(w.length, ym).toBe(7));
+    }
+  });
+
+  // Feb 2021 started on a Monday and has 28 days — exactly four rows, the
+  // smallest a month can be. An `if` that padded once would leave it at five.
+  it('pads a four-row month all the way to six', () => {
+    expect(monthGrid('2021-02')).toHaveLength(4);
+    expect(paddedMonthGrid('2021-02')).toHaveLength(6);
+  });
+
+  it('keeps every day monthGrid produced, in order', () => {
+    const natural = monthGrid('2026-08').flat();
+    expect(paddedMonthGrid('2026-08').flat().slice(0, natural.length)).toEqual(natural);
+  });
+
+  it('runs continuously across the padding seam', () => {
+    const days = paddedMonthGrid('2021-02').flat();
+    days.slice(1).forEach((d, i) => expect(d).toBe(addDays(days[i], 1)));
+  });
+});
+
+describe('deadline presets', () => {
+  it('offers two weeks out, the month end and the year end', () => {
+    expect(deadlinePresets('2026-08-14')).toEqual([
+      { label: 'In 2 weeks', date: '2026-08-28' },
+      { label: 'End of month', date: '2026-08-31' },
+      { label: 'End of year', date: '2026-12-31' },
+    ]);
+  });
+
+  it('knows February in a leap year from February in an ordinary one', () => {
+    expect(deadlinePresets('2028-02-01')[1].date).toBe('2028-02-29');
+    expect(deadlinePresets('2026-02-01')[1].date).toBe('2026-02-28');
+  });
+
+  /**
+   * Two buttons that write the same date are one button and a lie about the
+   * choice on offer. In December the month end IS the year end.
+   */
+  it('drops a preset that duplicates one already offered', () => {
+    expect(deadlinePresets('2026-12-05').map((p) => p.label))
+      .toEqual(['In 2 weeks', 'End of month']);
   });
 });

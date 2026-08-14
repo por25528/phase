@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Goal } from '../../db/types';
 import { Modal } from '../../components/Modal';
-import { DateField } from '../../components/DateField';
+import { DatePopover } from '../../components/DatePopover';
 import { uid } from '../../lib/tree';
 import { GOAL_TYPE_WORD, inferGoalType, type GoalType } from '../../lib/goalType';
-import { projectDateError } from '../../lib/schedule';
+import { todayStr } from '../../lib/dates';
 import { SegmentedControl, type SegmentedOption } from '../../components/SegmentedControl';
 import { fieldCls, labelCls, primaryBtn, ghostBtn, dialogFooter } from '../../components/dialogStyles';
 
@@ -26,6 +26,12 @@ const TYPES: readonly SegmentedOption<GoalType>[] = (
  * title and shown as a control rather than applied silently. Enter creates the
  * goal and opens it. Everything else is a thing to do INSIDE a real workspace,
  * where the user can see what they are doing it to.
+ *
+ * The deadline is PICKED, not typed. `projectDateError` used to guard this
+ * form; a grid cannot emit a malformed date and this dialog never sets `start`,
+ * so the check and its error paragraph were unreachable and are gone.
+ * `projectDateError` itself still guards `setGoalDates`, which is where an
+ * imported or hand-edited date actually arrives.
  */
 export function NewGoalModal({
   open,
@@ -52,11 +58,10 @@ export function NewGoalModal({
   }, [open]);
 
   const type = chosenType ?? inferGoalType(title);
-  const dateError = projectDateError(undefined, deadline || undefined);
 
   function submit() {
     const t = title.trim();
-    if (!t || dateError) return;
+    if (!t) return;
     onAdd({
       id: uid(),
       title: t,
@@ -79,8 +84,9 @@ export function NewGoalModal({
         A real <form>, so Enter commits from anywhere in it. It used to be wired
         by hand to the title input alone, which meant the key that creates a goal
         worked in one of the three places a person could be standing.
-        `DateField` still swallows its own Enter to commit a draft date — that is
-        the correct precedence, not a gap.
+        `DatePopover`'s trigger and its day cells are `type="button"`, so Enter
+        inside the picker opens it or takes the day under the cursor rather than
+        creating the goal — that is the correct precedence, not a gap.
       */}
       <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div className="flex flex-col gap-[14px]">
@@ -101,11 +107,12 @@ export function NewGoalModal({
               full-width title ended in a ragged 200px of nothing. */}
           <div className="grid grid-cols-2 gap-[14px]">
             <div className="flex flex-col gap-[5px]">
-              {/* A <span>: `DateField` names itself with `ariaLabel`, and a
+              {/* A <span>: `DatePopover` names itself with `ariaLabel`, and a
                   <label> pointing at no control is a label in markup only. */}
               <span className={labelCls}>Deadline <span className="text-faint font-normal">(optional)</span></span>
-              <DateField
+              <DatePopover
                 value={deadline}
+                today={todayStr()}
                 onCommit={setDeadline}
                 ariaLabel="Deadline"
                 placeholder="No deadline"
@@ -127,13 +134,12 @@ export function NewGoalModal({
               />
             </div>
           </div>
-          {dateError && <p role="alert" className="text-ui text-warn">{dateError}</p>}
         </div>
 
         <div className={dialogFooter}>
           <button type="button" className={ghostBtn} onClick={onClose}>Cancel</button>
           {/* The verb the dialog's own title promised. */}
-          <button type="submit" className={primaryBtn} disabled={!title.trim() || !!dateError}>
+          <button type="submit" className={primaryBtn} disabled={!title.trim()}>
             Create goal
           </button>
         </div>

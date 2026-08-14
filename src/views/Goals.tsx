@@ -18,7 +18,7 @@ import { Popover, PopoverItem } from '../components/Popover';
 import { groupByColumn } from '../lib/board';
 import { columnTracks } from '../lib/boardTracks';
 import { focusSummary } from '../lib/plan';
-import { fmtD } from '../lib/dates';
+import { fmtDY } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { Timeline } from './Timeline';
@@ -524,6 +524,14 @@ export function Goals() {
                       onMove={moveToHorizon}
                       onRank={moveRank}
                       onDelete={actions.removeGoal}
+                      onRename={actions.renameGoal}
+                      onSetDeadline={(id, deadline) => {
+                        const g = goalById.get(id);
+                        // `start` passed through: `setGoalDates` deletes any
+                        // field it is not given, so omitting it would silently
+                        // drop a start date the user never touched.
+                        if (g) actions.setGoalDates(id, g.start, deadline);
+                      }}
                       reducedMotion={reducedMotion}
                       dimmed={filtering && !matchIds!.has(id) && id !== highlightId}
                       matched={filtering && matchIds!.has(id)}
@@ -549,7 +557,7 @@ export function Goals() {
       )}
 
       {/* Completed projects */}
-      {completed.length > 0 && <CompletedSection goals={completed} onReopen={actions.reopenGoal} />}
+      {completed.length > 0 && <CompletedSection goals={completed} today={currentDate} onReopen={actions.reopenGoal} />}
 
        </>
       )}
@@ -626,7 +634,7 @@ function ViewModeSwitch({ mode, onChange }: { mode: GoalsMode; onChange: (mode: 
 // ── Completed section ─────────────────────────────────────────────────────────
 // Collapsed by default, newest-completed first; each project offers Reopen. Now
 // capacity already excludes these (they carry `completedAt`), spec §2.5.
-function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: string) => void }) {
+function CompletedSection({ goals, today, onReopen }: { goals: Goal[]; today: string; onReopen: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-[22px] border-t border-line pt-[16px]">
@@ -655,7 +663,7 @@ function CompletedSection({ goals, onReopen }: { goals: Goal[]; onReopen: (id: s
             >
               <span className="text-accent inline-flex" aria-hidden="true"><IconCheck /></span>
               <span className="text-lead font-semibold flex-1 min-w-0 truncate">{g.title}</span>
-              {g.completedAt && <span className="font-mono text-tiny text-muted whitespace-nowrap">{fmtD(g.completedAt)}</span>}
+              {g.completedAt && <span className="font-mono text-tiny text-muted whitespace-nowrap">{fmtDY(g.completedAt, today)}</span>}
               <button
                 type="button"
                 onClick={() => onReopen(g.id)}

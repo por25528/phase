@@ -459,7 +459,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
               <li key={a.id}>
                 <button
                   type="button"
-                  onClick={() => (a.goalId ? actions.openProject(a.goalId, a.nodeId) : actions.setView('plan'))}
+                  onClick={() => a.goalId && actions.openProject(a.goalId, a.nodeId)}
                   className="w-full text-left flex items-center gap-[8px] px-[8px] py-[6px] rounded-[6px] transition-colors duration-150 hover:bg-hover"
                 >
                   <span className="text-warn flex-none inline-flex" aria-hidden="true">

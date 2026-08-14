@@ -83,3 +83,59 @@ export function monthGrid(ym: string): string[][] {
   }
   return weeks;
 }
+
+/**
+ * The month grid a PICKER needs: always six rows.
+ *
+ * `monthGrid` returns the weeks a month actually touches — four for a February
+ * that starts on a Monday, six for a long month starting late — and the Plan
+ * view sizes its rows `minmax(0, 1fr)` inside a fixed viewport, so a varying
+ * count costs it nothing.
+ *
+ * A popover has no such viewport: it is sized by its content. Paging `›` from a
+ * five-row month into a six-row one would grow the panel under the cursor and
+ * slide the day being aimed at out from under it. Six is the most rows any
+ * month can touch, so this is a ceiling rather than a guess.
+ */
+export function paddedMonthGrid(ym: string): string[][] {
+  const weeks = monthGrid(ym).map((week) => [...week]);
+  while (weeks.length < 6) {
+    const tail = weeks[weeks.length - 1][6];
+    weeks.push(Array.from({ length: 7 }, (_, i) => addDays(tail, i + 1)));
+  }
+  return weeks;
+}
+
+export interface DatePreset {
+  label: string;
+  date: string;
+}
+
+/**
+ * The shortcuts under the grid, for a GOAL deadline.
+ *
+ * A preset earns its place by covering what the grid is SLOW at. Any day in the
+ * visible month is already one click, so `End of year` — five presses of `›`
+ * from August — is the clearest case. `End of month` is the exception that
+ * proves the rule: it is one click away, but it asks you to know which day the
+ * month ends on, and February is why that is not free.
+ *
+ * `Today` and `Tomorrow`, which `ScheduleMenu` offers a task, are deliberately
+ * absent. They are task-shaped. A goal deadline is a semester-scale fact.
+ */
+export function deadlinePresets(today: string): DatePreset[] {
+  const [y, m] = today.split('-').map(Number);
+  const candidates: DatePreset[] = [
+    { label: 'In 2 weeks', date: addDays(today, 14) },
+    { label: 'End of month', date: `${y}-${pad(m)}-${pad(new Date(y, m, 0).getDate())}` },
+    { label: 'End of year', date: `${y}-12-31` },
+  ];
+  const seen = new Set<string>();
+  const out: DatePreset[] = [];
+  for (const preset of candidates) {
+    if (seen.has(preset.date)) continue;
+    seen.add(preset.date);
+    out.push(preset);
+  }
+  return out;
+}

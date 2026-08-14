@@ -206,4 +206,18 @@ describe('carried over', () => {
     await mountToday({ goals: [], tasks: [] });
     expect(screen.queryByLabelText('Carried over')).toBeNull();
   });
+
+  /**
+   * The whole complaint about the Attention row was that it named work and
+   * then sent you somewhere else to find it. Both must not be true at once.
+   */
+  it('states the count once, as rows, never also as an exception', async () => {
+    await mountToday({
+      goals: [],
+      tasks: [slippedTask('Renew T pass', '2026-07-13')],
+    });
+
+    expect(screen.getByText('Renew T pass')).toBeTruthy();
+    expect(screen.queryByText(/slipped from an earlier day/)).toBeNull();
+  });
 });

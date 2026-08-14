@@ -241,3 +241,75 @@ describe('PopoverSeparator', () => {
     expect(screen.getByRole('separator')).toBeTruthy();
   });
 });
+
+/**
+ * A panel that opens downward off the bottom of the window is unreachable, and
+ * `BoardCard` worked around it with `MENU_HEIGHT_PX = 210` — a hardcoded guess
+ * at its own height, in the one file whose menu was about to grow. Measuring is
+ * what lets the guess be deleted.
+ */
+describe('flip', () => {
+  function stubLayout({ triggerTop, panelHeight, viewport }: {
+    triggerTop: number; panelHeight: number; viewport: number;
+  }) {
+    const rect = Object.defineProperty(Element.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ top: triggerTop, bottom: triggerTop + 24, left: 0, right: 0, width: 0, height: 24 }),
+    });
+    const height = Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get: () => panelHeight,
+    });
+    const prev = window.innerHeight;
+    // `innerHeight` is `readonly` in lib.dom, so it is redefined rather than
+    // assigned — the same route the two prototype stubs above already take.
+    const setViewport = (px: number) =>
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: px });
+    setViewport(viewport);
+    return () => {
+      delete (Element.prototype as { getBoundingClientRect?: unknown }).getBoundingClientRect;
+      delete (HTMLElement.prototype as { offsetHeight?: unknown }).offsetHeight;
+      setViewport(prev);
+      void rect; void height;
+    };
+  }
+
+  const panelClasses = () =>
+    (screen.getByRole('dialog').getAttribute('class') ?? '');
+
+  it('opens above when there is no room below and room above', async () => {
+    const restore = stubLayout({ triggerTop: 700, panelHeight: 210, viewport: 768 });
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Estimate' }));
+
+    expect(panelClasses()).toContain('bottom-[calc(100%+4px)]');
+    expect(panelClasses()).not.toContain('top-[calc(100%+4px)]');
+    restore();
+  });
+
+  it('stays below when the panel fits there', async () => {
+    const restore = stubLayout({ triggerTop: 40, panelHeight: 210, viewport: 768 });
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Estimate' }));
+
+    expect(panelClasses()).toContain('top-[calc(100%+4px)]');
+    restore();
+  });
+
+  /**
+   * Flipping a panel taller than the space above it trades one clipped edge for
+   * another. When neither side fits, below is still the right answer — it is
+   * where the reading eye already is.
+   */
+  it('stays below when neither side has room', async () => {
+    const restore = stubLayout({ triggerTop: 120, panelHeight: 400, viewport: 300 });
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole('button', { name: 'Estimate' }));
+
+    expect(panelClasses()).toContain('top-[calc(100%+4px)]');
+    restore();
+  });
+});
