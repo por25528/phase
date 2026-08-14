@@ -1467,7 +1467,7 @@ server.tool(
 );
 ```
 
-Add `create_project`, `add_task`, `rename`, `estimate`, `schedule` and `delete` in the same shape. `create_project`'s description must point at the schema: *"Create a project from a JSON tree. See docs/import-schema.md for the format."*
+Add `create_project`, `add_task`, `rename`, `estimate`, `schedule` and `delete` in the same shape. **`schedule`'s zod schema must omit `minutes`** — Task 7 established it has no home (`scheduleNode`/`scheduleTask` size a fresh sitting from the estimate; only `resize*` changes a block's length, and that needs an existing `blockId`), so the handler refuses it and points at the `estimate` verb. A tool schema that advertised it would invite a call that always fails. `create_project`'s description must point at the schema: *"Create a project from a JSON tree. See docs/import-schema.md for the format."*
 
 **Also add `get_project` here.** Task 6 exposed only the four no-argument reads, because it had no zod dependency to express an argument. It is a read, but it lands in this task:
 
