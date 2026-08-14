@@ -110,10 +110,11 @@ An unrecognised verb, or a well-named one with the wrong fields, never reaches
 
 ## Limits
 
-### `undo_last` is narrow, and deliberately so
+### What bounds `undo_last`
 
-It reverses the last change by popping the same stack in-app `⌘Z` pops. Three
-things bound it:
+It reverses the last change by popping the same stack in-app `⌘Z` pops, and
+answers with the label of what it restored. Two things bound it — and, notably,
+a clock is not one of them:
 
 1. **An edit inside Phase clears it.** An undo entry is a snapshot of a whole
    slice, so replaying it would also revert anything written after it. When an
@@ -128,12 +129,13 @@ things bound it:
    message above. This is not a bug, and a test expecting `Added "X"` would be
    asserting one.
 
-3. **It expires with the toast.** The tool gates on `pendingUndo`, the same
-   signal the in-app Undo button is drawn from: **15 seconds** after a `delete`,
-   **5 seconds** after any other undoable write. In-app `⌘Z` pops the stack
-   blind and can still reach an entry after its toast has gone; from a terminal
-   that would silently reverse something you cannot see, so this surface does
-   not do it.
+**It does not expire with the toast.** An earlier version gated on
+`pendingUndo`, which the toast timer nulls after 5 seconds (15 for a
+destructive edit) — giving the agent a *narrower* window than the `⌘Z` sitting
+in the same app, which inverts the reason the verb exists. A terminal is the
+one caller that never saw the toast; a faded toast must not mean a refused
+undo. `undoLastDelete` returns the label it restored, so the tool reads the
+stack directly and still names what it reversed.
 
 Which writes arm an undo entry at all:
 
@@ -158,26 +160,38 @@ So the order is `estimate`, then `schedule`. The tool schema does not advertise
 `minutes` at all, because a schema offering a field that always fails is an
 invitation to a failed call.
 
-### The socket path is macOS-only, and hardcoded
-
-`mcp/server.js` looks for the socket at:
-
-```
-~/Library/Application Support/Phase/agent.sock
-```
+### How the socket is found
 
 Electron main creates it at `path.join(app.getPath('userData'), 'agent.sock')`
-with mode `0600`. There is no port and no token: the socket is inside `userData`
-and filesystem permissions **are** the boundary.
+with mode `0600`. There is no port and no token: the socket sits inside
+`userData`, which is itself `drwx------`, and filesystem permissions **are** the
+boundary.
 
-Two caveats follow from the path being a literal:
+`mcp/server.js` resolves the path per call, in this order:
 
-- **It is the macOS location.** Running the app elsewhere puts `userData`
-  somewhere else and the server will not find it.
-- **`npm run app:dev` uses `…/Application Support/phase`** (lower case — the dev
-  build has no `productName`, so Electron falls back to the package name). On a
-  default, case-insensitive macOS volume that is the same directory and the
-  server works against either build. On a case-sensitive volume it would not.
+1. **`PHASE_SOCKET`**, if set — an absolute override. This is also how an
+   end-to-end check points at a throwaway `--user-data-dir` rather than your
+   real database.
+2. The first of these that exists, for the current platform:
+
+   | Platform | Directory |
+   |---|---|
+   | macOS | `~/Library/Application Support/{Phase,phase}` |
+   | Linux | `$XDG_CONFIG_HOME` or `~/.config`, then `{Phase,phase}` |
+   | Windows | `%APPDATA%\{Phase,phase}` |
+
+3. Failing that, the first candidate — a missing socket and a wrong guess give
+   the identical "Phase is not running" answer, so the fallback loses nothing.
+
+**Both casings are probed because the app has two names.** A packaged build uses
+electron-builder's `productName` (`Phase`); `npm run app:dev` has no
+`productName` and falls back to package.json's `name` (`phase`). On a default
+case-insensitive macOS volume those are one directory, which is why a single
+hardcoded casing appeared to work; on a case-sensitive volume, or on Linux, they
+are two.
+
+Resolution happens on every call rather than at startup, so a server spawned
+while Phase was closed connects as soon as you launch it — no restart needed.
 
 A stale socket file left by a killed process is removed before binding, so a
 crash does not need cleaning up by hand.

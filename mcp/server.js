@@ -4,19 +4,49 @@
 
 import net from 'node:net';
 import os from 'node:os';
+import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-const SOCKET = path.join(
-  os.homedir(),
-  'Library/Application Support/Phase/agent.sock',
-);
+/**
+ * Where Electron's `app.getPath('userData')` puts the socket.
+ *
+ * The directory is named for the app, and that name is NOT one string: a
+ * packaged build uses electron-builder's `productName` ("Phase"), while
+ * `npm run app:dev` falls back to package.json's `name` ("phase"). A single
+ * hardcoded casing appears to work on macOS only because APFS is
+ * case-insensitive by default — it breaks on a case-sensitive volume, and on
+ * Linux, where those are simply two different directories.
+ *
+ * So probe the real candidates and take the one that exists. `PHASE_SOCKET`
+ * overrides everything, which is also how an end-to-end check points at a
+ * throwaway `--user-data-dir` instead of the real database.
+ */
+function socketCandidates() {
+  const home = os.homedir();
+  const base = process.platform === 'darwin'
+    ? path.join(home, 'Library', 'Application Support')
+    : process.platform === 'win32'
+      ? (process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming'))
+      : (process.env.XDG_CONFIG_HOME ?? path.join(home, '.config'));
+  return ['Phase', 'phase'].map((name) => path.join(base, name, 'agent.sock'));
+}
+
+function socketPath() {
+  if (process.env.PHASE_SOCKET) return process.env.PHASE_SOCKET;
+  const candidates = socketCandidates();
+  // A missing socket and a wrong guess produce the identical "not running"
+  // answer, so falling back to the first candidate loses nothing.
+  return candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
+}
 
 function ask(request) {
   return new Promise((resolve) => {
-    const conn = net.connect(SOCKET);
+    // Resolved per call, never cached: Phase may have been closed when this
+    // process started, and the socket appears the moment it launches.
+    const conn = net.connect(socketPath());
     let buffer = '';
     conn.setEncoding('utf8');
     conn.on('connect', () => conn.write(`${JSON.stringify(request)}\n`));

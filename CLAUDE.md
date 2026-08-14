@@ -175,12 +175,16 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   frozen project, an already-ticked task and a full day are all errors, and
   `persistFailed` is re-read after every mutation because in-memory state
   advances even when nothing landed. `undo_last` exists because a write from a
-  terminal is the ultimate distance write — it spends `undoLastDelete`, but
-  gates on `pendingUndo` rather than popping the stack blind the way in-app `⌘Z`
-  does, so it reports the label of what it reversed or admits the sweep already
-  cleared it. That gate is also why its window is the TOAST's, narrower than
-  `⌘Z`'s: reversing something you are not looking at needs the offer to still be
-  standing. `docs/mcp-server.md` is the setup and the limits.
+  terminal is the ultimate distance write, and it reaches the STACK, never
+  `pendingUndo` — the toast timer nulls that in 5s (15s destructive), which
+  would hand the agent a narrower window than the `⌘Z` in the same app and
+  invert the whole reason the verb exists. **`undoLastDelete` returns the label
+  it restored** (`null` when the stack was empty), so one call is both the
+  action and the honest report, and the choice between "name what you undid"
+  and "reach as far as `⌘Z` does" was never a real trade: the label was already
+  sitting on `UndoEntry`, unreturned. `⌘Z` and the toast button ignore that
+  return because the user watched it happen. `docs/mcp-server.md` is the setup
+  and the limits.
 
 ## Conventions
 

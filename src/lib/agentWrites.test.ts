@@ -471,20 +471,37 @@ describe('delete', () => {
 
 describe('undo_last', () => {
   it('names what it reversed', () => {
-    const h = harness({ state: { pendingUndo: { label: 'Deleted "Draft outline"' } } });
+    const h = harness({
+      actions: { undoLastDelete: vi.fn(() => 'Deleted "Draft outline"') },
+    });
     const res = handleAgentWrite({ tool: 'undo_last' }, h.deps);
     expect(h.spies.undoLastDelete).toHaveBeenCalled();
     expect(res).toEqual({ ok: true, data: { undone: 'Deleted "Draft outline"' } });
   });
 
   it('admits when the sweep already dropped the entry', () => {
-    const h = harness({ state: { pendingUndo: null } });
+    const h = harness({ actions: { undoLastDelete: vi.fn(() => null) } });
     const res = handleAgentWrite({ tool: 'undo_last' }, h.deps);
-    expect(h.spies.undoLastDelete).not.toHaveBeenCalled();
     expect(res).toEqual({
       ok: false,
       error: 'Nothing to undo — an edit in Phase since then cleared it.',
     });
+  });
+
+  /**
+   * The regression this verb was rewritten for. Gating on `pendingUndo` gave
+   * the agent a NARROWER window than the ⌘Z in the same app: the toast timer
+   * nulls it after 5s (15s destructive), while the stack entry lives on. A
+   * terminal is the one caller that never saw the toast, so a faded toast
+   * must not mean a refused undo.
+   */
+  it('reverses an entry whose toast has already faded', () => {
+    const h = harness({
+      state: { pendingUndo: null },
+      actions: { undoLastDelete: vi.fn(() => 'Deleted "Draft outline"') },
+    });
+    const res = handleAgentWrite({ tool: 'undo_last' }, h.deps);
+    expect(res).toEqual({ ok: true, data: { undone: 'Deleted "Draft outline"' } });
   });
 });
 

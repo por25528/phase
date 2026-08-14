@@ -2700,7 +2700,19 @@ export const actions = {
     ensureWeekRollover();
   },
 
-  undoLastDelete(): void {
+  /**
+   * Pop one entry and restore it, answering WHICH one — the label the toast
+   * would have shown, or null when the stack was empty.
+   *
+   * The return value exists for callers that cannot see the toast. `⌘Z` and
+   * the toast button both ignore it, because the user watched the thing
+   * happen; the agent surface spends it, because a terminal never saw the
+   * toast and an "undone" with no name is not an answer. Reading
+   * `pendingUndo` instead would couple those callers to the toast TIMER,
+   * which is exactly what `scheduleUndo` refuses to do — the entry outlives
+   * its toast on purpose.
+   */
+  undoLastDelete(): string | null {
     const entry = undoStack.pop();
     if (entry) entry.restore();
     if (undoTimer) {
@@ -2708,6 +2720,7 @@ export const actions = {
       undoTimer = null;
     }
     set({ pendingUndo: null });
+    return entry?.label ?? null;
   },
 
   // UI

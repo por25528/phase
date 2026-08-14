@@ -316,17 +316,21 @@ export function handleAgentWrite(
     }
 
     case 'undo_last': {
-      // `scheduleUndo`'s timer only hides the toast, but `setAndPersist`'s
-      // sweep DROPS every non-surgical entry when an ordinary in-app edit
-      // lands. `pendingUndo` is the honest signal for "is there still
-      // something to reverse" — popping blind would silently undo an older,
-      // unrelated edit.
-      const pending = state.pendingUndo;
-      if (!pending) {
+      // Gated on the STACK, not `pendingUndo` — the toast timer nulls that
+      // after 5s (15s for a destructive edit), and a write made from a
+      // terminal is the one case where nobody was watching the toast. Reading
+      // it here gave the agent a NARROWER window than the ⌘Z sitting in the
+      // same app, which inverts the reason this verb exists.
+      //
+      // `undoLastDelete` answers with the label it restored, so one call is
+      // both the action and the honest report. Null means the stack was
+      // empty, which after an ordinary in-app edit is `setAndPersist`'s sweep
+      // having dropped every non-surgical entry.
+      const undone = actions.undoLastDelete();
+      if (undone === null) {
         return errorResponse('Nothing to undo — an edit in Phase since then cleared it.');
       }
-      actions.undoLastDelete();
-      return okResponse({ undone: pending.label });
+      return okResponse({ undone });
     }
 
     default:
