@@ -93,7 +93,48 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   moves ids live, so widths that tracked card count would reflow under the
   cursor and an empty Now would be narrowest exactly when you need to hit it.
 - **The assistant shelf speaks `dialogStyles`, and its primary is whatever moves the session forward.** `AssistantSurface` renders in two places — the in-app panel and the Electron overlay — and it used to hand-roll a `quietButton` whose "primary" was a one-shade border difference, which is how two equal-weight buttons came to offer "end this session" and "resume it" with no hierarchy between them. It now spends `primaryBtn`/`secondaryBtn`/`ghostBtn`, one filled button per state, placed LAST per `dialogFooter`'s reading-edge rule. Which button is filled depends on the phase — `break` fills Continue, `active` fills Complete session — so "Complete session" changes side between the two. That is deliberate: the states are mutually exclusive and the filled button is always the reason you summoned the shelf. The dismissive answers ("Didn't happen", "Cancel") are `ghostBtn`, never outlined, so they cannot be mistaken for a secondary action. `optionRow` is NOT a fourth variant — it is a row in a list of choices, and a list is not a commit. Copy splits the same way: `expectedTimeLabel` is the INVITATION and belongs to work that has not started, `elapsedAgainstExpected` is the progress readout and belongs to a session under way. Using the first on a running session is what made a paused shelf read `0m worked · on a break · Start with 30m`.
-- **The shelf's `HEIGHT` is a measurement, and the zero state is why.** The window is unresizable, so that one constant in `electron/assistantWindow.cjs` is the only thing between a state and a scrollbar. 192 is the tallest WORKING state — a running session with its goal title and an "Other options" row, at 191px — and every other state clears it: the empty-plate zero state 136, a capture proposal 157, `needs-hours` 90. The `choose-subject` list is the one deliberate exception at 233px, because a long list of candidates scrolling inside the pane is the alternative to a tower under the shortcut. These are MEASURED at 620px wide, not derived: arithmetic against the type scale put the tallest state 20px low and would have shipped a shelf that scrolled in the state you are in most. If a state grows, measure it again rather than letting the pane scroll. The zero state's examples are one `Try: a · b · c` line and not a `<ul>` for the same reason — as a list it needed 212px, and `AssistantHost` already spelled the identical examples as one joined line, so the shelf was saying the same thing two ways depending on how you reached it.
+- **The shelf's `HEIGHT` is a measurement, and the zero state is why.** The window is unresizable, so that one constant in `electron/assistantWindow.cjs` is the only thing between a state and its own bottom edge. The number itself, and the state it is measured against, live beside it in that file and in the card-hugging rule below — the states this bullet used to enumerate (a capture proposal, a `choose-subject` list) no longer exist, and a stale height here is worse than a pointer. What stays is the discipline: it is MEASURED at 620px wide, never derived, because arithmetic against the type scale put the tallest state 20px low once already and would have shipped a shelf that came up short in the state you are in most. If a state grows, measure it again.
+- **The shelf starts work; it does not parse sentences.** The typed vocabulary
+  (`assistantCommands.ts`, the input, the proposal panels, `rankedWork` and
+  `workThatFits`) is RETIRED — `⌘K` is the one place a sentence becomes a task,
+  and a second parser is a second opinion about what a sentence means. What
+  survives of `workThatFits` is its discipline, carried into `fitsFocus`: a
+  history range is judged on its HIGH end, and a `starter` is never evidence
+  about length. A notice is a LINE ABOVE the body and never a replacement for
+  it — there is no state of the shelf with nothing to press.
+- **`focusLens.ts` is the one vocabulary for how much focus the room supports**,
+  and it is a LENS, never a ranking: order never changes, membership does, the
+  same move `lifeScope` makes on the board. The caps (`low` 25, `medium` 60,
+  `high` ∞) are monotone. A FACT about today — `scheduled-now`,
+  `scheduled-next`, `due`, `committed-today` — is never filtered, because a
+  shelf that hid your 2pm block because you said you were tired would be lying
+  about your day; only the discretionary tail is. Unknown length is not short,
+  so Low refuses a `starter` as a RULE and not as arithmetic. An emptied lens
+  answers `beyondFocus` — "Nothing light left" is a different sentence from
+  "nothing needs you", exactly as `no-hours` is not a zero — and offers the
+  unfiltered head rather than re-sorting to find something lighter.
+  `ExecutionAdviceInput.focusLevel` is OPTIONAL and absent everywhere but the
+  shelf: `Today.tsx` calls the same function, and a mood set in a café must not
+  rewrite the plan you check on the train home.
+- **The level a session ran at is stored and never shown.** `Session.focus` is
+  only ever `'low'`, is frozen onto the draft at start beside `title` and
+  `expected`, and is read by exactly one thing: `expectedTime`'s evidence
+  gatherer, which skips it. A 90-minute slog in a loud room is not evidence
+  that the work takes 90 minutes. ACTUALS are untouched — `loggedForNode` and
+  every capacity figure count those minutes in full. The daily reset to
+  `medium` is arithmetic over the stored date at hydrate (`focusLevelFor`), so
+  nothing runs at midnight; a window left open across it keeps the level until
+  it reloads, which is the deliberate cost of having no timer.
+- **The shelf's card ends where its content does.** `shelfSizing` hugs on
+  macOS, where the window behind it is transparent, and fills elsewhere, where
+  it would leave a painted notch. `HEIGHT` in `electron/assistantWindow.cjs` is
+  therefore a BUDGET — the guarantee that the tallest state fits — and not the
+  size of the pane: a hugging card is CLIPPED by the window edge rather than
+  scrolled, so anything past that line is invisible and not merely awkward.
+  Still MEASURED at 620px wide, never derived. A click on the transparent
+  remainder closes the shelf. The one thing that does NOT hug is the send-off,
+  which pins the card's own measured height while it plays — a farewell that
+  collapsed to its two words would read as the window closing twice.
 
 ## Conventions
 

@@ -36,6 +36,8 @@ const dbMocks = vi.hoisted(() => ({
   saveActiveFocusSession: vi.fn(async () => {}),
   loadAssistantAccelerator: vi.fn(async () => 'Command+Space'),
   saveAssistantAccelerator: vi.fn(async () => {}),
+  loadStoredFocusLevel: vi.fn(async () => null),
+  saveStoredFocusLevel: vi.fn(async () => {}),
 }));
 vi.mock('../../db/db', () => dbMocks);
 vi.mock('../../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));
@@ -67,14 +69,6 @@ async function mountHost(over: {
   return store;
 }
 
-async function submit(text: string) {
-  const input = screen.getByRole('textbox', { name: 'Ask Phase' });
-  await act(async () => {
-    fireEvent.change(input, { target: { value: text } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-  });
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   // The embedded surface reads Reduce Motion, so a stable matchMedia is required.
@@ -97,40 +91,13 @@ afterEach(() => {
 describe('AssistantHost', () => {
   it('opens in the browser even when no Electron bridge exists', async () => {
     expect('phaseAssistant' in window).toBe(false);
-    await mountHost();
-    expect(screen.getByRole('textbox', { name: 'Ask Phase' })).toBeTruthy();
-  });
-
-  it('a confirmed capture calls exactly one approved store action', async () => {
-    const store = await mountHost();
-    await submit('Add lab report Friday');
-
-    // Preview first — nothing has been written yet.
-    expect(store.getState().tasks).toHaveLength(0);
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await mountHost({
+      tasks: [{ id: 't1', title: 'Draft essay', done: false, goalId: null, date: TODAY }],
     });
-
-    expect(store.getState().tasks).toHaveLength(1);
-    expect(store.getState().tasks[0]).toMatchObject({ title: 'lab report', date: '2026-07-17' });
-    // The proposal is spent: no second Confirm to double-write with.
-    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
-  });
-
-  it('a schedule failure stays a failure notice, never optimistic success', async () => {
-    const store = await mountHost({
-      tasks: [{ id: 't1', title: 'Buy milk', done: false, goalId: null }],
-      availability: [], // no working hours: no slot can resolve
-    });
-    await submit('Move buy milk to Friday');
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    });
-
-    expect(screen.getByText(/No room for "Buy milk"/)).toBeTruthy();
-    expect(store.getState().tasks[0].blocks).toBeUndefined();
-    expect(screen.queryByText(/Scheduled "Buy milk"/)).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Assistant' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start session' })).toBeTruthy();
+    // The shelf starts work; it does not parse sentences.
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 
   it('switching tasks logs the current non-stale session before starting the alternative', async () => {

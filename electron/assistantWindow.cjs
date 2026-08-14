@@ -3,18 +3,26 @@
 
 const path = require('node:path')
 
-// Compact and fixed: the shelf is 620 × 192 and never grows, so a long
-// proposal list scrolls inside the pane instead of forming a tower under the
-// shortcut.
+// Compact and fixed: the shelf is 620 wide and never grows, so a long list
+// stays inside the pane instead of forming a tower under the shortcut.
 //
-// 192 clears the tallest WORKING state — a running session with its goal title
-// and an "Other options" row, which measures 191px — plus nothing. The window
-// is unresizable, so this constant is the only thing standing between a state
-// and a scrollbar; the choose-subject list is deliberately allowed to scroll
-// past it. If a state grows, measure it and move the number rather than
-// letting the pane scroll.
+// HEIGHT is a BUDGET, not the size of the pane. The card sizes to its own
+// content (see `shelfSizing`), so a short state no longer paints the leftover
+// space — on macOS the window behind it is transparent and a click there
+// closes the shelf. What this number still has to guarantee is that the
+// TALLEST state fits: a hugging card is clipped by the window edge rather than
+// scrolled, so anything past this line is not merely awkward, it is invisible.
+//
+// The tallest state is a running session parked in `confirming`, with its goal
+// title, an "Other options" row AND a notice above it — 218.8px at 620 wide.
+// The notice is what moved this number: it used to REPLACE the body and now
+// sits above it, so it adds a line to whatever is already there. The same
+// session without the notice is 190.6px, which is why 192 held until now.
+//
+// MEASURED, never derived. Arithmetic against the type scale put this number
+// 20px low once already. If a state grows, measure it again.
 const WIDTH = 620
-const HEIGHT = 192
+const HEIGHT = 219
 const TOP_GAP = 18
 
 /**

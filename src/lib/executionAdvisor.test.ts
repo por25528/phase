@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { executionAdvice, workThatFits, type ExecutionAdviceInput, type RecommendedWork } from './executionAdvisor';
+import { executionAdvice, type ExecutionAdviceInput } from './executionAdvisor';
 import { buildDailyWork } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { proposalRows } from './todayPlan';
@@ -204,25 +204,82 @@ describe('executionAdvice', () => {
   });
 });
 
-describe('workThatFits', () => {
-  const work = (key: string, expected: RecommendedWork['expected']): RecommendedWork => ({
-    key, ref: { kind: 'task', id: key, goalId: null }, title: key, reason: 'free-time', expected,
+describe('the focus lens', () => {
+  /**
+   * Two free-time candidates: one long, one short, in that canonical order.
+   *
+   * They are two GOALS and not two leaves of one, because `todayPlan` offers
+   * the first item of each group and never a project's queue — one goal here
+   * would contribute one candidate and the lens would have nothing to choose
+   * between.
+   */
+  function twoSizes(): Goal[] {
+    return [
+      goal({
+        id: 'g1', title: 'Physics 201',
+        nodes: [{ id: 'n1', title: 'Lab report', estimateMin: 45 }],
+      }),
+      goal({
+        id: 'g2', title: 'Advising',
+        nodes: [{ id: 'n2', title: 'Reply to Dr. Chen', estimateMin: 10 }],
+      }),
+    ];
+  }
+
+  it('changes nothing when no level is given, so Today is untouched', () => {
+    const withoutLens = executionAdvice(input({ goals: twoSizes() }));
+    const withHigh = executionAdvice(input({ goals: twoSizes(), focusLevel: 'high' }));
+    expect(withoutLens).toEqual(withHigh);
   });
 
-  it('includes history ranges whose high end fits', () => {
-    const fits = work('h1', { kind: 'history', lowMin: 20, highMin: 25, confidence: 'medium', sampleCount: 2 });
-    const tooBig = work('h2', { kind: 'history', lowMin: 20, highMin: 45, confidence: 'high', sampleCount: 5 });
-    expect(workThatFits(30, [fits, tooBig])).toEqual([fits]);
+  it('offers the first SHORT candidate at low, without re-ordering the queue', () => {
+    const advice = executionAdvice(input({ goals: twoSizes(), focusLevel: 'low' }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Reply to Dr. Chen');
+    expect(advice.beyondFocus).toBeUndefined();
   });
 
-  it('includes planned estimates that fit', () => {
-    const fits = work('e1', { kind: 'estimate', minutes: 30 });
-    const tooBig = work('e2', { kind: 'estimate', minutes: 40 });
-    expect(workThatFits(30, [fits, tooBig])).toEqual([fits]);
+  it('offers the queue head at medium, where the long one clears the cap', () => {
+    const advice = executionAdvice(input({ goals: twoSizes(), focusLevel: 'medium' }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Lab report');
   });
 
-  it('does not claim a starter-only item fits', () => {
-    const starter = work('s1', { kind: 'starter', minutes: 30 });
-    expect(workThatFits(30, [starter])).toEqual([]);
+  it('never hides a commitment, however long it is', () => {
+    const g = goal({
+      id: 'g1', title: 'History 340',
+      nodes: [{
+        id: 'n1', title: 'Seminar prep', plannedWeek: week, estimateMin: 90,
+        blocks: [{ id: 'b1', date: today, startMin: 540, minutes: 90 }],
+      }],
+    });
+    const advice = executionAdvice(input({
+      goals: [g], focusLevel: 'low', now: { date: today, minute: 570 },
+    }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Seminar prep');
+    expect(advice.primary.reason).toBe('scheduled-now');
+  });
+
+  it('flags beyondFocus and still offers the real head when the lens empties', () => {
+    const g = goal({
+      id: 'g1', title: 'Dissertation',
+      nodes: [{ id: 'n1', title: 'Thesis chapter 2', estimateMin: 120 }],
+    });
+    const advice = executionAdvice(input({ goals: [g], focusLevel: 'low' }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.title).toBe('Thesis chapter 2');
+    expect(advice.beyondFocus).toBe(true);
+    // It offers the head, not a consolation list.
+    expect(advice.alternatives).toEqual([]);
+  });
+
+  it('says clear rather than beyondFocus when there was nothing to begin with', () => {
+    const advice = executionAdvice(input({ focusLevel: 'low' }));
+    expect(advice.kind).toBe('clear');
   });
 });

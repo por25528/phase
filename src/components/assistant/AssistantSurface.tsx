@@ -4,13 +4,12 @@ import type {
   AssistantAction, AssistantFocusView, AssistantSnapshot,
 } from '../../lib/assistantProtocol';
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
-import type { AssistantProposal } from '../../lib/assistantCommands';
-import { ASSISTANT_EXAMPLES } from '../../lib/assistantCommands';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
+import { FOCUS_LEVELS, FOCUS_WORD, type FocusLevel } from '../../lib/focusLens';
 import { fmtMinutes } from '../../lib/effort';
-import { fmtD } from '../../lib/dates';
 import { useReducedMotion } from '../useReducedMotion';
-import { useAssistantSendoff } from './useAssistantSendoff';
+import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
+import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 
 /**
@@ -22,8 +21,9 @@ import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
  *
  * The layout is one column with one focal point: the running session if there
  * is one, otherwise the single primary recommendation. Everything else — the
- * alternatives behind Other options, the preview awaiting confirmation, the
- * notice — is deliberately smaller and greyer than that one thing.
+ * alternatives behind Other options, the notice — is deliberately smaller and
+ * greyer than that one thing. A notice is a LINE ABOVE the body and never a
+ * replacement for it: there is no state of the shelf with nothing to press.
  */
 
 interface Props {
@@ -33,6 +33,13 @@ interface Props {
   presentation?: 'embedded' | 'shelf';
   /** Increment to reset the send-off state machine (the overlay replays on every focus). */
   resetKey?: number;
+  /**
+   * The farewell has taken over the surface, or has given it back. Fired at the
+   * transition, while the shelf's own body is still on screen — the floating
+   * window measures its card here so the send-off can keep that footprint.
+   * Embedded callers pass nothing and behave exactly as they did.
+   */
+  onSendoffChange?: (leaving: boolean) => void;
 }
 
 const REASON_WORD: Record<AdviceReason, string> = {
@@ -45,13 +52,43 @@ const REASON_WORD: Record<AdviceReason, string> = {
   'free-time': 'Fits your free time',
 };
 
+/** The dial on the home row of the number keys. There is no text field to steal them. */
+const KEY_TO_LEVEL: Record<string, FocusLevel | undefined> = {
+  '1': 'low', '2': 'medium', '3': 'high',
+};
+
 function SectionLabel({ children }: { children: string }) {
   return <p className="text-meta font-semibold text-muted">{children}</p>;
 }
 
 /**
- * A row in a list of choices — a subject to disambiguate, an alternative to
- * switch to. Deliberately NOT one of the three dialog variants: those three
+ * The dial, and the only always-present control on the shelf.
+ *
+ * `SegmentedSwitch` rather than `SegmentedControl`: this is view state and not
+ * form data, the same distinction Board/Timeline already makes. `sm` because
+ * the shelf is a dense toolbar, and because 26px clears the 24px target floor.
+ */
+function FocusStrip({ level, onAction }: {
+  level: FocusLevel;
+  onAction: Props['onAction'];
+}) {
+  return (
+    <div className="flex items-center gap-2.5 border-b border-line pb-2">
+      <span className="text-meta font-semibold text-muted">Focus</span>
+      <SegmentedSwitch
+        label="Focus level"
+        size="sm"
+        value={level}
+        options={FOCUS_LEVELS.map((value) => ({ value, label: FOCUS_WORD[value] }))}
+        onChange={(next) => onAction({ type: 'set-focus-level', level: next })}
+      />
+    </div>
+  );
+}
+
+/**
+ * A row in a list of choices — an alternative to start, or to switch to.
+ * Deliberately NOT one of the three dialog variants: those three
  * answer "which of these commits", and a list of things to pick from is not a
  * commit at all. Left-aligned and full-width, because it is read as a row.
  */
@@ -98,81 +135,12 @@ function Skeleton() {
   );
 }
 
-function ProposalPanel({ proposal, onAction }: {
-  proposal: AssistantProposal;
-  onAction: Props['onAction'];
-}) {
-  if (proposal.kind === 'choose-subject') {
-    if (proposal.choices.length === 0) {
-      return (
-        <div className="rounded-card border border-line p-3">
-          <p className="text-body text-ink">Nothing open matches that.</p>
-        </div>
-      );
-    }
-    return (
-      <div className="rounded-card border border-line p-3">
-        <SectionLabel>Which one?</SectionLabel>
-        <div className="mt-2 flex flex-col gap-1.5">
-          {proposal.choices.map((choice) => (
-            <button
-              key={choice.ref.id}
-              type="button"
-              className={optionRow}
-              onClick={() => onAction({
-                type: 'choose-subject', proposalId: proposal.id, subjectId: choice.ref.id,
-              })}
-            >
-              <span className="text-ink">{choice.title}</span>
-              {choice.goalTitle && <span className="ml-2 text-meta text-muted">{choice.goalTitle}</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const line = proposal.kind === 'capture'
-    ? [
-        `Add "${proposal.title}"`,
-        proposal.date ? `on ${fmtD(proposal.date)}` : null,
-        proposal.estimateMin !== undefined ? `~${proposal.estimateMin}m` : null,
-      ].filter(Boolean).join(' ')
-    : proposal.kind === 'complete'
-      ? `Mark "${proposal.subject.title}" done`
-      : `Schedule "${proposal.subject.title}" on ${fmtD(proposal.date)}`;
-
-  return (
-    <div className="rounded-card border border-line p-3">
-      <p className="text-body text-ink">{line}</p>
-      {proposal.kind !== 'capture' && proposal.subject.goalTitle && (
-        <p className="mt-0.5 truncate text-meta text-muted">{proposal.subject.goalTitle}</p>
-      )}
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          className={ghostBtn}
-          onClick={() => onAction({ type: 'cancel-proposal' })}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={primaryBtn}
-          onClick={() => onAction({ type: 'confirm-proposal', id: proposal.id })}
-        >
-          Confirm
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function FocusPanel({ focus, alternatives, onAction, shelf }: {
+function FocusPanel({ focus, alternatives, onAction, shelf, level }: {
   focus: AssistantFocusView;
   alternatives: RecommendedWork[];
   onAction: Props['onAction'];
   shelf: boolean;
+  level: FocusLevel;
 }) {
   const info = (
     <div className="flex min-w-0 flex-col gap-1">
@@ -185,7 +153,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
         </p>
       ) : (
         <p className="text-meta text-muted">
-          {elapsedAgainstExpected(focus.elapsedMin, focus.expected)}
+          {elapsedAgainstExpected(focus.elapsedMin, focus.expected, level)}
           {focus.phase === 'break' ? ' · On a break' : ''}
         </p>
       )}
@@ -206,6 +174,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
       </button>
       <button
         type="button"
+        autoFocus
         className={primaryBtn}
         onClick={() => onAction({ type: 'confirm-focus', minutes: focus.proposedMinutes ?? focus.elapsedMin })}
       >
@@ -219,6 +188,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
       </button>
       <button
         type="button"
+        autoFocus
         className={primaryBtn}
         onClick={() => onAction({ type: 'complete-focus' })}
       >
@@ -234,7 +204,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
       >
         Complete session
       </button>
-      <button type="button" className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
+      <button type="button" autoFocus className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
         Continue
       </button>
     </div>
@@ -280,12 +250,7 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
     );
   }
   if (advice.kind === 'clear') {
-    return (
-      <div className="flex flex-col gap-2">
-        <p className="text-body text-ink">Nothing needs you right now.</p>
-        <p className="text-ui text-muted">Try: {ASSISTANT_EXAMPLES.join(' · ')}</p>
-      </div>
-    );
+    return <p className="text-body text-ink">Nothing needs you right now.</p>;
   }
 
   const { primary } = advice;
@@ -304,10 +269,14 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
 
   return (
     <div className="flex flex-col gap-2">
+      {advice.beyondFocus && (
+        <p className="text-meta text-muted">Nothing light left — this is next when you&apos;re ready.</p>
+      )}
       <div className={bodyClass(shelf)}>
         {primaryColumn}
         <button
           type="button"
+          autoFocus
           disabled={pending}
           className={primaryBtn}
           onClick={() => onStart(primary.ref)}
@@ -341,8 +310,8 @@ export function AssistantSurface({
   onAction,
   presentation = 'embedded',
   resetKey = 0,
+  onSendoffChange,
 }: Props) {
-  const [text, setText] = useState('');
   const reducedMotion = useReducedMotion();
   const sendoff = useAssistantSendoff({
     snapshot,
@@ -350,13 +319,18 @@ export function AssistantSurface({
     resetKey,
     onStart: (ref) => onAction({ type: 'start-focus', ref }),
     onClose: () => onAction({ type: 'close' }),
+    onSendoffChange,
   });
   const shelf = presentation === 'shelf';
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      onAction({ type: 'close' });
+      if (event.key === 'Escape') {
+        onAction({ type: 'close' });
+        return;
+      }
+      const level = KEY_TO_LEVEL[event.key];
+      if (level) onAction({ type: 'set-focus-level', level });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -364,7 +338,7 @@ export function AssistantSurface({
 
   if (snapshot.status === 'loading') return <Skeleton />;
 
-  if (sendoff.stage === 'message' || sendoff.stage === 'leaving' || sendoff.stage === 'hidden') {
+  if (isLeavingStage(sendoff.stage)) {
     return (
       <div
         role="status"
@@ -390,36 +364,21 @@ export function AssistantSurface({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
-      <input
-        autoFocus
-        aria-label="Ask Phase"
-        className="w-full rounded-field border border-line bg-field px-3 py-2 text-ui text-ink placeholder:text-faint focus:border-line-2 focus:outline-none"
-        placeholder="Ask Phase or add something…"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter') return;
-          const line = text.trim();
-          if (!line) return;
-          onAction({ type: 'submit-input', text: line });
-          setText('');
-        }}
-      />
+      <FocusStrip level={snapshot.focusLevel} onAction={onAction} />
+      {snapshot.notice && (
+        <p className={`text-meta ${snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted'}`}>
+          {snapshot.notice.text}
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {snapshot.notice?.tone === 'warning' && (
-          <p className="mb-2 text-meta text-warn">{snapshot.notice.text}</p>
-        )}
-        {snapshot.proposal ? (
-          <ProposalPanel proposal={snapshot.proposal} onAction={onAction} />
-        ) : snapshot.activeFocus ? (
+        {snapshot.activeFocus ? (
           <FocusPanel
             focus={snapshot.activeFocus}
             alternatives={snapshot.advice.kind === 'work' ? snapshot.advice.alternatives : []}
             onAction={onAction}
             shelf={shelf}
+            level={snapshot.focusLevel}
           />
-        ) : snapshot.notice?.tone === 'neutral' ? (
-          <p className="text-body text-ink">{snapshot.notice.text}</p>
         ) : (
           <AdvicePanel
             snapshot={snapshot}

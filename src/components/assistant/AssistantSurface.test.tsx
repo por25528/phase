@@ -37,7 +37,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     status: 'ready',
     advice: { kind: 'work', primary: work(), alternatives: [] },
     activeFocus: null,
-    proposal: null,
+    focusLevel: 'medium',
     ...over,
   };
 }
@@ -196,7 +196,7 @@ describe('AssistantSurface', () => {
     vi.useRealTimers();
   });
 
-  it('keeps the running session controls above a neutral notice', () => {
+  it('keeps the running session controls under a neutral notice', () => {
     render(
       <AssistantSurface
         snapshot={ready({
@@ -213,7 +213,8 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Complete session' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Take break' })).toBeTruthy();
-    expect(screen.queryByText('Nothing needs you right now.')).toBeNull();
+    // A notice is a LINE ABOVE the body, never a replacement for it.
+    expect(screen.getByText('Nothing needs you right now.')).toBeTruthy();
   });
 
   it('exposes the approved verbs for an active session', () => {
@@ -312,64 +313,18 @@ describe('AssistantSurface', () => {
     expect(line.textContent).toBe('12m of 45–60m');
   });
 
-  it('requires an explicit Confirm on a proposal', () => {
-    const onAction = vi.fn();
-    render(
-      <AssistantSurface
-        snapshot={ready({
-          proposal: { kind: 'capture', id: 'p1', title: 'Lab report', goalId: null, date: '2026-08-14' },
-        })}
-        onAction={onAction}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    expect(onAction).toHaveBeenCalledWith({ type: 'confirm-proposal', id: 'p1' });
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(onAction).toHaveBeenCalledWith({ type: 'cancel-proposal' });
-  });
-
-  it('offers subject choices without guessing', () => {
-    const onAction = vi.fn();
-    render(
-      <AssistantSurface
-        snapshot={ready({
-          proposal: {
-            kind: 'choose-subject', id: 'p2', verb: 'complete',
-            choices: [
-              { ref: { kind: 'step', id: 'n1', goalId: 'g1' }, title: 'Lab report', goalTitle: 'Algorithms' },
-              { ref: { kind: 'step', id: 'n2', goalId: 'g2' }, title: 'Lab report', goalTitle: 'Biology' },
-            ],
-          },
-        })}
-        onAction={onAction}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Biology/ }));
-    expect(onAction).toHaveBeenCalledWith({ type: 'choose-subject', proposalId: 'p2', subjectId: 'n2' });
-  });
-
-  it('focuses the Phase command field with the approved prompt', () => {
+  it('has no textbox at all — the shelf starts work, it does not parse sentences', () => {
     render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
-    const input = screen.getByRole('textbox', { name: 'Ask Phase' });
-    expect(input.getAttribute('placeholder')).toBe('Ask Phase or add something…');
-    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('submits typed input as one action', () => {
-    const onAction = vi.fn();
-    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
-    const input = screen.getByRole('textbox', { name: 'Ask Phase' });
-    fireEvent.change(input, { target: { value: 'Add lab report Friday' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(onAction).toHaveBeenCalledWith({ type: 'submit-input', text: 'Add lab report Friday' });
-  });
-
-  it('gives examples in the zero state without pretending to be a chat transcript', () => {
-    render(
-      <AssistantSurface snapshot={ready({ advice: { kind: 'clear' } })} onAction={() => {}} />,
-    );
-    expect(screen.getByText(/^Try: What fits in 30m\?/)).toBeTruthy();
-    expect(screen.queryByRole('log')).toBeNull();
+  it('keeps the primary action reachable when a notice is showing', () => {
+    const snapshot = ready({ notice: { tone: 'warning', text: 'A session is already running.' } });
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
+    expect(screen.getByText('A session is already running.')).toBeTruthy();
+    // The fault this replaces: the notice took the whole surface with it.
+    expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Start session' })).toBeTruthy();
   });
 
   it('says working hours are missing instead of inventing a zero-minute plan', () => {
@@ -412,7 +367,6 @@ describe('AssistantSurface', () => {
             title: 'Problem set 4', phase: 'active',
             elapsedMin: 5, expected: { kind: 'starter', minutes: 30 },
           },
-          proposal: { kind: 'capture', id: 'p1', title: 'X', goalId: null, date: null },
           notice: { tone: 'warning', text: 'No room that day' },
         })}
         onAction={() => {}}
@@ -467,7 +421,7 @@ describe('AssistantSurface', () => {
   });
 
   it('leaves the dismissive answer borderless', () => {
-    const { rerender } = render(
+    render(
       <AssistantSurface
         snapshot={ready({
           activeFocus: {
@@ -482,20 +436,9 @@ describe('AssistantSurface', () => {
     );
     expect(screen.getByRole('button', { name: 'Log 3h 20m' }).className).toBe(primaryBtn);
     expect(screen.getByRole('button', { name: "Didn't happen" }).className).toBe(ghostBtn);
-
-    rerender(
-      <AssistantSurface
-        snapshot={ready({
-          proposal: { kind: 'capture', id: 'p1', title: 'Lab report', goalId: null, date: null },
-        })}
-        onAction={() => {}}
-      />,
-    );
-    const confirm = screen.getByRole('button', { name: 'Confirm' });
-    expect(confirm.className).toBe(primaryBtn);
-    expect(screen.getByRole('button', { name: 'Cancel' }).className).toBe(ghostBtn);
-    expect([...confirm.parentElement!.children].map((b) => b.textContent))
-      .toEqual(['Cancel', 'Confirm']);
+    // The commit button lands under the reading edge, per dialogFooter.
+    expect([...screen.getByRole('button', { name: 'Log 3h 20m' }).parentElement!.children]
+      .map((b) => b.textContent)).toEqual(["Didn't happen", 'Log 3h 20m']);
   });
 
   it('starts a session on a filled primary', () => {
@@ -504,25 +447,75 @@ describe('AssistantSurface', () => {
   });
 
   it('keeps a list of choices as rows rather than a fourth button variant', () => {
+    const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
     render(
       <AssistantSurface
-        snapshot={ready({
-          proposal: {
-            kind: 'choose-subject', id: 'p2', verb: 'complete',
-            choices: [
-              { ref: { kind: 'step', id: 'n1', goalId: 'g1' }, title: 'Lab report', goalTitle: 'Algorithms' },
-              { ref: { kind: 'step', id: 'n2', goalId: 'g2' }, title: 'Lab report', goalTitle: 'Biology' },
-            ],
-          },
-        })}
+        snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives } })}
         onAction={() => {}}
       />,
     );
-    for (const name of [/Algorithms/, /Biology/]) {
-      const row = screen.getByRole('button', { name });
-      expect(row.className).toContain('text-left');
-      expect(row.className).not.toBe(primaryBtn);
-      expect(row.className).not.toBe(secondaryBtn);
-    }
+    fireEvent.click(screen.getByRole('button', { name: 'Other options' }));
+    const row = screen.getByRole('button', { name: /Read chapter 5/ });
+    expect(row.className).toContain('text-left');
+    expect(row.className).not.toBe(primaryBtn);
+    expect(row.className).not.toBe(secondaryBtn);
+  });
+
+  it('offers the three levels and reports which is on', () => {
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'low' })} onAction={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Low' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Medium' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'High' })).toBeTruthy();
+  });
+
+  it('sends the level the user picked', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Low' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+  });
+
+  it('sets the level from the number keys', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.keyDown(window, { key: '1' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+    fireEvent.keyDown(window, { key: '3' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'high' });
+  });
+
+  it('says nothing light is left rather than nothing needs you', () => {
+    const snapshot = ready({
+      focusLevel: 'low',
+      advice: { kind: 'work', primary: work({ title: 'Thesis chapter 2' }), alternatives: [], beyondFocus: true },
+    });
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
+    expect(screen.getByText("Nothing light left — this is next when you're ready.")).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Thesis chapter 2' })).toBeTruthy();
+  });
+
+  it('drops the comparison from a running session at low focus', () => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      phase: 'active' as const,
+      elapsedMin: 18,
+      expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
+    expect(screen.getByText('18m so far')).toBeTruthy();
+    expect(screen.queryByText(/of 45m/)).toBeNull();
+  });
+
+  it('keeps the comparison at medium, where it is not pressure but information', () => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      phase: 'active' as const,
+      elapsedMin: 18,
+      expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
+    expect(screen.getByText('18m of 45m')).toBeTruthy();
   });
 });

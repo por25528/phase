@@ -12,6 +12,7 @@ import {
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
   loadActiveFocusSession, saveActiveFocusSession,
   loadAssistantAccelerator, saveAssistantAccelerator,
+  loadStoredFocusLevel, saveStoredFocusLevel,
 } from '../db/db';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
@@ -64,6 +65,9 @@ import {
   startFocusSession, pauseFocusSession, resumeFocusSession, finishFocusSession,
   discardFocusSession, type ActiveFocusSession,
 } from '../lib/focusSession';
+import {
+  DEFAULT_FOCUS_LEVEL, focusLevelFor, isFocusLevel, type FocusLevel,
+} from '../lib/focusLens';
 import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
 import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
@@ -201,6 +205,17 @@ interface UIState {
   /** The assistant's global shortcut — a device preference, like `planMode`. */
   assistantAccelerator: string;
   /**
+   * How much focus the room supports. A standing mode, set from the shelf and
+   * held until it is changed — a fact about where you are, not about one task,
+   * which is why it does not live on the session.
+   *
+   * Reset to `medium` when the stored date is not today, evaluated on hydrate.
+   * A window left open across midnight keeps the level until it reloads: that
+   * is the deliberate cost of having no timer, and the same trade `focusSession`
+   * makes by banking timestamps instead of ticking.
+   */
+  focusLevel: FocusLevel;
+  /**
    * What the OS said when the chord was registered. Ephemeral and
    * Electron-only: null in the browser, where there is no global shortcut to
    * register and so nothing honest to report.
@@ -248,6 +263,7 @@ let state: FullState = {
   activeLifeId: 'all',
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
+  focusLevel: DEFAULT_FOCUS_LEVEL,
   assistantShortcut: null,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
@@ -578,8 +594,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedFocusLevel] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredFocusLevel(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -650,6 +666,7 @@ export async function initStore(): Promise<void> {
       goalsMode,
       activeFocusSession,
       assistantAccelerator,
+      focusLevel: focusLevelFor(storedFocusLevel, todayStr()),
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -1754,6 +1771,7 @@ export const actions = {
     id: string,
     minutes: number,
     date = todayStr(),
+    focus?: 'low',
   ): boolean {
     const normalized = normalizeEstimate(minutes);
     if (normalized === undefined || !isValidLocalDate(date)) return false;
@@ -1788,6 +1806,7 @@ export const actions = {
       minutes: normalized,
       note: '',
       ...(kind === 'step' ? { nodeId: id } : { taskId: id }),
+      ...(focus === undefined ? {} : { focus }),
     };
     withUndo(
       `Logged ${formatEstimateValue(normalized)} on "${title}"`,
@@ -1850,7 +1869,8 @@ export const actions = {
         : undefined;
     }
     setFocusDraft(startFocusSession({
-      ref, title, ...(goalTitle === undefined ? {} : { goalTitle }), expected, nowMs,
+      ref, title, ...(goalTitle === undefined ? {} : { goalTitle }),
+      expected, focusLevel: state.focusLevel, nowMs,
     }));
     return true;
   },
@@ -1886,7 +1906,10 @@ export const actions = {
       setFocusDraft(finish.session);
       return 'needs-confirmation';
     }
-    if (!actions.logSession(draft.ref.kind, draft.ref.id, finish.minutes)) return 'refused';
+    if (!actions.logSession(
+      draft.ref.kind, draft.ref.id, finish.minutes, todayStr(),
+      draft.focusLevel === 'low' ? 'low' : undefined,
+    )) return 'refused';
     setFocusDraft(null);
     return 'logged';
   },
@@ -1904,7 +1927,10 @@ export const actions = {
       return true;
     }
     if (!Number.isFinite(minutes) || minutes <= 0) return false;
-    if (!actions.logSession(draft.ref.kind, draft.ref.id, minutes)) return false;
+    if (!actions.logSession(
+      draft.ref.kind, draft.ref.id, minutes, todayStr(),
+      draft.focusLevel === 'low' ? 'low' : undefined,
+    )) return false;
     setFocusDraft(null);
     return true;
   },
@@ -1933,6 +1959,19 @@ export const actions = {
   /** Ephemeral registration status from the desktop shell. Never persisted. */
   setAssistantShortcutStatus(status: ShortcutStatus | null): void {
     set({ assistantShortcut: status });
+  },
+
+  /**
+   * Move the dial. Validation is at the boundary and the write goes through
+   * the owner gate, exactly like `setAssistantAccelerator`. The date is
+   * stamped with the value so `focusLevelFor` can retire it tomorrow without
+   * anything having to run at midnight.
+   */
+  setFocusLevel(next: FocusLevel): boolean {
+    if (!isFocusLevel(next)) return false;
+    set({ focusLevel: next });
+    ifOwner(() => saveStoredFocusLevel({ level: next, date: todayStr() }));
+    return true;
   },
 
   /**

@@ -45,6 +45,8 @@ const dbMocks = vi.hoisted(() => ({
   saveActiveFocusSession: vi.fn(async () => {}),
   loadAssistantAccelerator: vi.fn(async () => 'Command+Space'),
   saveAssistantAccelerator: vi.fn(async () => {}),
+  loadStoredFocusLevel: vi.fn(async () => null),
+  saveStoredFocusLevel: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -4673,7 +4675,7 @@ describe('focus sessions', () => {
     const draft: ActiveFocusSession = {
       id: 'f1', ref, title: 'Problem set 4', goalTitle: 'Algorithms',
       startedAtMs: t0, activeSinceMs: null, accumulatedMs: 5 * MIN,
-      phase: 'break', expected: starter,
+      phase: 'break', expected: starter, focusLevel: 'medium',
     };
     dbMocks.loadActiveFocusSession.mockResolvedValueOnce(draft);
     const store = await freshStore();
