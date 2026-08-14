@@ -283,12 +283,7 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
     return (
       <div className="flex flex-col gap-2">
         <p className="text-body text-ink">Nothing needs you right now.</p>
-        <SectionLabel>Try</SectionLabel>
-        <ul className="flex flex-col gap-1">
-          {ASSISTANT_EXAMPLES.map((example) => (
-            <li key={example} className="text-ui text-muted">{example}</li>
-          ))}
-        </ul>
+        <p className="text-ui text-muted">Try: {ASSISTANT_EXAMPLES.join(' · ')}</p>
       </div>
     );
   }
