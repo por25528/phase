@@ -104,6 +104,7 @@ function validSnapshot(snapshot) {
   if (snapshot.status !== 'ready') return false;
   return validAdvice(snapshot.advice)
     && validFocus(snapshot.activeFocus)
+    && (snapshot.focusLevel === 'low' || snapshot.focusLevel === 'medium' || snapshot.focusLevel === 'high')
     && validNotice(snapshot.notice);
 }
 
@@ -120,6 +121,8 @@ function validAction(action) {
       return true;
     case 'confirm-focus':
       return action.minutes === null || (boundedMinutes(action.minutes) && action.minutes > 0);
+    case 'set-focus-level':
+      return action.level === 'low' || action.level === 'medium' || action.level === 'high';
     default:
       return false;
   }

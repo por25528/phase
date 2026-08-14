@@ -37,6 +37,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     status: 'ready',
     advice: { kind: 'work', primary: work(), alternatives: [] },
     activeFocus: null,
+    focusLevel: 'medium',
     ...over,
   };
 }
@@ -458,5 +459,63 @@ describe('AssistantSurface', () => {
     expect(row.className).toContain('text-left');
     expect(row.className).not.toBe(primaryBtn);
     expect(row.className).not.toBe(secondaryBtn);
+  });
+
+  it('offers the three levels and reports which is on', () => {
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'low' })} onAction={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Low' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Medium' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'High' })).toBeTruthy();
+  });
+
+  it('sends the level the user picked', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Low' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+  });
+
+  it('sets the level from the number keys', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.keyDown(window, { key: '1' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+    fireEvent.keyDown(window, { key: '3' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'high' });
+  });
+
+  it('says nothing light is left rather than nothing needs you', () => {
+    const snapshot = ready({
+      focusLevel: 'low',
+      advice: { kind: 'work', primary: work({ title: 'Thesis chapter 2' }), alternatives: [], beyondFocus: true },
+    });
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
+    expect(screen.getByText("Nothing light left — this is next when you're ready.")).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Thesis chapter 2' })).toBeTruthy();
+  });
+
+  it('drops the comparison from a running session at low focus', () => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      phase: 'active' as const,
+      elapsedMin: 18,
+      expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
+    expect(screen.getByText('18m so far')).toBeTruthy();
+    expect(screen.queryByText(/of 45m/)).toBeNull();
+  });
+
+  it('keeps the comparison at medium, where it is not pressure but information', () => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      phase: 'active' as const,
+      elapsedMin: 18,
+      expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
+    expect(screen.getByText('18m of 45m')).toBeTruthy();
   });
 });

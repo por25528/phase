@@ -5,9 +5,11 @@ import type {
 } from '../../lib/assistantProtocol';
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
+import { FOCUS_LEVELS, FOCUS_WORD, type FocusLevel } from '../../lib/focusLens';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { useAssistantSendoff } from './useAssistantSendoff';
+import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 
 /**
@@ -43,8 +45,38 @@ const REASON_WORD: Record<AdviceReason, string> = {
   'free-time': 'Fits your free time',
 };
 
+/** The dial on the home row of the number keys. There is no text field to steal them. */
+const KEY_TO_LEVEL: Record<string, FocusLevel | undefined> = {
+  '1': 'low', '2': 'medium', '3': 'high',
+};
+
 function SectionLabel({ children }: { children: string }) {
   return <p className="text-meta font-semibold text-muted">{children}</p>;
+}
+
+/**
+ * The dial, and the only always-present control on the shelf.
+ *
+ * `SegmentedSwitch` rather than `SegmentedControl`: this is view state and not
+ * form data, the same distinction Board/Timeline already makes. `sm` because
+ * the shelf is a dense toolbar, and because 26px clears the 24px target floor.
+ */
+function FocusStrip({ level, onAction }: {
+  level: FocusLevel;
+  onAction: Props['onAction'];
+}) {
+  return (
+    <div className="flex items-center gap-2.5 border-b border-line pb-2">
+      <span className="text-meta font-semibold text-muted">Focus</span>
+      <SegmentedSwitch
+        label="Focus level"
+        size="sm"
+        value={level}
+        options={FOCUS_LEVELS.map((value) => ({ value, label: FOCUS_WORD[value] }))}
+        onChange={(next) => onAction({ type: 'set-focus-level', level: next })}
+      />
+    </div>
+  );
 }
 
 /**
@@ -96,11 +128,12 @@ function Skeleton() {
   );
 }
 
-function FocusPanel({ focus, alternatives, onAction, shelf }: {
+function FocusPanel({ focus, alternatives, onAction, shelf, level }: {
   focus: AssistantFocusView;
   alternatives: RecommendedWork[];
   onAction: Props['onAction'];
   shelf: boolean;
+  level: FocusLevel;
 }) {
   const info = (
     <div className="flex min-w-0 flex-col gap-1">
@@ -113,7 +146,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
         </p>
       ) : (
         <p className="text-meta text-muted">
-          {elapsedAgainstExpected(focus.elapsedMin, focus.expected)}
+          {elapsedAgainstExpected(focus.elapsedMin, focus.expected, level)}
           {focus.phase === 'break' ? ' · On a break' : ''}
         </p>
       )}
@@ -134,6 +167,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
       </button>
       <button
         type="button"
+        autoFocus
         className={primaryBtn}
         onClick={() => onAction({ type: 'confirm-focus', minutes: focus.proposedMinutes ?? focus.elapsedMin })}
       >
@@ -147,6 +181,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
       </button>
       <button
         type="button"
+        autoFocus
         className={primaryBtn}
         onClick={() => onAction({ type: 'complete-focus' })}
       >
@@ -162,7 +197,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf }: {
       >
         Complete session
       </button>
-      <button type="button" className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
+      <button type="button" autoFocus className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
         Continue
       </button>
     </div>
@@ -227,10 +262,14 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
 
   return (
     <div className="flex flex-col gap-2">
+      {advice.beyondFocus && (
+        <p className="text-meta text-muted">Nothing light left — this is next when you&apos;re ready.</p>
+      )}
       <div className={bodyClass(shelf)}>
         {primaryColumn}
         <button
           type="button"
+          autoFocus
           disabled={pending}
           className={primaryBtn}
           onClick={() => onStart(primary.ref)}
@@ -277,8 +316,12 @@ export function AssistantSurface({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      onAction({ type: 'close' });
+      if (event.key === 'Escape') {
+        onAction({ type: 'close' });
+        return;
+      }
+      const level = KEY_TO_LEVEL[event.key];
+      if (level) onAction({ type: 'set-focus-level', level });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -312,6 +355,7 @@ export function AssistantSurface({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
+      <FocusStrip level={snapshot.focusLevel} onAction={onAction} />
       {snapshot.notice && (
         <p className={`text-meta ${snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted'}`}>
           {snapshot.notice.text}
@@ -324,6 +368,7 @@ export function AssistantSurface({
             alternatives={snapshot.advice.kind === 'work' ? snapshot.advice.alternatives : []}
             onAction={onAction}
             shelf={shelf}
+            level={snapshot.focusLevel}
           />
         ) : (
           <AdvicePanel

@@ -1,5 +1,6 @@
 import type { ExecutionAdvice } from './executionAdvisor';
 import type { ExpectedTime, WorkRef } from './expectedTime';
+import type { FocusLevel } from './focusLens';
 import { fmtMinutes } from './effort';
 
 /**
@@ -35,11 +36,13 @@ export type AssistantSnapshot =
       status: 'ready';
       advice: ExecutionAdvice;
       activeFocus: AssistantFocusView | null;
+      focusLevel: FocusLevel;
       notice?: { tone: 'neutral' | 'warning'; text: string };
     };
 
 export type AssistantAction =
   | { type: 'start-focus'; ref: WorkRef }
+  | { type: 'set-focus-level'; level: FocusLevel }
   | { type: 'pause-focus' }
   | { type: 'resume-focus' }
   | { type: 'complete-focus' }
@@ -76,8 +79,16 @@ export function expectedTimeLabel(expected: ExpectedTime): string {
  * neither this function nor `expectedTimeLabel` can drift from the button
  * beside it.
  */
-export function elapsedAgainstExpected(elapsedMin: number, expected: ExpectedTime): string {
+export function elapsedAgainstExpected(
+  elapsedMin: number,
+  expected: ExpectedTime,
+  level: FocusLevel = 'medium',
+): string {
   const done = fmtMinutes(elapsedMin);
+  // At low focus the number survives and the verdict does not. The pressure in
+  // a running session was never the elapsed figure — it is the figure it is
+  // being measured against.
+  if (level === 'low') return `${done} so far`;
   return expected.kind === 'history'
     ? `${done} of ${expected.lowMin}–${expected.highMin}m`
     : `${done} of ${expected.minutes}m`;

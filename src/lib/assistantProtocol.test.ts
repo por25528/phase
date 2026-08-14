@@ -42,3 +42,16 @@ describe('elapsedAgainstExpected', () => {
     }
   });
 });
+
+describe('elapsedAgainstExpected at low focus', () => {
+  it('states the number and withholds the verdict', () => {
+    expect(elapsedAgainstExpected(18, { kind: 'estimate', minutes: 45 }, 'low')).toBe('18m so far');
+    expect(elapsedAgainstExpected(18, {
+      kind: 'history', lowMin: 40, highMin: 50, confidence: 'medium', sampleCount: 2,
+    }, 'low')).toBe('18m so far');
+  });
+
+  it('defaults to stating the comparison, so existing callers are unchanged', () => {
+    expect(elapsedAgainstExpected(18, { kind: 'estimate', minutes: 45 })).toBe('18m of 45m');
+  });
+});
