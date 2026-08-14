@@ -52,24 +52,38 @@ export type AssistantAction =
 
 /**
  * Honest words for each evidence level. History speaks as a range, a plain
- * estimate stays labelled as the plan it is, and the starter is an invitation
- * — none of the three ever claims to be a prediction it cannot back.
+ * estimate stays labelled as the plan it is, and the starter says out loud that
+ * it is a suggestion — none of the three ever claims to be a prediction it
+ * cannot back.
+ *
+ * All three name their PROVENANCE and then the figure: Usually / Planned /
+ * Suggested. The starter used to read `Start with 30m`, which broke that
+ * parallel by opening with a verb, and on Today it sits immediately left of a
+ * button reading `Start session` — so one row offered the same word twice and
+ * the readout read as a second control.
+ *
+ * The prefix is what this function is FOR. Dropping the starter to a bare
+ * `30m` was the first fix considered and it is the wrong one: it throws away
+ * where the number came from, and the history case is a RANGE that no single
+ * number can state.
  */
 export function expectedTimeLabel(expected: ExpectedTime): string {
   switch (expected.kind) {
     case 'history': return `Usually ${expected.lowMin}–${expected.highMin}m`;
     case 'estimate': return `Planned ${expected.minutes}m`;
-    case 'starter': return `Start with ${expected.minutes}m`;
+    case 'starter': return `Suggested ${expected.minutes}m`;
   }
 }
 
 /**
  * The same expectation, restated for a session already under way.
  *
- * `expectedTimeLabel` is written as an INVITATION — "Start with 30m" — which is
- * right on work that has not begun and wrong the moment it has: a paused
- * session read `0m worked · on a break · Start with 30m`, inviting you to begin
- * the thing you were already doing. This states progress instead. The range
+ * `expectedTimeLabel` describes work that has NOT begun — "Suggested 30m" —
+ * which is wrong the moment it has: a paused session read
+ * `0m worked · on a break · Start with 30m` (the wording of the day), offering
+ * you a length for the thing you were already doing. Renaming the starter did
+ * not fix that and was never meant to; the split between the two functions is
+ * what fixes it. This states progress instead. The range
  * survives as a range, because "12m of 45–60m" is the only honest thing to say
  * about a session whose evidence is a range.
  *

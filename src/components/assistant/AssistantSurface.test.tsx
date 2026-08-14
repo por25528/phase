@@ -110,7 +110,7 @@ describe('AssistantSurface', () => {
         onAction={() => {}}
       />,
     );
-    expect(screen.getByText('Start with 30m')).toBeTruthy();
+    expect(screen.getByText('Suggested 30m')).toBeTruthy();
   });
 
   it('starts a session on the primary with a neutral verb', () => {
@@ -287,8 +287,8 @@ describe('AssistantSurface', () => {
       />,
     );
     expect(screen.getByText('0m of 30m · On a break')).toBeTruthy();
-    // The invitation belongs to work that has not started. This one has.
-    expect(screen.queryByText(/Start with/)).toBeNull();
+    // The expectation label belongs to work that has not started. This one has.
+    expect(screen.queryByText(/Suggested/)).toBeNull();
     expect(screen.queryByText(/worked/)).toBeNull();
   });
 

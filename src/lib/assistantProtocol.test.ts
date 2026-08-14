@@ -7,7 +7,7 @@ describe('expectedTimeLabel', () => {
       kind: 'history', lowMin: 45, highMin: 60, confidence: 'high', sampleCount: 6,
     })).toBe('Usually 45–60m');
     expect(expectedTimeLabel({ kind: 'estimate', minutes: 30 })).toBe('Planned 30m');
-    expect(expectedTimeLabel({ kind: 'starter', minutes: 30 })).toBe('Start with 30m');
+    expect(expectedTimeLabel({ kind: 'starter', minutes: 30 })).toBe('Suggested 30m');
   });
 });
 
