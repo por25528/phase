@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * An anchored floating panel with a trigger.
@@ -64,6 +64,8 @@ export function Popover({
   const ownTriggerRef = useRef<HTMLButtonElement>(null);
   const triggerRef = externalTriggerRef ?? ownTriggerRef;
   const panelId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [flip, setFlip] = useState(false);
 
   const change = (next: boolean) => {
     setOpen(next);
@@ -100,6 +102,33 @@ export function Popover({
     };
   }, [open, onOpenChange]);
 
+  /**
+   * Measured on open, never derived.
+   *
+   * `BoardCard` carried a `MENU_HEIGHT_PX = 210` constant for this — a number
+   * standing in for a panel whose real height depends on how many lives the
+   * user has named. A layout effect runs after the panel is in the DOM and
+   * before paint, so the flip is decided from the actual box and never renders
+   * in the wrong place first.
+   *
+   * Both sides are checked. Flipping a panel that is also taller than the space
+   * ABOVE it just moves which edge gets clipped, so below stays the default.
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setFlip(false);
+      return;
+    }
+    const panel = panelRef.current;
+    const trigger = triggerRef.current;
+    if (!panel || !trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const height = panel.offsetHeight;
+    const fitsBelow = height + 4 <= window.innerHeight - rect.bottom;
+    const fitsAbove = height + 4 <= rect.top;
+    setFlip(!fitsBelow && fitsAbove);
+  }, [open, triggerRef]);
+
   return (
     <div ref={wrapRef} className="relative inline-flex">
       <button
@@ -118,12 +147,13 @@ export function Popover({
       {open && (
         <div
           id={panelId}
+          ref={panelRef}
           role={role}
           aria-label={label}
           style={panelWidth ? { width: `${panelWidth}px` } : undefined}
-          className={`absolute z-40 top-[calc(100%+4px)] ${
-            align === 'end' ? 'right-0' : 'left-0'
-          } bg-panel border border-line-2 rounded-card shadow-card py-[5px] ${panelClassName}`}
+          className={`absolute z-40 ${
+            flip ? 'bottom-[calc(100%+4px)]' : 'top-[calc(100%+4px)]'
+          } ${align === 'end' ? 'right-0' : 'left-0'} bg-panel border border-line-2 rounded-card shadow-card py-[5px] ${panelClassName}`}
         >
           {children(close)}
         </div>
