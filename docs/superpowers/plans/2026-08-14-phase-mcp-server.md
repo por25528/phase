@@ -1482,8 +1482,12 @@ server.tool(
 
 - [ ] **Step 3: Verify end to end**
 
-With Phase running, ask Claude Code: *"add a task called Test wiring to <some project>, then undo it."*
-Expected: the task appears in Phase, then disappears; `undo_last` reports `Added "Test wiring"`.
+With Phase running, ask Claude Code: *"delete <some task>, then undo it."*
+Expected: the task disappears from Phase, then returns with its estimate, status and scheduled sitting intact.
+
+**Do not test this with an add.** `addRootNode`/`addChild` write through a plain `setAndPersist` and arm no undo at all — undo is for edits that DISCARD user data, per `CLAUDE.md`. So `undo_last` correctly refuses after an add, and a test expecting `Added "X"` would be asserting a bug.
+
+Verify against a throwaway `--user-data-dir` rather than your real database.
 
 Now ask it to add a task, click a checkbox **in Phase**, then ask it to undo.
 Expected: `Nothing to undo — an edit in Phase since then cleared it.` This is the sweep behaving correctly, not a bug.
@@ -1510,7 +1514,9 @@ The spec's read table names `isOverCommitted` as a function the `week` tool spen
 
 - [ ] **Step 1: Write the setup doc**
 
-`docs/mcp-server.md` covers: what the server exposes, the one-line `claude mcp add` command, the socket path, that Phase must be running (window open or not), and that `undo_last` is cleared by any in-app edit.
+`docs/mcp-server.md` covers: what the server exposes, the one-line `claude mcp add` command, the socket path, that Phase must be running (window open or not), and the two limits on `undo_last` — it is cleared by any in-app edit, **and it has nothing to reverse after an add**, because adds arm no undo entry (undo is for edits that discard user data). Do not claim otherwise; Task 8 verified this live.
+
+Also document that `schedule` takes no `minutes` and why, and that the socket path in `mcp/server.js` is currently hardcoded to the macOS `Application Support/Phase` location.
 
 - [ ] **Step 2: Add the invariant**
 
