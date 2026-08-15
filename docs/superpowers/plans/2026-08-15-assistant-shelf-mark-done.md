@@ -49,7 +49,7 @@ The earlier draft of this section assumed per-task-demand's own re-measurement w
 A pure refactor with no behaviour change. `finishWork` needs to build the same `Session` row inside a multi-slice write, and a second copy of these preconditions would be a second opinion about whether a frozen project can be logged against.
 
 **Files:**
-- Modify: `src/state/store.ts` (add helper immediately above `logSession` at `store.ts:1780`; rewrite that action's body)
+- Modify: `src/state/store.ts` (module-level helper above `export const actions`; rewrite `logSession`'s body)
 
 **Interfaces:**
 - Produces: `sessionFor(kind: 'step' | 'task', id: string, minutes: number, date: string, focus?: 'low'): { session: Session; title: string } | null` — module-level, not exported. Returns `null` in exactly the cases `logSession` returned `false`.
@@ -61,7 +61,7 @@ Expected: PASS. This is a refactor; these tests are the specification.
 
 - [ ] **Step 2: Add the helper**
 
-Insert immediately above `logSession` in `src/state/store.ts`:
+Insert as a MODULE-LEVEL function above `export const actions` in `src/state/store.ts`, beside the other module helpers. It cannot go "inside" the actions object: `logSession` is a property of that object literal, and `sessionFor` is not an action.
 
 ```ts
 /**
@@ -161,7 +161,7 @@ project can be logged against."
 ### Task 2: `finishWork` — nothing is running
 
 **Files:**
-- Modify: `src/state/store.ts` (result type above `export const actions`; new action after `confirmFocus` at ~`store.ts:1936`)
+- Modify: `src/state/store.ts` (result type above `export const actions`, which is at `store.ts:1050`; new action after `confirmFocus`, at `store.ts:2063` and before `discardFocus` at `2082`)
 - Create: `src/state/store.finishWork.test.ts`
 
 **Interfaces:**
@@ -274,7 +274,7 @@ export type FinishWorkResult =
 
 - [ ] **Step 4: Add the action**
 
-Insert into `actions` in `src/state/store.ts`, immediately after `confirmFocus`:
+Insert into the `actions` object in `src/state/store.ts`, immediately after `confirmFocus` (`store.ts:2063`) and before `discardFocus`:
 
 ```ts
   /**
