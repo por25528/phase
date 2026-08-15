@@ -53,10 +53,12 @@ describe('design scale', () => {
     expect(offenders(/text-\[[0-9.]+(?:rem|px|em)\]/g)).toEqual([]);
   });
 
-  // 4, 6 and 11 remain inline alongside the named `field` (9) and `card` (14).
-  const ALLOWED_RADII = new Set(['4', '6', '11']);
+  // 4 and 6 remain inline alongside the named `field` (8) and `card` (12).
+  // 11 was a fourth near-duplicate at four sites — three Timeline panels and
+  // one segmented-control track — and is not coming back.
+  const ALLOWED_RADII = new Set(['4', '6']);
 
-  it('uses only the five agreed corner radii', () => {
+  it('uses only the four agreed corner radii', () => {
     const bad = offenders(/rounded-\[(\d+)px\]/g)
       .filter((hit) => {
         const px = /rounded-\[(\d+)px\]/.exec(hit)?.[1];

@@ -472,7 +472,7 @@ export function Goals() {
 
       {/* Narrow horizon switcher — one horizon at a time under ~920px */}
       {!isEmpty && !scopeEmpty && !wide && (
-        <div role="group" aria-label="Show horizon" className="mt-[16px] flex gap-[4px] p-[4px] bg-hover rounded-[11px]">
+        <div role="group" aria-label="Show horizon" className="mt-[16px] flex gap-[4px] p-[4px] bg-hover rounded-field">
           {COLUMNS.map((col, i) => (
             <button
               key={col.id}

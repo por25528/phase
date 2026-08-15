@@ -86,10 +86,12 @@ export default {
         // the thing it was in.
         page: '1.85rem',    // 25.9px
       },
-      // Corner radii: 4, 6, 11 arbitrary plus `field` (9) and `card` (14).
+      // Corner radii: 4 and 6 inline, plus `field` (8) and `card` (12).
+      // Controls rounding LESS than surfaces is deliberate — round 2 rejected
+      // swapping them. 11px was a fourth near-duplicate and is gone.
       borderRadius: {
-        card: '14px',
-        field: '9px',
+        card: '12px',
+        field: '8px',
       },
       // Drops are themed because their COLOUR has to change, not because dark
       // cannot show one: a warm rgba drop over #141311 is invisible, a black

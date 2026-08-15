@@ -547,7 +547,7 @@ export function Timeline() {
 
       {/* Portfolio focus-overlap banner (§3.4) — text + colour, with a move action */}
       {overlap && overlapGoals.length > 0 && (
-        <div className="mb-[10px] rounded-[11px] border border-warn/40 bg-warn-tint px-[13px] py-[9px]">
+        <div className="mb-[10px] rounded-card border border-warn/40 bg-warn-tint px-[13px] py-[9px]">
           <div className="text-body text-warn font-medium">
             {overlap.goalIds.length} Now projects overlap {fmtD(overlap.window.start)}–{fmtD(overlap.window.end)} — Now is crowded.
           </div>
@@ -569,14 +569,14 @@ export function Timeline() {
 
       {/* Empty state — no canvas needed */}
       {!hasCanvas ? (
-        <div className="mt-[6px] border border-line rounded-[11px] bg-panel px-[12px] py-[32px] text-center text-muted text-body italic">
+        <div className="mt-[6px] border border-line rounded-card bg-panel px-[12px] py-[32px] text-center text-muted text-body italic">
           Add both a start and deadline to show a goal on the Timeline.
         </div>
       ) : (
         <div
           ref={scrollerRef}
           onScroll={onScroll}
-          className="mt-[6px] border border-line rounded-[11px] bg-panel overflow-auto max-h-[calc(100vh-190px)]"
+          className="mt-[6px] border border-line rounded-card bg-panel overflow-auto max-h-[calc(100vh-190px)]"
         >
           <div style={{ width: `${labelW + canvasW}px` }}>
             {/* Time header — sticky against vertical scroll; its label cell also against horizontal */}
