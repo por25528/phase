@@ -109,6 +109,24 @@ describe('rowActionGroups', () => {
   });
 });
 
+describe('the focus-needed verb', () => {
+  const ctx = (over: Partial<RowActionContext> = {}): RowActionContext =>
+    ({ isContainer: false, isDone: false, isMilestone: false, canIndent: false, canOutdent: false, ...over });
+
+  it('is offered on a LEAF', () => {
+    expect(rowActions(ctx()).map((a) => a.id)).toContain('demand');
+  });
+
+  it('is offered on a CONTAINER too — the first verb that is', () => {
+    expect(rowActions(ctx({ isContainer: true })).map((a) => a.id)).toContain('demand');
+  });
+
+  it('sits with the other property verbs, not with the move or delete runs', () => {
+    const found = rowActions(ctx()).find((a) => a.id === 'demand');
+    expect(found?.group).toBe(1);
+  });
+});
+
 describe('taskPageActions', () => {
   const leaf = { canIndent: true, canOutdent: true };
 

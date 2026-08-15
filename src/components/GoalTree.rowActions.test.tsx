@@ -214,6 +214,31 @@ describe('the ⋯ menu', () => {
     expect(screen.getByRole('menuitem', { name: /Estimate/ }).textContent).toContain('E');
     expect(screen.getByRole('menuitem', { name: /Schedule/ }).textContent).toContain('⇧S');
   });
+
+  it('offers Focus needed on a leaf and on a container', async () => {
+    const { user } = await mountTree();
+
+    await openMenu(user, 'First task');
+    expect(screen.getByRole('button', { name: 'Focus needed…' })).toBeTruthy();
+    await user.keyboard('{Escape}');
+
+    await openMenu(user, 'Mechanics');
+    expect(screen.getByRole('button', { name: 'Focus needed…' })).toBeTruthy();
+  });
+
+  it('sets focus needed from the menu, on a leaf and on a container', async () => {
+    const { store, user } = await mountTree();
+
+    await openMenu(user, 'First task');
+    await user.click(screen.getByRole('button', { name: 'Focus needed…' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Deep' }));
+    expect(store.getState().goals[0].nodes[0].demand).toBe('deep');
+
+    await openMenu(user, 'Mechanics');
+    await user.click(screen.getByRole('button', { name: 'Focus needed…' }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Light' }));
+    expect(store.getState().goals[0].nodes.find((n) => n.id === 'area')?.demand).toBe('light');
+  });
 });
 
 describe('the schedule cell', () => {

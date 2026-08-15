@@ -22,6 +22,7 @@ export type RowActionId =
   | 'schedule'
   | 'estimate'
   | 'milestone'
+  | 'demand'
   | 'breakdown'
   | 'indent'
   | 'outdent'
@@ -87,6 +88,12 @@ export function rowActions(ctx: RowActionContext): RowAction[] {
       group: 1,
     });
   }
+
+  // The first verb offered on BOTH a leaf and a container. Schedule and Estimate
+  // are leaf-only because the store has no container equivalent; demand DOES
+  // have one, and a container's is the whole point — it is what the subtree
+  // inherits.
+  out.push({ id: 'demand', label: 'Focus needed…', group: 1 });
 
   if (ctx.canIndent) out.push({ id: 'indent', label: 'Indent', hint: '⌘]', group: 2 });
   if (ctx.canOutdent) out.push({ id: 'outdent', label: 'Outdent', hint: '⌘[', group: 2 });

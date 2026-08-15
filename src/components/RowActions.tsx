@@ -1,7 +1,9 @@
 import type { GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
 import { Popover, PopoverItem, PopoverSeparator } from './Popover';
+import { PropertyOption } from './PropertyRow';
 import { IconDots } from './Icons';
+import { DEMANDS, DEMAND_WORD, type Demand } from '../lib/demand';
 import { rowActionGroups, type RowActionId } from '../lib/rowActions';
 
 /**
@@ -61,6 +63,38 @@ export function RowActions({
     }
   }
 
+  function demandPanel(closeNested: () => void, closeOuter: () => void) {
+    // Both close: the submenu AND the menu it opened from — the other verbs
+    // each close the whole menu when they commit, and a verb that left its menu
+    // standing after a write would be the only one that did.
+    const choose = (next: Demand | null) => {
+      closeNested();
+      closeOuter();
+      actions.setNodeDemand(node.id, next);
+    };
+    return (
+      <>
+        {DEMANDS.map((d) => (
+          <PropertyOption
+            key={d}
+            close={closeNested}
+            current={node.demand === d}
+            onSelect={() => choose(d)}
+          >
+            {DEMAND_WORD[d]}
+          </PropertyOption>
+        ))}
+        <PropertyOption
+          close={closeNested}
+          current={node.demand === undefined}
+          onSelect={() => choose(null)}
+        >
+          Not set
+        </PropertyOption>
+      </>
+    );
+  }
+
   return (
     <Popover
       label={`Actions for "${node.title}"`}
@@ -74,17 +108,31 @@ export function RowActions({
         groups.map((group, i) => (
           <div key={group[0].id}>
             {i > 0 && <PopoverSeparator />}
-            {group.map((action) => (
-              <PopoverItem
-                key={action.id}
-                close={close}
-                hint={action.hint}
-                tone={action.tone}
-                onSelect={() => run(action.id)}
-              >
-                {action.label}
-              </PopoverItem>
-            ))}
+            {group.map((action) =>
+              action.id === 'demand' ? (
+                <Popover
+                  key={action.id}
+                  label="Focus needed…"
+                  role="menu"
+                  align="end"
+                  panelWidth={160}
+                  triggerClassName="w-full text-left px-[12px] py-[6px] text-ui flex items-center gap-[9px] text-ink-soft hover:bg-hover hover:text-ink"
+                  trigger={<span className="flex-1 min-w-0 truncate">{action.label}</span>}
+                >
+                  {(closeNested) => demandPanel(closeNested, close)}
+                </Popover>
+              ) : (
+                <PopoverItem
+                  key={action.id}
+                  close={close}
+                  hint={action.hint}
+                  tone={action.tone}
+                  onSelect={() => run(action.id)}
+                >
+                  {action.label}
+                </PopoverItem>
+              ),
+            )}
           </div>
         ))
       }
