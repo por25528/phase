@@ -79,32 +79,49 @@ function SectionLabel({ children }: { children: string }) {
  * `SegmentedSwitch` rather than `SegmentedControl`: this is view state and not
  * form data, the same distinction Board/Timeline already makes. `sm` because
  * the shelf is a dense toolbar, and because 26px clears the 24px target floor.
+ *
+ * One component, two arrangements, the same idiom `bodyClass(shelf)` already
+ * uses below: side by side on the 620px shelf, stacked on the 380px embedded
+ * host, which has nothing for a second label-plus-switch pair to live in on
+ * one line. A width-based wrap would answer a question neither presentation
+ * actually asks — both are known fixed widths — so the branch is explicit.
  */
-function DialStrip({ timeLevel, detailLevel, onAction }: {
+function DialStrip({ timeLevel, detailLevel, onAction, shelf }: {
   timeLevel: TimeLevel;
   detailLevel: DetailLevel;
   onAction: Props['onAction'];
+  shelf: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2.5 border-b border-line pb-2">
-      <span className="text-meta font-semibold text-muted">I&rsquo;ve got</span>
-      <SegmentedSwitch
-        label="How long you have"
-        size="sm"
-        value={timeLevel}
-        options={TIME_LEVELS.map((value) => ({ value, label: TIME_WORD[value] }))}
-        onChange={(next) => onAction({ type: 'set-time-level', level: next })}
-      />
-      <span className="ml-1 text-meta font-semibold text-muted">Focus</span>
-      <SegmentedSwitch
-        label="How much to show"
-        size="sm"
-        value={detailLevel}
-        options={DETAIL_LEVELS.map((value) => ({ value, label: DETAIL_WORD[value] }))}
-        onChange={(next) => onAction({ type: 'set-detail-level', level: next })}
-      />
+    <div className={dialStripClass(shelf)}>
+      <div className="flex items-center gap-2.5">
+        <span className="text-meta font-semibold text-muted">I&rsquo;ve got</span>
+        <SegmentedSwitch
+          label="How long you have"
+          size="sm"
+          value={timeLevel}
+          options={TIME_LEVELS.map((value) => ({ value, label: TIME_WORD[value] }))}
+          onChange={(next) => onAction({ type: 'set-time-level', level: next })}
+        />
+      </div>
+      <div className="flex items-center gap-2.5">
+        <span className="text-meta font-semibold text-muted">Focus</span>
+        <SegmentedSwitch
+          label="How much to show"
+          size="sm"
+          value={detailLevel}
+          options={DETAIL_LEVELS.map((value) => ({ value, label: DETAIL_WORD[value] }))}
+          onChange={(next) => onAction({ type: 'set-detail-level', level: next })}
+        />
+      </div>
     </div>
   );
+}
+
+function dialStripClass(shelf: boolean): string {
+  return shelf
+    ? 'flex items-center gap-2.5 border-b border-line pb-2'
+    : 'flex flex-col gap-1.5 border-b border-line pb-2';
 }
 
 /**
@@ -385,7 +402,7 @@ export function AssistantSurface({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
-      <DialStrip timeLevel={snapshot.timeLevel} detailLevel={snapshot.detailLevel} onAction={onAction} />
+      <DialStrip timeLevel={snapshot.timeLevel} detailLevel={snapshot.detailLevel} onAction={onAction} shelf={shelf} />
       {snapshot.notice && (
         <p className={`text-meta ${snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted'}`}>
           {snapshot.notice.text}

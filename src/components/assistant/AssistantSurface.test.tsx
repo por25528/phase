@@ -495,6 +495,23 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('button', { name: 'Any' })).toBeTruthy();
   });
 
+  // The 380px embedded host has nothing for a second label-plus-switch pair to
+  // live in on one line — a side-by-side row overflows and clips, verified by
+  // eye in a real browser (jsdom has no layout, so it cannot see that). This
+  // pins the presentation branch that fixes it, not the pixels themselves.
+  it('stacks the two dials embedded and keeps them side by side on the shelf', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    const embeddedOuter = screen.getByRole('group', { name: 'How long you have' })
+      .parentElement!.parentElement!;
+    expect(embeddedOuter.className).toContain('flex-col');
+    cleanup();
+
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    const shelfOuter = screen.getByRole('group', { name: 'How long you have' })
+      .parentElement!.parentElement!;
+    expect(shelfOuter.className).not.toContain('flex-col');
+  });
+
   it('sends the right verb from the right dial', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
