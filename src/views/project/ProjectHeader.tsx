@@ -8,6 +8,9 @@ import { goalPct } from '../../lib/pct';
 import { todayStr, fmtD } from '../../lib/dates';
 import { fmtMinutes, goalEffort } from '../../lib/effort';
 import { goalHealth, HEALTH_TONE, HEALTH_WORD } from '../../lib/health';
+import { DEMANDS, DEMAND_WORD } from '../../lib/demand';
+import { Popover } from '../../components/Popover';
+import { PropertyOption } from '../../components/PropertyRow';
 import { GoalMetaPopover } from './GoalMetaPopover';
 
 // ── Header ────────────────────────────────────────────────────────────────────
@@ -150,6 +153,44 @@ export function ProjectHeader({
             onDraftChange={(start, deadline) => { setDraftStart(start); setDraftDeadline(deadline); }}
             onClose={() => setMetaOpen(false)}
           />
+        )}
+
+        {/* The whole project's demand, in the header's control group rather
+            than the overflow menu — the menu holds Complete/Reopen,
+            irreversible lifecycle verbs, and a property editor among them
+            would read as one. A frozen project is withheld entirely, like
+            every other editor that writes to it. */}
+        {!isCompleted && (
+          <Popover
+            label={g.demand ? `Focus needed: ${DEMAND_WORD[g.demand]}` : 'Focus needed: Not set'}
+            role="menu"
+            align="end"
+            panelWidth={188}
+            triggerClassName="text-meta px-[8px] py-[5px] rounded-field hover:bg-hover text-muted"
+            trigger={g.demand ? DEMAND_WORD[g.demand] : 'Focus'}
+          >
+            {(close) => (
+              <>
+                {DEMANDS.map((d) => (
+                  <PropertyOption
+                    key={d}
+                    close={close}
+                    current={g.demand === d}
+                    onSelect={() => actions.setGoalDemand(g.id, d)}
+                  >
+                    {DEMAND_WORD[d]}
+                  </PropertyOption>
+                ))}
+                <PropertyOption
+                  close={close}
+                  current={g.demand === undefined}
+                  onSelect={() => actions.setGoalDemand(g.id, null)}
+                >
+                  Not set
+                </PropertyOption>
+              </>
+            )}
+          </Popover>
         )}
 
         {/* Lifecycle. A completed goal used to get a permanent bordered card in
