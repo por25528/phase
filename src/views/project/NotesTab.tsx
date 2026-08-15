@@ -4,9 +4,9 @@ import { NoteEditor } from '../../components/NoteEditor';
 import { useNoteDraft } from '../../components/useNoteDraft';
 import { sectionLabel } from '../../components/sectionLabel';
 
-// Shared section label so the goal page's sections read as one system. Sentence
-// case, UI face: a letter-spaced all-caps mono eyebrow over every group is a
-// second typeface doing a job a weight already does.
+// Shared section label so the goal page's sections read as one system: the
+// mono eyebrow voice, from the one `sectionLabel` constant every other
+// section label spends, rather than a hand-copied class string.
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className={`mb-[9px] ${sectionLabel}`}>

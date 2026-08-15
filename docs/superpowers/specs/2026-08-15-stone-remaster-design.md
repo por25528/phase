@@ -191,9 +191,10 @@ Declared once rather than per theme, as today.
 WCAG 1.4.11 applies (a 3px non-text element), so every hue must clear 3:1
 against both panels. The old OLED panel (`#0D0D0E`, L ≈ .0045) permitted a band
 of `L ∈ [0.113, 0.30]`. The warm panel (`#1E1D1B`, L ≈ .0122) raises the floor
-to **`L ≥ 0.137`**. The first Stone-key set drawn against OLED failed: plum sat
-at 2.70:1. Every value above was lifted into `[0.160, 0.196]`, which clears
-**≥3.38:1 on `#1E1D1B`** and **≥4.26:1 on `#FFFFFF`**. They are perceptibly
+to **`L ≥ 0.137`**. The first Stone-key set, drawn under the old OLED floor,
+failed against the new panel: indigo sat at 2.958:1 and plum at 2.814:1.
+Every value above was lifted into `[0.160, 0.196]`, which clears
+**≥3.35:1 on `#1E1D1B`** and **≥4.26:1 on `#FFFFFF`**. They are perceptibly
 more pastel than the set drawn for OLED, and that is not a mistake to correct.
 
 Still deliberately far from `--c-accent`: accent means ACTION, warn means

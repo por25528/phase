@@ -50,8 +50,8 @@ export function stripCssComments(css: string): string {
  * redeclared in a later rule would be read as if it belonged to this one.
  *
  * Comments are stripped before the search: a selector can legitimately be
- * mentioned in a `/* ... *\/` remark (as this file's own header does), and a
- * plain substring search would happily match that prose instead of the rule
+ * mentioned in a `/* ... *\/` remark (as `index.css`'s own header does), and
+ * a plain substring search would happily match that prose instead of the rule
  * it describes.
  */
 export function cssBlock(css: string, selector: string): string {

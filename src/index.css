@@ -4,7 +4,8 @@
 
 /* Color tokens as `R G B` channel triples, consumed by tailwind.config.js as
    `rgb(var(--c-*) / <alpha-value>)`. Light values below are the exact current
-   hex, so light output is unchanged; `.dark` overrides them for OLED.
+   hex, so light output is unchanged; `.dark` overrides them for the warm
+   charcoal dark theme.
    NB: these live OUTSIDE @layer so Tailwind never tree-shakes the `.dark`
    class selector (it's applied to <html> via JS, so it appears in no source). */
 :root {
@@ -58,7 +59,7 @@
      *
      * Declared once rather than per theme: every value's relative luminance
      * sits in [0.160, 0.196], which clears 3:1 against BOTH panels (#FFFFFF at
-     * ≥4.26:1 and #1E1D1B at ≥3.38:1). WCAG 1.4.11 applies because the rail is
+     * ≥4.26:1 and #1E1D1B at ≥3.35:1). WCAG 1.4.11 applies because the rail is
      * a 3px non-text element, the same reason --c-check is tuned.
      * projectColour.test.ts asserts the ratio against both, reading the dark
      * panel out of this file rather than hardcoding it.
@@ -66,8 +67,8 @@
      * These are LIGHTER than the set they replace, and not by taste. The warm
      * charcoal panel (#1E1D1B, L≈0.0122) is brighter than the OLED panel it
      * replaced (#0D0D0E, L≈0.0045), which lifts the floor of the usable band
-     * from L≥0.113 to L≥0.137. The previous plum (#7A5470, L=0.118) measured
-     * 2.70:1 here — a build failure, not a near miss.
+     * from L≥0.113 to L≥0.137. The previous plum (#8E4A8C, L=0.125) measured
+     * 2.81:1 here — a build failure, not a near miss.
      *
      * Deliberately not near --c-accent (58 74 92): accent means ACTION and
      * warn means TROUBLE. Project identity is a third channel and must not be
@@ -87,9 +88,10 @@
        A whole value rather than a `R G B` triple, because dark needs a
        different ALPHA as well as a different hue: this was a hardcoded
        `rgba(20,20,18,0.28)` at two call sites and therefore the only colour in
-       the app that did not theme. A warm 28% drop over the OLED page (#000) is
-       almost no drop at all, which left the panel (#0D0D0E) sitting on its own
-       background with only a hairline to separate them. */
+       the app that did not theme. A warm 28% drop over the old OLED page
+       (#000) was almost no drop at all, which left that panel (#0D0D0E)
+       sitting on its own background with only a hairline to separate them —
+       the dark panel is warm charcoal (#1E1D1B) now, not OLED. */
     --scrim: rgba(20, 19, 17, 0.30);
   }
 
