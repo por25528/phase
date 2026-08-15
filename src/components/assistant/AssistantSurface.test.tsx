@@ -639,4 +639,29 @@ describe('AssistantSurface', () => {
     expect(screen.getByText('18m so far')).toBeTruthy();
     expect(screen.queryByText(/of 45m/)).toBeNull();
   });
+
+  it('draws a ring beside a running session and none while confirming', () => {
+    const base = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Problem set 4', elapsedMin: 12,
+      expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    const { container, rerender } = render(
+      <AssistantSurface snapshot={ready({ activeFocus: { ...base, phase: 'active' } })} onAction={() => {}} />,
+    );
+    expect(container.querySelector('svg')).toBeTruthy();
+
+    rerender(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: { ...base, phase: 'confirming', proposedMinutes: 12 } })}
+        onAction={() => {}}
+      />,
+    );
+    expect(container.querySelector('svg')).toBeNull();
+  });
+
+  it('draws no ring on the idle card, where nothing is running', () => {
+    const { container } = render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    expect(container.querySelector('svg')).toBeNull();
+  });
 });

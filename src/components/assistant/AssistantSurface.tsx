@@ -7,12 +7,14 @@ import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantPr
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
 import { ALTERNATIVE_CAP, DETAIL_LEVELS, DETAIL_WORD, type DetailLevel } from '../../lib/shelfDetail';
+import { ringState } from '../../lib/sessionRing';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
 import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 import { sectionLabel } from '../sectionLabel';
+import { SessionRing } from './SessionRing';
 
 /**
  * The one assistant surface, rendered in two places: inside the app by
@@ -239,21 +241,27 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
   shelf: boolean;
   detail: DetailLevel;
 }) {
+  const ring = focus.phase === 'confirming'
+    ? null
+    : <SessionRing state={ringState(focus.expected, focus.elapsedMin, detail)} paused={focus.phase === 'break'} />;
   const info = (
-    <div className="flex min-w-0 flex-col gap-1">
-      <SectionLabel>Focus session</SectionLabel>
-      <h2 className="line-clamp-2 text-h2 font-semibold text-ink">{focus.title}</h2>
-      {focus.goalTitle && <p className="truncate text-meta text-muted">{focus.goalTitle}</p>}
-      {focus.phase === 'confirming' ? (
-        <p className="text-body text-ink">
-          This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
-        </p>
-      ) : (
-        <p className="text-meta text-muted">
-          {elapsedAgainstExpected(focus.elapsedMin, focus.expected, detail)}
-          {focus.phase === 'break' ? ' · On a break' : ''}
-        </p>
-      )}
+    <div className="flex min-w-0 items-center gap-3">
+      {ring}
+      <div className="flex min-w-0 flex-col gap-1">
+        <SectionLabel>Focus session</SectionLabel>
+        <h2 className="line-clamp-2 text-h2 font-semibold text-ink">{focus.title}</h2>
+        {focus.goalTitle && <p className="truncate text-meta text-muted">{focus.goalTitle}</p>}
+        {focus.phase === 'confirming' ? (
+          <p className="text-body text-ink">
+            This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
+          </p>
+        ) : (
+          <p className="text-meta text-muted">
+            {elapsedAgainstExpected(focus.elapsedMin, focus.expected, detail)}
+            {focus.phase === 'break' ? ' · On a break' : ''}
+          </p>
+        )}
+      </div>
     </div>
   );
   // The filled button is whatever moves the session forward from where you
