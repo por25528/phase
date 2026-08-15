@@ -94,18 +94,23 @@ export default {
         today: 'var(--shadow-today)',
       },
       fontFamily: {
+        // DISPLAY ONLY, and the boundary is enforced by designScale.test.ts:
+        // the wordmark, a document's own title, and headings typed inside a
+        // note. Nothing in the working UI. Fraunces on ordinary metadata is
+        // what made a `62%` carry the same voice as a masthead.
         disp: ['Fraunces Variable', 'Fraunces', 'Georgia', 'serif'],
-        ui: ['Inter Variable', 'Inter', '-apple-system', 'system-ui', 'sans-serif'],
+        // Public Sans replaces Inter. Its design brief was legibility and
+        // neutrality for documents people must not misread, which is the
+        // quality being aimed at, and character here would compete with the
+        // serif above it.
+        ui: ['Public Sans Variable', 'Public Sans', '-apple-system', 'system-ui', 'sans-serif'],
         // The eyebrow/label face — the app's THIRD type role, not a stray.
-        // `font-mono` is applied in a dozen files (every uppercase section
-        // label, the kbd hints, the tabular stats) and the fontSize scale names
-        // it: `micro`/`eyebrow` exist for "mono eyebrows at their smallest".
-        // Without a key here it fell through to Tailwind's stock stack, so the
-        // one face the app never chose was the one on every section header —
-        // SF Mono on macOS, Consolas on Windows, Liberation Mono on Linux, at
-        // three different widths. The `tracking-[.11em]` tuned against those
-        // labels is only correct for whichever machine tuned it.
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        // It is on every section label, every key hint and every tabular stat.
+        // Naming a real family is the point: the stack this replaces resolved
+        // to SF Mono here, Consolas on Windows and Liberation Mono on Linux,
+        // at three different widths, so the `tracking-[.11em]` tuned against
+        // those labels was correct only on the machine that tuned it.
+        mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
     },
   },

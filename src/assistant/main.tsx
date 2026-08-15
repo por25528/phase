@@ -1,4 +1,6 @@
-import '@fontsource-variable/inter/index.css';
+import '@fontsource-variable/public-sans/index.css';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../index.css';
