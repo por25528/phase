@@ -205,9 +205,10 @@ interface UIState {
   /** The assistant's global shortcut — a device preference, like `planMode`. */
   assistantAccelerator: string;
   /**
-   * How much focus the room supports. A standing mode, set from the shelf and
-   * held until it is changed — a fact about where you are, not about one task,
-   * which is why it does not live on the session.
+   * How long the user last said they had, in the dial's three positions.
+   * The number is one you SET, never one Phase predicts: a gap computed
+   * from a calendar is wrong exactly when the day goes sideways, which is
+   * when you most need the answer.
    *
    * Reset to `medium` when the stored date is not today, evaluated on hydrate.
    * A window left open across midnight keeps the level until it reloads: that
