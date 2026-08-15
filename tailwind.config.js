@@ -110,7 +110,7 @@ export default {
         // to SF Mono here, Consolas on Windows and Liberation Mono on Linux,
         // at three different widths, so the `tracking-[.11em]` tuned against
         // those labels was correct only on the machine that tuned it.
-        mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
     },
   },
