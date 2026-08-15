@@ -447,26 +447,67 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the failing relay test**
 
-Add to `electron/assistantIpc.test.ts`, matching the file's existing style for building a snapshot:
+`validSnapshot`, `validAction` and `validLevel` are NOT exported —
+`assistantIpc.cjs` ends with `module.exports = { ASSISTANT_CHANNEL_PREFIX,
+createAssistantIpc }` and this task does not widen it. The existing file
+therefore tests validation THROUGH the relay, and so must you: a rejected
+snapshot is one that never reaches `ipc.latest()`, and a rejected action is
+one `main.webContents.send` never sees. Do not import the predicates.
+
+First update the module-level `SNAPSHOT` constant (Task 1 renamed its
+`focusLevel` key; this task adds the second level):
 
 ```ts
-it('rejects a snapshot missing the detail level', () => {
-  const snapshot = { ...readySnapshot(), detailLevel: undefined };
-  expect(validSnapshot(snapshot)).toBe(false);
-});
+const SNAPSHOT = {
+  // …unchanged above…
+  activeFocus: null,
+  timeLevel: 'medium',
+  detailLevel: 'medium',
+};
+```
 
-it('rejects a detail level that is not a level', () => {
-  expect(validSnapshot({ ...readySnapshot(), detailLevel: 'LOW' })).toBe(false);
-});
+Then add, inside the existing `describe('publish', …)` block:
 
-it('accepts the detail-level verb and rejects a bad level', () => {
-  expect(validAction({ type: 'set-detail-level', level: 'high' })).toBe(true);
-  expect(validAction({ type: 'set-detail-level', level: 'huge' })).toBe(false);
-});
+```ts
+it('rejects a snapshot missing or malformed in either level', () => {
+  const { ipcMain, ipc } = relay();
+  const bad = [
+    { ...SNAPSHOT, detailLevel: undefined },
+    { ...SNAPSHOT, detailLevel: 'LOW' },
+    { ...SNAPSHOT, timeLevel: undefined },
+    { ...SNAPSHOT, timeLevel: 'sideways' },
+  ];
+  for (const snapshot of bad) {
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
+    expect(ipc.latest(), JSON.stringify(snapshot)?.slice(0, 60)).toBeNull();
+  }
 
-it('accepts the renamed time-level verb', () => {
-  expect(validAction({ type: 'set-time-level', level: 'low' })).toBe(true);
-  expect(validAction({ type: 'set-focus-level', level: 'low' })).toBe(false);
+  ipcMain.emit('phase-assistant:publish', MAIN_ID, SNAPSHOT);
+  expect(ipc.latest()).toEqual(SNAPSHOT);
+});
+```
+
+And inside the existing `describe('act', …)` block:
+
+```ts
+it('forwards both level verbs and rejects the retired one', () => {
+  const { ipcMain, main } = relay();
+  ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'set-detail-level', level: 'high' });
+  ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'set-time-level', level: 'low' });
+  expect(main.webContents.send).toHaveBeenCalledTimes(2);
+
+  main.webContents.send.mockClear();
+  const bad = [
+    { type: 'set-detail-level', level: 'huge' },
+    { type: 'set-time-level', level: 'HIGH' },
+    // The old verb, WELL FORMED: renaming it is the point, so an overlay
+    // build from before this change must not still be able to set the dial.
+    { type: 'set-focus-level', level: 'low' },
+  ];
+  for (const action of bad) {
+    ipcMain.emit('phase-assistant:act', OVERLAY_ID, action);
+  }
+  expect(main.webContents.send).not.toHaveBeenCalled();
 });
 ```
 
@@ -563,21 +604,32 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 Add to `src/state/store.timeLevel.test.ts`:
 
+This file already mocks the settings layer with `vi.hoisted` and asserts
+against `dbMocks.saveStoredTimeLevel` (Task 1 renamed it from
+`saveStoredFocusLevel`; the underlying settings KEY is untouched). Use that
+same spy — it is the only thing that can prove a write did NOT happen. A
+local array declared in the test body can never be populated by the store,
+so asserting it is empty passes whether or not the code persists:
+
 ```ts
-it('keeps the display dial in memory and never writes it', async () => {
-  const puts: unknown[] = [];
-  // The suite's existing settings spy — mirror whatever this file already uses
-  // to assert `saveStoredTimeLevel` was called; assert the opposite here.
+it('keeps the display dial in memory and never writes it', () => {
+  dbMocks.saveStoredTimeLevel.mockClear();
+
   expect(store.getState().detailLevel).toBe('medium');
   expect(actions.setDetailLevel('low')).toBe(true);
   expect(store.getState().detailLevel).toBe('low');
-  expect(puts).toHaveLength(0);
+  expect(dbMocks.saveStoredTimeLevel).not.toHaveBeenCalled();
 });
 
 it('refuses a detail level that is not a level', () => {
   expect(actions.setDetailLevel('enormous' as never)).toBe(false);
 });
 ```
+
+Read the file's existing `mockClear`/`getState` helpers before writing this
+— it destructures `getState` in some blocks and calls `store.getState()` in
+others. Match whichever the surrounding `describe` uses rather than
+introducing a third style.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -983,7 +1035,37 @@ const optionRow =
   + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
 ```
 
-`AdvicePanel` becomes:
+`AdvicePanel` becomes — note the signature gains `detail`, which the body
+below could not otherwise see. Its existing signature is `function
+AdvicePanel({ snapshot, shelf, pending, onStart }: {…})`, so add the
+parameter AND its type, and pass it at the call site (the `<AdvicePanel …>`
+element in the surface's ready branch):
+
+```tsx
+function AdvicePanel({ snapshot, shelf, pending, detail, onStart }: {
+  snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
+  shelf: boolean;
+  pending: boolean;
+  /**
+   * How much to show. It is read HERE and never passed to `executionAdvisor`
+   * — the advisor holds no presentation, so the cap is applied where the
+   * rendering happens.
+   */
+  detail: DetailLevel;
+  onStart: (ref: RecommendedWork['ref']) => void;
+}) {
+```
+
+```tsx
+          <AdvicePanel
+            snapshot={snapshot}
+            shelf={shelf}
+            pending={sendoff.pending}
+            detail={snapshot.detailLevel}
+            onStart={sendoff.start}
+```
+
+The body:
 
 ```tsx
   const { primary } = advice;
@@ -1062,7 +1144,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `ExpectedTime` from `../lib/expectedTime`, `DetailLevel` (Task 2).
-- Produces: `type RingState = { kind: 'turn' } | { kind: 'fill'; fraction: number; overflow: number }` and `ringState(expected, elapsedMin, detail, phase): RingState`; `<SessionRing state={…} paused={…} />`.
+- Produces: `type RingState = { kind: 'turn' } | { kind: 'fill'; fraction: number; overflow: number }` and `ringState(expected, elapsedMin, detail): RingState` — THREE arguments; the phase is not one of them. Whether the session is paused is a rendering fact, not a ring-state fact, so it reaches `<SessionRing state={…} paused={…} />` as its own prop, from `focus.phase === 'break'` at the call site.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1586,7 +1668,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 The original complaint. Two independent faults: the ring is on 100% of the time because the shelf autofocuses the same button on every open, and it is clipped because a scroll container clips at its padding box and an outset ring sits 3px outside the button.
 
 **Files:**
-- Modify: `src/components/assistant/AssistantSurface.tsx` (three `autoFocus` attributes)
+- Modify: `src/components/assistant/AssistantSurface.tsx` (FOUR `autoFocus` attributes — grep the file and count; an earlier draft of this plan said three and was wrong)
 - Modify: `src/index.css` (shelf-scoped inset ring)
 - Modify: `src/components/assistant/AssistantHost.tsx:170` (`data-shelf`)
 - Modify: `src/components/assistant/AssistantSurface.test.tsx`
@@ -1606,10 +1688,10 @@ it('focuses nothing when it opens, so no ring paints on arrival', () => {
   expect(document.activeElement).toBe(document.body);
 });
 
-it('focuses nothing on a running session either', () => {
+it.each(['active', 'break'] as const)('focuses nothing during a %s session either', (phase) => {
   const focus = {
     ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
-    title: 'Problem set 4', phase: 'active' as const,
+    title: 'Problem set 4', phase,
     elapsedMin: 12, expected: { kind: 'estimate' as const, minutes: 45 },
   };
   const { container } = render(
@@ -1619,6 +1701,11 @@ it('focuses nothing on a running session either', () => {
 });
 ```
 
+Both phases are covered because both have a FILLED primary — `break` fills
+Continue, `active` fills Complete session — and each carried its own
+`autoFocus`. A test that only visited `active` would pass with the paused
+shelf still painting a ring on arrival.
+
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run --config vitest.config.ts src/components/assistant/AssistantSurface.test.tsx -t "no ring paints on arrival"`
@@ -1626,7 +1713,9 @@ Expected: FAIL — `document.activeElement` is the Start button.
 
 - [ ] **Step 3: Remove every `autoFocus`**
 
-Delete the `autoFocus` attribute from all three buttons in `AssistantSurface.tsx`: the `confirming` Log button, the `active` Complete button, and `AdvicePanel`'s Start button. Add the reason where the last one was:
+Run `grep -n autoFocus src/components/assistant/AssistantSurface.tsx` and delete every hit. At the time of writing there are four: the `confirming` Log button, the `break`-phase Continue button, the `active` Complete button, and `AdvicePanel`'s Start button.
+
+The rule is the whole surface, not that list. Any `autoFocus` left behind reproduces the original screenshot in whichever state it sits in — and `break` is exactly such a state, since it is that phase's filled primary. Add the reason where `AdvicePanel`'s was:
 
 ```tsx
         {/*
