@@ -5,6 +5,7 @@ import { AssistantSurface } from './AssistantSurface';
 import type { AssistantSnapshot } from '../../lib/assistantProtocol';
 import type { RecommendedWork } from '../../lib/executionAdvisor';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
+import { sendoffFor } from '../../lib/sendoff';
 
 // The surface reads Reduce Motion, so it needs a stable matchMedia.
 beforeEach(() => {
@@ -175,8 +176,9 @@ describe('AssistantSurface', () => {
     expect(start.hasAttribute('disabled')).toBe(true);
   });
 
-  it('shows only Good luck during the confirmed send-off', () => {
+  it('shows a sourced quote during the confirmed send-off', () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-15T09:00:00Z'));
     const onAction = vi.fn();
     const { rerender } = render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
@@ -195,13 +197,18 @@ describe('AssistantSurface', () => {
         onAction={onAction}
       />,
     );
-    expect(screen.getByRole('status').textContent).toBe('Good luck!');
+    const quote = sendoffFor(Date.now());
+    const status = screen.getByRole('status').textContent ?? '';
+    expect(status).toContain(quote.text);
+    expect(status).toContain(quote.who);
+    expect(status).toContain(quote.source);
     expect(screen.queryByRole('textbox')).toBeNull();
     vi.useRealTimers();
   });
 
   it('routes an alternative Start session through the same send-off as the primary', () => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-15T09:00:00Z'));
     const onAction = vi.fn();
     const alternative = work({ key: 'step:n2', title: 'Read chapter 5' });
     const { rerender } = render(
@@ -233,7 +240,11 @@ describe('AssistantSurface', () => {
         onAction={onAction}
       />,
     );
-    expect(screen.getByRole('status').textContent).toBe('Good luck!');
+    const quote = sendoffFor(Date.now());
+    const status = screen.getByRole('status').textContent ?? '';
+    expect(status).toContain(quote.text);
+    expect(status).toContain(quote.who);
+    expect(status).toContain(quote.source);
     expect(screen.queryByRole('textbox')).toBeNull();
     vi.useRealTimers();
   });

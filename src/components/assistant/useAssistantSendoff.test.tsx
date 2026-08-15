@@ -109,7 +109,7 @@ describe('useAssistantSendoff', () => {
     expect(result.current.stage).toBe('idle');
   });
 
-  it('leaves after 660ms, then finishExit closes once and sets hidden', () => {
+  it('leaves after 2400ms, then finishExit closes once and sets hidden', () => {
     const onClose = vi.fn();
     const initial = ready();
     const { result, rerender } = renderHook(
@@ -127,7 +127,7 @@ describe('useAssistantSendoff', () => {
     rerender({ snapshot: focused(REF) });
     expect(result.current.stage).toBe('message');
 
-    act(() => vi.advanceTimersByTime(659));
+    act(() => vi.advanceTimersByTime(2399));
     expect(result.current.stage).toBe('message');
     act(() => vi.advanceTimersByTime(1));
     expect(result.current.stage).toBe('leaving');
@@ -141,7 +141,7 @@ describe('useAssistantSendoff', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('closes via the 1000ms fallback when finishExit never runs', () => {
+  it('closes via the 2740ms fallback when finishExit never runs', () => {
     const onClose = vi.fn();
     const initial = ready();
     const { result, rerender } = renderHook(
@@ -157,12 +157,12 @@ describe('useAssistantSendoff', () => {
 
     act(() => result.current.start(REF));
     rerender({ snapshot: focused(REF) });
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(2740));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(result.current.stage).toBe('hidden');
   });
 
-  it('reduced motion closes at exactly 350ms with no leaving choreography', () => {
+  it('reduced motion closes at exactly 2400ms with no leaving choreography', () => {
     const onClose = vi.fn();
     const initial = ready();
     const { result, rerender } = renderHook(
@@ -180,12 +180,36 @@ describe('useAssistantSendoff', () => {
     rerender({ snapshot: focused(REF) });
     expect(result.current.stage).toBe('message');
 
-    act(() => vi.advanceTimersByTime(349));
+    act(() => vi.advanceTimersByTime(2399));
     expect(result.current.stage).toBe('message');
     expect(onClose).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(result.current.stage).toBe('hidden');
+  });
+
+  it('shows a sourced quote rather than two words', () => {
+    vi.setSystemTime(new Date('2026-08-15T09:00:00Z'));
+    const onClose = vi.fn();
+    const initial = ready();
+    const { result, rerender } = renderHook(
+      ({ snapshot }) => useAssistantSendoff({
+        snapshot,
+        reducedMotion: false,
+        resetKey: 0,
+        onStart: vi.fn(),
+        onClose,
+      }),
+      { initialProps: { snapshot: initial } },
+    );
+
+    act(() => result.current.start(REF));
+    rerender({ snapshot: focused(REF) });
+    expect(result.current.stage).toBe('message');
+    expect(result.current.quote).not.toBeNull();
+    expect(result.current.quote?.source.length).toBeGreaterThan(0);
+
+    act(() => vi.advanceTimersByTime(2740));
   });
 
   it('a new warning snapshot restores idle and cancels timers', () => {
@@ -236,7 +260,7 @@ describe('useAssistantSendoff', () => {
     act(() => result.current.start(REF));
     rerender({ snapshot: focused(REF), resetKey: 1 });
     expect(result.current.stage).toBe('message');
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(2740));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(result.current.stage).toBe('hidden');
   });
@@ -320,7 +344,7 @@ describe('useAssistantSendoff', () => {
 
     act(() => vi.advanceTimersByTime(1));
     expect(result.current.stage).toBe('message');
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(2740));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(result.current.stage).toBe('hidden');
   });
@@ -350,7 +374,7 @@ describe('useAssistantSendoff', () => {
     expect(onSendoffChange).toHaveBeenLastCalledWith(true);
 
     // message → leaving → hidden is one farewell, not three.
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(2740));
     expect(result.current.stage).toBe('hidden');
     expect(onSendoffChange).toHaveBeenCalledTimes(1);
 
@@ -383,7 +407,7 @@ describe('useAssistantSendoff', () => {
     rerender({ snapshot: focused(REF) });
     expect(stagesAtCall).toEqual(['pending']);
 
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(2740));
   });
 
   it('keeps current callbacks in refs so identity changes do not corrupt timing', () => {
@@ -412,7 +436,7 @@ describe('useAssistantSendoff', () => {
     rerender({ snapshot: focused(REF), onStart: secondStart, onClose: secondClose });
     expect(result.current.stage).toBe('message');
 
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => vi.advanceTimersByTime(2740));
     expect(firstClose).not.toHaveBeenCalled();
     expect(secondClose).toHaveBeenCalledTimes(1);
     expect(result.current.stage).toBe('hidden');

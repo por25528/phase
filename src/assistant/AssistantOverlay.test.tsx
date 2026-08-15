@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssistantOverlay } from './AssistantOverlay';
 import type { AssistantSnapshot } from '../lib/assistantProtocol';
+import { sendoffFor } from '../lib/sendoff';
 
 /**
  * jsdom does no layout, so `offsetHeight` is 0 for everything. Standing a
@@ -112,12 +113,16 @@ describe('AssistantOverlay', () => {
     deliver(WORK);
     expect(card().style.minHeight).toBe('');
 
+    vi.setSystemTime(new Date('2026-08-15T09:00:00Z'));
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
     deliver(RUNNING);
 
-    // The card hugs its content and the farewell is two words: unpinned, the
-    // shelf would drop to a sliver and fade the sliver.
-    expect(screen.getByRole('status').textContent).toBe('Good luck!');
+    // The card hugs its content and the farewell is a full quote: unpinned,
+    // the shelf would drop to a sliver and fade the sliver.
+    const quote = sendoffFor(Date.now());
+    const status = screen.getByRole('status').textContent ?? '';
+    expect(status).toContain(quote.text);
+    expect(status).toContain(quote.source);
     expect(card().style.minHeight).toBe(`${SHELF_HEIGHT}px`);
 
     // Re-summoned. The card is keyed by `openCycle`, so it remounts — and the

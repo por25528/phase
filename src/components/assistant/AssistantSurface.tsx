@@ -450,7 +450,7 @@ export function AssistantSurface({
           }
         }}
         className={[
-          'grid h-full place-items-center text-h2 font-semibold text-ink',
+          'grid h-full place-items-center px-[46px] text-center',
           sendoff.stage === 'message' ? 'assistant-sendoff-enter' : '',
           'transition-[opacity,transform] duration-[180ms] ease-out',
           sendoff.stage === 'leaving' || sendoff.stage === 'hidden'
@@ -458,7 +458,17 @@ export function AssistantSurface({
             : 'translate-y-0 opacity-100',
         ].join(' ')}
       >
-        Good luck!
+        {sendoff.quote ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-h2 font-semibold text-ink">&ldquo;{sendoff.quote.text}&rdquo;</p>
+            <p className="text-meta text-muted">
+              <span className="font-semibold text-ink-soft">{sendoff.quote.who}</span>
+              {' · '}{sendoff.quote.source}
+            </p>
+          </div>
+        ) : (
+          <span className="text-h2 font-semibold text-ink">Good luck!</span>
+        )}
       </div>
     );
   }

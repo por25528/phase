@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AssistantSnapshot } from '../../lib/assistantProtocol';
 import type { WorkRef } from '../../lib/expectedTime';
+import { sendoffFor, type Sendoff } from '../../lib/sendoff';
 
 export type AssistantSendoffStage = 'idle' | 'pending' | 'message' | 'leaving' | 'hidden';
 
@@ -32,9 +33,21 @@ interface Options {
   onSendoffChange?(leaving: boolean): void;
 }
 
-const MESSAGE_AND_HOLD_MS = 660;
-const FALLBACK_CLOSE_MS = 1000;
-const REDUCED_CLOSE_MS = 350;
+/**
+ * The farewell holds long enough to READ.
+ *
+ * 660ms was right for two words and is not right for a quote and its
+ * attribution. This blocks nothing — the session has already started and the
+ * work is under way — but it does leave an always-on-top panel over the screen
+ * for the duration, which is the whole cost of putting words there.
+ *
+ * Reduced motion drops the TRANSFORM and keeps the duration: less movement is
+ * what was asked for, not less content, and closing early would show that user
+ * a flash of text they can never finish.
+ */
+const MESSAGE_AND_HOLD_MS = 2400;
+const FALLBACK_CLOSE_MS = 2740;
+const REDUCED_CLOSE_MS = 2400;
 const PENDING_TIMEOUT_MS = 5000;
 
 function sameRef(left: WorkRef, right: WorkRef): boolean {
@@ -52,6 +65,7 @@ export function useAssistantSendoff({
   onSendoffChange,
 }: Options) {
   const [stage, setStageState] = useState<AssistantSendoffStage>('idle');
+  const [quote, setQuote] = useState<Sendoff | null>(null);
   const stageRef = useRef<AssistantSendoffStage>('idle');
   const requestedRef = useRef<WorkRef | null>(null);
   const startSnapshot = useRef<AssistantSnapshot | null>(null);
@@ -119,6 +133,7 @@ export function useAssistantSendoff({
     startSnapshot.current = null;
     closed.current = false;
     setStage('idle');
+    setQuote(null);
   }, [clearTimers, resetKey, setStage]);
 
   useEffect(() => {
@@ -132,6 +147,9 @@ export function useAssistantSendoff({
       && sameRef(snapshot.activeFocus.ref, requested)
     ) {
       clearTimers();
+      // Captured once, here: recomputing it on every render would change the
+      // words mid-farewell.
+      setQuote(sendoffFor(Date.now()));
       setStage('message');
       if (reducedMotion) {
         timers.current.push(setTimeout(closeOnce, REDUCED_CLOSE_MS));
@@ -146,6 +164,7 @@ export function useAssistantSendoff({
       requestedRef.current = null;
       startSnapshot.current = null;
       setStage('idle');
+      setQuote(null);
     }
   }, [clearTimers, closeOnce, reducedMotion, setStage, snapshot]);
 
@@ -154,6 +173,7 @@ export function useAssistantSendoff({
   return {
     stage,
     pending: stage === 'pending',
+    quote,
     start,
     finishExit,
   };
