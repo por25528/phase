@@ -186,3 +186,20 @@ describe('the standing focus level', () => {
     expect(getState().sessions.at(-1)?.focus).toBe('low');
   });
 });
+
+describe('the display dial', () => {
+  it('keeps the display dial in memory and never writes it', async () => {
+    const { actions, getState } = await freshStore();
+    dbMocks.saveStoredTimeLevel.mockClear();
+
+    expect(getState().detailLevel).toBe('medium');
+    expect(actions.setDetailLevel('low')).toBe(true);
+    expect(getState().detailLevel).toBe('low');
+    expect(dbMocks.saveStoredTimeLevel).not.toHaveBeenCalled();
+  });
+
+  it('refuses a detail level that is not a level', async () => {
+    const { actions } = await freshStore();
+    expect(actions.setDetailLevel('enormous' as never)).toBe(false);
+  });
+});

@@ -10,7 +10,6 @@ import type {
 import { elapsedFocusMinutes } from '../../lib/focusSession';
 import { weekOf } from '../../lib/plan';
 import { todayStr } from '../../lib/dates';
-import { DEFAULT_DETAIL_LEVEL } from '../../lib/shelfDetail';
 
 /**
  * The sole adapter between `AssistantAction` and the store.
@@ -38,7 +37,7 @@ function nowMinute(): number {
 export function AssistantHost({ open, onClose }: { open: boolean; onClose: () => void }) {
   const {
     goals, tasks, sessions, availability, allDayBlocks, activeFocusSession,
-    assistantAccelerator, timeLevel, hydration, actions,
+    assistantAccelerator, timeLevel, detailLevel, hydration, actions,
   } = useAppStore();
   const [notice, setNotice] = useState<Notice | null>(null);
 
@@ -80,12 +79,10 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
       advice,
       activeFocus,
       timeLevel,
-      // The store has no detail dial yet, so this is fixed rather than read —
-      // wiring it up is a later task's job.
-      detailLevel: DEFAULT_DETAIL_LEVEL,
+      detailLevel,
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, timeLevel, notice]);
+  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, timeLevel, detailLevel, notice]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {
@@ -99,6 +96,7 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
         return;
       }
       case 'set-time-level': actions.setTimeLevel(action.level); return;
+      case 'set-detail-level': actions.setDetailLevel(action.level); return;
       case 'pause-focus': actions.pauseFocus(); return;
       case 'resume-focus': actions.resumeFocus(); return;
       case 'complete-focus': {

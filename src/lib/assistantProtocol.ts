@@ -1,6 +1,6 @@
 import type { ExecutionAdvice } from './executionAdvisor';
 import type { ExpectedTime, WorkRef } from './expectedTime';
-import type { DetailLevel } from './shelfDetail';
+import { DEFAULT_DETAIL_LEVEL, type DetailLevel } from './shelfDetail';
 import type { TimeLevel } from './timeLens';
 import { fmtMinutes } from './effort';
 
@@ -97,14 +97,20 @@ export function expectedTimeLabel(expected: ExpectedTime): string {
  * already spells it — `Log 3h 20m` on one, `Planned 30m` on the other — so
  * neither this function nor `expectedTimeLabel` can drift from the button
  * beside it.
+ *
+ * The level here is the DISPLAY dial, not the time one. Dropping the
+ * comparison is a statement about how much you want in front of you — "the
+ * pressure in a running session was never the elapsed figure, it is the figure
+ * it is being measured against" — and that is the display axis exactly. How
+ * long your gap was has no bearing on how much of the readout you want.
  */
 export function elapsedAgainstExpected(
   elapsedMin: number,
   expected: ExpectedTime,
-  level: TimeLevel = 'medium',
+  level: DetailLevel = DEFAULT_DETAIL_LEVEL,
 ): string {
   const done = fmtMinutes(elapsedMin);
-  // At low focus the number survives and the verdict does not. The pressure in
+  // At low detail the number survives and the verdict does not. The pressure in
   // a running session was never the elapsed figure — it is the figure it is
   // being measured against.
   if (level === 'low') return `${done} so far`;

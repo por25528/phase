@@ -68,6 +68,7 @@ import {
 import {
   DEFAULT_TIME_LEVEL, timeLevelFor, isTimeLevel, type TimeLevel,
 } from '../lib/timeLens';
+import { DEFAULT_DETAIL_LEVEL, isDetailLevel, type DetailLevel } from '../lib/shelfDetail';
 import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
 import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
@@ -217,6 +218,11 @@ interface UIState {
    */
   timeLevel: TimeLevel;
   /**
+   * How much the shelf hands over. In memory beside `activeLifeId` and never
+   * persisted, so every load starts at the default — a mood is not a setting.
+   */
+  detailLevel: DetailLevel;
+  /**
    * What the OS said when the chord was registered. Ephemeral and
    * Electron-only: null in the browser, where there is no global shortcut to
    * register and so nothing honest to report.
@@ -268,6 +274,7 @@ let state: FullState = {
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
   timeLevel: DEFAULT_TIME_LEVEL,
+  detailLevel: DEFAULT_DETAIL_LEVEL,
   assistantShortcut: null,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
@@ -1979,6 +1986,12 @@ export const actions = {
     if (!isTimeLevel(next)) return false;
     set({ timeLevel: next });
     ifOwner(() => saveStoredTimeLevel({ level: next, date: todayStr() }));
+    return true;
+  },
+
+  setDetailLevel(next: DetailLevel): boolean {
+    if (!isDetailLevel(next)) return false;
+    set({ detailLevel: next });
     return true;
   },
 
