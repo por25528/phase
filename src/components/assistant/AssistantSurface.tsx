@@ -6,7 +6,7 @@ import type {
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
-import type { DetailLevel } from '../../lib/shelfDetail';
+import { DETAIL_LEVELS, DETAIL_WORD, type DetailLevel } from '../../lib/shelfDetail';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
@@ -54,8 +54,13 @@ const REASON_WORD: Record<AdviceReason, string> = {
   'free-time': 'Fits your free time',
 };
 
-/** The dial on the home row of the number keys. There is no text field to steal them. */
-const KEY_TO_LEVEL: Record<string, TimeLevel | undefined> = {
+/**
+ * The dial on the home row of the number keys, and it drives the TIME one —
+ * that is the dial which changes what you are offered. Two dials would want
+ * six keys, and the shelf is not a keyboard surface. There is no text field to
+ * steal them.
+ */
+const KEY_TO_TIME_LEVEL: Record<string, TimeLevel | undefined> = {
   '1': 'low', '2': 'medium', '3': 'high',
 };
 
@@ -64,25 +69,39 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 /**
- * The dial, and the only always-present control on the shelf.
+ * The shelf's two dials, and the only always-present controls on it.
+ *
+ * They are two axes and never one: the left says how long you have, which
+ * decides what fits; the right says how much to hand over, which decides how
+ * much is drawn. Ship them as one control and "half an hour" and "keep it
+ * simple" have to share a number neither of them means.
  *
  * `SegmentedSwitch` rather than `SegmentedControl`: this is view state and not
  * form data, the same distinction Board/Timeline already makes. `sm` because
  * the shelf is a dense toolbar, and because 26px clears the 24px target floor.
  */
-function FocusStrip({ level, onAction }: {
-  level: TimeLevel;
+function DialStrip({ timeLevel, detailLevel, onAction }: {
+  timeLevel: TimeLevel;
+  detailLevel: DetailLevel;
   onAction: Props['onAction'];
 }) {
   return (
     <div className="flex items-center gap-2.5 border-b border-line pb-2">
-      <span className="text-meta font-semibold text-muted">Focus</span>
+      <span className="text-meta font-semibold text-muted">I&rsquo;ve got</span>
       <SegmentedSwitch
-        label="Focus level"
+        label="How long you have"
         size="sm"
-        value={level}
+        value={timeLevel}
         options={TIME_LEVELS.map((value) => ({ value, label: TIME_WORD[value] }))}
         onChange={(next) => onAction({ type: 'set-time-level', level: next })}
+      />
+      <span className="ml-1 text-meta font-semibold text-muted">Focus</span>
+      <SegmentedSwitch
+        label="How much to show"
+        size="sm"
+        value={detailLevel}
+        options={DETAIL_LEVELS.map((value) => ({ value, label: DETAIL_WORD[value] }))}
+        onChange={(next) => onAction({ type: 'set-detail-level', level: next })}
       />
     </div>
   );
@@ -331,7 +350,7 @@ export function AssistantSurface({
         onAction({ type: 'close' });
         return;
       }
-      const level = KEY_TO_LEVEL[event.key];
+      const level = KEY_TO_TIME_LEVEL[event.key];
       if (level) onAction({ type: 'set-time-level', level });
     };
     window.addEventListener('keydown', onKey);
@@ -366,7 +385,7 @@ export function AssistantSurface({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
-      <FocusStrip level={snapshot.timeLevel} onAction={onAction} />
+      <DialStrip timeLevel={snapshot.timeLevel} detailLevel={snapshot.detailLevel} onAction={onAction} />
       {snapshot.notice && (
         <p className={`text-meta ${snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted'}`}>
           {snapshot.notice.text}

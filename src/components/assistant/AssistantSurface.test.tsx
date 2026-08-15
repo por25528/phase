@@ -485,6 +485,37 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'high' });
   });
 
+  it('offers both dials, named for what each one does', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+
+    expect(screen.getByRole('group', { name: 'How long you have' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'How much to show' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '30m' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Any' })).toBeTruthy();
+  });
+
+  it('sends the right verb from the right dial', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '30m' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'High' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-detail-level', level: 'high' });
+  });
+
+  it('keeps the number keys on the dial that changes what you are offered', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+
+    fireEvent.keyDown(window, { key: '1' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
+    fireEvent.keyDown(window, { key: '3' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'high' });
+  });
+
   it('says nothing light is left rather than nothing needs you', () => {
     const snapshot = ready({
       timeLevel: 'low',
