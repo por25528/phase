@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, cssBlock, luminance, themeTokens } from './contrast';
+import { contrastRatio, cssBlock, luminance, stripCssComments, themeTokens } from './contrast';
+
+describe('stripCssComments', () => {
+  it('blanks a comment body to spaces, keeping string indices aligned', () => {
+    const css = '/* note */ .a { x: 1; }';
+    const stripped = stripCssComments(css);
+    expect(stripped).toBe('           .a { x: 1; }');
+    expect(stripped.length).toBe(css.length);
+  });
+
+  it('removes a brace-bearing comment rather than treating it as a rule', () => {
+    const css = '/* example: h4 { @apply font-disp; } */\n.a { x: 1; }';
+    expect(stripCssComments(css)).not.toMatch(/h4/);
+  });
+
+  it('does not glue a comment onto the selector that follows it', () => {
+    const css = '/* why this rule exists */\n.a { x: 1; }';
+    expect(stripCssComments(css).trim()).toBe('.a { x: 1; }');
+  });
+});
 
 describe('luminance', () => {
   it('puts black at 0 and white at 1', () => {

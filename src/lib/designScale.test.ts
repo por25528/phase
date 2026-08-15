@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error — plain JS config, no types, and adding a .d.ts for one import
 // would be more ceremony than the guard below is worth.
 import tailwindConfig from '../../tailwind.config.js';
+import { stripCssComments } from './contrast';
 
 /**
  * The type and radius scales are only a system if they are enforced.
@@ -307,13 +308,17 @@ describe('type roles', () => {
    * next `{` opens a block with a further nested `{` before any `}` fails to
    * close and the engine slides forward to the innermost real rule — proven
    * for `@media` above by the class/id form and unaffected by widening.
-   * Comment text ahead of a rule rides along in the (trimmed) selector
-   * capture, but that's cosmetic: it is never what gets asserted against
-   * `font-disp`, only the body is, and only three bodies anywhere in the
-   * file mention it.
+   *
+   * Comment text is NOT cosmetic, though — a `/* ... *\/` remark can contain
+   * a brace (a doc comment showing example CSS) or sit directly above a real
+   * rule with nothing else between them, and either shape lets prose glue
+   * onto a real selector's capture or manufacture a spurious one of its own.
+   * `stripCssComments` (`contrast.ts`) — the same fix `cssBlock` already
+   * applies to this exact bug class — blanks comment bodies to equal-length
+   * spaces before the rule-pairing regex ever runs.
    */
   it('keeps font-disp in index.css scoped to the three note-prose headings', () => {
-    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const css = stripCssComments(readFileSync(join(SRC, 'index.css'), 'utf8'));
     const rules = [...css.matchAll(/([^{}]+?)\{([^{}]*)\}/g)];
     const selectors = rules
       .filter((rule) => /\bfont-disp\b/.test(rule[2]))

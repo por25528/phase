@@ -28,6 +28,21 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 }
 
 /**
+ * A CSS comment can legitimately mention a selector or a class in prose (as
+ * this file's own header does), and a plain-text scan over raw stylesheet
+ * text would happily match that prose instead of the rule it describes.
+ *
+ * Comment bodies are blanked to EQUAL-LENGTH runs of spaces rather than
+ * removed, so every remaining character keeps its original string index —
+ * a caller that reports a line/column, or that re-slices the ORIGINAL `css`
+ * using an offset found in the stripped text (as `cssBlock` does), still
+ * lines up.
+ */
+export function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (comment) => ' '.repeat(comment.length));
+}
+
+/**
  * The body of the first rule matching `selector`, brace-matched.
  *
  * Splitting on the selector and taking the remainder — which is what the
@@ -40,9 +55,7 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
  * it describes.
  */
 export function cssBlock(css: string, selector: string): string {
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
-    ' '.repeat(comment.length),
-  );
+  const stripped = stripCssComments(css);
   const start = stripped.indexOf(selector);
   if (start === -1) throw new Error(`${selector} not found in stylesheet`);
   const open = stripped.indexOf('{', start);
