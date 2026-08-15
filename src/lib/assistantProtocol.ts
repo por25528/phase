@@ -53,6 +53,8 @@ export type AssistantAction =
   | { type: 'complete-focus' }
   | { type: 'confirm-focus'; minutes: number | null }
   | { type: 'switch-focus'; ref: WorkRef }
+  /** End the WORK, not the sitting. `complete-focus` is the sitting. */
+  | { type: 'complete-work'; ref: WorkRef }
   | { type: 'close' };
 
 /**

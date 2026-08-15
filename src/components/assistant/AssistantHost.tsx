@@ -106,6 +106,17 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
         }
         return;
       }
+      case 'complete-work': {
+        const result = actions.finishWork(action.ref);
+        if (result.outcome === 'refused') {
+          setNotice({ tone: 'warning', text: "Couldn't complete that." });
+          return;
+        }
+        // The label the write actually armed, so this line and the undo toast
+        // cannot drift apart.
+        setNotice({ tone: 'neutral', text: result.label });
+        return;
+      }
       case 'confirm-focus': actions.confirmFocus(action.minutes); return;
       case 'switch-focus': {
         // Log the running session first; only a clean log releases the switch.

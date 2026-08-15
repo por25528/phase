@@ -193,4 +193,17 @@ describe('AssistantHost', () => {
     expect(store.getState().sessions).toHaveLength(1);
     expect(store.getState().tasks[0].done).toBe(false);
   });
+
+  it('ticks the offered work done and reports the label the write armed', async () => {
+    const store = await mountHost({
+      tasks: [{ id: 't1', title: 'Draft essay', done: false, goalId: null, date: TODAY }],
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Complete "Draft essay"' }));
+    });
+
+    expect(store.getState().tasks[0].done).toBe(true);
+    expect(screen.getByText('Completed "Draft essay"')).toBeTruthy();
+  });
 });

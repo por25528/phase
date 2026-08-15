@@ -16,6 +16,7 @@ import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 import { sectionLabel } from '../sectionLabel';
 import { SessionRing } from './SessionRing';
+import { TodayCheckbox } from '../TodayCheckbox';
 
 /**
  * The one assistant surface, rendered in two places: inside the app by
@@ -242,12 +243,25 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
   shelf: boolean;
   focusLevel: FocusLevel;
 }) {
-  const ring = focus.phase === 'confirming'
-    ? null
-    : <SessionRing state={ringState(focus.expected, focus.elapsedMin, focusLevel)} paused={focus.phase === 'break'} />;
+  // The ring and the tick share one condition: `confirming` carries neither.
+  // The ring has no progress to draw against a figure still in question, and a
+  // tick would answer a different question than the one on screen.
+  const running = focus.phase !== 'confirming';
   const info = (
     <div className="flex min-w-0 items-center gap-3">
-      {ring}
+      {running && (
+        <TodayCheckbox
+          checked={false}
+          ariaLabel={`Complete "${focus.title}"`}
+          onToggle={() => onAction({ type: 'complete-work', ref: focus.ref })}
+        />
+      )}
+      {running && (
+        <SessionRing
+          state={ringState(focus.expected, focus.elapsedMin, focusLevel)}
+          paused={focus.phase === 'break'}
+        />
+      )}
       <div className="flex min-w-0 flex-col gap-1">
         <SectionLabel>Focus session</SectionLabel>
         <h2 className="line-clamp-2 text-h2 font-semibold text-ink">{focus.title}</h2>
@@ -343,10 +357,11 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
   );
 }
 
-function AdvicePanel({ snapshot, shelf, pending, onStart }: {
+function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
   shelf: boolean;
   pending: boolean;
+  onAction: Props['onAction'];
   onStart: (ref: RecommendedWork['ref']) => void;
 }) {
   const { advice } = snapshot;
@@ -365,14 +380,21 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
   const { primary } = advice;
   const alternatives = advice.alternatives.slice(0, MAX_ALTERNATIVES);
   const primaryColumn = (
-    <div className="flex min-w-0 flex-col gap-1">
-      <SectionLabel>{REASON_WORD[primary.reason]}</SectionLabel>
-      <h2 className="line-clamp-2 text-h2 font-semibold text-ink">{primary.title}</h2>
-      <p className="flex min-w-0 items-baseline gap-1.5 text-meta text-muted">
-        {primary.goalTitle && <span className="truncate">{primary.goalTitle}</span>}
-        {primary.goalTitle && <span aria-hidden>·</span>}
-        <span className="shrink-0">{expectedTimeLabel(primary.expected)}</span>
-      </p>
+    <div className="flex min-w-0 items-center gap-3">
+      <TodayCheckbox
+        checked={false}
+        ariaLabel={`Complete "${primary.title}"`}
+        onToggle={() => onAction({ type: 'complete-work', ref: primary.ref })}
+      />
+      <div className="flex min-w-0 flex-col gap-1">
+        <SectionLabel>{REASON_WORD[primary.reason]}</SectionLabel>
+        <h2 className="line-clamp-2 text-h2 font-semibold text-ink">{primary.title}</h2>
+        <p className="flex min-w-0 items-baseline gap-1.5 text-meta text-muted">
+          {primary.goalTitle && <span className="truncate">{primary.goalTitle}</span>}
+          {primary.goalTitle && <span aria-hidden>·</span>}
+          <span className="shrink-0">{expectedTimeLabel(primary.expected)}</span>
+        </p>
+      </div>
     </div>
   );
   const startButton = (
@@ -496,6 +518,7 @@ export function AssistantSurface({
             snapshot={snapshot}
             shelf={shelf}
             pending={sendoff.pending}
+            onAction={onAction}
             onStart={sendoff.start}
           />
         )}

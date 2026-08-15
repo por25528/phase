@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssistantSurface } from './AssistantSurface';
-import type { AssistantSnapshot } from '../../lib/assistantProtocol';
+import type { AssistantFocusView, AssistantSnapshot } from '../../lib/assistantProtocol';
 import type { RecommendedWork } from '../../lib/executionAdvisor';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 import { sendoffFor } from '../../lib/sendoff';
@@ -28,6 +28,18 @@ function work(over: Partial<RecommendedWork> = {}): RecommendedWork {
     title: 'Problem set 4',
     goalTitle: 'Algorithms',
     reason: 'scheduled-now',
+    expected: { kind: 'estimate', minutes: 45 },
+    ...over,
+  };
+}
+
+function focusView(over: Partial<AssistantFocusView> = {}): AssistantFocusView {
+  return {
+    ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+    title: 'Problem set 4',
+    goalTitle: 'Algorithms',
+    phase: 'active',
+    elapsedMin: 12,
     expected: { kind: 'estimate', minutes: 45 },
     ...over,
   };
@@ -669,6 +681,10 @@ describe('AssistantSurface', () => {
     expect(screen.queryByText(/of 45m/)).toBeNull();
   });
 
+  // `svg[aria-hidden]`, not `svg`: the checkbox draws a tick glyph of its own,
+  // so a bare `svg` query answers "is there any icon here" and would report a
+  // ring on the idle card and keep reporting one after the ring was deleted.
+  // The ring is the decorative one — that is what `aria-hidden` says.
   it('draws a ring beside a running session and none while confirming', () => {
     const base = {
       ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
@@ -678,7 +694,7 @@ describe('AssistantSurface', () => {
     const { container, rerender } = render(
       <AssistantSurface snapshot={ready({ activeFocus: { ...base, phase: 'active' } })} onAction={() => {}} />,
     );
-    expect(container.querySelector('svg')).toBeTruthy();
+    expect(container.querySelector('svg[aria-hidden]')).toBeTruthy();
 
     rerender(
       <AssistantSurface
@@ -686,11 +702,71 @@ describe('AssistantSurface', () => {
         onAction={() => {}}
       />,
     );
-    expect(container.querySelector('svg')).toBeNull();
+    expect(container.querySelector('svg[aria-hidden]')).toBeNull();
   });
 
   it('draws no ring on the idle card, where nothing is running', () => {
     const { container } = render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
-    expect(container.querySelector('svg')).toBeNull();
+    expect(container.querySelector('svg[aria-hidden]')).toBeNull();
+  });
+});
+
+describe('marking the offered work done', () => {
+  it('offers a checkbox on the idle card, named for the work', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    expect(screen.getByRole('checkbox', { name: 'Complete "Problem set 4"' })).toBeTruthy();
+  });
+
+  it('dispatches complete-work with the primary ref', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Complete "Problem set 4"' }));
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'complete-work',
+      ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+    });
+  });
+
+  it('offers it on a running session too — that is when you come back', () => {
+    render(<AssistantSurface snapshot={ready({ activeFocus: focusView() })} onAction={() => {}} />);
+    expect(screen.getByRole('checkbox', { name: 'Complete "Problem set 4"' })).toBeTruthy();
+  });
+
+  it('offers it on a break', () => {
+    render(<AssistantSurface
+      snapshot={ready({ activeFocus: focusView({ phase: 'break' }) })}
+      onAction={() => {}}
+    />);
+    expect(screen.getByRole('checkbox', { name: 'Complete "Problem set 4"' })).toBeTruthy();
+  });
+
+  /*
+   * `confirming` is already asking "was that real work?". A tick there would
+   * answer a different question than the one on screen.
+   */
+  it('withholds it while a session is confirming', () => {
+    render(<AssistantSurface
+      snapshot={ready({ activeFocus: focusView({ phase: 'confirming', proposedMinutes: 200 }) })}
+      onAction={() => {}}
+    />);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  /*
+   * The Sidecar is a list of things to PICK, and a list of choices is not a
+   * commit — the same reason optionRow is not one of the dialog variants.
+   */
+  it('puts no checkbox on the alternatives', () => {
+    render(<AssistantSurface
+      snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives: [
+        work({ key: 'step:n2', ref: { kind: 'step', id: 'n2', goalId: 'g1' }, title: 'Read chapter 3' }),
+      ] } })}
+      onAction={() => {}}
+      presentation="shelf"
+    />);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+    expect(screen.queryByRole('checkbox', { name: 'Complete "Read chapter 3"' })).toBeNull();
   });
 });
