@@ -2099,9 +2099,6 @@ export const actions = {
    * what just happened.
    */
   finishWork(ref: WorkRef, nowMs = Date.now()): FinishWorkResult {
-    // Unused until the running-session branch lands; the name is part of the
-    // signature callers already spend, so it is voided rather than renamed.
-    void nowMs;
     const today = todayStr();
 
     // The completion slice, built the way `toggleLeaf`/`toggleTask` build it —
@@ -2128,8 +2125,44 @@ export const actions = {
       };
     }
 
-    const label = `Completed "${title}"`;
-    withUndoSlices(label, completed);
+    const draft = state.activeFocusSession;
+    // A draft about OTHER work is real occupancy this must not disturb, and a
+    // `confirming` one is already a question awaiting its own answer.
+    if (
+      !draft
+      || draft.phase === 'confirming'
+      || draft.ref.kind !== ref.kind
+      || draft.ref.id !== ref.id
+    ) {
+      const label = `Completed "${title}"`;
+      withUndoSlices(label, completed);
+      return { outcome: 'done', label };
+    }
+
+    const finish = finishFocusSession(draft, nowMs);
+    if (finish.kind === 'needs-confirmation') {
+      // One slice only, so undo stays whole. The minutes park in `confirming`
+      // for the question the shelf already knows how to ask.
+      const label = `Completed "${title}"`;
+      withUndoSlices(label, completed);
+      setFocusDraft(finish.session);
+      return { outcome: 'needs-confirmation', label };
+    }
+
+    // The TIME level, never the display one — the same choice `completeFocus`
+    // makes, for the same reason.
+    const built = sessionFor(
+      ref.kind, ref.id, finish.minutes, today,
+      draft.focusLevel === 'low' ? 'low' : undefined,
+    );
+    const label = built
+      ? `Completed "${title}" · logged ${formatEstimateValue(built.session.minutes)}`
+      : `Completed "${title}"`;
+    withUndoSlices(
+      label,
+      built ? { ...completed, sessions: [...state.sessions, built.session] } : completed,
+    );
+    setFocusDraft(null);
     return { outcome: 'done', label };
   },
 

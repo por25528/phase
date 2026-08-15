@@ -78,6 +78,8 @@ describe('finishWork', () => {
     nodes: [{ id: 'n1', title: 'Problem set 4' }],
   };
   const ref = { kind: 'step' as const, id: 'n1', goalId: 'g1' };
+  const MIN = 60_000;
+  const starter = { kind: 'starter' as const, minutes: 30 as const };
 
   async function workStore(goals: Goal[] = [goal]) {
     const { loadState } = await import('../db/db');
@@ -137,5 +139,86 @@ describe('finishWork', () => {
       label: 'Completed "Watch roblox"',
     });
     expect(getState().tasks[0].done).toBe(true);
+  });
+
+  it('logs the sitting and ticks the task in ONE undoable write', async () => {
+    const { actions, getState } = await workStore();
+    actions.startFocus(ref, starter, t0);
+
+    expect(actions.finishWork(ref, t0 + 12 * MIN)).toEqual({
+      outcome: 'done',
+      label: 'Completed "Problem set 4" · logged 12m',
+    });
+
+    expect(getState().sessions).toHaveLength(1);
+    expect(getState().sessions[0].minutes).toBe(12);
+    expect(getState().sessions[0].nodeId).toBe('n1');
+    expect(isDone(getState().goals[0].nodes[0])).toBe(true);
+    expect(getState().activeFocusSession).toBeNull();
+    expect(getState().pendingUndo?.label).toBe('Completed "Problem set 4" · logged 12m');
+  });
+
+  /*
+   * The whole reason this action exists rather than two calls. Two sequential
+   * withUndo writes would let the second sweep the first, so undo would
+   * un-tick the task and leave the minutes logged.
+   */
+  it('undo restores BOTH slices, never half of them', async () => {
+    const { actions, getState } = await workStore();
+    actions.startFocus(ref, starter, t0);
+    actions.finishWork(ref, t0 + 12 * MIN);
+
+    actions.undoLastDelete();
+
+    expect(getState().sessions).toEqual([]);
+    expect(isDone(getState().goals[0].nodes[0])).toBe(false);
+  });
+
+  it('freezes the TIME level onto the session, exactly as completeFocus does', async () => {
+    const { actions, getState } = await workStore();
+    actions.setTimeLevel('low');
+    actions.startFocus(ref, starter, t0);
+
+    actions.finishWork(ref, t0 + 12 * MIN);
+
+    expect(getState().sessions[0].focus).toBe('low');
+  });
+
+  /*
+   * The tick is certain — you said you finished. The minutes are not: a session
+   * that "ran" nine hours is more likely a laptop lid than a marathon, and
+   * logging it would poison the history behind every "Usually 45-60m" the shelf
+   * shows. One slice, so undo stays whole; the draft parks for its own question.
+   */
+  it('ticks the task but parks a stale sitting instead of logging it', async () => {
+    const { actions, getState } = await workStore();
+    actions.startFocus(ref, starter, t0);
+
+    expect(actions.finishWork(ref, t0 + 200 * MIN)).toEqual({
+      outcome: 'needs-confirmation',
+      label: 'Completed "Problem set 4"',
+    });
+
+    expect(isDone(getState().goals[0].nodes[0])).toBe(true);
+    expect(getState().sessions).toEqual([]);
+    expect(getState().activeFocusSession?.phase).toBe('confirming');
+    expect(getState().activeFocusSession?.proposedMinutes).toBe(200);
+  });
+
+  it('leaves a draft about other work completely alone', async () => {
+    const { actions, getState } = await workStore([{
+      id: 'g1', title: 'Algorithms',
+      nodes: [{ id: 'n1', title: 'Problem set 4' }, { id: 'n2', title: 'Read chapter 3' }],
+    }]);
+    actions.startFocus({ kind: 'step', id: 'n2', goalId: 'g1' }, starter, t0);
+
+    expect(actions.finishWork(ref, t0 + 12 * MIN)).toEqual({
+      outcome: 'done',
+      label: 'Completed "Problem set 4"',
+    });
+
+    expect(getState().sessions).toEqual([]);
+    expect(getState().activeFocusSession?.ref.id).toBe('n2');
+    expect(getState().activeFocusSession?.phase).toBe('active');
   });
 });
