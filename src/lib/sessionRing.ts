@@ -1,5 +1,5 @@
 import type { ExpectedTime } from './expectedTime';
-import type { DetailLevel } from './shelfDetail';
+import type { FocusLevel } from './focusLens';
 
 /**
  * What the small circle on a running session should draw.
@@ -14,11 +14,10 @@ import type { DetailLevel } from './shelfDetail';
  * countdown this whole surface exists without, wearing a circle. So it turns
  * instead.
  *
- * At the lowest detail the ring turns whatever the evidence, because
- * `elapsedAgainstExpected` drops the comparison there for a stated reason —
- * "the pressure was never the elapsed figure, it is the figure it is being
- * measured against". A graphic that kept asserting a target the text had just
- * withheld would make one card contradict itself.
+ * At the lowest focus the ring turns whatever the evidence, because
+ * `elapsedAgainstExpected` already drops the comparison there. A graphic that
+ * kept asserting a target the text had just withheld would make the card
+ * contradict itself.
  *
  * `overflow` is a FRACTION of the target and is capped at 1. Past the
  * expectation the arc completes and the excess is drawn as a second sweep, so
@@ -43,9 +42,9 @@ function targetMinutes(expected: ExpectedTime): number | null {
 export function ringState(
   expected: ExpectedTime,
   elapsedMin: number,
-  detail: DetailLevel,
+  focus: FocusLevel,
 ): RingState {
-  if (detail === 'low') return { kind: 'turn' };
+  if (focus === 'low') return { kind: 'turn' };
   const target = targetMinutes(expected);
   if (target === null || target <= 0) return { kind: 'turn' };
 

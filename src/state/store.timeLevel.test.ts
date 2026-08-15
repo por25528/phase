@@ -97,6 +97,9 @@ describe('the standing focus level', () => {
     dbMocks.loadStoredTimeLevel.mockClear();
     dbMocks.loadStoredTimeLevel.mockResolvedValue(null);
     dbMocks.saveStoredTimeLevel.mockClear();
+    dbMocks.loadStoredFocusLevel.mockClear();
+    dbMocks.loadStoredFocusLevel.mockResolvedValue(null);
+    dbMocks.saveStoredFocusLevel.mockClear();
   });
 
   it('starts at medium', async () => {
@@ -189,19 +192,20 @@ describe('the standing focus level', () => {
   });
 });
 
-describe('the display dial', () => {
-  it('keeps the display dial in memory and never writes it', async () => {
+describe('the focus dial', () => {
+  it('is set by setFocusLevel and reported back', async () => {
+    const { todayStr } = await import('../lib/dates');
     const { actions, getState } = await freshStore();
-    dbMocks.saveStoredTimeLevel.mockClear();
-
-    expect(getState().detailLevel).toBe('medium');
-    expect(actions.setDetailLevel('low')).toBe(true);
-    expect(getState().detailLevel).toBe('low');
-    expect(dbMocks.saveStoredTimeLevel).not.toHaveBeenCalled();
+    expect(getState().focusLevel).toBe('medium');
+    expect(actions.setFocusLevel('low')).toBe(true);
+    expect(getState().focusLevel).toBe('low');
+    expect(dbMocks.saveStoredFocusLevel).toHaveBeenCalledWith({
+      level: 'low', date: todayStr(),
+    });
   });
 
-  it('refuses a detail level that is not a level', async () => {
+  it('refuses a focus level that is not a level', async () => {
     const { actions } = await freshStore();
-    expect(actions.setDetailLevel('enormous' as never)).toBe(false);
+    expect(actions.setFocusLevel('enormous' as never)).toBe(false);
   });
 });

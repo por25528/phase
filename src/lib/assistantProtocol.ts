@@ -1,6 +1,6 @@
 import type { ExecutionAdvice } from './executionAdvisor';
 import type { ExpectedTime, WorkRef } from './expectedTime';
-import { DEFAULT_DETAIL_LEVEL, type DetailLevel } from './shelfDetail';
+import { DEFAULT_FOCUS_LEVEL, type FocusLevel } from './focusLens';
 import type { TimeLevel } from './timeLens';
 import { fmtMinutes } from './effort';
 
@@ -39,15 +39,15 @@ export type AssistantSnapshot =
       activeFocus: AssistantFocusView | null;
       /** How long the user says they have. Decides what fits. */
       timeLevel: TimeLevel;
-      /** How much the shelf hands over. Decides how much is drawn. */
-      detailLevel: DetailLevel;
+      /** How much focus is available. Decides what the work has to be light enough for. */
+      focusLevel: FocusLevel;
       notice?: { tone: 'neutral' | 'warning'; text: string };
     };
 
 export type AssistantAction =
   | { type: 'start-focus'; ref: WorkRef }
   | { type: 'set-time-level'; level: TimeLevel }
-  | { type: 'set-detail-level'; level: DetailLevel }
+  | { type: 'set-focus-level'; level: FocusLevel }
   | { type: 'pause-focus' }
   | { type: 'resume-focus' }
   | { type: 'complete-focus' }
@@ -107,12 +107,13 @@ export function expectedTimeLabel(expected: ExpectedTime): string {
 export function elapsedAgainstExpected(
   elapsedMin: number,
   expected: ExpectedTime,
-  level: DetailLevel = DEFAULT_DETAIL_LEVEL,
+  level: FocusLevel = DEFAULT_FOCUS_LEVEL,
 ): string {
   const done = fmtMinutes(elapsedMin);
-  // At low detail the number survives and the verdict does not. The pressure in
+  // At low focus the number survives and the verdict does not. The pressure in
   // a running session was never the elapsed figure — it is the figure it is
-  // being measured against.
+  // being measured against, and a target is the last thing you need when you
+  // have already told the shelf you are running on empty.
   if (level === 'low') return `${done} so far`;
   return expected.kind === 'history'
     ? `${done} of ${expected.lowMin}–${expected.highMin}m`

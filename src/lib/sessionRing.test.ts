@@ -25,7 +25,7 @@ describe('ringState', () => {
     expect(ringState(STARTER, 999, 'high')).toEqual({ kind: 'turn' });
   });
 
-  it('turns at the lowest detail, because the text withholds the comparison there', () => {
+  it('turns at the lowest focus, because the text withholds the comparison there', () => {
     expect(ringState(ESTIMATE, 15, 'low')).toEqual({ kind: 'turn' });
     expect(ringState(HISTORY, 15, 'low')).toEqual({ kind: 'turn' });
   });

@@ -109,7 +109,7 @@ function validSnapshot(snapshot) {
   return validAdvice(snapshot.advice)
     && validFocus(snapshot.activeFocus)
     && validLevel(snapshot.timeLevel)
-    && validLevel(snapshot.detailLevel)
+    && validLevel(snapshot.focusLevel)
     && validNotice(snapshot.notice);
 }
 
@@ -127,7 +127,7 @@ function validAction(action) {
     case 'confirm-focus':
       return action.minutes === null || (boundedMinutes(action.minutes) && action.minutes > 0);
     case 'set-time-level':
-    case 'set-detail-level':
+    case 'set-focus-level':
       return validLevel(action.level);
     default:
       return false;

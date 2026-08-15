@@ -39,7 +39,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     advice: { kind: 'work', primary: work(), alternatives: [] },
     activeFocus: null,
     timeLevel: 'medium',
-    detailLevel: 'medium',
+    focusLevel: 'medium',
     ...over,
   };
 }
@@ -90,40 +90,24 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('button', { name: /Read chapter 5/ })).toBeTruthy();
   });
 
-  it('hands over one thing and no menu at the lowest detail', () => {
+  it('shows two alternatives regardless of the focus dial', () => {
     const alternatives = [
       work({ key: 'step:n2', title: 'Read chapter 5' }),
       work({ key: 'step:n3', title: 'Pitch deck' }),
     ];
-    render(
-      <AssistantSurface
-        snapshot={ready({ detailLevel: 'low', advice: { kind: 'work', primary: work(), alternatives } })}
-        onAction={() => {}}
-        presentation="shelf"
-      />,
-    );
-    expect(screen.queryByText('Read chapter 5')).toBeNull();
-    expect(screen.queryByText('Pitch deck')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
-  });
-
-  it('offers one alternative at medium and two at high', () => {
-    const alternatives = [
-      work({ key: 'step:n2', title: 'Read chapter 5' }),
-      work({ key: 'step:n3', title: 'Pitch deck' }),
-    ];
-    const advice = { kind: 'work' as const, primary: work(), alternatives };
-
-    const { rerender } = render(
-      <AssistantSurface snapshot={ready({ detailLevel: 'medium', advice })} onAction={() => {}} presentation="shelf" />,
-    );
-    expect(screen.getByText('Read chapter 5')).toBeTruthy();
-    expect(screen.queryByText('Pitch deck')).toBeNull();
-
-    rerender(
-      <AssistantSurface snapshot={ready({ detailLevel: 'high', advice })} onAction={() => {}} presentation="shelf" />,
-    );
-    expect(screen.getByText('Pitch deck')).toBeTruthy();
+    for (const focusLevel of ['low', 'medium', 'high'] as const) {
+      cleanup();
+      render(
+        <AssistantSurface
+          snapshot={ready({ focusLevel, advice: { kind: 'work', primary: work(), alternatives } })}
+          onAction={() => {}}
+          presentation="shelf"
+        />,
+      );
+      expect(screen.getByText('Read chapter 5')).toBeTruthy();
+      expect(screen.getByText('Pitch deck')).toBeTruthy();
+      expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
+    }
   });
 
   it('withholds the column while a session is running', () => {
@@ -548,7 +532,7 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
   });
 
-  // The display dial deliberately has no number keys — only the time dial can own them,
+  // The focus dial deliberately has no number keys — only the time dial can own them,
   // and the time dial is the one you reach for mid-session.
   it('keeps the number keys on the dial that changes what you are offered', () => {
     const onAction = vi.fn();
@@ -564,7 +548,7 @@ describe('AssistantSurface', () => {
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
 
     expect(screen.getByRole('group', { name: 'How long you have' })).toBeTruthy();
-    expect(screen.getByRole('group', { name: 'How much to show' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'How much focus you have' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '30m' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Any' })).toBeTruthy();
   });
@@ -594,20 +578,33 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
 
     fireEvent.click(screen.getByRole('button', { name: 'High' }));
-    expect(onAction).toHaveBeenCalledWith({ type: 'set-detail-level', level: 'high' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'high' });
   });
 
-  it('says nothing light is left rather than nothing needs you', () => {
+  it('says nothing that short is left rather than nothing needs you', () => {
     const snapshot = ready({
       timeLevel: 'low',
       advice: { kind: 'work', primary: work({ title: 'Thesis chapter 2' }), alternatives: [], beyondWindow: true },
     });
     render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
-    expect(screen.getByText("Nothing light left — this is next when you're ready.")).toBeTruthy();
+    expect(screen.getByText("Nothing that short left — this is next when you're ready.")).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Thesis chapter 2' })).toBeTruthy();
   });
 
-  it('drops the comparison from a running session at low detail', () => {
+  it('names the dial that emptied the queue', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          advice: { kind: 'work', primary: work(), alternatives: [], beyondFocus: true },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Nothing light left/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing that short left/)).toBeNull();
+  });
+
+  it('drops the comparison from a running session at low focus', () => {
     const focus = {
       ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
       title: 'Lab report',
@@ -615,12 +612,12 @@ describe('AssistantSurface', () => {
       elapsedMin: 18,
       expected: { kind: 'estimate' as const, minutes: 45 },
     };
-    render(<AssistantSurface snapshot={ready({ detailLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
     expect(screen.getByText('18m so far')).toBeTruthy();
     expect(screen.queryByText(/of 45m/)).toBeNull();
   });
 
-  it('keeps the comparison at medium detail, where it is not pressure but information', () => {
+  it('keeps the comparison at medium focus, where it is not pressure but information', () => {
     const focus = {
       ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
       title: 'Lab report',
@@ -628,16 +625,16 @@ describe('AssistantSurface', () => {
       elapsedMin: 18,
       expected: { kind: 'estimate' as const, minutes: 45 },
     };
-    render(<AssistantSurface snapshot={ready({ detailLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
+    render(<AssistantSurface snapshot={ready({ focusLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
     expect(screen.getByText('18m of 45m')).toBeTruthy();
   });
 
-  // TimeLevel and DetailLevel are both `'low' | 'medium' | 'high'` — structurally
+  // TimeLevel and FocusLevel are both `'low' | 'medium' | 'high'` — structurally
   // identical unions, so TypeScript accepts either dial's value where the other is
   // expected and would not have caught FocusPanel being wired to the time dial
-  // instead of the display dial. These two cases are the only thing that would:
+  // instead of the focus dial. These two cases are the only thing that would:
   // they set the dials to opposite ends, so a mix-up flips the answer either way.
-  it('reads the running-session comparison off the display dial, not the time dial', () => {
+  it('reads the running-session comparison off the focus dial, not the time dial', () => {
     const focus = {
       ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
       title: 'Lab report',
@@ -647,14 +644,14 @@ describe('AssistantSurface', () => {
     };
     render(
       <AssistantSurface
-        snapshot={ready({ timeLevel: 'low', detailLevel: 'high', activeFocus: focus })}
+        snapshot={ready({ timeLevel: 'low', focusLevel: 'high', activeFocus: focus })}
         onAction={() => {}}
       />,
     );
     expect(screen.getByText('18m of 45m')).toBeTruthy();
   });
 
-  it('drops the comparison at low display detail even with plenty of time', () => {
+  it('drops the comparison at low focus even with plenty of time', () => {
     const focus = {
       ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
       title: 'Lab report',
@@ -664,7 +661,7 @@ describe('AssistantSurface', () => {
     };
     render(
       <AssistantSurface
-        snapshot={ready({ timeLevel: 'high', detailLevel: 'low', activeFocus: focus })}
+        snapshot={ready({ timeLevel: 'high', focusLevel: 'low', activeFocus: focus })}
         onAction={() => {}}
       />,
     );

@@ -6,7 +6,8 @@ import type {
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
-import { ALTERNATIVE_CAP, DETAIL_LEVELS, DETAIL_WORD, type DetailLevel } from '../../lib/shelfDetail';
+import { FOCUS_LEVELS, FOCUS_WORD, type FocusLevel } from '../../lib/focusLens';
+import { MAX_ALTERNATIVES } from '../../lib/executionAdvisor';
 import { ringState } from '../../lib/sessionRing';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
@@ -74,9 +75,9 @@ function SectionLabel({ children }: { children: string }) {
  * The shelf's two dials, and the only always-present controls on it.
  *
  * They are two axes and never one: the left says how long you have, which
- * decides what fits; the right says how much to hand over, which decides how
- * much is drawn. Ship them as one control and "half an hour" and "keep it
- * simple" have to share a number neither of them means.
+ * decides what fits; the right says how much of you is available, which decides
+ * what the work has to be light enough for. Ship them as one control and "half
+ * an hour" and "keep it simple" have to share a number neither of them means.
  *
  * `SegmentedSwitch` rather than `SegmentedControl`: this is view state and not
  * form data, the same distinction Board/Timeline already makes. `sm` because
@@ -88,9 +89,9 @@ function SectionLabel({ children }: { children: string }) {
  * one line. A width-based wrap would answer a question neither presentation
  * actually asks — both are known fixed widths — so the branch is explicit.
  */
-function DialStrip({ timeLevel, detailLevel, onAction, shelf }: {
+function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
   timeLevel: TimeLevel;
-  detailLevel: DetailLevel;
+  focusLevel: FocusLevel;
   onAction: Props['onAction'];
   shelf: boolean;
 }) {
@@ -109,11 +110,11 @@ function DialStrip({ timeLevel, detailLevel, onAction, shelf }: {
       <div className="flex items-center gap-2.5">
         <span className="text-meta font-semibold text-muted">Focus</span>
         <SegmentedSwitch
-          label="How much to show"
+          label="How much focus you have"
           size="sm"
-          value={detailLevel}
-          options={DETAIL_LEVELS.map((value) => ({ value, label: DETAIL_WORD[value] }))}
-          onChange={(next) => onAction({ type: 'set-detail-level', level: next })}
+          value={focusLevel}
+          options={FOCUS_LEVELS.map((value) => ({ value, label: FOCUS_WORD[value] }))}
+          onChange={(next) => onAction({ type: 'set-focus-level', level: next })}
         />
       </div>
     </div>
@@ -234,16 +235,16 @@ function Skeleton() {
   );
 }
 
-function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
+function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
   focus: AssistantFocusView;
   alternatives: RecommendedWork[];
   onAction: Props['onAction'];
   shelf: boolean;
-  detail: DetailLevel;
+  focusLevel: FocusLevel;
 }) {
   const ring = focus.phase === 'confirming'
     ? null
-    : <SessionRing state={ringState(focus.expected, focus.elapsedMin, detail)} paused={focus.phase === 'break'} />;
+    : <SessionRing state={ringState(focus.expected, focus.elapsedMin, focusLevel)} paused={focus.phase === 'break'} />;
   const info = (
     <div className="flex min-w-0 items-center gap-3">
       {ring}
@@ -257,7 +258,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
           </p>
         ) : (
           <p className="text-meta text-muted">
-            {elapsedAgainstExpected(focus.elapsedMin, focus.expected, detail)}
+            {elapsedAgainstExpected(focus.elapsedMin, focus.expected, focusLevel)}
             {focus.phase === 'break' ? ' · On a break' : ''}
           </p>
         )}
@@ -342,16 +343,10 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
   );
 }
 
-function AdvicePanel({ snapshot, shelf, pending, detail, onStart }: {
+function AdvicePanel({ snapshot, shelf, pending, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
   shelf: boolean;
   pending: boolean;
-  /**
-   * How much to show. It is read HERE and never passed to `executionAdvisor`
-   * — the advisor holds no presentation, so the cap is applied where the
-   * rendering happens.
-   */
-  detail: DetailLevel;
   onStart: (ref: RecommendedWork['ref']) => void;
 }) {
   const { advice } = snapshot;
@@ -368,7 +363,7 @@ function AdvicePanel({ snapshot, shelf, pending, detail, onStart }: {
   }
 
   const { primary } = advice;
-  const alternatives = advice.alternatives.slice(0, ALTERNATIVE_CAP[detail]);
+  const alternatives = advice.alternatives.slice(0, MAX_ALTERNATIVES);
   const primaryColumn = (
     <div className="flex min-w-0 flex-col gap-1">
       <SectionLabel>{REASON_WORD[primary.reason]}</SectionLabel>
@@ -389,6 +384,9 @@ function AdvicePanel({ snapshot, shelf, pending, detail, onStart }: {
   return (
     <div className="flex flex-col gap-2">
       {advice.beyondWindow && (
+        <p className="text-meta text-muted">Nothing that short left — this is next when you&apos;re ready.</p>
+      )}
+      {advice.beyondFocus && (
         <p className="text-meta text-muted">Nothing light left — this is next when you&apos;re ready.</p>
       )}
       {shelf && alternatives.length > 0 ? (
@@ -478,7 +476,7 @@ export function AssistantSurface({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
-      <DialStrip timeLevel={snapshot.timeLevel} detailLevel={snapshot.detailLevel} onAction={onAction} shelf={shelf} />
+      <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf={shelf} />
       {snapshot.notice && (
         <p className={`text-meta ${snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted'}`}>
           {snapshot.notice.text}
@@ -491,14 +489,13 @@ export function AssistantSurface({
             alternatives={snapshot.advice.kind === 'work' ? snapshot.advice.alternatives : []}
             onAction={onAction}
             shelf={shelf}
-            detail={snapshot.detailLevel}
+            focusLevel={snapshot.focusLevel}
           />
         ) : (
           <AdvicePanel
             snapshot={snapshot}
             shelf={shelf}
             pending={sendoff.pending}
-            detail={snapshot.detailLevel}
             onStart={sendoff.start}
           />
         )}

@@ -31,7 +31,7 @@ const WORK: Ready = {
   },
   activeFocus: null,
   timeLevel: 'medium',
-  detailLevel: 'medium',
+  focusLevel: 'medium',
 };
 
 const RUNNING: Ready = {

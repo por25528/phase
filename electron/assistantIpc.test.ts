@@ -66,7 +66,7 @@ const SNAPSHOT = {
   },
   activeFocus: null,
   timeLevel: 'medium',
-  detailLevel: 'medium',
+  focusLevel: 'medium',
 };
 
 const FOCUSED_SNAPSHOT = {
@@ -157,8 +157,8 @@ describe('publish', () => {
   it('rejects a snapshot missing or malformed in either level', () => {
     const { ipcMain, ipc } = relay();
     const bad = [
-      { ...SNAPSHOT, detailLevel: undefined },
-      { ...SNAPSHOT, detailLevel: 'LOW' },
+      { ...SNAPSHOT, focusLevel: undefined },
+      { ...SNAPSHOT, focusLevel: 'LOW' },
       { ...SNAPSHOT, timeLevel: undefined },
       { ...SNAPSHOT, timeLevel: 'sideways' },
     ];
@@ -234,17 +234,17 @@ describe('act', () => {
 
   it('forwards both level verbs and rejects the retired one', () => {
     const { ipcMain, main } = relay();
-    ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'set-detail-level', level: 'high' });
+    ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'set-focus-level', level: 'high' });
     ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'set-time-level', level: 'low' });
     expect(main.webContents.send).toHaveBeenCalledTimes(2);
 
     main.webContents.send.mockClear();
     const bad = [
-      { type: 'set-detail-level', level: 'huge' },
+      { type: 'set-focus-level', level: 'huge' },
       { type: 'set-time-level', level: 'HIGH' },
       // The old verb, WELL FORMED: renaming it is the point, so an overlay
       // build from before this change must not still be able to set the dial.
-      { type: 'set-focus-level', level: 'low' },
+      { type: 'set-detail-level', level: 'high' },
     ];
     for (const action of bad) {
       ipcMain.emit('phase-assistant:act', OVERLAY_ID, action);
