@@ -13,16 +13,19 @@ const path = require('node:path')
 // TALLEST state fits: a hugging card is clipped by the window edge rather than
 // scrolled, so anything past this line is not merely awkward, it is invisible.
 //
-// The tallest state is a running session parked in `confirming`, with its goal
-// title, an "Other options" row AND a notice above it — 218.8px at 620 wide.
-// The notice is what moved this number: it used to REPLACE the body and now
-// sits above it, so it adds a line to whatever is already there. The same
-// session without the notice is 190.6px, which is why 192 held until now.
+// The tallest state is now the idle advice panel at `Focus: High` with two
+// alternatives AND `beyondWindow` — the Sidecar column beside the primary,
+// plus the "Nothing light left" line above it — 220.5px at 620 wide. The
+// Sidecar is what moved this number: it outgrew the previously-tallest
+// `confirming` state (goal title, an "Other options" row and a notice above
+// it, 218.8px), which is why 219 no longer holds. The send-off's own content
+// (84.9px) and the idle panel with long goal titles (195.2px) were both
+// measured too and neither is close.
 //
 // MEASURED, never derived. Arithmetic against the type scale put this number
 // 20px low once already. If a state grows, measure it again.
 const WIDTH = 620
-const HEIGHT = 219
+const HEIGHT = 221
 const TOP_GAP = 18
 
 /**
