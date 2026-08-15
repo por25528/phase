@@ -72,6 +72,7 @@ import {
 import {
   DEFAULT_FOCUS_LEVEL, focusLevelFor, isFocusLevel, type FocusLevel,
 } from '../lib/focusLens';
+import { DEMAND_WORD, type Demand } from '../lib/demand';
 import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
 import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
@@ -893,6 +894,17 @@ function describeEstimateChange(
 }
 
 /**
+ * The undo label for a demand edit. Names what changed, and what the value is
+ * now — the same register `describeEstimateChange` uses. Clearing names the
+ * thing that was just stripped, because that is what Undo would give back.
+ */
+function describeDemandChange(title: string, next: Demand | undefined): string {
+  return next === undefined
+    ? `Cleared focus needed on "${title}"`
+    : `Set "${title}" to ${DEMAND_WORD[next]}`;
+}
+
+/**
  * Warn when a new estimate makes an already-placed item outgrow the gap it
  * sits in.
  *
@@ -1057,6 +1069,43 @@ export const actions = {
     }
     if (count === 0) return false;
     withUndo(STATUS_LABEL[next](count), 'goals', goals);
+    return true;
+  },
+
+  /**
+   * The bulk form of `setNodeDemand`: ONE write and ONE undo entry for N
+   * nodes. Never a loop over the single-node action — each call would arm its
+   * own undo and each write's sweep would discard the one before it. Same
+   * absence of a leaves-only guard as the single form: the bulk bar selects
+   * containers too, and a container's demand is inherited by its subtree.
+   */
+  setNodesDemand(ids: string[], next: Demand | null): boolean {
+    const wanted = new Set(ids.filter((id) => isActiveNode(id)));
+    if (wanted.size === 0) return false;
+    const goals = cloneGoals(state.goals);
+    const value = next === null ? undefined : next;
+    let count = 0;
+    for (const g of goals) {
+      const visit = (nodes: GoalNode[]): void => {
+        for (const n of nodes) {
+          if (wanted.has(n.id) && n.demand !== value) {
+            if (value === undefined) delete n.demand;
+            else n.demand = value;
+            count++;
+          }
+          if (n.children?.length) visit(n.children);
+        }
+      };
+      visit(g.nodes);
+    }
+    if (count === 0) return false;
+    withUndo(
+      value === undefined
+        ? `Cleared focus needed on ${count} task${count === 1 ? '' : 's'}`
+        : `Set ${count} task${count === 1 ? '' : 's'} to ${DEMAND_WORD[value]}`,
+      'goals',
+      goals,
+    );
     return true;
   },
 
@@ -1279,6 +1328,55 @@ export const actions = {
       return copy;
     });
     withUndo(describeEstimateChange(target.title, target.estimateMin, next), 'tasks', tasks);
+  },
+
+  /**
+   * A node's own demand. Containers included — a container's value is what the
+   * whole subtree inherits, and that is the gesture that keeps this from being
+   * a field filled in by hand for every task.
+   *
+   * Unlike `setNodeEstimate` there is no leaves-only guard, and that absence is
+   * the point.
+   */
+  setNodeDemand(nodeId: string, next: Demand | null): void {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
+    const goals = state.goals.map((g) => ({ ...g, nodes: structuredClone(g.nodes) }));
+    const node = findInAll(goals, nodeId);
+    if (!node) return;
+    const before = node.demand;
+    const value = next === null ? undefined : next;
+    if (before === value) return;
+    if (value === undefined) delete node.demand;
+    else node.demand = value;
+    withUndo(describeDemandChange(node.title, value), 'goals', goals);
+  },
+
+  setGoalDemand(goalId: string, next: Demand | null): void {
+    const target = state.goals.find((g) => g.id === goalId);
+    const value = next === null ? undefined : next;
+    if (!target || target.demand === value) return;
+    const goals = state.goals.map((g) => {
+      if (g.id !== goalId) return g;
+      const copy = { ...g };
+      if (value === undefined) delete copy.demand;
+      else copy.demand = value;
+      return copy;
+    });
+    withUndo(describeDemandChange(target.title, value), 'goals', goals);
+  },
+
+  setTaskDemand(taskId: string, next: Demand | null): void {
+    const target = state.tasks.find((t) => t.id === taskId);
+    const value = next === null ? undefined : next;
+    if (!target || target.demand === value) return;
+    const tasks = state.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const copy = { ...t };
+      if (value === undefined) delete copy.demand;
+      else copy.demand = value;
+      return copy;
+    });
+    withUndo(describeDemandChange(target.title, value), 'tasks', tasks);
   },
 
   removeNode(nodeId: string) {
