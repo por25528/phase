@@ -43,6 +43,8 @@ const dbMocks = vi.hoisted(() => ({
   saveAssistantAccelerator: vi.fn(async () => {}),
   loadStoredTimeLevel: vi.fn(async (): Promise<StoredTimeLevel | null> => null),
   saveStoredTimeLevel: vi.fn(async () => {}),
+  loadStoredFocusLevel: vi.fn(async () => null),
+  saveStoredFocusLevel: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);

@@ -17,6 +17,9 @@ import { parseStoredAccelerator } from '../lib/assistantAccelerator';
 import {
   parseStoredTimeLevel, serializeTimeLevel, type StoredTimeLevel,
 } from '../lib/timeLens';
+import {
+  parseStoredFocusLevel, serializeFocusLevel, type StoredFocusLevel,
+} from '../lib/focusLens';
 
 /**
  * Single-row table. The fixed key is what makes "at most one cache" a schema
@@ -226,6 +229,26 @@ export async function loadStoredTimeLevel(): Promise<StoredTimeLevel | null> {
 
 export async function saveStoredTimeLevel(stored: StoredTimeLevel): Promise<void> {
   await db.settings.put({ key: FOCUS_LEVEL_KEY, value: serializeTimeLevel(stored) });
+}
+
+/**
+ * The focus dial's own row.
+ *
+ * A DIFFERENT key from the one above. `'focusLevel'` names the TIME dial —
+ * it kept its original spelling because it names a row already present in every
+ * database, and the two-dials rename deliberately moved types without moving
+ * storage. Writing the focus dial there would silently reset every user's time
+ * dial.
+ */
+const FOCUS_CAPABILITY_KEY = 'focusCapability';
+
+export async function loadStoredFocusLevel(): Promise<StoredFocusLevel | null> {
+  const row = await db.settings.get(FOCUS_CAPABILITY_KEY);
+  return parseStoredFocusLevel(row?.value);
+}
+
+export async function saveStoredFocusLevel(stored: StoredFocusLevel): Promise<void> {
+  await db.settings.put({ key: FOCUS_CAPABILITY_KEY, value: serializeFocusLevel(stored) });
 }
 
 // Defaults ON: an all-day event usually does consume the day.

@@ -13,6 +13,7 @@ import {
   loadActiveFocusSession, saveActiveFocusSession,
   loadAssistantAccelerator, saveAssistantAccelerator,
   loadStoredTimeLevel, saveStoredTimeLevel,
+  loadStoredFocusLevel, saveStoredFocusLevel,
 } from '../db/db';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
@@ -68,6 +69,9 @@ import {
 import {
   DEFAULT_TIME_LEVEL, timeLevelFor, isTimeLevel, type TimeLevel,
 } from '../lib/timeLens';
+import {
+  DEFAULT_FOCUS_LEVEL, focusLevelFor, isFocusLevel, type FocusLevel,
+} from '../lib/focusLens';
 import { DEFAULT_DETAIL_LEVEL, isDetailLevel, type DetailLevel } from '../lib/shelfDetail';
 import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
 import {
@@ -218,6 +222,13 @@ interface UIState {
    */
   timeLevel: TimeLevel;
   /**
+   * How much focus the room supports. Persisted with a daily reset, exactly as
+   * `timeLevel` is — a person who says they are fried at 09:00 is still fried at
+   * 09:20, and re-asking on every open is how a dial gets left at its default
+   * forever. The reset is what stops it becoming a setting.
+   */
+  focusLevel: FocusLevel;
+  /**
    * How much the shelf hands over. In memory beside `activeLifeId` and never
    * persisted, so every load starts at the default — a mood is not a setting.
    */
@@ -274,6 +285,7 @@ let state: FullState = {
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
   timeLevel: DEFAULT_TIME_LEVEL,
+  focusLevel: DEFAULT_FOCUS_LEVEL,
   detailLevel: DEFAULT_DETAIL_LEVEL,
   assistantShortcut: null,
   // Read synchronously at module load so the header toggle shows the correct
@@ -605,8 +617,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -678,6 +690,7 @@ export async function initStore(): Promise<void> {
       activeFocusSession,
       assistantAccelerator,
       timeLevel: timeLevelFor(storedTimeLevel, todayStr()),
+      focusLevel: focusLevelFor(storedFocusLevel, todayStr()),
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -1986,6 +1999,13 @@ export const actions = {
     if (!isTimeLevel(next)) return false;
     set({ timeLevel: next });
     ifOwner(() => saveStoredTimeLevel({ level: next, date: todayStr() }));
+    return true;
+  },
+
+  setFocusLevel(next: FocusLevel): boolean {
+    if (!isFocusLevel(next)) return false;
+    set({ focusLevel: next });
+    ifOwner(() => saveStoredFocusLevel({ level: next, date: todayStr() }));
     return true;
   },
 
