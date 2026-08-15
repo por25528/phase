@@ -1,3 +1,5 @@
+import type { Demand } from '../lib/demand';
+
 export type StepStatus = 'todo' | 'doing' | 'blocked' | 'done';
 
 /**
@@ -67,6 +69,17 @@ export interface GoalNode {
   blocks?: WorkBlock[];
   estimateMin?: number;  // LEAVES only — expected effort in minutes.
                          // Scheduling metadata: never affects pct roll-up.
+  /**
+   * How much of you this step wants. Set on a leaf OR a container: a container's
+   * value is inherited by everything under it, which is what keeps this from
+   * being a field somebody fills in by hand, forever, for every task.
+   *
+   * ABSENT means no claim has been made — never "moderate", never a guess. The
+   * focus dial admits an untagged step at every level for exactly that reason,
+   * and `demandIndex` resolves the inherited value at read time so nothing is
+   * stored twice.
+   */
+  demand?: Demand;
   /**
    * A dated marker the user is working TOWARD — an exam, a submission, a demo.
    *
@@ -149,6 +162,8 @@ export interface Goal {
    * behaviour.
    */
   type?: 'study' | 'project' | 'general';
+  /** The whole project's demand, inherited by every node under it. See `GoalNode.demand`. */
+  demand?: Demand;
   completedAt?: string;     // 'YYYY-MM-DD' — set when the project is explicitly archived. Absent ⇒ active.
 }
 
@@ -189,6 +204,12 @@ export interface Task {
   doneAt?: string; // local 'YYYY-MM-DD' completion date; optional for legacy data
   goalId: string | null; // tag FOR CONTEXT ONLY
   estimateMin?: number; // expected effort in minutes; same meaning as GoalNode
+  /**
+   * This task's own demand. A task NEVER inherits: `goalId` is a tag FOR
+   * CONTEXT ONLY, not a parent link, so reading demand through it would invent
+   * a containment relationship the model deliberately refuses.
+   */
+  demand?: Demand;
 }
 
 export interface Session {
