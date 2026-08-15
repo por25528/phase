@@ -990,6 +990,62 @@ async function applyImportedBackup(appState: ImportedBackupState): Promise<void>
   ensureWeekRollover();
 }
 
+/**
+ * The `Session` one log would write, and the title its label needs — or null
+ * if the target refuses one.
+ *
+ * Extracted so `logSession` and `finishWork` cannot drift about what a logged
+ * sitting IS. The second builds the same row inside a multi-slice write, and a
+ * second copy of these preconditions would be a second opinion about whether a
+ * frozen project can be logged against.
+ */
+function sessionFor(
+  kind: 'step' | 'task',
+  id: string,
+  minutes: number,
+  date: string,
+  focus?: 'low',
+): { session: Session; title: string } | null {
+  const normalized = normalizeEstimate(minutes);
+  if (normalized === undefined || !isValidLocalDate(date)) return null;
+
+  let title: string;
+  let goalId: string | null;
+  if (kind === 'step') {
+    // Frozen on a completed project, exactly as `setNodeEstimate` is. The
+    // drawer already blocks the whole tree with `pointer-events-none`, so this
+    // is unreachable from the UI today — but the two controls sit on the same
+    // row and must not disagree about whether the project is editable the
+    // moment any other surface calls in.
+    if (!isActiveNode(id)) return null;
+    const goal = goalOfNode(id);
+    const node = goal ? findNode(goal.nodes, id) : null;
+    // Containers hold no estimate (see `addChild`), so there is nothing for
+    // logged time to be measured against.
+    if (!goal || !node || node.children) return null;
+    title = node.title;
+    goalId = goal.id;
+  } else {
+    const task = state.tasks.find((t) => t.id === id);
+    if (!task) return null;
+    title = task.title;
+    goalId = task.goalId;
+  }
+
+  return {
+    title,
+    session: {
+      id: uid(),
+      goalId,
+      date,
+      minutes: normalized,
+      note: '',
+      ...(kind === 'step' ? { nodeId: id } : { taskId: id }),
+      ...(focus === undefined ? {} : { focus }),
+    },
+  };
+}
+
 // ---- actions ----
 export const actions = {
   // Goals / nodes
@@ -1888,45 +1944,12 @@ export const actions = {
     date = todayStr(),
     focus?: 'low',
   ): boolean {
-    const normalized = normalizeEstimate(minutes);
-    if (normalized === undefined || !isValidLocalDate(date)) return false;
-
-    let title: string;
-    let goalId: string | null;
-    if (kind === 'step') {
-      // Frozen on a completed project, exactly as `setNodeEstimate` is. The
-      // drawer already blocks the whole tree with `pointer-events-none`, so
-      // this is unreachable from the UI today — but the two controls sit on the
-      // same row and must not disagree about whether the project is editable
-      // the moment any other surface calls in.
-      if (!isActiveNode(id)) return false;
-      const goal = goalOfNode(id);
-      const node = goal ? findNode(goal.nodes, id) : null;
-      // Containers hold no estimate (see `addChild`), so there is nothing for
-      // logged time to be measured against.
-      if (!goal || !node || node.children) return false;
-      title = node.title;
-      goalId = goal.id;
-    } else {
-      const task = state.tasks.find((t) => t.id === id);
-      if (!task) return false;
-      title = task.title;
-      goalId = task.goalId;
-    }
-
-    const session: Session = {
-      id: uid(),
-      goalId,
-      date,
-      minutes: normalized,
-      note: '',
-      ...(kind === 'step' ? { nodeId: id } : { taskId: id }),
-      ...(focus === undefined ? {} : { focus }),
-    };
+    const built = sessionFor(kind, id, minutes, date, focus);
+    if (!built) return false;
     withUndo(
-      `Logged ${formatEstimateValue(normalized)} on "${title}"`,
+      `Logged ${formatEstimateValue(built.session.minutes)} on "${built.title}"`,
       'sessions',
-      [...state.sessions, session],
+      [...state.sessions, built.session],
     );
     return true;
   },
