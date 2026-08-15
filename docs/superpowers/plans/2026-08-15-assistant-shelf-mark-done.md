@@ -19,6 +19,34 @@
 - The overlay entry graph must not reach the store or Dexie — `src/assistant/entryBoundary.test.ts` proves it. Nothing added to `AssistantSurface.tsx` may import from `src/state/`.
 - Hover-revealed row controls use `.quiet-control`. **Not applicable here** — the checkbox is always visible, exactly as a task row's is.
 
+## Dependency: this plan runs AFTER `2026-08-15-per-task-demand.md`
+
+`docs/superpowers/plans/2026-08-15-per-task-demand.md` (committed `c1b6eda`, one commit before this one) rewrites the same surfaces this plan edits. Its Task 6 is explicitly atomic — "deleting `shelfDetail` breaks four importers that only the focus dial can fix" — so the two cannot be interleaved task-by-task.
+
+**Run per-task-demand to completion first.** This plan is 5 tasks against a stable surface; that one is 14 tasks that reshape it. Rebasing this plan onto that one is mechanical; rebasing that one around a checkbox is not.
+
+Tasks 1–3 (the store) are untouched by the dependency and can be executed at any time. Only Task 4 collides, and Task 5 mostly dissolves.
+
+### What to change in Task 4 once per-task-demand has landed
+
+| Written here | Becomes |
+|---|---|
+| `detail: DetailLevel` on `AdvicePanel`'s signature | `focusLevel: FocusLevel` (per-task-demand line 1074 renames every `detail` prop threaded into `AdvicePanel`/`FocusPanel`). Add `onAction` beside it as this plan does. |
+| `detail={snapshot.detailLevel}` at the `AdvicePanel` call site | `focusLevel={snapshot.focusLevel}` |
+| `ringState(focus.expected, focus.elapsedMin, detail)` in `FocusPanel` | third argument becomes the renamed `focusLevel` prop |
+| `ready({ … detailLevel: 'medium' })` fixtures in `AssistantSurface.test.tsx` | `focusLevel: 'medium'` — per-task-demand's Task 6 already rewrites every fixture in that file, so this plan's new `describe` block must be written against the post-rename shape |
+| `import { … type DetailLevel } from '../../lib/shelfDetail'` | `shelfDetail.ts` is deleted; the type comes from `src/lib/focusLens.ts` |
+
+The `complete-work` arm added to `AssistantAction` is unaffected — per-task-demand only replaces `set-detail-level` with `{ type: 'set-focus-level'; level: FocusLevel }`, a sibling member.
+
+`ALTERNATIVE_CAP` is retired in favour of a fixed `MAX_ALTERNATIVES` of 2. This plan's test *"puts no checkbox on the alternatives"* renders one alternative and asserts exactly one checkbox; that still holds with two, but assert `toHaveLength(1)` against however many alternatives the fixture supplies rather than assuming the cap.
+
+### What happens to Task 5
+
+per-task-demand ends with its own re-measurement, and its own note says retiring `ALTERNATIVE_CAP` "took the default alternative count from 1 to 2, which makes the common state taller than the number currently in the file was measured against" — so it moves `HEIGHT` before this plan touches anything.
+
+Task 5 therefore shrinks to: **confirm the checkbox does not push past whatever `HEIGHT` per-task-demand lands on.** If that plan committed a measurement script, reuse it and add the `active` state to its state table rather than writing `scripts/measure-shelf.cjs` a second time. Only write the script in this plan if per-task-demand measured ad hoc and left nothing behind.
+
 ---
 
 ### Task 1: Extract `sessionFor` from `logSession`
