@@ -33,12 +33,13 @@ import { loggedForNode } from '../../lib/actuals';
 import { planVsEstimate, sortedBlocks } from '../../lib/blocks';
 import { clockLabel } from '../../lib/clock';
 import { fmtD, todayStr } from '../../lib/dates';
+import { demandIndex, DEMANDS, DEMAND_WORD } from '../../lib/demand';
 import { fmtMinutes } from '../../lib/effort';
 import { looksOversized } from '../../lib/proposal';
 import { STATUS_WORD, stepStatus } from '../../lib/status';
 import { taskPageActionGroups, type RowActionId } from '../../lib/rowActions';
 import { dayLabel, nextSitting } from '../../lib/rowSchedule';
-import { findNodePath, findParentList } from '../../lib/tree';
+import { findNode, findNodePath, findParentList } from '../../lib/tree';
 import { nextFreeDay } from '../../lib/todayPlan';
 
 const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
@@ -140,6 +141,27 @@ export function TaskPage({
 
   const parent = findParentList(goals, node.id);
   const path = findNodePath(goals, node.id);
+
+  // The resolved value, and the ancestor it came from. `demandIndex` is ONE
+  // pass over the goal, and nothing is written down — a node that gains a tag
+  // re-resolves on the next paint, exactly as the tree's leaf/container branch
+  // is computed at render rather than stored. `node.id` is stable per mount
+  // (the page is one leaf, remounted when the open step changes).
+  const resolved = useMemo(() => demandIndex([goal]).get(node.id), [goal, node.id]);
+  const goalOrContainerTitle = useMemo(() => {
+    // The nearest TAGGED ancestor, walking up from the node's own containers
+    // to the goal. The note must name where the value was actually SET, not
+    // the nearest container in general — a leaf indented under an untagged
+    // group inside a `deep` goal inherited from the goal, and saying "from the
+    // group" would name a container that never made the claim.
+    const idPath = findNodePath([goal], node.id);
+    if (!idPath) return '';
+    for (let i = idPath.length - 2; i >= 0; i--) {
+      const ancestor = findNode(goal.nodes, idPath[i]);
+      if (ancestor && ancestor.demand !== undefined) return ancestor.title;
+    }
+    return goal.demand !== undefined ? goal.title : '';
+  }, [goal, node.id]);
   const menuGroups = taskPageActionGroups({
     canIndent: parent !== null && parent.index > 0,
     canOutdent: path !== null && path.length > 1,
@@ -298,6 +320,48 @@ export function TaskPage({
               </>
             )}
           </PropertyLine>
+
+          {/* Focus needed, NOT "Focus". The dial reads `Low / Medium / High`
+              and means how much focus you HAVE; this reads `Light / Moderate /
+              Deep` and means how much the work WANTS. One word cannot mean
+              both on one product, and the differing value words are not enough
+              on their own. The state column states the RESOLVED value — a
+              `deep` goal painting `Deep` on every leaf is fine here, where the
+              page states the fact in full and names the ancestor it came from
+              — unlike the tree row, which draws a chip only where a value was
+              SET (demand.ts). */}
+          <PropertyLine
+            label="Focus needed"
+            icon={<IconCircle size={13} />}
+            value={resolved ? DEMAND_WORD[resolved.level] : null}
+            placeholder="Not set"
+            panelWidth={188}
+          >
+            {(close) => (
+              <>
+                {DEMANDS.map((d) => (
+                  <PropertyOption
+                    key={d}
+                    close={close}
+                    current={resolved?.source === 'own' && resolved.level === d}
+                    onSelect={() => actions.setNodeDemand(node.id, d)}
+                  >
+                    {DEMAND_WORD[d]}
+                  </PropertyOption>
+                ))}
+                <PropertyOption
+                  close={close}
+                  current={node.demand === undefined}
+                  onSelect={() => actions.setNodeDemand(node.id, null)}
+                >
+                  Not set
+                </PropertyOption>
+              </>
+            )}
+          </PropertyLine>
+          {resolved?.source === 'inherited' && (
+            <p className="text-meta text-muted">Inherited from {goalOrContainerTitle}</p>
+          )}
 
           <PropertyLine
             label="Dates"

@@ -7,6 +7,7 @@ import { makeBlock } from '../../lib/blocks';
 import { addDays, todayStr } from '../../lib/dates';
 import { fmtMinutes } from '../../lib/effort';
 import { dayLabel } from '../../lib/todayPlan';
+import type { Demand } from '../../lib/demand';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -118,6 +119,52 @@ async function mountTask(nodeId: string, availability?: AvailabilityWindow[]): P
       goal,
       node,
       backLabel: goal.title,
+      onBack: () => current.actions.closeStep(),
+    });
+  };
+  render(createElement(Host));
+  return store;
+}
+
+/**
+ * The demand harness, built from `mountTask`'s shape above: a goal whose
+ * demand (and the open leaf's own demand) the test chooses, opened and mounted
+ * the same way. `goalDemand`/`nodeDemand` are ABSENT unless the test passes
+ * them — an untagged goal is the "made no claim" baseline, exactly as storage
+ * defines it.
+ */
+async function renderTaskPage(params: {
+  goalDemand?: Demand;
+  nodeDemand?: Demand;
+  goalTitle: string;
+}): Promise<Store> {
+  vi.resetModules();
+  const goal: Goal = {
+    id: 'g1',
+    title: params.goalTitle,
+    ...(params.goalDemand === undefined ? {} : { demand: params.goalDemand }),
+    nodes: [{
+      id: 'n1',
+      title: 'Run 5k',
+      ...(params.nodeDemand === undefined ? {} : { demand: params.nodeDemand }),
+    }],
+  };
+  dbMocks.loadState.mockResolvedValueOnce({
+    goals: [goal], habits: [], tasks: [], sessions: [],
+  });
+  const store = await import('../../state/store');
+  await store.initStore();
+  store.actions.openProject('g1');
+  store.actions.openStep('n1');
+  const { TaskPage } = await import('./TaskPage');
+  const Host = () => {
+    const current = store.useAppStore();
+    const currentGoal = current.goals.find((g) => g.id === 'g1')!;
+    const node = findNode(currentGoal.nodes, 'n1')!;
+    return createElement(TaskPage, {
+      goal: currentGoal,
+      node,
+      backLabel: currentGoal.title,
       onBack: () => current.actions.closeStep(),
     });
   };
@@ -453,5 +500,34 @@ describe('TaskPage', () => {
 
       vi.useRealTimers();
     });
+  });
+});
+
+describe('TaskPage focus needed', () => {
+  /**
+   * The property states the RESOLVED value — a goal tagged `deep` paints its
+   * leaf `Deep` — and, when that value is inherited, names the ancestor it
+   * came from. The note is what makes the button readable: without it a deep
+   * goal would state "Deep" on every one of its leaves and the word would be
+   * a repetition rather than a fact about the leaf.
+   */
+  it('states the resolved value and names where an inherited one came from', async () => {
+    await renderTaskPage({ goalDemand: 'deep', nodeDemand: undefined, goalTitle: 'Thesis' });
+
+    expect(screen.getByRole('button', { name: 'Focus needed: Deep' })).toBeTruthy();
+    expect(screen.getByText(/from Thesis/)).toBeTruthy();
+  });
+
+  it('states an own value without a provenance note', async () => {
+    await renderTaskPage({ goalDemand: 'deep', nodeDemand: 'light', goalTitle: 'Thesis' });
+
+    expect(screen.getByRole('button', { name: 'Focus needed: Light' })).toBeTruthy();
+    expect(screen.queryByText(/from Thesis/)).toBeNull();
+  });
+
+  it('reads as unset, quietly, when nothing is tagged anywhere', async () => {
+    await renderTaskPage({ goalDemand: undefined, nodeDemand: undefined, goalTitle: 'Thesis' });
+
+    expect(screen.getByRole('button', { name: 'Focus needed: Not set' })).toBeTruthy();
   });
 });
