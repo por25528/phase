@@ -294,14 +294,27 @@ describe('type roles', () => {
    * stylesheet targets` (above) already reads `index.css`: pair each rule's
    * selector with its body by regex, rather than pulling in a CSS parser.
    *
-   * `[.#][^{}]+?\{([^{}]*)\}` pairs a selector with the next `}` without
-   * balancing braces, which is enough here — none of the three heading rules
-   * nest further braces, and the CSS variable blocks (`:root`, `.dark`) never
-   * mention `font-disp`, so they never enter `selectors`.
+   * The capture is deliberately UNANCHORED — `[^{}]+?\{([^{}]*)\}`, not
+   * `[.#][^{}]+?\{...}` — because a leading `[.#]` requirement only ever
+   * catches class/id selectors and stays blind to a bare element
+   * (`h4 { @apply font-disp; }`) or an attribute selector
+   * (`[data-role="callout"] { @apply font-disp; }`), both real shapes this
+   * exact stylesheet already writes elsewhere (`button`, `input, select`,
+   * the taskList `[data-type="taskList"]` rules below). Unanchored still
+   * finds the right boundary for nested blocks (`@media (hover: hover) { ...
+   * } }`, `:root { ... }`) the same way the anchored version already did:
+   * `[^{}]+?` can never itself contain a brace, so a starting position whose
+   * next `{` opens a block with a further nested `{` before any `}` fails to
+   * close and the engine slides forward to the innermost real rule — proven
+   * for `@media` above by the class/id form and unaffected by widening.
+   * Comment text ahead of a rule rides along in the (trimmed) selector
+   * capture, but that's cosmetic: it is never what gets asserted against
+   * `font-disp`, only the body is, and only three bodies anywhere in the
+   * file mention it.
    */
   it('keeps font-disp in index.css scoped to the three note-prose headings', () => {
     const css = readFileSync(join(SRC, 'index.css'), 'utf8');
-    const rules = [...css.matchAll(/([.#][^{}]+?)\{([^{}]*)\}/g)];
+    const rules = [...css.matchAll(/([^{}]+?)\{([^{}]*)\}/g)];
     const selectors = rules
       .filter((rule) => /\bfont-disp\b/.test(rule[2]))
       .map((rule) => rule[1].trim());
