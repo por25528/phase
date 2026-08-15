@@ -139,7 +139,7 @@ describe('design scale', () => {
   /**
    * An icon has to be in the font, or it is not an icon — it is a lottery.
    *
-   * Inter is self-hosted and subsetted, and `@fontsource-variable/inter`'s
+   * Public Sans is self-hosted and subsetted, and `@fontsource-variable/public-sans`'s
    * `unicode-range` list covers Latin, Greek, Cyrillic, Vietnamese and a short
    * roster of named symbols. Every glyph below is outside all of them, so the
    * browser resolved each one through per-glyph fallback: the app's close,
@@ -156,8 +156,8 @@ describe('design scale', () => {
    *   - `⌘ ⌥ ⇧ ⌫ ← →` in `ShortcutsOverlay` name physical keys, have no icon
    *     equivalent, and are set in `font-mono` (SF Mono / Menlo) which covers
    *     them in one face.
-   *   - `×` (U+00D7) is a multiplication sign in "1.5× short" and IS in Inter.
-   *   - `·`, `–`, `…` are punctuation, and are in Inter.
+   *   - `×` (U+00D7) is a multiplication sign in "1.5× short" and IS in Public Sans.
+   *   - `·`, `–`, `…` are punctuation, and are in Public Sans.
    */
   const ICON_GLYPHS = '✕✓✎▶◆◇⠿⋯✦⚠⌕＋';
 
@@ -269,13 +269,22 @@ describe('type roles', () => {
    * Fraunces made ordinary metadata feel editorial: it was on goal titles, task
    * titles, percentages, modal headings, the focus-summary numerals and the
    * backlog rows, so a `62%` carried the same voice as a masthead. It is a
-   * brand mark now and nothing else.
+   * display face now — three roles and no others.
+   *
+   * The list below covers MARKUP only. `.note-prose > div > h1/h2/h3` in
+   * index.css is the third role and is invisible here, because `offenders()`
+   * scans .tsx/.ts. That is worth stating rather than discovering: a reader who
+   * assumes this list is exhaustive will conclude Fraunces renders in two
+   * places when it renders in three.
    */
   it('keeps the display serif out of the working UI', () => {
     // The file, not the line: pinning a line number makes an unrelated import
     // above it fail this test, which teaches people to edit the assertion.
     const files = offenders(/font-disp/g).map((h) => h.split(':')[0]);
-    expect(files).toEqual(['App.tsx']);
+    expect([...new Set(files)].sort()).toEqual([
+      'App.tsx',                      // the wordmark
+      'views/project/TaskPage.tsx',   // a document's own title
+    ]);
   });
 
   /**

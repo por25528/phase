@@ -207,7 +207,7 @@ export function TaskPage({
             {editingTitle ? (
               <InlineEdit
                 value={node.title}
-                className="text-page font-semibold tracking-[-0.02em]"
+                className="font-disp text-page font-semibold tracking-[-0.01em]"
                 onCommit={(title) => {
                   if (title !== node.title) actions.renameNode(node.id, title);
                   setEditingTitle(false);
@@ -217,7 +217,7 @@ export function TaskPage({
             ) : (
               <button
                 type="button"
-                className="text-page font-semibold tracking-[-0.02em] cursor-text hover:text-ink-hover w-full text-left rounded-[6px] leading-[1.2]"
+                className="font-disp text-page font-semibold tracking-[-0.01em] cursor-text hover:text-ink-hover w-full text-left rounded-[6px] leading-[1.2]"
                 onClick={() => setEditingTitle(true)}
                 aria-label={`Rename task "${node.title}"`}
                 title="Click to rename"

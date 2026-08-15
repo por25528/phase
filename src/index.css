@@ -268,7 +268,7 @@
      lands in the file. A single-class override here would work only for as
      long as nobody reordered the rules. */
   .note-prose.note-page {
-    @apply border-0 px-0;
+    @apply border-0 px-0 text-lead;
   }
   .note-prose.note-page > div {
     @apply min-h-[220px];

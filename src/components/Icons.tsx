@@ -12,15 +12,15 @@
  * close, `✓` to complete, `✎` to rename, `⠿` to drag, `▶` to expand, `⋯` for
  * the overflow menu. None of them were in the font.
  *
- * Inter is self-hosted and subsetted (`@fontsource-variable/inter`), and its
- * `unicode-range` declarations cover Latin, Greek, Cyrillic and Vietnamese plus
- * a short list of individually-named symbols. U+2715, U+2713, U+270E, U+283F,
- * U+25B6, U+25C6, U+22EF, U+2726, U+26A0 and U+2192 are in none of them — so
- * every one of those characters was resolved by the browser's per-glyph
- * fallback, off whatever face the OS happened to offer. The app's icons were
- * therefore drawn by macOS on a Mac, by Segoe UI Symbol on Windows, and by
- * whatever fontconfig picked on Linux, at three different weights and three
- * different optical sizes, none of them Inter.
+ * Public Sans is self-hosted and subsetted (`@fontsource-variable/public-sans`),
+ * and its `unicode-range` declarations cover Latin, Greek, Cyrillic and
+ * Vietnamese plus a short list of individually-named symbols. U+2715, U+2713,
+ * U+270E, U+283F, U+25B6, U+25C6, U+22EF, U+2726, U+26A0 and U+2192 are in none
+ * of them — so every one of those characters was resolved by the browser's
+ * per-glyph fallback, off whatever face the OS happened to offer. The app's
+ * icons were therefore drawn by macOS on a Mac, by Segoe UI Symbol on Windows,
+ * and by whatever fontconfig picked on Linux, at three different weights and
+ * three different optical sizes, none of them Public Sans.
  *
  * Two consequences were visible rather than theoretical:
  *
@@ -28,9 +28,10 @@
  *    so on a stock macOS the overdue-project warning could resolve to Apple
  *    Color Emoji — a full-colour glyph in a monochrome UI, ignoring `text-warn`
  *    entirely, because a colour emoji does not take `currentColor`.
- *  - Inter's Latin subset names U+2191 and U+2193 explicitly but NOT U+2190 or
- *    U+2192. So in the shortcuts overlay, `↑/↓` rendered in Inter and `←/→`
- *    rendered in the fallback — two faces, adjacent, in one table.
+ *  - Public Sans's Latin subset names U+2191 and U+2193 explicitly but NOT
+ *    U+2190 or U+2192. So in the shortcuts overlay, `↑/↓` rendered in Public
+ *    Sans and `←/→` rendered in the fallback — two faces, adjacent, in one
+ *    table.
  *
  * Sizes are numbers, not classes, because an icon's box is geometry rather
  * than type: `size` sets the SVG's own width/height so the 1.8 stroke scales
