@@ -495,7 +495,7 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('heading', { name: 'Thesis chapter 2' })).toBeTruthy();
   });
 
-  it('drops the comparison from a running session at low focus', () => {
+  it('drops the comparison from a running session at low detail', () => {
     const focus = {
       ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
       title: 'Lab report',
@@ -503,12 +503,12 @@ describe('AssistantSurface', () => {
       elapsedMin: 18,
       expected: { kind: 'estimate' as const, minutes: 45 },
     };
-    render(<AssistantSurface snapshot={ready({ timeLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
+    render(<AssistantSurface snapshot={ready({ detailLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
     expect(screen.getByText('18m so far')).toBeTruthy();
     expect(screen.queryByText(/of 45m/)).toBeNull();
   });
 
-  it('keeps the comparison at medium, where it is not pressure but information', () => {
+  it('keeps the comparison at medium detail, where it is not pressure but information', () => {
     const focus = {
       ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
       title: 'Lab report',
@@ -516,7 +516,47 @@ describe('AssistantSurface', () => {
       elapsedMin: 18,
       expected: { kind: 'estimate' as const, minutes: 45 },
     };
-    render(<AssistantSurface snapshot={ready({ timeLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
+    render(<AssistantSurface snapshot={ready({ detailLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
     expect(screen.getByText('18m of 45m')).toBeTruthy();
+  });
+
+  // TimeLevel and DetailLevel are both `'low' | 'medium' | 'high'` — structurally
+  // identical unions, so TypeScript accepts either dial's value where the other is
+  // expected and would not have caught FocusPanel being wired to the time dial
+  // instead of the display dial. These two cases are the only thing that would:
+  // they set the dials to opposite ends, so a mix-up flips the answer either way.
+  it('reads the running-session comparison off the display dial, not the time dial', () => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      phase: 'active' as const,
+      elapsedMin: 18,
+      expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    render(
+      <AssistantSurface
+        snapshot={ready({ timeLevel: 'low', detailLevel: 'high', activeFocus: focus })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByText('18m of 45m')).toBeTruthy();
+  });
+
+  it('drops the comparison at low display detail even with plenty of time', () => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Lab report',
+      phase: 'active' as const,
+      elapsedMin: 18,
+      expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    render(
+      <AssistantSurface
+        snapshot={ready({ timeLevel: 'high', detailLevel: 'low', activeFocus: focus })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByText('18m so far')).toBeTruthy();
+    expect(screen.queryByText(/of 45m/)).toBeNull();
   });
 });

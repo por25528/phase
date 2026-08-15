@@ -6,6 +6,7 @@ import type {
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
+import type { DetailLevel } from '../../lib/shelfDetail';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
@@ -136,12 +137,12 @@ function Skeleton() {
   );
 }
 
-function FocusPanel({ focus, alternatives, onAction, shelf, level }: {
+function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
   focus: AssistantFocusView;
   alternatives: RecommendedWork[];
   onAction: Props['onAction'];
   shelf: boolean;
-  level: TimeLevel;
+  detail: DetailLevel;
 }) {
   const info = (
     <div className="flex min-w-0 flex-col gap-1">
@@ -154,7 +155,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, level }: {
         </p>
       ) : (
         <p className="text-meta text-muted">
-          {elapsedAgainstExpected(focus.elapsedMin, focus.expected, level)}
+          {elapsedAgainstExpected(focus.elapsedMin, focus.expected, detail)}
           {focus.phase === 'break' ? ' · On a break' : ''}
         </p>
       )}
@@ -378,7 +379,7 @@ export function AssistantSurface({
             alternatives={snapshot.advice.kind === 'work' ? snapshot.advice.alternatives : []}
             onAction={onAction}
             shelf={shelf}
-            level={snapshot.timeLevel}
+            detail={snapshot.detailLevel}
           />
         ) : (
           <AdvicePanel
