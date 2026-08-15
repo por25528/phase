@@ -19,33 +19,28 @@
 - The overlay entry graph must not reach the store or Dexie — `src/assistant/entryBoundary.test.ts` proves it. Nothing added to `AssistantSurface.tsx` may import from `src/state/`.
 - Hover-revealed row controls use `.quiet-control`. **Not applicable here** — the checkbox is always visible, exactly as a task row's is.
 
-## Dependency: this plan runs AFTER `2026-08-15-per-task-demand.md`
+## Dependency: RESOLVED — `per-task-demand` has landed
 
-`docs/superpowers/plans/2026-08-15-per-task-demand.md` (committed `c1b6eda`, one commit before this one) rewrites the same surfaces this plan edits. Its Task 6 is explicitly atomic — "deleting `shelfDetail` breaks four importers that only the focus dial can fix" — so the two cannot be interleaved task-by-task.
+`docs/superpowers/plans/2026-08-15-per-task-demand.md` executed to completion on this branch (`5a8c627` … `506ba38`, plus `9658d60` re-measuring the window budget). **Every task below is now written against the post-demand surface — there is no rename table to apply.** Baseline at the time of writing: 180 test files / 3168 tests passing, `tsc -b` clean.
 
-**Run per-task-demand to completion first.** This plan is 5 tasks against a stable surface; that one is 14 tasks that reshape it. Rebasing this plan onto that one is mechanical; rebasing that one around a checkbox is not.
+What that plan left behind, and what this one must therefore assume:
 
-Tasks 1–3 (the store) are untouched by the dependency and can be executed at any time. Only Task 4 collides, and Task 5 mostly dissolves.
+- `src/lib/shelfDetail.ts` is **deleted**. `src/lib/focusLens.ts` owns the dial and exports `FocusLevel`.
+- `FocusPanel` takes `focusLevel: FocusLevel`, and the ring reads
+  `ringState(focus.expected, focus.elapsedMin, focusLevel)`.
+- **`AdvicePanel` takes no level prop at all** — its signature is
+  `{ snapshot, shelf, pending, onStart }`. Task 4 adds `onAction` and nothing else.
+- `ready()` in `AssistantSurface.test.tsx` carries `timeLevel: 'medium'` and
+  `focusLevel: 'medium'`. New fixtures must match.
+- `ALTERNATIVE_CAP` is gone; `MAX_ALTERNATIVES` (2) is imported from
+  `executionAdvisor`. Task 4's *"puts no checkbox on the alternatives"* test asserts
+  one checkbox against a one-alternative fixture, which holds regardless.
+- `AssistantAction` already carries `{ type: 'set-focus-level'; level: FocusLevel }`.
+  Task 4's `complete-work` is a sibling member and conflicts with nothing.
 
-### What to change in Task 4 once per-task-demand has landed
+### Task 5 is NOT dissolved
 
-| Written here | Becomes |
-|---|---|
-| `detail: DetailLevel` on `AdvicePanel`'s signature | `focusLevel: FocusLevel` (per-task-demand line 1074 renames every `detail` prop threaded into `AdvicePanel`/`FocusPanel`). Add `onAction` beside it as this plan does. |
-| `detail={snapshot.detailLevel}` at the `AdvicePanel` call site | `focusLevel={snapshot.focusLevel}` |
-| `ringState(focus.expected, focus.elapsedMin, detail)` in `FocusPanel` | third argument becomes the renamed `focusLevel` prop |
-| `ready({ … detailLevel: 'medium' })` fixtures in `AssistantSurface.test.tsx` | `focusLevel: 'medium'` — per-task-demand's Task 6 already rewrites every fixture in that file, so this plan's new `describe` block must be written against the post-rename shape |
-| `import { … type DetailLevel } from '../../lib/shelfDetail'` | `shelfDetail.ts` is deleted; the type comes from `src/lib/focusLens.ts` |
-
-The `complete-work` arm added to `AssistantAction` is unaffected — per-task-demand only replaces `set-detail-level` with `{ type: 'set-focus-level'; level: FocusLevel }`, a sibling member.
-
-`ALTERNATIVE_CAP` is retired in favour of a fixed `MAX_ALTERNATIVES` of 2. This plan's test *"puts no checkbox on the alternatives"* renders one alternative and asserts exactly one checkbox; that still holds with two, but assert `toHaveLength(1)` against however many alternatives the fixture supplies rather than assuming the cap.
-
-### What happens to Task 5
-
-per-task-demand ends with its own re-measurement, and its own note says retiring `ALTERNATIVE_CAP` "took the default alternative count from 1 to 2, which makes the common state taller than the number currently in the file was measured against" — so it moves `HEIGHT` before this plan touches anything.
-
-Task 5 therefore shrinks to: **confirm the checkbox does not push past whatever `HEIGHT` per-task-demand lands on.** If that plan committed a measurement script, reuse it and add the `active` state to its state table rather than writing `scripts/measure-shelf.cjs` a second time. Only write the script in this plan if per-task-demand measured ad hoc and left nothing behind.
+The earlier draft of this section assumed per-task-demand's own re-measurement would absorb it. It does not. `9658d60` measured the states that existed **before** this plan's checkbox, and `HEIGHT` currently reads **248**. The checkbox still has to be measured against that number, and per-task-demand left no reusable measurement script behind — so Task 5 writes `scripts/measure-shelf.cjs` as specified, and its acceptance criterion is `TALLEST ≤ 248`.
 
 ---
 
@@ -699,7 +694,7 @@ Replace the `ring` constant and the `info` block at the top of `FocusPanel` with
       )}
       {running && (
         <SessionRing
-          state={ringState(focus.expected, focus.elapsedMin, detail)}
+          state={ringState(focus.expected, focus.elapsedMin, focusLevel)}
           paused={focus.phase === 'break'}
         />
       )}
@@ -713,7 +708,7 @@ Replace the `ring` constant and the `info` block at the top of `FocusPanel` with
           </p>
         ) : (
           <p className="text-meta text-muted">
-            {elapsedAgainstExpected(focus.elapsedMin, focus.expected, detail)}
+            {elapsedAgainstExpected(focus.elapsedMin, focus.expected, focusLevel)}
             {focus.phase === 'break' ? ' · On a break' : ''}
           </p>
         )}
@@ -729,11 +724,10 @@ The checkbox goes **before** the ring: that is where a checkbox sits on every ta
 `AdvicePanel` has no `onAction` prop today. Add it to the signature, leaving the other props and their comments as they are:
 
 ```ts
-function AdvicePanel({ snapshot, shelf, pending, detail, onAction, onStart }: {
+function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
   shelf: boolean;
   pending: boolean;
-  detail: DetailLevel;
   onAction: Props['onAction'];
   onStart: (ref: RecommendedWork['ref']) => void;
 }) {
@@ -769,7 +763,6 @@ And pass it at the call site in `AssistantSurface`:
             snapshot={snapshot}
             shelf={shelf}
             pending={sendoff.pending}
-            detail={snapshot.detailLevel}
             onAction={onAction}
             onStart={sendoff.start}
           />
@@ -871,7 +864,7 @@ const NOTICE = { tone: 'neutral', text: `Completed "${LONG}" · logged 45m` }
 const base = {
   status: 'ready',
   timeLevel: 'medium',
-  detailLevel: 'medium',
+  focusLevel: 'medium',
   activeFocus: null,
   notice: NOTICE,
   advice: { kind: 'work', primary: work(), alternatives: [] },
