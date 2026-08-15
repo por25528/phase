@@ -185,14 +185,15 @@ Create `src/state/store.finishWork.test.ts`. **Copy lines 1–68 of `src/state/s
 import { isDone } from '../lib/status';
 
 describe('finishWork', () => {
-  const MIN = 60_000;
   const t0 = 1_700_000_000_000;
   const goal: Goal = {
     id: 'g1', title: 'Algorithms',
     nodes: [{ id: 'n1', title: 'Problem set 4' }],
   };
   const ref = { kind: 'step' as const, id: 'n1', goalId: 'g1' };
-  const starter = { kind: 'starter' as const, minutes: 30 as const };
+  // NOTE: `MIN` and `starter` are NOT declared here. Nothing in Task 2 uses
+  // them, and tsconfig.app.json sets `noUnusedLocals` over `include: ["src"]`,
+  // so a binding kept for a later task fails the build. Task 3 adds both.
 
   async function workStore(goals: Goal[] = [goal]) {
     const { loadState } = await import('../db/db');
@@ -247,7 +248,7 @@ describe('finishWork', () => {
     actions.addTask('Watch roblox');
     const taskId = getState().tasks[0].id;
 
-    expect(actions.finishWork({ kind: 'task', id: taskId }, t0)).toEqual({
+    expect(actions.finishWork({ kind: 'task', id: taskId, goalId: null }, t0)).toEqual({
       outcome: 'done',
       label: 'Completed "Watch roblox"',
     });
@@ -292,6 +293,10 @@ Insert into the `actions` object in `src/state/store.ts`, immediately after `con
    * what just happened.
    */
   finishWork(ref: WorkRef, nowMs = Date.now()): FinishWorkResult {
+    // Task 3 starts reading this; until then the repo's `noUnusedParameters`
+    // would reject the parameter, and renaming it `_nowMs` would break Task 3's
+    // diff, which references it by name. Same idiom as `dragAttributes.ts:53`.
+    void nowMs;
     const today = todayStr();
 
     // The completion slice, built the way `toggleLeaf`/`toggleTask` build it —
@@ -324,7 +329,7 @@ Insert into the `actions` object in `src/state/store.ts`, immediately after `con
   },
 ```
 
-`nowMs` is unused until Task 3. TypeScript will not complain about an unused parameter; if the project's lint does, add it in Task 3 rather than suppressing it here.
+`nowMs` is unused until Task 3, and this repo WILL reject that: `tsconfig.app.json` sets `noUnusedLocals` and `noUnusedParameters` over `include: ["src"]`. Hence the `void nowMs;` line above — Task 3 deletes it in the same step that starts using the parameter.
 
 - [ ] **Step 5: Run the tests**
 
@@ -449,7 +454,14 @@ Expected: FAIL on the first, third and fourth new tests — the label carries no
 
 - [ ] **Step 3: Extend the action**
 
-In `src/state/store.ts`, replace these three closing lines of `finishWork`:
+First, at the top of the `describe('finishWork', …)` block in the test file, re-add the two bindings Task 2 deliberately omitted — Task 3's tests are their first consumer:
+
+```ts
+  const MIN = 60_000;
+  const starter = { kind: 'starter' as const, minutes: 30 as const };
+```
+
+Then, in `src/state/store.ts`, DELETE the `void nowMs;` line and its three-line comment from the top of `finishWork` — this step is where the parameter starts being read — and replace these three closing lines:
 
 ```ts
     const label = `Completed "${title}"`;
