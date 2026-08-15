@@ -55,29 +55,71 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
   });
 
-  it('keeps alternatives behind Other options and reveals at most two', () => {
-    const alternatives = [
-      work({ key: 'step:n2', title: 'Read chapter 5' }),
-      work({ key: 'step:n3', title: 'Pitch deck' }),
-      work({ key: 'step:n4', title: 'Email advisor' }),
-    ];
+  it('shows the alternatives without asking for a click', () => {
+    const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
     render(
       <AssistantSurface
         snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives } })}
         onAction={() => {}}
+        presentation="shelf"
       />,
     );
+    expect(screen.queryByRole('button', { name: 'Other options' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Read chapter 5/ })).toBeTruthy();
+  });
 
+  it('hands over one thing and no menu at the lowest detail', () => {
+    const alternatives = [
+      work({ key: 'step:n2', title: 'Read chapter 5' }),
+      work({ key: 'step:n3', title: 'Pitch deck' }),
+    ];
+    render(
+      <AssistantSurface
+        snapshot={ready({ detailLevel: 'low', advice: { kind: 'work', primary: work(), alternatives } })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
     expect(screen.queryByText('Read chapter 5')).toBeNull();
-    const disclosure = screen.getByRole('button', { name: 'Other options' });
-    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(disclosure);
-    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.queryByText('Pitch deck')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
+  });
+
+  it('offers one alternative at medium and two at high', () => {
+    const alternatives = [
+      work({ key: 'step:n2', title: 'Read chapter 5' }),
+      work({ key: 'step:n3', title: 'Pitch deck' }),
+    ];
+    const advice = { kind: 'work' as const, primary: work(), alternatives };
+
+    const { rerender } = render(
+      <AssistantSurface snapshot={ready({ detailLevel: 'medium', advice })} onAction={() => {}} presentation="shelf" />,
+    );
     expect(screen.getByText('Read chapter 5')).toBeTruthy();
+    expect(screen.queryByText('Pitch deck')).toBeNull();
+
+    rerender(
+      <AssistantSurface snapshot={ready({ detailLevel: 'high', advice })} onAction={() => {}} presentation="shelf" />,
+    );
     expect(screen.getByText('Pitch deck')).toBeTruthy();
-    expect(screen.queryByText('Email advisor')).toBeNull();
-    // The alternatives are not headings — one focal point on the page.
-    expect(screen.getAllByRole('heading')).toHaveLength(1);
+  });
+
+  it('withholds the column while a session is running', () => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Problem set 4', phase: 'active' as const,
+      elapsedMin: 12, expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
+    render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focus, advice: { kind: 'work', primary: work(), alternatives } })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.queryByText('Read chapter 5')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Complete session' })).toBeTruthy();
   });
 
   it('distinguishes history, planned estimate, and starter language', () => {
@@ -168,7 +210,6 @@ describe('AssistantSurface', () => {
         onAction={onAction}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Other options' }));
     const alt = screen.getByRole('button', { name: /Read chapter 5/ });
     fireEvent.click(alt);
     fireEvent.click(alt);
@@ -455,7 +496,6 @@ describe('AssistantSurface', () => {
         onAction={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Other options' }));
     const row = screen.getByRole('button', { name: /Read chapter 5/ });
     expect(row.className).toContain('text-left');
     expect(row.className).not.toBe(primaryBtn);

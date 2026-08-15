@@ -6,7 +6,7 @@ import type {
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
-import { DETAIL_LEVELS, DETAIL_WORD, type DetailLevel } from '../../lib/shelfDetail';
+import { ALTERNATIVE_CAP, DETAIL_LEVELS, DETAIL_WORD, type DetailLevel } from '../../lib/shelfDetail';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
@@ -134,14 +134,73 @@ const optionRow =
   'w-full rounded-field border border-line bg-panel px-3 py-1.5 text-left text-ui text-ink '
   + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
 
-/** The one primary/action arrangement: two columns on the shelf, one stack embedded. */
+/**
+ * The alternatives, in the open.
+ *
+ * They used to sit behind an `Other options` disclosure, which did not merely
+ * hide them: expanded with two, the card computed past the window's fixed
+ * height, and the window CLIPS rather than scrolls — so the second one was
+ * partly off the bottom of the screen. This spends the shelf's WIDTH instead,
+ * which is the budget that is not scarce, and every row is one click from
+ * starting.
+ *
+ * `shelf` only. `AssistantHost` renders the same surface in-app at 380px,
+ * where a 200px column beside a primary would leave the title 160px to live
+ * in; there the same rows stack underneath. One component, two arrangements —
+ * the disclosure dies in both, because it is the disclosure that loses rows,
+ * not the layout.
+ */
+function Sidecar({ label, items, disabled, onPick, shelf }: {
+  label: string;
+  items: RecommendedWork[];
+  disabled: boolean;
+  onPick: (ref: RecommendedWork['ref']) => void;
+  shelf: boolean;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className={shelf ? 'flex min-w-0 flex-col gap-1' : 'flex flex-col gap-1'}>
+      <SectionLabel>{label}</SectionLabel>
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          disabled={disabled}
+          className={optionRow}
+          onClick={() => onPick(item.ref)}
+        >
+          <span className="block truncate text-ink-soft">{item.title}</span>
+          <span className="block truncate text-meta text-muted">
+            {item.goalTitle ? `${item.goalTitle} · ` : ''}{expectedTimeLabel(item.expected)}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The one primary/action arrangement, and where the alternatives go with it.
+ * On the shelf the column sits beside the primary at a fixed 200px; embedded,
+ * everything stacks.
+ */
 function bodyClass(shelf: boolean): string {
   return shelf
     ? 'grid min-h-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1'
     : 'flex min-h-0 flex-col gap-2';
 }
 
-/** A quiet text disclosure. Revealed content is capped at two rows, internally scrollable. */
+/**
+ * A quiet text disclosure. Revealed content is capped at two rows, internally
+ * scrollable.
+ *
+ * `FocusPanel` only, now: the advice panel's alternatives moved into the open
+ * (`Sidecar`), but switching work mid-session stays reachable exactly where it
+ * is today — the running state's own alternatives are unaffected by that
+ * change, because the reason the sidecar is withheld while a session runs is
+ * WIDTH (two full-length buttons need the room), not a decision to remove the
+ * ability to switch.
+ */
 function OtherOptions({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
@@ -272,10 +331,16 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
   );
 }
 
-function AdvicePanel({ snapshot, shelf, pending, onStart }: {
+function AdvicePanel({ snapshot, shelf, pending, detail, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
   shelf: boolean;
   pending: boolean;
+  /**
+   * How much to show. It is read HERE and never passed to `executionAdvisor`
+   * — the advisor holds no presentation, so the cap is applied where the
+   * rendering happens.
+   */
+  detail: DetailLevel;
   onStart: (ref: RecommendedWork['ref']) => void;
 }) {
   const { advice } = snapshot;
@@ -292,7 +357,7 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
   }
 
   const { primary } = advice;
-  const alternatives = advice.alternatives.slice(0, 2);
+  const alternatives = advice.alternatives.slice(0, ALTERNATIVE_CAP[detail]);
   const primaryColumn = (
     <div className="flex min-w-0 flex-col gap-1">
       <SectionLabel>{REASON_WORD[primary.reason]}</SectionLabel>
@@ -304,40 +369,30 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
       </p>
     </div>
   );
+  const startButton = (
+    <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
+      Start session
+    </button>
+  );
 
   return (
     <div className="flex flex-col gap-2">
       {advice.beyondWindow && (
         <p className="text-meta text-muted">Nothing light left — this is next when you&apos;re ready.</p>
       )}
-      <div className={bodyClass(shelf)}>
-        {primaryColumn}
-        <button
-          type="button"
-          autoFocus
-          disabled={pending}
-          className={primaryBtn}
-          onClick={() => onStart(primary.ref)}
-        >
-          Start session
-        </button>
-      </div>
-      {alternatives.length > 0 && (
-        <OtherOptions>
-          {alternatives.map((alt) => (
-            <button
-              key={alt.key}
-              type="button"
-              disabled={pending}
-              className={optionRow}
-              onClick={() => onStart(alt.ref)}
-            >
-              <span className="text-ink-soft">{alt.title}</span>
-              {alt.goalTitle && <span className="ml-2 text-meta text-muted">{alt.goalTitle}</span>}
-              <span className="ml-2 text-meta text-faint">{expectedTimeLabel(alt.expected)}</span>
-            </button>
-          ))}
-        </OtherOptions>
+      {shelf && alternatives.length > 0 ? (
+        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_1px_200px] gap-x-3.5">
+          <div className={bodyClass(true)}>{primaryColumn}{startButton}</div>
+          <div className="bg-line" />
+          <Sidecar label="Or" items={alternatives} disabled={pending} onPick={onStart} shelf />
+        </div>
+      ) : (
+        <>
+          <div className={bodyClass(shelf)}>{primaryColumn}{startButton}</div>
+          {!shelf && (
+            <Sidecar label="Or" items={alternatives} disabled={pending} onPick={onStart} shelf={false} />
+          )}
+        </>
       )}
     </div>
   );
@@ -422,6 +477,7 @@ export function AssistantSurface({
             snapshot={snapshot}
             shelf={shelf}
             pending={sendoff.pending}
+            detail={snapshot.detailLevel}
             onStart={sendoff.start}
           />
         )}
