@@ -169,6 +169,7 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
     <div
       role="dialog"
       aria-label="Assistant"
+      data-shelf
       className="fixed right-[16px] top-[64px] z-40 max-h-[70vh] w-[380px] overflow-y-auto rounded-card border border-line bg-panel"
     >
       <AssistantSurface snapshot={snapshot} onAction={onAction} />

@@ -56,6 +56,27 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
   });
 
+  it('focuses nothing when it opens, so no ring paints on arrival', () => {
+    const { container } = render(
+      <AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />,
+    );
+    expect(container.querySelector('[autofocus]')).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it.each(['active', 'break'] as const)('focuses nothing during a %s session either', (phase) => {
+    const focus = {
+      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
+      title: 'Problem set 4', phase,
+      elapsedMin: 12, expected: { kind: 'estimate' as const, minutes: 45 },
+    };
+    const { container } = render(
+      <AssistantSurface snapshot={ready({ activeFocus: focus })} onAction={() => {}} />,
+    );
+    expect(container.querySelector('[autofocus]')).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
+
   it('shows the alternatives without asking for a click', () => {
     const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
     render(

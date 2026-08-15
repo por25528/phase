@@ -353,6 +353,18 @@
     content: attr(data-placeholder);
     @apply pointer-events-none float-left h-0 text-muted;
   }
+
+  /* A focus ring inside the shelf is INSET, and a scroll container is why.
+     `overflow-y: auto` forces `overflow-x: auto`, and a scroller clips at its
+     padding box — so the 3px an outset ring sits outside its button is cut off
+     by whichever scroller the button lands nearest. Measured on the real
+     window: the orange stopped dead at the button's own right edge. An inset
+     ring paints inside the element's own border box and cannot be clipped by
+     an ancestor. Accent on ink measures 3.52:1, clearing the 3:1 floor WCAG
+     1.4.11 sets for a focus indicator against its adjacent colour. */
+  [data-shelf] :focus-visible {
+    outline-offset: -2px;
+  }
 }
 
 /* The assistant shelf drifts in from a notch above its resting spot — a 6px

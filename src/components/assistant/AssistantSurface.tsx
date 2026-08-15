@@ -268,6 +268,11 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
   // are: on a break you came back to resume, mid-session you came to finish,
   // and `confirming` is a question whose expected answer is yes. It sits last,
   // under the reading edge, exactly as dialogFooter puts a commit button last.
+  //
+  // No autoFocus. A shelf that focuses the same button on every open gains
+  // nothing from a mark saying which button is focused — the ring was on
+  // 100% of the time and distinguished nothing, in the one hue the system
+  // reserves for action. Tab and it appears, where it means something.
   const actions = focus.phase === 'confirming' ? (
     <div className="flex gap-2">
       <button
@@ -279,7 +284,6 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
       </button>
       <button
         type="button"
-        autoFocus
         className={primaryBtn}
         onClick={() => onAction({ type: 'confirm-focus', minutes: focus.proposedMinutes ?? focus.elapsedMin })}
       >
@@ -293,7 +297,6 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
       </button>
       <button
         type="button"
-        autoFocus
         className={primaryBtn}
         onClick={() => onAction({ type: 'complete-focus' })}
       >
@@ -309,7 +312,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, detail }: {
       >
         Complete session
       </button>
-      <button type="button" autoFocus className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
+      <button type="button" className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
         Continue
       </button>
     </div>
