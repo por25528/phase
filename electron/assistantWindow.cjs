@@ -13,19 +13,35 @@ const path = require('node:path')
 // TALLEST state fits: a hugging card is clipped by the window edge rather than
 // scrolled, so anything past this line is not merely awkward, it is invisible.
 //
-// The tallest state is now the idle advice panel at `Focus: High` with two
-// alternatives AND `beyondWindow` — the Sidecar column beside the primary,
-// plus the "Nothing light left" line above it — 220.5px at 620 wide. The
-// Sidecar is what moved this number: it outgrew the previously-tallest
-// `confirming` state (goal title, an "Other options" row and a notice above
-// it, 218.8px), which is why 219 no longer holds. The send-off's own content
-// (84.9px) and the idle panel with long goal titles (195.2px) were both
-// measured too and neither is close.
+// The tallest state is `confirming` (a running session pending your
+// confirmation) with a top-level notice, measured with a task title long
+// enough to hit the `line-clamp-2` cap in AssistantSurface.tsx — the title
+// "Draft the comparative literature review for the graduate seminar on
+// nineteenth-century industrialization" — 247.6px at 620 wide. A title is a
+// free-text field with no length limit, so two wrapped lines is not an
+// exotic input, it is the maximum the component can ever render, and
+// `confirming` carries more rows than any other state (an extra
+// confirmation sentence and an "Other options" row) — with the SAME
+// worst-case title the idle advice panel's Sidecar (two alternatives, no
+// `beyondWindow`) reaches only 195.2px and `beyondWindow` alone (the
+// "Nothing light left" line, zero alternatives — the one real shape
+// `beyondWindow` can take, since `executionAdvisor.ts` always slices
+// `visible` to one item when it fires) reaches 194.5px. The send-off's own
+// content is 84.9px.
+//
+// A previous pass here measured `confirming` at 218.8px with a title that
+// happened to fit on one line, and separately measured a FIFTH combination —
+// the Sidecar's two alternatives together with `beyondWindow` — at 220.5px.
+// That combination cannot occur: `beyondWindow` forces `visible` to a single
+// item, so `alternatives` is always empty when it is set. Both numbers were
+// real measurements of states that either understated the true worst case
+// (a short title) or could never be reached (the fifth combination); this
+// pass measured all four REACHABLE candidates against the same long title.
 //
 // MEASURED, never derived. Arithmetic against the type scale put this number
 // 20px low once already. If a state grows, measure it again.
 const WIDTH = 620
-const HEIGHT = 221
+const HEIGHT = 248
 const TOP_GAP = 18
 
 /**
