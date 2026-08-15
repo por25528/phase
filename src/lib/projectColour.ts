@@ -13,10 +13,10 @@ export const PROJECT_COLOURS = 6;
  * exists rather than the index being interpolated at the call site.
  *
  * Two alphas per entry. 12% over the white panel is a legible wash; the same
- * 12% over the OLED panel (#0D0D0E) is invisible, so the dark theme takes 22%.
- * Ink stays `text-ink` at both: a near-black/near-white on a 12–22% wash clears
- * AA comfortably, whereas colouring the text to match would land around 4.2:1
- * and fail it.
+ * 12% over the warm charcoal panel (#1E1D1B) is far too faint, so the dark
+ * theme takes 22%. Ink stays `text-ink` at both: a near-black/near-white on a
+ * 12–22% wash clears AA comfortably, whereas colouring the text to match would
+ * land around 4.2:1 and fail it.
  */
 const BLOCK_CLASSES = [
   'bg-proj-0/12 dark:bg-proj-0/22 border-l-proj-0',

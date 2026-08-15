@@ -85,8 +85,10 @@ export default {
         card: '14px',
         field: '9px',
       },
-      // Warm rgba drops are invisible on OLED black — theme them too so dark can
-      // fall back to a darker drop plus the border-line hairlines cards carry.
+      // Drops are themed because their COLOUR has to change, not because dark
+      // cannot show one: a warm rgba drop over #141311 is invisible, a black
+      // one over it is not. The dark values are heavier to compensate for the
+      // smaller gap between panel and page.
       boxShadow: {
         card: 'var(--shadow-card)',
         today: 'var(--shadow-today)',

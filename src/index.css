@@ -8,72 +8,80 @@
    NB: these live OUTSIDE @layer so Tailwind never tree-shakes the `.dark`
    class selector (it's applied to <html> via JS, so it appears in no source). */
 :root {
-    --c-bg: 250 249 247;            /* #FAF9F7 */
+    --c-bg: 247 247 245;            /* #F7F7F5 */
     --c-panel: 255 255 255;         /* #FFFFFF */
     --c-panel-bright: 255 255 255;  /* #FFFFFF */
     --c-field: 255 255 255;         /* #FFFFFF */
-    --c-ink: 33 30 25;              /* #211E19 */
-    --c-ink-hover: 58 53 44;        /* #3A352C */
-    --c-ink-soft: 74 70 60;         /* #4A463C */
+    --c-ink: 26 26 24;              /* #1A1A18 — 17.4:1 panel */
+    --c-ink-hover: 51 50 46;        /* #33322E */
+    --c-ink-soft: 70 68 62;         /* #46443E */
     /* Secondary copy carries most of the app's information, so `muted` clears
        AA (4.5:1) against both the panel and the page. `faint` is for genuinely
        decorative marks, placeholders and disabled states and holds the 3:1
-       non-text floor — anything a user must READ belongs in `muted`. */
-    --c-muted: 117 114 107;         /* #75726B — 4.80:1 panel, 4.56:1 bg */
-    --c-faint: 148 144 138;         /* #94908A — 3.17:1 panel, 3.02:1 bg */
-    --c-faint-2: 201 197 189;       /* #C9C5BD */
-    --c-line: 234 232 227;          /* #EAE8E3 */
-    --c-line-2: 222 219 211;        /* #DEDBD3 */
+       non-text floor — anything a user must READ belongs in `muted`.
+       paletteContrast.test.ts asserts both. */
+    --c-muted: 110 108 102;         /* #6E6C66 — 5.26:1 panel, 4.90:1 bg */
+    --c-faint: 146 143 136;         /* #928F88 — 3.23:1 panel, 3.01:1 bg */
+    --c-faint-2: 200 197 190;       /* #C8C5BE */
+    --c-line: 233 232 228;          /* #E9E8E4 */
+    --c-line-2: 216 214 208;        /* #D8D6D0 */
     /* Unchecked checkbox border. Deliberately stronger than --c-line-2, which
        at 1.38:1 failed WCAG 1.4.11 and made the app's primary action invisible. */
-    --c-check: 142 138 130;         /* #8E8A82 */
-    --c-line-soft: 240 238 233;     /* #F0EEE9 */
-    --c-hover: 244 243 239;         /* #F4F3EF */
-    --c-hover-deep: 235 233 227;    /* #EBE9E3 */
-    --c-fill: 33 30 25;             /* #211E19 */
-    --c-dot: 59 54 43;              /* #3B362B */
-    --c-dot-off: 232 230 223;       /* #E8E6DF */
-    --c-track: 239 237 231;         /* #EFEDE7 */
-    --c-accent: 192 78 45;          /* #C04E2D — 4.81:1 panel, 4.57:1 bg */
-    --c-accent-deep: 179 69 38;     /* #B34526 */
-    --c-accent-soft: 216 154 126;   /* #D89A7E */
-    --c-accent-contrast: 255 246 238; /* #FFF6EE */
-    --c-accent-tint: 245 227 218;   /* #F5E3DA */
-    --c-paper: 250 249 247;         /* #FAF9F7 */
-    --c-chip: 241 239 234;          /* #F1EFEA */
-    --c-chip-ink: 110 106 97;       /* #6E6A61 */
+    --c-check: 139 136 127;         /* #8B887F — 3.54:1 panel, 3.30:1 bg */
+    --c-line-soft: 240 239 235;     /* #F0EFEB */
+    --c-hover: 242 241 238;         /* #F2F1EE */
+    --c-hover-deep: 233 232 227;    /* #E9E8E3 */
+    --c-fill: 26 26 24;             /* #1A1A18 */
+    --c-dot: 51 50 46;              /* #33322E */
+    --c-dot-off: 228 226 220;       /* #E4E2DC */
+    --c-track: 237 236 232;         /* #EDECE8 */
+    /* Slate, not terracotta. The old accent (192 78 45) sat nine degrees from
+       --c-warn (158 89 44), so "this is the action" and "this is trouble" were
+       told apart mostly by context. These two cannot be confused. */
+    --c-accent: 58 74 92;           /* #3A4A5C — 9.08:1 panel, 8.46:1 bg */
+    --c-accent-deep: 44 58 73;      /* #2C3A49 */
+    --c-accent-soft: 139 154 170;   /* #8B9AAA */
+    --c-accent-contrast: 255 255 255; /* #FFFFFF — 9.08:1 on accent */
+    --c-accent-tint: 232 236 240;   /* #E8ECF0 */
+    --c-paper: 247 247 245;         /* #F7F7F5 */
+    --c-chip: 241 240 236;          /* #F1F0EC */
+    --c-chip-ink: 102 100 94;       /* #66645E — 5.19:1 on chip */
     /* The selected segment of a segmented control: one step UP from the `chip`
        track it sits in. It needs its own token because "up" is not a fixed
-       colour — no existing token is brighter than `chip` in both themes, so
-       `panel` (white here, #0D0D0E there) made the pill rise out of the track in
-       light and sink into it in dark, inverting the one thing the control uses
-       to say which option is on. */
+       colour — designScale.test.ts asserts the RELATIONSHIP in both themes. */
     --c-raised: 255 255 255;        /* #FFFFFF — chip is 241 */
-    --c-warn: 158 89 44;            /* #9E592C — 4.53:1 on warn-tint */
-    --c-warn-tint: 246 234 223;     /* #F6EADF */
+    --c-warn: 161 84 31;            /* #A1541F — 4.73:1 on warn-tint */
+    --c-warn-tint: 246 237 228;     /* #F6EDE4 */
 
     /*
      * Project identity. Six hues, assigned by hash — see lib/projectColour.ts.
      *
      * Declared once rather than per theme: every value's relative luminance
-     * sits in [0.113, 0.30], which clears 3:1 against BOTH panels (#FFFFFF and
-     * #0D0D0E). WCAG 1.4.11 applies because the rail is a 3px non-text element,
-     * the same reason --c-check is tuned. projectColour.test.ts asserts the
-     * ratio against both, so a value edited out of that band fails the build.
+     * sits in [0.160, 0.196], which clears 3:1 against BOTH panels (#FFFFFF at
+     * ≥4.26:1 and #1E1D1B at ≥3.38:1). WCAG 1.4.11 applies because the rail is
+     * a 3px non-text element, the same reason --c-check is tuned.
+     * projectColour.test.ts asserts the ratio against both, reading the dark
+     * panel out of this file rather than hardcoding it.
      *
-     * Deliberately not near --c-accent (192 78 45): accent means ACTION and
+     * These are LIGHTER than the set they replace, and not by taste. The warm
+     * charcoal panel (#1E1D1B, L≈0.0122) is brighter than the OLED panel it
+     * replaced (#0D0D0E, L≈0.0045), which lifts the floor of the usable band
+     * from L≥0.113 to L≥0.137. The previous plum (#7A5470, L=0.118) measured
+     * 2.70:1 here — a build failure, not a near miss.
+     *
+     * Deliberately not near --c-accent (58 74 92): accent means ACTION and
      * warn means TROUBLE. Project identity is a third channel and must not be
      * mistaken for either.
      */
-    --c-proj-0: 46 125 116;   /* teal */
-    --c-proj-1: 75 95 191;    /* indigo */
-    --c-proj-2: 142 74 140;   /* plum */
-    --c-proj-3: 95 114 51;    /* moss */
-    --c-proj-4: 47 110 158;   /* steel */
-    --c-proj-5: 138 95 56;    /* clay */
+    --c-proj-0: 74 128 120;   /* #4A8078 teal  — L .182 */
+    --c-proj-1: 98 111 163;   /* #626FA3 indigo— L .165 */
+    --c-proj-2: 140 98 128;   /* #8C6280 plum  — L .160 */
+    --c-proj-3: 114 121 79;   /* #72794F moss  — L .177 */
+    --c-proj-4: 83 120 143;   /* #53788F steel — L .170 */
+    --c-proj-5: 155 113 96;   /* #9B7160 clay  — L .196 */
 
-    --shadow-card: 0 1px 2px rgba(30, 28, 22, 0.05);
-    --shadow-today: 0 2px 6px rgba(30, 28, 22, 0.07);
+    --shadow-card: 0 1px 2px rgba(26, 26, 24, 0.05);
+    --shadow-today: 0 2px 6px rgba(26, 26, 24, 0.07);
 
     /* Modal / command-palette scrim.
        A whole value rather than a `R G B` triple, because dark needs a
@@ -82,53 +90,58 @@
        the app that did not theme. A warm 28% drop over the OLED page (#000) is
        almost no drop at all, which left the panel (#0D0D0E) sitting on its own
        background with only a hairline to separate them. */
-    --scrim: rgba(20, 20, 18, 0.28);
+    --scrim: rgba(20, 19, 17, 0.30);
   }
 
-  /* OLED dark theme — pure-black base, faintly elevated surfaces, off-white ink,
-     warmer accent. Toggled by adding `.dark` to <html> (see src/lib/theme.ts). */
+  /* Warm charcoal dark theme — warm near-black base, faintly elevated surfaces,
+     warm off-white ink, a lighter slate accent. Toggled by adding `.dark` to
+     <html> (see src/lib/theme.ts).
+
+     This is NOT OLED black any more, and that was a deliberate trade: a pure
+     black theme beside a warm light theme is two identities in one app. The
+     cost is paid by --c-proj-*, whose contrast band narrows against a lighter
+     panel — see the note on those tokens. */
   .dark {
-    --c-bg: 0 0 0;                  /* #000000 */
-    --c-panel: 13 13 14;            /* #0D0D0E */
-    --c-panel-bright: 22 22 24;     /* #161618 */
-    --c-field: 13 13 14;            /* #0D0D0E */
-    --c-ink: 236 235 232;           /* #ECEBE8 */
-    --c-ink-hover: 218 216 211;     /* #DAD8D3 */
-    --c-ink-soft: 183 180 173;      /* #B7B4AD */
-    --c-muted: 139 136 127;         /* #8B887F — 5.48:1 panel (already AA) */
-    --c-faint: 102 100 94;          /* #66645E — 3.28:1 panel */
-    --c-faint-2: 71 69 63;          /* #47453F */
-    --c-line: 34 34 36;             /* #222224 */
-    --c-line-2: 46 46 49;           /* #2E2E31 */
-    --c-check: 104 104 110;         /* #68686E */
-    --c-line-soft: 26 26 28;        /* #1A1A1C */
-    --c-hover: 22 22 24;            /* #161618 */
-    --c-hover-deep: 32 32 35;       /* #202023 */
-    --c-fill: 236 235 232;          /* #ECEBE8 */
-    --c-dot: 227 225 219;           /* #E3E1DB */
-    --c-dot-off: 42 42 45;          /* #2A2A2D */
-    --c-track: 28 28 30;            /* #1C1C1E */
-    --c-accent: 225 97 59;          /* #E1613B */
-    --c-accent-deep: 240 130 96;    /* #F08260 — deeper = LIGHTER on a dark surface */
-    --c-accent-soft: 122 65 48;     /* #7A4130 */
-    --c-accent-contrast: 251 237 228; /* #FBEDE4 */
-    --c-accent-tint: 42 24 16;      /* #2A1810 */
-    --c-paper: 10 10 11;            /* #0A0A0B */
-    --c-chip: 27 27 29;             /* #1B1B1D */
-    --c-chip-ink: 154 151 143;      /* #9A978F */
+    --c-bg: 20 19 17;               /* #141311 */
+    --c-panel: 30 29 27;            /* #1E1D1B */
+    --c-panel-bright: 38 36 33;     /* #262421 */
+    --c-field: 30 29 27;            /* #1E1D1B */
+    --c-ink: 235 231 222;           /* #EBE7DE — 13.7:1 panel */
+    --c-ink-hover: 214 210 201;     /* #D6D2C9 */
+    --c-ink-soft: 181 176 165;      /* #B5B0A5 */
+    --c-muted: 142 137 126;         /* #8E897E — 4.86:1 panel, 5.34:1 bg */
+    --c-faint: 114 109 98;          /* #726D62 — 3.24:1 panel, 3.57:1 bg */
+    --c-faint-2: 74 70 62;          /* #4A463E */
+    --c-line: 44 42 38;             /* #2C2A26 */
+    --c-line-2: 59 56 49;           /* #3B3831 */
+    --c-check: 110 106 96;          /* #6E6A60 — 3.11:1 panel */
+    --c-line-soft: 35 34 32;        /* #232220 */
+    --c-hover: 38 36 33;            /* #262421 */
+    --c-hover-deep: 50 47 42;       /* #322F2A */
+    --c-fill: 235 231 222;          /* #EBE7DE */
+    --c-dot: 220 216 207;           /* #DCD8CF */
+    --c-dot-off: 53 50 44;          /* #35322C */
+    --c-track: 42 40 36;            /* #2A2824 */
+    --c-accent: 159 178 198;        /* #9FB2C6 — 7.83:1 panel */
+    --c-accent-deep: 184 199 214;   /* #B8C7D6 — deeper = LIGHTER on a dark surface */
+    --c-accent-soft: 74 87 104;     /* #4A5768 */
+    --c-accent-contrast: 20 24 29;  /* #14181D — 8.40:1 on accent */
+    --c-accent-tint: 34 40 47;      /* #22282F */
+    --c-paper: 16 15 14;            /* #100F0E */
+    --c-chip: 38 36 33;             /* #262421 */
+    --c-chip-ink: 154 149 138;      /* #9A958A — 5.14:1 on chip */
     /* Up means brighter here too — the same step, in the direction this theme
-       calls up. `shadow-card` is a drop, and a drop is invisible on OLED, so on
-       dark the surface itself has to carry the elevation. */
-    --c-raised: 44 44 48;           /* #2C2C30 — chip is 27 */
-    --c-warn: 208 138 78;           /* #D08A4E */
-    --c-warn-tint: 36 26 18;        /* #241A12 */
+       calls up. */
+    --c-raised: 58 55 48;           /* #3A3730 — chip is 38 */
+    --c-warn: 201 136 75;           /* #C9884B — 5.42:1 on warn-tint */
+    --c-warn-tint: 42 32 24;        /* #2A2018 */
 
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-today: 0 2px 8px rgba(0, 0, 0, 0.6);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-today: 0 2px 8px rgba(0, 0, 0, 0.55);
 
-    /* Pure black and much heavier: the dark panel is only 5% lighter than the
-       page, so the scrim is doing the separation the shadow cannot. */
-    --scrim: rgba(0, 0, 0, 0.66);
+    /* Lighter than the old .66: the panel is now 8% above the page rather than
+       5%, so the surface itself carries more of the separation. */
+    --scrim: rgba(10, 9, 8, 0.62);
   }
 
 @layer base {

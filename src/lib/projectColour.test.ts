@@ -39,8 +39,8 @@ describe('assigning a project its colour', () => {
   });
 
   it('carries a dark-mode fill for every palette entry', () => {
-    // A 12% tint over #0D0D0E is invisible; the dark variant is what keeps the
-    // block distinguishable from the grid in the OLED theme.
+    // A 12% tint over #1E1D1B is too faint to read as a fill; the dark variant
+    // is what keeps the block distinguishable from the grid in the dark theme.
     for (let i = 0; i < 500; i += 1) {
       expect(projectBlockClass(`goal-${i}`)).toMatch(/\bdark:bg-proj-[0-5]\/\d+\b/);
     }
