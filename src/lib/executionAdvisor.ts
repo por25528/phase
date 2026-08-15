@@ -5,6 +5,8 @@ import { nowFocus } from './todaySurface';
 import { todayPlan } from './todayPlan';
 import { expectedTimeFor, type ExpectedTime, type WorkRef } from './expectedTime';
 import { admits, type TimeLevel } from './timeLens';
+import { admitsWork, type FocusLevel } from './focusLens';
+import { demandIndex, taskDemand, type ResolvedDemand } from './demand';
 import { isPlanningHorizon } from './horizons';
 import { walkLeaves } from './plan';
 import { stepStatus } from './status';
@@ -41,6 +43,8 @@ export interface RecommendedWork {
   lifeId?: string;
   reason: AdviceReason;
   expected: ExpectedTime;
+  /** Absent means no claim was made, never a guess — the focus dial admits it. */
+  demand?: ResolvedDemand;
 }
 
 export type ExecutionAdvice =
@@ -56,6 +60,13 @@ export type ExecutionAdvice =
        * refuses.
        */
       beyondWindow?: true;
+      /**
+       * The focus level in force admitted nothing, so `primary` is the
+       * unfiltered head. Distinct from `beyondWindow` because the two dials
+       * fail differently and the copy must say which one did: "Nothing that
+       * short left" and "Nothing light left" are different sentences.
+       */
+      beyondFocus?: true;
     }
   /** Availability was never set — the same distinct verdict `todayPlan` keeps. */
   | { kind: 'needs-hours' }
@@ -79,6 +90,12 @@ export interface ExecutionAdviceInput {
    * not.
    */
   timeLevel?: TimeLevel;
+  /**
+   * How much focus is available. ABSENT means no lens, which is what every
+   * surface other than the shelf passes — a mood set in a café must not rewrite
+   * the Today page you check on the train home.
+   */
+  focusLevel?: FocusLevel;
 }
 
 /** The most quiet alternatives shown beside the primary. Two is the cap, and the point. */
@@ -91,7 +108,15 @@ interface Candidate {
   goalTitle?: string;
   lifeId?: string;
   reason: AdviceReason;
+  /** Absent means no claim was made, never a guess — the focus dial admits it. */
+  demand?: ResolvedDemand;
 }
+
+/**
+ * Present-or-absent, never present-and-undefined: the focus dial admits an
+ * untagged item at every level, so a candidate with no claim carries no field.
+ */
+const withDemand = (d: ResolvedDemand | undefined) => (d === undefined ? {} : { demand: d });
 
 function reasonFor(item: DailyWorkItem, nowMinute: number): AdviceReason {
   if (item.startMin !== undefined) {
@@ -111,6 +136,7 @@ function toCandidate(
   item: DailyWorkItem,
   reason: AdviceReason,
   lifeByGoal: Map<string, string>,
+  demand: ResolvedDemand | undefined,
 ): Candidate {
   const ref: WorkRef = item.kind === 'step'
     ? { kind: 'step', id: item.id, goalId: item.goalId ?? '' }
@@ -122,6 +148,7 @@ function toCandidate(
     title: item.title,
     ...(item.goalTitle === undefined ? {} : { goalTitle: item.goalTitle }),
     ...(lifeId === undefined ? {} : { lifeId }),
+    ...withDemand(demand),
     reason,
   };
 }
@@ -139,11 +166,19 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[]; no
 
   const nodeByid = new Map<string, GoalNode>();
   const goalById = new Map(goals.map((g) => [g.id, g]));
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+  const demandBy = demandIndex(goals);
   const lifeByGoal = new Map<string, string>();
   for (const g of goals) {
     if (g.lifeId !== undefined) lifeByGoal.set(g.id, g.lifeId);
     walkLeaves(g, (n) => nodeByid.set(n.id, n));
   }
+
+  const demandFor = (item: { kind: 'step' | 'task'; id: string }): ResolvedDemand | undefined => {
+    if (item.kind === 'step') return demandBy.get(item.id);
+    const t = taskById.get(item.id);
+    return t === undefined ? undefined : taskDemand(t);
+  };
 
   const allowed = (item: DailyWorkItem): boolean => {
     if (item.done) return false;
@@ -172,9 +207,9 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[]; no
 
   // `nowFocus` decides which commitment leads; the rest keep their order.
   const focus = nowFocus(commitments, now.minute);
-  if (focus) push(toCandidate(focus.item, reasonFor(focus.item, now.minute), lifeByGoal));
-  for (const item of commitments) push(toCandidate(item, reasonFor(item, now.minute), lifeByGoal));
-  for (const item of carryOvers) push(toCandidate(item, 'carried-over', lifeByGoal));
+  if (focus) push(toCandidate(focus.item, reasonFor(focus.item, now.minute), lifeByGoal, demandFor(focus.item)));
+  for (const item of commitments) push(toCandidate(item, reasonFor(item, now.minute), lifeByGoal, demandFor(item)));
+  for (const item of carryOvers) push(toCandidate(item, 'carried-over', lifeByGoal, demandFor(item)));
 
   const plan = todayPlan({
     goals, tasks, availability, blocks, allDayBlocks, today, week, now,
@@ -192,6 +227,7 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[]; no
         title: row.title,
         ...(row.goalTitle === '' ? {} : { goalTitle: row.goalTitle }),
         ...(lifeId === undefined ? {} : { lifeId }),
+        ...withDemand(demandFor(row)),
         reason: 'free-time',
       });
     }
@@ -218,14 +254,24 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
   // Evidence is attached to the whole pool because membership depends on it.
   // Both callers memoize this, so the cost is per-change and not per-frame.
   const queue = pool.map((c) => withExpected(c, input));
-  const level = input.timeLevel;
-  const admitted = level === undefined
-    ? queue
-    : queue.filter((w) => admits(level, w.reason, w.expected));
 
-  // An emptied lens offers the real head, flagged — never a re-sort.
-  const beyondWindow = admitted.length === 0;
-  const visible = beyondWindow ? queue.slice(0, 1) : admitted;
+  const timeLevel = input.timeLevel;
+  const inWindow = timeLevel === undefined
+    ? queue
+    : queue.filter((w) => admits(timeLevel, w.reason, w.expected));
+
+  const focusLevel = input.focusLevel;
+  const admitted = focusLevel === undefined
+    ? inWindow
+    : inWindow.filter((w) => admitsWork(focusLevel, w.reason, w.demand));
+
+  // Attribute the emptiness to the dial that caused it. Time is checked first
+  // because it is the harder constraint — a gap is a fact about the day, and a
+  // shelf that blamed focus for a queue the clock had already emptied would
+  // send you to the wrong dial.
+  const beyondWindow = inWindow.length === 0;
+  const beyondFocus = !beyondWindow && admitted.length === 0;
+  const visible = admitted.length === 0 ? queue.slice(0, 1) : admitted;
 
   const [primary, ...rest] = visible;
   const alternatives: RecommendedWork[] = rest.slice(0, MAX_ALTERNATIVES);
@@ -250,5 +296,6 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
     primary,
     alternatives,
     ...(beyondWindow ? { beyondWindow: true as const } : {}),
+    ...(beyondFocus ? { beyondFocus: true as const } : {}),
   };
 }

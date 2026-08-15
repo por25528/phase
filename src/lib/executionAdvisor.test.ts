@@ -5,6 +5,7 @@ import { nowFocus } from './todaySurface';
 import { proposalRows } from './todayPlan';
 import { weekDates } from './dates';
 import type { AvailabilityWindow, Goal, Task } from '../db/types';
+import type { Demand } from './demand';
 
 const today = '2026-08-12'; // a Wednesday
 const week = weekDates(today)[0];
@@ -281,5 +282,98 @@ describe('the focus lens', () => {
   it('says clear rather than beyondWindow when there was nothing to begin with', () => {
     const advice = executionAdvice(input({ timeLevel: 'low' }));
     expect(advice.kind).toBe('clear');
+  });
+});
+
+describe('the focus dial', () => {
+  /** Two untagged free-time candidates, the same pool `twoSizes` builds, untagged. */
+  function baseInput(): ExecutionAdviceInput {
+    return input({
+      goals: [
+        goal({
+          id: 'g1', title: 'Physics 201',
+          nodes: [{ id: 'n1', title: 'Lab report', estimateMin: 45 }],
+        }),
+        goal({
+          id: 'g2', title: 'Advising',
+          nodes: [{ id: 'n2', title: 'Reply to Dr. Chen', estimateMin: 10 }],
+        }),
+      ],
+    });
+  }
+
+  /** One discretionary free-time candidate, tagged with the given demand. */
+  function taggedInput(demand: Demand): ExecutionAdviceInput {
+    return input({
+      goals: [
+        goal({
+          id: 'g1', title: 'Physics 201',
+          nodes: [{ id: 'n1', title: 'Lab report', estimateMin: 45, demand }],
+        }),
+      ],
+    });
+  }
+
+  /** A deep commitment: a block on the calendar right now, tagged deep. */
+  function committedDeepInput(): ExecutionAdviceInput {
+    return input({
+      goals: [
+        goal({
+          id: 'g1', title: 'History 340',
+          nodes: [{
+            id: 'n1', title: 'Seminar prep', demand: 'deep', plannedWeek: week, estimateMin: 90,
+            blocks: [{ id: 'b1', date: today, startMin: 540, minutes: 90 }],
+          }],
+        }),
+      ],
+      now: { date: today, minute: 570 },
+    });
+  }
+
+  /** Untagged discretionary work, all of it long — the window's problem alone. */
+  function longUntaggedInput(): ExecutionAdviceInput {
+    return input({
+      goals: [
+        goal({
+          id: 'g1', title: 'Dissertation',
+          nodes: [{ id: 'n1', title: 'Thesis chapter 2', estimateMin: 120 }],
+        }),
+      ],
+    });
+  }
+
+  it('changes membership and never order', () => {
+    const withoutDial = executionAdvice(baseInput());
+    const withDial = executionAdvice({ ...baseInput(), focusLevel: 'high' });
+    expect(withDial.kind).toBe('work');
+    if (withDial.kind !== 'work' || withoutDial.kind !== 'work') return;
+    expect(withDial.primary.key).toBe(withoutDial.primary.key);
+  });
+
+  it('does nothing at all on an untagged database', () => {
+    const untouched = executionAdvice(baseInput());
+    for (const level of ['low', 'medium', 'high'] as const) {
+      expect(executionAdvice({ ...baseInput(), focusLevel: level })).toEqual(untouched);
+    }
+  });
+
+  it('drops a deep discretionary item at Low', () => {
+    const input = taggedInput('deep');
+    const advice = executionAdvice({ ...input, focusLevel: 'low' });
+    if (advice.kind !== 'work') throw new Error('expected work');
+    expect(advice.beyondFocus).toBe(true);
+  });
+
+  it('keeps a deep COMMITMENT at Low', () => {
+    const advice = executionAdvice({ ...committedDeepInput(), focusLevel: 'low' });
+    if (advice.kind !== 'work') throw new Error('expected work');
+    expect(advice.beyondFocus).toBeUndefined();
+  });
+
+  it('blames the window, not focus, when time emptied the queue first', () => {
+    const advice = executionAdvice({ ...longUntaggedInput(), timeLevel: 'low', focusLevel: 'low' });
+    if (advice.kind !== 'work') throw new Error('expected work');
+    expect(advice.beyondWindow).toBe(true);
+    expect(advice.beyondFocus).toBeUndefined();
   });
 });
