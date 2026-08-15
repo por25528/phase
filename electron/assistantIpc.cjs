@@ -98,13 +98,18 @@ function validNotice(notice) {
     && shortString(notice.text);
 }
 
+function validLevel(level) {
+  return level === 'low' || level === 'medium' || level === 'high';
+}
+
 function validSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return false;
   if (snapshot.status === 'loading') return true;
   if (snapshot.status !== 'ready') return false;
   return validAdvice(snapshot.advice)
     && validFocus(snapshot.activeFocus)
-    && (snapshot.timeLevel === 'low' || snapshot.timeLevel === 'medium' || snapshot.timeLevel === 'high')
+    && validLevel(snapshot.timeLevel)
+    && validLevel(snapshot.detailLevel)
     && validNotice(snapshot.notice);
 }
 
@@ -122,7 +127,8 @@ function validAction(action) {
     case 'confirm-focus':
       return action.minutes === null || (boundedMinutes(action.minutes) && action.minutes > 0);
     case 'set-time-level':
-      return action.level === 'low' || action.level === 'medium' || action.level === 'high';
+    case 'set-detail-level':
+      return validLevel(action.level);
     default:
       return false;
   }

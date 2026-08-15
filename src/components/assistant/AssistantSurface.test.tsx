@@ -38,6 +38,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     advice: { kind: 'work', primary: work(), alternatives: [] },
     activeFocus: null,
     timeLevel: 'medium',
+    detailLevel: 'medium',
     ...over,
   };
 }

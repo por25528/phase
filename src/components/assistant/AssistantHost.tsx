@@ -10,6 +10,7 @@ import type {
 import { elapsedFocusMinutes } from '../../lib/focusSession';
 import { weekOf } from '../../lib/plan';
 import { todayStr } from '../../lib/dates';
+import { DEFAULT_DETAIL_LEVEL } from '../../lib/shelfDetail';
 
 /**
  * The sole adapter between `AssistantAction` and the store.
@@ -79,6 +80,9 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
       advice,
       activeFocus,
       timeLevel,
+      // The store has no detail dial yet, so this is fixed rather than read —
+      // wiring it up is a later task's job.
+      detailLevel: DEFAULT_DETAIL_LEVEL,
       ...(notice ? { notice } : {}),
     };
   }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, timeLevel, notice]);

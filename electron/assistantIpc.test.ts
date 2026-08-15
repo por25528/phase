@@ -66,6 +66,7 @@ const SNAPSHOT = {
   },
   activeFocus: null,
   timeLevel: 'medium',
+  detailLevel: 'medium',
 };
 
 const FOCUSED_SNAPSHOT = {
@@ -152,6 +153,23 @@ describe('publish', () => {
     ipcMain.emit('phase-assistant:publish', MAIN_ID, malformed);
     expect(ipc.latest()).toEqual(FOCUSED_SNAPSHOT);
   });
+
+  it('rejects a snapshot missing or malformed in either level', () => {
+    const { ipcMain, ipc } = relay();
+    const bad = [
+      { ...SNAPSHOT, detailLevel: undefined },
+      { ...SNAPSHOT, detailLevel: 'LOW' },
+      { ...SNAPSHOT, timeLevel: undefined },
+      { ...SNAPSHOT, timeLevel: 'sideways' },
+    ];
+    for (const snapshot of bad) {
+      ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
+      expect(ipc.latest(), JSON.stringify(snapshot)?.slice(0, 60)).toBeNull();
+    }
+
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, SNAPSHOT);
+    expect(ipc.latest()).toEqual(SNAPSHOT);
+  });
 });
 
 describe('ready', () => {
@@ -212,6 +230,26 @@ describe('act', () => {
 
     ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'confirm-focus', minutes: null });
     expect(main.webContents.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards both level verbs and rejects the retired one', () => {
+    const { ipcMain, main } = relay();
+    ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'set-detail-level', level: 'high' });
+    ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'set-time-level', level: 'low' });
+    expect(main.webContents.send).toHaveBeenCalledTimes(2);
+
+    main.webContents.send.mockClear();
+    const bad = [
+      { type: 'set-detail-level', level: 'huge' },
+      { type: 'set-time-level', level: 'HIGH' },
+      // The old verb, WELL FORMED: renaming it is the point, so an overlay
+      // build from before this change must not still be able to set the dial.
+      { type: 'set-focus-level', level: 'low' },
+    ];
+    for (const action of bad) {
+      ipcMain.emit('phase-assistant:act', OVERLAY_ID, action);
+    }
+    expect(main.webContents.send).not.toHaveBeenCalled();
   });
 });
 

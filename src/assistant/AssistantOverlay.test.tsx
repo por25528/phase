@@ -30,6 +30,7 @@ const WORK: Ready = {
   },
   activeFocus: null,
   timeLevel: 'medium',
+  detailLevel: 'medium',
 };
 
 const RUNNING: Ready = {

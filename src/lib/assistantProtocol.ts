@@ -1,5 +1,6 @@
 import type { ExecutionAdvice } from './executionAdvisor';
 import type { ExpectedTime, WorkRef } from './expectedTime';
+import type { DetailLevel } from './shelfDetail';
 import type { TimeLevel } from './timeLens';
 import { fmtMinutes } from './effort';
 
@@ -36,13 +37,17 @@ export type AssistantSnapshot =
       status: 'ready';
       advice: ExecutionAdvice;
       activeFocus: AssistantFocusView | null;
+      /** How long the user says they have. Decides what fits. */
       timeLevel: TimeLevel;
+      /** How much the shelf hands over. Decides how much is drawn. */
+      detailLevel: DetailLevel;
       notice?: { tone: 'neutral' | 'warning'; text: string };
     };
 
 export type AssistantAction =
   | { type: 'start-focus'; ref: WorkRef }
   | { type: 'set-time-level'; level: TimeLevel }
+  | { type: 'set-detail-level'; level: DetailLevel }
   | { type: 'pause-focus' }
   | { type: 'resume-focus' }
   | { type: 'complete-focus' }
