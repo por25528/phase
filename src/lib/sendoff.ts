@@ -52,11 +52,6 @@ export const SENDOFFS: readonly Sendoff[] = [
     source: '"Do Things That Don\'t Scale," paulgraham.com, 2013',
   },
   {
-    text: 'Bird by bird, buddy. Just take it bird by bird.',
-    who: 'Anne Lamott',
-    source: 'Bird by Bird, 1994',
-  },
-  {
     text: 'Real artists ship.',
     who: 'Steve Jobs',
     source: 'Andy Hertzfeld, "Credit Where Due," folklore.org, on the Macintosh team retreat, January 1983',
