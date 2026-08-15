@@ -120,7 +120,7 @@ export function IconPlus(p: IconProps) {
 /**
  * Search. Was `⌕` — U+2315, whose name is TELEPHONE RECORDER. It is a common
  * stand-in for a magnifier because it looks vaguely like one in some faces, but
- * it is not one, and like the rest of these it was not in Inter either.
+ * it is not one, and like the rest of these it was not in Public Sans either.
  */
 export function IconSearch(p: IconProps) {
   return (
@@ -152,7 +152,7 @@ export function IconChevronRight(p: IconProps) {
   return <Icon {...p}><path d="M9.5 5.5L16 12l-6.5 6.5" /></Icon>;
 }
 
-/** Was `→` (U+2192), which Inter does not carry even though `↑`/`↓` are. */
+/** Was `→` (U+2192), which Public Sans does not carry even though `↑`/`↓` are. */
 export function IconArrowRight(p: IconProps) {
   return <Icon {...p}><path d="M4 12h15M12.5 5.5L19 12l-6.5 6.5" /></Icon>;
 }

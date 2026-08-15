@@ -7,8 +7,8 @@ import * as Icons from './Icons';
 /**
  * The icon set drifted once already, in two directions at the same time.
  *
- * Half the icons were Unicode characters that were not in the subsetted Inter
- * — `designScale.test.ts` guards that half, and stops them coming back. The
+ * Half the icons were Unicode characters that were not in the subsetted Public
+ * Sans — `designScale.test.ts` guards that half, and stops them coming back. The
  * other half were real SVGs, hand-rolled per file: `Icons.tsx` drew at stroke
  * 1.8 on a 24 grid, `App.tsx` drew a byte-identical sun path at 2, `Habits.tsx`
  * drew a pencil at 2, `GoalRow.tsx` drew a chevron at 1.4 on an 8 grid, and

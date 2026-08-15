@@ -271,11 +271,10 @@ describe('type roles', () => {
    * backlog rows, so a `62%` carried the same voice as a masthead. It is a
    * display face now — three roles and no others.
    *
-   * The list below covers MARKUP only. `.note-prose > div > h1/h2/h3` in
-   * index.css is the third role and is invisible here, because `offenders()`
-   * scans .tsx/.ts. That is worth stating rather than discovering: a reader who
-   * assumes this list is exhaustive will conclude Fraunces renders in two
-   * places when it renders in three.
+   * The list below covers MARKUP only, because `offenders()` scans .tsx/.ts.
+   * The third role — `.note-prose > div > h1/h2/h3` in index.css — is a
+   * `@apply` inside a stylesheet, not a class in markup, and needs its own
+   * assertion below rather than being folded into this one.
    */
   it('keeps the display serif out of the working UI', () => {
     // The file, not the line: pinning a line number makes an unrelated import
@@ -284,6 +283,32 @@ describe('type roles', () => {
     expect([...new Set(files)].sort()).toEqual([
       'App.tsx',                      // the wordmark
       'views/project/TaskPage.tsx',   // a document's own title
+    ]);
+  });
+
+  /**
+   * The markup guard above cannot see `index.css` — `offenders()` only scans
+   * .tsx/.ts. A fourth Fraunces role could arrive as `@apply font-disp` on a
+   * brand-new selector and that guard would stay green while it shipped. This
+   * assertion closes that gap the same way `applies every class its own
+   * stylesheet targets` (above) already reads `index.css`: pair each rule's
+   * selector with its body by regex, rather than pulling in a CSS parser.
+   *
+   * `[.#][^{}]+?\{([^{}]*)\}` pairs a selector with the next `}` without
+   * balancing braces, which is enough here — none of the three heading rules
+   * nest further braces, and the CSS variable blocks (`:root`, `.dark`) never
+   * mention `font-disp`, so they never enter `selectors`.
+   */
+  it('keeps font-disp in index.css scoped to the three note-prose headings', () => {
+    const css = readFileSync(join(SRC, 'index.css'), 'utf8');
+    const rules = [...css.matchAll(/([.#][^{}]+?)\{([^{}]*)\}/g)];
+    const selectors = rules
+      .filter((rule) => /\bfont-disp\b/.test(rule[2]))
+      .map((rule) => rule[1].trim());
+    expect([...new Set(selectors)].sort()).toEqual([
+      '.note-prose > div > h1',
+      '.note-prose > div > h2',
+      '.note-prose > div > h3',
     ]);
   });
 
