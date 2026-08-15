@@ -62,6 +62,10 @@ describe('palette contrast', () => {
     // If `--c-panel` is ever renamed, every assertion below would otherwise
     // compare against `undefined` and throw somewhere less obvious.
     expect(DARK_PANEL).toBeDefined();
+    // And if `cssBlock` ever matches the wrong rule (e.g. a `.dark` mention
+    // inside a comment), this reads back as the light panel, and the
+    // per-colour assertions below would test one panel twice.
+    expect(DARK_PANEL).not.toEqual(LIGHT_PANEL);
   });
 
   for (let i = 0; i < PROJECT_COLOURS; i += 1) {

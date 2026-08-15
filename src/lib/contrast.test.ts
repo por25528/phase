@@ -46,6 +46,15 @@ describe('cssBlock', () => {
   it('throws when the selector is absent', () => {
     expect(() => cssBlock('.a { x: 1; }', '.missing')).toThrow(/\.missing/);
   });
+
+  it('does not match a selector mentioned inside a comment', () => {
+    const css = `
+      /* \`.dark\` overrides these */
+      :root { --c-panel: 255 255 255; }
+      .dark { --c-panel: 13 13 14; }
+    `;
+    expect(cssBlock(css, '.dark').trim()).toBe('--c-panel: 13 13 14;');
+  });
 });
 
 describe('themeTokens', () => {

@@ -33,16 +33,24 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
  * Splitting on the selector and taking the remainder — which is what the
  * existing guards do — hands back the whole rest of the file, so a token
  * redeclared in a later rule would be read as if it belonged to this one.
+ *
+ * Comments are stripped before the search: a selector can legitimately be
+ * mentioned in a `/* ... *\/` remark (as this file's own header does), and a
+ * plain substring search would happily match that prose instead of the rule
+ * it describes.
  */
 export function cssBlock(css: string, selector: string): string {
-  const start = css.indexOf(selector);
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
+    ' '.repeat(comment.length),
+  );
+  const start = stripped.indexOf(selector);
   if (start === -1) throw new Error(`${selector} not found in stylesheet`);
-  const open = css.indexOf('{', start);
+  const open = stripped.indexOf('{', start);
   if (open === -1) throw new Error(`${selector} has no block`);
   let depth = 0;
-  for (let i = open; i < css.length; i += 1) {
-    if (css[i] === '{') depth += 1;
-    else if (css[i] === '}') {
+  for (let i = open; i < stripped.length; i += 1) {
+    if (stripped[i] === '{') depth += 1;
+    else if (stripped[i] === '}') {
       depth -= 1;
       if (depth === 0) return css.slice(open + 1, i);
     }
