@@ -179,7 +179,7 @@ project can be logged against."
 
 - [ ] **Step 1: Create the test file**
 
-Create `src/state/store.finishWork.test.ts`. **Copy lines 1–68 of `src/state/store.timeLevel.test.ts` verbatim as the preamble** — the `fake-indexeddb/auto` import, the `dbMocks` / `assetMocks` / `tabLockMocks` hoisted blocks, the three `vi.mock` calls, and the `freshStore` helper. Then append:
+Create `src/state/store.finishWork.test.ts`. **Copy lines 1–70 of `src/state/store.timeLevel.test.ts` verbatim as the preamble** — the `fake-indexeddb/auto` import, the `dbMocks` / `assetMocks` / `tabLockMocks` hoisted blocks, the three `vi.mock` calls, and the `freshStore` helper. Then append:
 
 ```ts
 import { isDone } from '../lib/status';
