@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
+import { contrastRatio, themeTokens, type Rgb } from './contrast';
 import { projectColourIndex, projectBlockClass, PROJECT_COLOURS } from './projectColour';
 
 describe('assigning a project its colour', () => {
@@ -54,34 +55,21 @@ describe('assigning a project its colour', () => {
  */
 describe('palette contrast', () => {
   const CSS = readFileSync(fileURLToPath(new URL('../index.css', import.meta.url)), 'utf8');
+  const LIGHT_PANEL: Rgb = [255, 255, 255];
+  const DARK_PANEL: Rgb = themeTokens(CSS, '.dark')['c-panel'];
 
-  function channels(name: string): [number, number, number] {
-    const match = new RegExp(`--${name}:\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)`).exec(CSS);
-    if (!match) throw new Error(`--${name} not found in index.css`);
-    return [Number(match[1]), Number(match[2]), Number(match[3])];
-  }
-
-  function luminance([r, g, b]: [number, number, number]): number {
-    const lin = [r, g, b].map((c) => {
-      const s = c / 255;
-      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-    });
-    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
-  }
-
-  function ratio(a: number, b: number): number {
-    const [hi, lo] = a > b ? [a, b] : [b, a];
-    return (hi + 0.05) / (lo + 0.05);
-  }
-
-  const LIGHT_PANEL = luminance([255, 255, 255]);
-  const DARK_PANEL = luminance([13, 13, 14]);
+  it('reads a dark panel from the stylesheet rather than a literal', () => {
+    // If `--c-panel` is ever renamed, every assertion below would otherwise
+    // compare against `undefined` and throw somewhere less obvious.
+    expect(DARK_PANEL).toBeDefined();
+  });
 
   for (let i = 0; i < PROJECT_COLOURS; i += 1) {
     it(`--c-proj-${i} clears 3:1 on both panels`, () => {
-      const l = luminance(channels(`c-proj-${i}`));
-      expect(ratio(l, LIGHT_PANEL)).toBeGreaterThanOrEqual(3);
-      expect(ratio(l, DARK_PANEL)).toBeGreaterThanOrEqual(3);
+      const hue = themeTokens(CSS, ':root')[`c-proj-${i}`];
+      expect(hue, `--c-proj-${i} missing from :root`).toBeDefined();
+      expect(contrastRatio(hue, LIGHT_PANEL)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(hue, DARK_PANEL)).toBeGreaterThanOrEqual(3);
     });
   }
 });
