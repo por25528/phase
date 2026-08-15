@@ -29,7 +29,7 @@ const WORK: Ready = {
     alternatives: [],
   },
   activeFocus: null,
-  focusLevel: 'medium',
+  timeLevel: 'medium',
 };
 
 const RUNNING: Ready = {

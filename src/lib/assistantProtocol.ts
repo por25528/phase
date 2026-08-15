@@ -1,6 +1,6 @@
 import type { ExecutionAdvice } from './executionAdvisor';
 import type { ExpectedTime, WorkRef } from './expectedTime';
-import type { FocusLevel } from './focusLens';
+import type { TimeLevel } from './timeLens';
 import { fmtMinutes } from './effort';
 
 /**
@@ -36,13 +36,13 @@ export type AssistantSnapshot =
       status: 'ready';
       advice: ExecutionAdvice;
       activeFocus: AssistantFocusView | null;
-      focusLevel: FocusLevel;
+      timeLevel: TimeLevel;
       notice?: { tone: 'neutral' | 'warning'; text: string };
     };
 
 export type AssistantAction =
   | { type: 'start-focus'; ref: WorkRef }
-  | { type: 'set-focus-level'; level: FocusLevel }
+  | { type: 'set-time-level'; level: TimeLevel }
   | { type: 'pause-focus' }
   | { type: 'resume-focus' }
   | { type: 'complete-focus' }
@@ -96,7 +96,7 @@ export function expectedTimeLabel(expected: ExpectedTime): string {
 export function elapsedAgainstExpected(
   elapsedMin: number,
   expected: ExpectedTime,
-  level: FocusLevel = 'medium',
+  level: TimeLevel = 'medium',
 ): string {
   const done = fmtMinutes(elapsedMin);
   // At low focus the number survives and the verdict does not. The pressure in

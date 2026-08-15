@@ -104,7 +104,7 @@ export function handleAgentRead(
 ): AgentResponse | null {
   switch (request.tool) {
     case 'today': {
-      // No `focusLevel`: a mood set in the shelf must not reach this surface.
+      // No `timeLevel`: a gap declared in the shelf must not reach this surface.
       const now = nowOf();
       return okResponse({ advice: executionAdvice(adviceInput(state, now)) });
     }

@@ -4,7 +4,7 @@ import { buildDailyWork, type DailyWorkItem } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { todayPlan } from './todayPlan';
 import { expectedTimeFor, type ExpectedTime, type WorkRef } from './expectedTime';
-import { admits, type FocusLevel } from './focusLens';
+import { admits, type TimeLevel } from './timeLens';
 import { isPlanningHorizon } from './horizons';
 import { walkLeaves } from './plan';
 import { stepStatus } from './status';
@@ -49,12 +49,13 @@ export type ExecutionAdvice =
       primary: RecommendedWork;
       alternatives: RecommendedWork[];
       /**
-       * The level in force admitted nothing, so `primary` is the unfiltered
-       * head of the queue. The surface says so out loud — "Nothing light left"
-       * is a different sentence from "nothing needs you", and re-sorting to
-       * find a lighter task would be the second opinion this module refuses.
+       * The window in force admitted nothing, so `primary` is the unfiltered
+       * head of the queue. The surface says so out loud — "Nothing that short
+       * left" is a different sentence from "nothing needs you", and re-sorting
+       * to find something shorter would be the second opinion this module
+       * refuses.
        */
-      beyondFocus?: true;
+      beyondWindow?: true;
     }
   /** Availability was never set — the same distinct verdict `todayPlan` keeps. */
   | { kind: 'needs-hours' }
@@ -71,12 +72,13 @@ export interface ExecutionAdviceInput {
   week: string;  // Monday of the current week
   now: Now;
   /**
-   * How much focus the room supports. ABSENT means no lens at all, which is
-   * what every surface other than the shelf passes: a mood set in a café must
-   * not rewrite the Today page you check on the train home — the same boundary
-   * the life switcher holds when the board scopes and the week does not.
+   * How long the user says they have. ABSENT means no lens at all, which is
+   * what every surface other than the shelf passes: a gap declared in a café
+   * must not rewrite the Today page you check on the train home — the same
+   * boundary the life switcher holds when the board scopes and the week does
+   * not.
    */
-  focusLevel?: FocusLevel;
+  timeLevel?: TimeLevel;
 }
 
 /** The most quiet alternatives shown beside the primary. Two is the cap, and the point. */
@@ -216,14 +218,14 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
   // Evidence is attached to the whole pool because membership depends on it.
   // Both callers memoize this, so the cost is per-change and not per-frame.
   const queue = pool.map((c) => withExpected(c, input));
-  const level = input.focusLevel;
+  const level = input.timeLevel;
   const admitted = level === undefined
     ? queue
     : queue.filter((w) => admits(level, w.reason, w.expected));
 
   // An emptied lens offers the real head, flagged — never a re-sort.
-  const beyondFocus = admitted.length === 0;
-  const visible = beyondFocus ? queue.slice(0, 1) : admitted;
+  const beyondWindow = admitted.length === 0;
+  const visible = beyondWindow ? queue.slice(0, 1) : admitted;
 
   const [primary, ...rest] = visible;
   const alternatives: RecommendedWork[] = rest.slice(0, MAX_ALTERNATIVES);
@@ -247,6 +249,6 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
     kind: 'work',
     primary,
     alternatives,
-    ...(beyondFocus ? { beyondFocus: true as const } : {}),
+    ...(beyondWindow ? { beyondWindow: true as const } : {}),
   };
 }

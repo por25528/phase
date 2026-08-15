@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Asset, Goal } from '../db/types';
 import type { ActiveFocusSession } from '../lib/focusSession';
-import type { StoredFocusLevel } from '../lib/focusLens';
+import type { StoredTimeLevel } from '../lib/timeLens';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [], lives: [] })),
@@ -41,8 +41,8 @@ const dbMocks = vi.hoisted(() => ({
   saveActiveFocusSession: vi.fn(async () => {}),
   loadAssistantAccelerator: vi.fn(async () => 'Command+Space'),
   saveAssistantAccelerator: vi.fn(async () => {}),
-  loadStoredFocusLevel: vi.fn(async (): Promise<StoredFocusLevel | null> => null),
-  saveStoredFocusLevel: vi.fn(async () => {}),
+  loadStoredTimeLevel: vi.fn(async (): Promise<StoredTimeLevel | null> => null),
+  saveStoredTimeLevel: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -85,43 +85,43 @@ describe('the standing focus level', () => {
     });
     const store = await freshStore();
     await store.initStore();
-    dbMocks.saveStoredFocusLevel.mockClear();
+    dbMocks.saveStoredTimeLevel.mockClear();
     return store;
   }
 
   beforeEach(() => {
     tabLockMocks.acquireTabLock.mockClear();
     tabLockMocks.acquireTabLock.mockResolvedValue(true);
-    dbMocks.loadStoredFocusLevel.mockClear();
-    dbMocks.loadStoredFocusLevel.mockResolvedValue(null);
-    dbMocks.saveStoredFocusLevel.mockClear();
+    dbMocks.loadStoredTimeLevel.mockClear();
+    dbMocks.loadStoredTimeLevel.mockResolvedValue(null);
+    dbMocks.saveStoredTimeLevel.mockClear();
   });
 
   it('starts at medium', async () => {
     const { getState } = await freshStore();
-    expect(getState().focusLevel).toBe('medium');
+    expect(getState().timeLevel).toBe('medium');
   });
 
-  it('is set by setFocusLevel and reported back', async () => {
+  it('is set by setTimeLevel and reported back', async () => {
     const { actions, getState } = await focusStore();
-    expect(actions.setFocusLevel('low')).toBe(true);
-    expect(getState().focusLevel).toBe('low');
+    expect(actions.setTimeLevel('low')).toBe(true);
+    expect(getState().timeLevel).toBe('low');
   });
 
   it('refuses a level that is not one of the three', async () => {
     const { actions, getState } = await focusStore();
-    actions.setFocusLevel('high');
+    actions.setTimeLevel('high');
     // @ts-expect-error — the boundary must refuse it at runtime too.
-    expect(actions.setFocusLevel('sideways')).toBe(false);
-    expect(getState().focusLevel).toBe('high');
-    expect(dbMocks.saveStoredFocusLevel).toHaveBeenCalledTimes(1);
+    expect(actions.setTimeLevel('sideways')).toBe(false);
+    expect(getState().timeLevel).toBe('high');
+    expect(dbMocks.saveStoredTimeLevel).toHaveBeenCalledTimes(1);
   });
 
   it('stamps the day it was set, so tomorrow can retire it', async () => {
     const { actions } = await focusStore();
     const { todayStr } = await import('../lib/dates');
-    actions.setFocusLevel('low');
-    expect(dbMocks.saveStoredFocusLevel).toHaveBeenCalledWith({
+    actions.setTimeLevel('low');
+    expect(dbMocks.saveStoredTimeLevel).toHaveBeenCalledWith({
       level: 'low', date: todayStr(),
     });
   });
@@ -129,32 +129,32 @@ describe('the standing focus level', () => {
   it('a non-owning tab never writes the level', async () => {
     tabLockMocks.acquireTabLock.mockResolvedValue(false);
     const { actions, getState } = await focusStore();
-    expect(actions.setFocusLevel('low')).toBe(true);
-    expect(getState().focusLevel).toBe('low');
-    expect(dbMocks.saveStoredFocusLevel).not.toHaveBeenCalled();
+    expect(actions.setTimeLevel('low')).toBe(true);
+    expect(getState().timeLevel).toBe('low');
+    expect(dbMocks.saveStoredTimeLevel).not.toHaveBeenCalled();
   });
 
   it('hydrates a level set today', async () => {
     const { todayStr } = await import('../lib/dates');
-    dbMocks.loadStoredFocusLevel.mockResolvedValueOnce({ level: 'low', date: todayStr() });
+    dbMocks.loadStoredTimeLevel.mockResolvedValueOnce({ level: 'low', date: todayStr() });
     const store = await freshStore();
     await store.initStore();
-    expect(store.getState().focusLevel).toBe('low');
+    expect(store.getState().timeLevel).toBe('low');
   });
 
   it('resets a level left behind on an earlier day', async () => {
     const { todayStr, addDays } = await import('../lib/dates');
-    dbMocks.loadStoredFocusLevel.mockResolvedValueOnce({
+    dbMocks.loadStoredTimeLevel.mockResolvedValueOnce({
       level: 'low', date: addDays(todayStr(), -1),
     });
     const store = await freshStore();
     await store.initStore();
-    expect(store.getState().focusLevel).toBe('medium');
+    expect(store.getState().timeLevel).toBe('medium');
   });
 
   it('freezes the level onto the draft it starts', async () => {
     const { actions, getState } = await focusStore();
-    actions.setFocusLevel('low');
+    actions.setTimeLevel('low');
     expect(actions.startFocus(ref, starter, t0)).toBe(true);
     expect(getState().activeFocusSession?.focusLevel).toBe('low');
   });
@@ -162,12 +162,12 @@ describe('the standing focus level', () => {
   it('carries low onto the logged session, and nothing onto the others', async () => {
     const { actions, getState } = await focusStore();
 
-    actions.setFocusLevel('low');
+    actions.setTimeLevel('low');
     actions.startFocus(ref, starter, t0);
     expect(actions.completeFocus(t0 + 20 * MIN)).toBe('logged');
     expect(getState().sessions.at(-1)?.focus).toBe('low');
 
-    actions.setFocusLevel('high');
+    actions.setTimeLevel('high');
     actions.startFocus(ref, starter, t0 + 30 * MIN);
     expect(actions.completeFocus(t0 + 50 * MIN)).toBe('logged');
     expect(getState().sessions.at(-1)?.focus).toBeUndefined();
@@ -176,12 +176,12 @@ describe('the standing focus level', () => {
   it('carries the level a stale session started at through confirmation', async () => {
     const { actions, getState } = await focusStore();
 
-    actions.setFocusLevel('low');
+    actions.setTimeLevel('low');
     actions.startFocus(ref, starter, t0);
     expect(actions.completeFocus(t0 + 200 * MIN)).toBe('needs-confirmation');
     // The dial moved while the draft sat in `confirming`; the session it logs
     // is still the one that ran in the loud room.
-    actions.setFocusLevel('high');
+    actions.setTimeLevel('high');
     expect(actions.confirmFocus(90)).toBe(true);
     expect(getState().sessions.at(-1)?.focus).toBe('low');
   });

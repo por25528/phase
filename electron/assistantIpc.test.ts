@@ -65,7 +65,7 @@ const SNAPSHOT = {
     alternatives: [],
   },
   activeFocus: null,
-  focusLevel: 'medium',
+  timeLevel: 'medium',
 };
 
 const FOCUSED_SNAPSHOT = {
@@ -121,7 +121,7 @@ describe('publish', () => {
         },
       },
       { ...SNAPSHOT, notice: { tone: 'alarm', text: 'boom' } },
-      { ...SNAPSHOT, focusLevel: 'sideways' },
+      { ...SNAPSHOT, timeLevel: 'sideways' },
     ];
     for (const snapshot of bad) {
       ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);

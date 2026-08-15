@@ -5,7 +5,7 @@ import type {
 } from '../../lib/assistantProtocol';
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
-import { FOCUS_LEVELS, FOCUS_WORD, type FocusLevel } from '../../lib/focusLens';
+import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
@@ -54,7 +54,7 @@ const REASON_WORD: Record<AdviceReason, string> = {
 };
 
 /** The dial on the home row of the number keys. There is no text field to steal them. */
-const KEY_TO_LEVEL: Record<string, FocusLevel | undefined> = {
+const KEY_TO_LEVEL: Record<string, TimeLevel | undefined> = {
   '1': 'low', '2': 'medium', '3': 'high',
 };
 
@@ -70,7 +70,7 @@ function SectionLabel({ children }: { children: string }) {
  * the shelf is a dense toolbar, and because 26px clears the 24px target floor.
  */
 function FocusStrip({ level, onAction }: {
-  level: FocusLevel;
+  level: TimeLevel;
   onAction: Props['onAction'];
 }) {
   return (
@@ -80,8 +80,8 @@ function FocusStrip({ level, onAction }: {
         label="Focus level"
         size="sm"
         value={level}
-        options={FOCUS_LEVELS.map((value) => ({ value, label: FOCUS_WORD[value] }))}
-        onChange={(next) => onAction({ type: 'set-focus-level', level: next })}
+        options={TIME_LEVELS.map((value) => ({ value, label: TIME_WORD[value] }))}
+        onChange={(next) => onAction({ type: 'set-time-level', level: next })}
       />
     </div>
   );
@@ -141,7 +141,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, level }: {
   alternatives: RecommendedWork[];
   onAction: Props['onAction'];
   shelf: boolean;
-  level: FocusLevel;
+  level: TimeLevel;
 }) {
   const info = (
     <div className="flex min-w-0 flex-col gap-1">
@@ -270,7 +270,7 @@ function AdvicePanel({ snapshot, shelf, pending, onStart }: {
 
   return (
     <div className="flex flex-col gap-2">
-      {advice.beyondFocus && (
+      {advice.beyondWindow && (
         <p className="text-meta text-muted">Nothing light left — this is next when you&apos;re ready.</p>
       )}
       <div className={bodyClass(shelf)}>
@@ -331,7 +331,7 @@ export function AssistantSurface({
         return;
       }
       const level = KEY_TO_LEVEL[event.key];
-      if (level) onAction({ type: 'set-focus-level', level });
+      if (level) onAction({ type: 'set-time-level', level });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -365,7 +365,7 @@ export function AssistantSurface({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
-      <FocusStrip level={snapshot.focusLevel} onAction={onAction} />
+      <FocusStrip level={snapshot.timeLevel} onAction={onAction} />
       {snapshot.notice && (
         <p className={`text-meta ${snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted'}`}>
           {snapshot.notice.text}
@@ -378,7 +378,7 @@ export function AssistantSurface({
             alternatives={snapshot.advice.kind === 'work' ? snapshot.advice.alternatives : []}
             onAction={onAction}
             shelf={shelf}
-            level={snapshot.focusLevel}
+            level={snapshot.timeLevel}
           />
         ) : (
           <AdvicePanel

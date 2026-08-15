@@ -37,7 +37,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     status: 'ready',
     advice: { kind: 'work', primary: work(), alternatives: [] },
     activeFocus: null,
-    focusLevel: 'medium',
+    timeLevel: 'medium',
     ...over,
   };
 }
@@ -462,32 +462,32 @@ describe('AssistantSurface', () => {
   });
 
   it('offers the three levels and reports which is on', () => {
-    render(<AssistantSurface snapshot={ready({ focusLevel: 'low' })} onAction={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Low' }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: 'Medium' }).getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByRole('button', { name: 'High' })).toBeTruthy();
+    render(<AssistantSurface snapshot={ready({ timeLevel: 'low' })} onAction={() => {}} />);
+    expect(screen.getByRole('button', { name: '30m' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '1h' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Any' })).toBeTruthy();
   });
 
   it('sends the level the user picked', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Low' }));
-    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+    fireEvent.click(screen.getByRole('button', { name: '30m' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
   });
 
   it('sets the level from the number keys', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
     fireEvent.keyDown(window, { key: '1' });
-    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
     fireEvent.keyDown(window, { key: '3' });
-    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'high' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'high' });
   });
 
   it('says nothing light is left rather than nothing needs you', () => {
     const snapshot = ready({
-      focusLevel: 'low',
-      advice: { kind: 'work', primary: work({ title: 'Thesis chapter 2' }), alternatives: [], beyondFocus: true },
+      timeLevel: 'low',
+      advice: { kind: 'work', primary: work({ title: 'Thesis chapter 2' }), alternatives: [], beyondWindow: true },
     });
     render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
     expect(screen.getByText("Nothing light left — this is next when you're ready.")).toBeTruthy();
@@ -502,7 +502,7 @@ describe('AssistantSurface', () => {
       elapsedMin: 18,
       expected: { kind: 'estimate' as const, minutes: 45 },
     };
-    render(<AssistantSurface snapshot={ready({ focusLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
+    render(<AssistantSurface snapshot={ready({ timeLevel: 'low', activeFocus: focus })} onAction={() => {}} />);
     expect(screen.getByText('18m so far')).toBeTruthy();
     expect(screen.queryByText(/of 45m/)).toBeNull();
   });
@@ -515,7 +515,7 @@ describe('AssistantSurface', () => {
       elapsedMin: 18,
       expected: { kind: 'estimate' as const, minutes: 45 },
     };
-    render(<AssistantSurface snapshot={ready({ focusLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
+    render(<AssistantSurface snapshot={ready({ timeLevel: 'medium', activeFocus: focus })} onAction={() => {}} />);
     expect(screen.getByText('18m of 45m')).toBeTruthy();
   });
 });

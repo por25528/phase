@@ -1,5 +1,5 @@
 import type { ExpectedTime, WorkRef } from './expectedTime';
-import { DEFAULT_FOCUS_LEVEL, isFocusLevel, type FocusLevel } from './focusLens';
+import { DEFAULT_TIME_LEVEL, isTimeLevel, type TimeLevel } from './timeLens';
 import { uid } from './tree';
 
 /**
@@ -32,11 +32,12 @@ export interface ActiveFocusSession {
   phase: 'active' | 'break' | 'confirming';
   expected: ExpectedTime;
   /**
-   * The level the dial was at when this began. Frozen, exactly as `title` and
-   * `expected` are: moving the dial mid-session must not relabel work already
-   * done. It reaches history as `Session.focus` and nowhere else.
+   * The window the session was started in. Stored under its original name
+   * because this object is a settings row: a rename would read as absent to
+   * every session already in flight. It reaches history as `Session.focus` and
+   * nowhere else.
    */
-  focusLevel: FocusLevel;
+  focusLevel: TimeLevel;
   /** Set while confirming: the elapsed minutes the user is being asked about. */
   proposedMinutes?: number;
 }
@@ -59,7 +60,7 @@ export interface StartFocusInput {
   title: string;
   goalTitle?: string;
   expected: ExpectedTime;
-  focusLevel: FocusLevel;
+  focusLevel: TimeLevel;
   nowMs: number;
 }
 
@@ -211,7 +212,7 @@ export function parseActiveFocusSession(raw: unknown): ActiveFocusSession | null
     // Absent or malformed reads as the default rather than as "no session":
     // a draft written before this field existed is still a real session, and
     // losing it would cost the user time they actually worked.
-    focusLevel: isFocusLevel(s.focusLevel) ? s.focusLevel : DEFAULT_FOCUS_LEVEL,
+    focusLevel: isTimeLevel(s.focusLevel) ? s.focusLevel : DEFAULT_TIME_LEVEL,
     ...(s.proposedMinutes === undefined ? {} : { proposedMinutes: s.proposedMinutes }),
   };
 }

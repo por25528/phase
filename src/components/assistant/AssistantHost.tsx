@@ -37,7 +37,7 @@ function nowMinute(): number {
 export function AssistantHost({ open, onClose }: { open: boolean; onClose: () => void }) {
   const {
     goals, tasks, sessions, availability, allDayBlocks, activeFocusSession,
-    assistantAccelerator, focusLevel, hydration, actions,
+    assistantAccelerator, timeLevel, hydration, actions,
   } = useAppStore();
   const [notice, setNotice] = useState<Notice | null>(null);
 
@@ -61,7 +61,7 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
     const advice = executionAdvice({
       goals, tasks, sessions, availability, blocks: [], allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute() },
-      focusLevel,
+      timeLevel,
     });
     const activeFocus: AssistantFocusView | null = activeFocusSession
       ? {
@@ -78,10 +78,10 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
       status: 'ready',
       advice,
       activeFocus,
-      focusLevel,
+      timeLevel,
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, focusLevel, notice]);
+  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, timeLevel, notice]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {
@@ -94,7 +94,7 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
         if (!started) setNotice({ tone: 'warning', text: 'A session is already running.' });
         return;
       }
-      case 'set-focus-level': actions.setFocusLevel(action.level); return;
+      case 'set-time-level': actions.setTimeLevel(action.level); return;
       case 'pause-focus': actions.pauseFocus(); return;
       case 'resume-focus': actions.resumeFocus(); return;
       case 'complete-focus': {

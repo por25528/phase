@@ -104,7 +104,7 @@ function validSnapshot(snapshot) {
   if (snapshot.status !== 'ready') return false;
   return validAdvice(snapshot.advice)
     && validFocus(snapshot.activeFocus)
-    && (snapshot.focusLevel === 'low' || snapshot.focusLevel === 'medium' || snapshot.focusLevel === 'high')
+    && (snapshot.timeLevel === 'low' || snapshot.timeLevel === 'medium' || snapshot.timeLevel === 'high')
     && validNotice(snapshot.notice);
 }
 
@@ -121,7 +121,7 @@ function validAction(action) {
       return true;
     case 'confirm-focus':
       return action.minutes === null || (boundedMinutes(action.minutes) && action.minutes > 0);
-    case 'set-focus-level':
+    case 'set-time-level':
       return action.level === 'low' || action.level === 'medium' || action.level === 'high';
     default:
       return false;

@@ -228,20 +228,20 @@ describe('the focus lens', () => {
 
   it('changes nothing when no level is given, so Today is untouched', () => {
     const withoutLens = executionAdvice(input({ goals: twoSizes() }));
-    const withHigh = executionAdvice(input({ goals: twoSizes(), focusLevel: 'high' }));
+    const withHigh = executionAdvice(input({ goals: twoSizes(), timeLevel: 'high' }));
     expect(withoutLens).toEqual(withHigh);
   });
 
   it('offers the first SHORT candidate at low, without re-ordering the queue', () => {
-    const advice = executionAdvice(input({ goals: twoSizes(), focusLevel: 'low' }));
+    const advice = executionAdvice(input({ goals: twoSizes(), timeLevel: 'low' }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
     expect(advice.primary.title).toBe('Reply to Dr. Chen');
-    expect(advice.beyondFocus).toBeUndefined();
+    expect(advice.beyondWindow).toBeUndefined();
   });
 
   it('offers the queue head at medium, where the long one clears the cap', () => {
-    const advice = executionAdvice(input({ goals: twoSizes(), focusLevel: 'medium' }));
+    const advice = executionAdvice(input({ goals: twoSizes(), timeLevel: 'medium' }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
     expect(advice.primary.title).toBe('Lab report');
@@ -256,7 +256,7 @@ describe('the focus lens', () => {
       }],
     });
     const advice = executionAdvice(input({
-      goals: [g], focusLevel: 'low', now: { date: today, minute: 570 },
+      goals: [g], timeLevel: 'low', now: { date: today, minute: 570 },
     }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
@@ -264,22 +264,22 @@ describe('the focus lens', () => {
     expect(advice.primary.reason).toBe('scheduled-now');
   });
 
-  it('flags beyondFocus and still offers the real head when the lens empties', () => {
+  it('flags beyondWindow and still offers the real head when the lens empties', () => {
     const g = goal({
       id: 'g1', title: 'Dissertation',
       nodes: [{ id: 'n1', title: 'Thesis chapter 2', estimateMin: 120 }],
     });
-    const advice = executionAdvice(input({ goals: [g], focusLevel: 'low' }));
+    const advice = executionAdvice(input({ goals: [g], timeLevel: 'low' }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
     expect(advice.primary.title).toBe('Thesis chapter 2');
-    expect(advice.beyondFocus).toBe(true);
+    expect(advice.beyondWindow).toBe(true);
     // It offers the head, not a consolation list.
     expect(advice.alternatives).toEqual([]);
   });
 
-  it('says clear rather than beyondFocus when there was nothing to begin with', () => {
-    const advice = executionAdvice(input({ focusLevel: 'low' }));
+  it('says clear rather than beyondWindow when there was nothing to begin with', () => {
+    const advice = executionAdvice(input({ timeLevel: 'low' }));
     expect(advice.kind).toBe('clear');
   });
 });

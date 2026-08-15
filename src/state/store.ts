@@ -12,7 +12,7 @@ import {
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
   loadActiveFocusSession, saveActiveFocusSession,
   loadAssistantAccelerator, saveAssistantAccelerator,
-  loadStoredFocusLevel, saveStoredFocusLevel,
+  loadStoredTimeLevel, saveStoredTimeLevel,
 } from '../db/db';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
@@ -66,8 +66,8 @@ import {
   discardFocusSession, type ActiveFocusSession,
 } from '../lib/focusSession';
 import {
-  DEFAULT_FOCUS_LEVEL, focusLevelFor, isFocusLevel, type FocusLevel,
-} from '../lib/focusLens';
+  DEFAULT_TIME_LEVEL, timeLevelFor, isTimeLevel, type TimeLevel,
+} from '../lib/timeLens';
 import type { ExpectedTime, WorkRef } from '../lib/expectedTime';
 import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
@@ -214,7 +214,7 @@ interface UIState {
    * is the deliberate cost of having no timer, and the same trade `focusSession`
    * makes by banking timestamps instead of ticking.
    */
-  focusLevel: FocusLevel;
+  timeLevel: TimeLevel;
   /**
    * What the OS said when the chord was registered. Ephemeral and
    * Electron-only: null in the browser, where there is no global shortcut to
@@ -266,7 +266,7 @@ let state: FullState = {
   activeLifeId: 'all',
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
-  focusLevel: DEFAULT_FOCUS_LEVEL,
+  timeLevel: DEFAULT_TIME_LEVEL,
   assistantShortcut: null,
   // Read synchronously at module load so the header toggle shows the correct
   // state immediately (the no-FOUC script already painted <html>). 'system' in
@@ -597,8 +597,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedFocusLevel] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredFocusLevel(),
+    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -669,7 +669,7 @@ export async function initStore(): Promise<void> {
       goalsMode,
       activeFocusSession,
       assistantAccelerator,
-      focusLevel: focusLevelFor(storedFocusLevel, todayStr()),
+      timeLevel: timeLevelFor(storedTimeLevel, todayStr()),
       hydration: 'ready',
       expanded: collectContainers(migrated.goals),
     };
@@ -1873,7 +1873,7 @@ export const actions = {
     }
     setFocusDraft(startFocusSession({
       ref, title, ...(goalTitle === undefined ? {} : { goalTitle }),
-      expected, focusLevel: state.focusLevel, nowMs,
+      expected, focusLevel: state.timeLevel, nowMs,
     }));
     return true;
   },
@@ -1909,6 +1909,9 @@ export const actions = {
       setFocusDraft(finish.session);
       return 'needs-confirmation';
     }
+    // The TIME level, never the display one: a session run inside a declared
+    // half-hour is not evidence the work takes half an hour, while how many
+    // options you were shown cannot affect how long you worked.
     if (!actions.logSession(
       draft.ref.kind, draft.ref.id, finish.minutes, todayStr(),
       draft.focusLevel === 'low' ? 'low' : undefined,
@@ -1930,6 +1933,9 @@ export const actions = {
       return true;
     }
     if (!Number.isFinite(minutes) || minutes <= 0) return false;
+    // The TIME level, never the display one: a session run inside a declared
+    // half-hour is not evidence the work takes half an hour, while how many
+    // options you were shown cannot affect how long you worked.
     if (!actions.logSession(
       draft.ref.kind, draft.ref.id, minutes, todayStr(),
       draft.focusLevel === 'low' ? 'low' : undefined,
@@ -1965,15 +1971,13 @@ export const actions = {
   },
 
   /**
-   * Move the dial. Validation is at the boundary and the write goes through
-   * the owner gate, exactly like `setAssistantAccelerator`. The date is
-   * stamped with the value so `focusLevelFor` can retire it tomorrow without
-   * anything having to run at midnight.
+   * How long the user last said they had. Reset daily by `timeLevelFor`, so
+   * nobody has to remember to put the dial back.
    */
-  setFocusLevel(next: FocusLevel): boolean {
-    if (!isFocusLevel(next)) return false;
-    set({ focusLevel: next });
-    ifOwner(() => saveStoredFocusLevel({ level: next, date: todayStr() }));
+  setTimeLevel(next: TimeLevel): boolean {
+    if (!isTimeLevel(next)) return false;
+    set({ timeLevel: next });
+    ifOwner(() => saveStoredTimeLevel({ level: next, date: todayStr() }));
     return true;
   },
 

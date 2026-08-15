@@ -40,8 +40,8 @@ const dbMocks = vi.hoisted(() => ({
   saveActiveFocusSession: vi.fn(async () => {}),
   loadAssistantAccelerator: vi.fn(async () => 'Command+Space'),
   saveAssistantAccelerator: vi.fn(async () => {}),
-  loadStoredFocusLevel: vi.fn(async () => null),
-  saveStoredFocusLevel: vi.fn(async () => {}),
+  loadStoredTimeLevel: vi.fn(async () => null),
+  saveStoredTimeLevel: vi.fn(async () => {}),
 }));
 vi.mock('../../db/db', () => dbMocks);
 vi.mock('../../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));
