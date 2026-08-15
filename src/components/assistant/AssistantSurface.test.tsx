@@ -476,7 +476,9 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
   });
 
-  it('sets the level from the number keys', () => {
+  // The display dial deliberately has no number keys — only the time dial can own them,
+  // and the time dial is the one you reach for mid-session.
+  it('keeps the number keys on the dial that changes what you are offered', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
     fireEvent.keyDown(window, { key: '1' });
@@ -521,16 +523,6 @@ describe('AssistantSurface', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'High' }));
     expect(onAction).toHaveBeenCalledWith({ type: 'set-detail-level', level: 'high' });
-  });
-
-  it('keeps the number keys on the dial that changes what you are offered', () => {
-    const onAction = vi.fn();
-    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
-
-    fireEvent.keyDown(window, { key: '1' });
-    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
-    fireEvent.keyDown(window, { key: '3' });
-    expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'high' });
   });
 
   it('says nothing light is left rather than nothing needs you', () => {
