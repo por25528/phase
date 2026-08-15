@@ -319,6 +319,20 @@ describe('acting on a selection', () => {
     expect(store.getState().pendingUndo?.label).toBe('Blocked 2 tasks');
     expect(selectedIds()).toEqual([]); // the bar retires with the selection, like Complete/Delete
   });
+
+  it('sets focus needed on a selection in ONE undoable write', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}'); // a, b
+
+    await user.selectOptions(screen.getByLabelText('Set focus needed'), 'deep');
+
+    expect(findInAll(store.getState().goals, 'a')?.demand).toBe('deep');
+    expect(findInAll(store.getState().goals, 'b')?.demand).toBe('deep');
+    expect(store.getState().pendingUndo?.label).toBe('Set 2 tasks to Deep');
+    expect(selectedIds()).toEqual([]); // the bar retires with the selection, like Complete/Delete
+  });
 });
 
 describe('getting out of a selection', () => {

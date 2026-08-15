@@ -29,6 +29,7 @@ import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
 import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
 import { scheduleCell } from '../lib/rowSchedule';
 import { todayStr } from '../lib/dates';
+import { DEMANDS, DEMAND_WORD, type Demand } from '../lib/demand';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -192,12 +193,14 @@ function SelectionBar({
   count,
   onComplete,
   onSetStatus,
+  onSetDemand,
   onDelete,
   onClear,
 }: {
   count: number;
   onComplete: () => void;
   onSetStatus: (next: StepStatus) => void;
+  onSetDemand: (next: Demand) => void;
   onDelete: () => void;
   onClear: () => void;
 }) {
@@ -251,6 +254,21 @@ function SelectionBar({
               <option value="" disabled>Set status…</option>
               {(['todo', 'doing', 'blocked', 'done'] as const).map((s) => (
                 <option key={s} value={s}>{STATUS_WORD[s]}</option>
+              ))}
+            </select>
+            <select
+              value=""
+              onChange={(e) => {
+                const next = e.target.value as Demand;
+                if (next) onSetDemand(next);
+                e.target.value = '';
+              }}
+              aria-label="Set focus needed"
+              className="text-compact font-medium text-ink-soft px-[8px] py-[4px] min-h-[24px] rounded-field border border-line-2 bg-transparent hover:bg-hover focus-visible:border-accent"
+            >
+              <option value="" disabled>Set focus needed…</option>
+              {DEMANDS.map((d) => (
+                <option key={d} value={d}>{DEMAND_WORD[d]}</option>
               ))}
             </select>
             <button
@@ -349,6 +367,15 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
     if (actions.setNodesStatus(ids, next)) clearSelection();
   }
 
+  function onSetDemand(next: Demand): void {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    // ONE write, ONE undo entry — setNodesDemand refuses (false) when nothing
+    // in the selection actually changes, same silent-refusal contract as
+    // setNodesStatus above.
+    if (actions.setNodesDemand(ids, next)) clearSelection();
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -373,6 +400,7 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
         count={selected.size}
         onComplete={() => onBulk('complete')}
         onSetStatus={onSetStatus}
+        onSetDemand={onSetDemand}
         onDelete={() => onBulk('delete')}
         onClear={clearSelection}
       />
