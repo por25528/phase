@@ -362,7 +362,14 @@ Covers all three running-draft cases in one gate: a normal sitting, a stale one,
 
 - [ ] **Step 1: Write the failing tests**
 
-Append inside the `describe('finishWork', …)` block in `src/state/store.finishWork.test.ts`:
+First re-add the two bindings Task 2 deliberately omitted as unused — **every test below references them**, so adding them later would make Step 2's red run throw `ReferenceError` before it could show the split this step is checking for. At the top of the `describe('finishWork', …)` block:
+
+```ts
+  const MIN = 60_000;
+  const starter = { kind: 'starter' as const, minutes: 30 as const };
+```
+
+Then append the tests inside the same block in `src/state/store.finishWork.test.ts`:
 
 ```ts
   it('logs the sitting and ticks the task in ONE undoable write', async () => {
@@ -454,14 +461,7 @@ Expected: FAIL on the first, third and fourth new tests — the label carries no
 
 - [ ] **Step 3: Extend the action**
 
-First, at the top of the `describe('finishWork', …)` block in the test file, re-add the two bindings Task 2 deliberately omitted — Task 3's tests are their first consumer:
-
-```ts
-  const MIN = 60_000;
-  const starter = { kind: 'starter' as const, minutes: 30 as const };
-```
-
-Then, in `src/state/store.ts`, DELETE the `void nowMs;` line and its three-line comment from the top of `finishWork` — this step is where the parameter starts being read — and replace these three closing lines:
+In `src/state/store.ts`, DELETE the `void nowMs;` line and its three-line comment from the top of `finishWork` — this step is where the parameter starts being read — and replace these three closing lines:
 
 ```ts
     const label = `Completed "${title}"`;
