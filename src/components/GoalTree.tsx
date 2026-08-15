@@ -823,6 +823,19 @@ function GoalTreeNode({
           </span>
         )}
 
+        {/* The chip marks a CHANGE in demand, never a repetition of it. The
+            condition is the RAW field, not the resolved value `demandIndex`
+            would hand back: a `deep` goal inherits its value onto every leaf,
+            and thirty rows saying `Deep` is a column that says one word thirty
+            times. No border of any kind — the dashed class is reserved for the
+            drop preview and a guessed-hour calendar block, and a bordered chip
+            here would out-weigh the title beside it. */}
+        {n.demand !== undefined && (
+          <span className="text-meta text-muted flex-none px-[5px] py-[3px] truncate">
+            {DEMAND_WORD[n.demand]}
+          </span>
+        )}
+
         {/* Title */}
         {editing ? (
           <InlineEdit
