@@ -86,6 +86,45 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => cleanup());
 
 /**
+ * The StepPanel harness, from the same store-boot `mountTree` uses above:
+ * open the goal and the container (the route a person takes from the tree)
+ * and render the CONTAINER's inspector against live state, so an action's
+ * effect is readable through `store.getState()`. `containerTitle` is the open
+ * container; `children` are the rows the tree would show under it.
+ */
+async function renderStepPanel(params: {
+  containerTitle: string;
+  children: string[];
+}): Promise<Store> {
+  vi.resetModules();
+  const goal: Goal = {
+    id: 'g',
+    title: 'Project',
+    nodes: [{
+      id: 'n1',
+      title: params.containerTitle,
+      children: params.children.map((title, i) => ({ id: `c${i}`, title })),
+    }],
+  };
+  dbMocks.loadState.mockResolvedValueOnce({
+    goals: [goal], habits: [], tasks: [], sessions: [],
+  });
+  const store = await import('../state/store');
+  await store.initStore();
+  store.actions.openProject('g');
+  store.actions.openStep('n1');
+  const { StepPanel } = await import('../views/project/StepPanel');
+  const Host = () => {
+    const current = store.useAppStore();
+    const liveGoal = current.goals.find((g) => g.id === 'g')!;
+    const liveNode = liveGoal.nodes.find((n) => n.id === 'n1')!;
+    return createElement(StepPanel, { goal: liveGoal, node: liveNode, actions: current.actions });
+  };
+  render(createElement(Host));
+  return store;
+}
+
+/**
  * The row's own click is the route to the inspector now. There used to be a
  * `◈` hover control for it, because the row click was the completion gesture
  * and could not be spent on a disclosure — which is the trade this slice
@@ -156,5 +195,20 @@ describe('the task row keyboard', () => {
     await user.keyboard('x');
 
     expect(store.getState().goals[0].nodes[0].status).toBe('done');
+  });
+});
+
+/**
+ * A container's demand is DECLARED and flows DOWN to its descendants, the
+ * opposite direction from its status (derived, inert). One gesture here tags
+ * the whole subtree — the highest-value editor in the focus plan.
+ */
+describe('StepPanel focus needed', () => {
+  it('tags every step under a container in one gesture', async () => {
+    const user = userEvent.setup();
+    await renderStepPanel({ containerTitle: 'Thesis', children: ['Lit review', 'Draft ch. 2'] });
+    await user.click(screen.getByRole('button', { name: /Focus needed/ }));
+    await user.click(screen.getByRole('menuitemradio', { name: 'Deep' }));
+    expect(screen.getByRole('button', { name: 'Focus needed: Deep' })).toBeTruthy();
   });
 });

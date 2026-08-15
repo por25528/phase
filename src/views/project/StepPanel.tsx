@@ -1,7 +1,8 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import type { Goal, GoalNode } from '../../db/types';
 import { useAppStore } from '../../state/store';
 import { DateField } from '../../components/DateField';
+import { demandIndex, DEMANDS, DEMAND_WORD } from '../../lib/demand';
 import {
   IconArrowRight,
   IconArrowUpRight,
@@ -15,7 +16,7 @@ import { InlineEdit } from '../../components/InlineEdit';
 import { NoteEditor } from '../../components/NoteEditor';
 import { StatusMark } from '../../components/StatusMark';
 import { useNoteDraft } from '../../components/useNoteDraft';
-import { PropertyRow, PropertyStatic } from '../../components/PropertyRow';
+import { PropertyRow, PropertyStatic, PropertyOption } from '../../components/PropertyRow';
 import { sectionLabel } from '../../components/sectionLabel';
 import { fmtD } from '../../lib/dates';
 import { containerStatus, isDone, STATUS_WORD } from '../../lib/status';
@@ -57,6 +58,10 @@ export function StepPanel({ goal, node, actions }: {
   // rolls the whole subtree up and would state a fraction whose denominator is
   // nowhere on screen.
   const childDone = children.filter((c) => isDone(c)).length;
+  // The RESOLVED demand, from the nearest tagged ancestor. One pass, nothing
+  // written down: a container indented under a `deep` goal re-resolves on the
+  // next paint, and a subtree retagged here inherits the new value unaided.
+  const resolved = useMemo(() => demandIndex([goal]).get(node.id), [goal, node.id]);
 
   useEffect(() => {
     setEditingTitle(false);
@@ -171,6 +176,44 @@ export function StepPanel({ goal, node, actions }: {
                 A span needs both ends; clearing either clears both.
               </p>
             </div>
+          )}
+        </PropertyRow>
+
+        {/* Focus needed, NOT "Focus" — the dial says how much focus you HAVE,
+            this says how much the work WANTS. A real editor, unlike the inert
+            `PropertyStatic` the container's STATUS gets: status is derived
+            from descendants, demand is DECLARED and flows the other way, so
+            one gesture here tags the whole subtree. The row states the
+            RESOLVED value — a `deep` goal painting `Deep` on every container
+            is a column that says one word many times, but here it names the
+            fact the subtree inherits. */}
+        <PropertyRow
+          label="Focus needed"
+          icon={<IconCircle size={13} />}
+          value={resolved ? DEMAND_WORD[resolved.level] : null}
+          placeholder="Not set"
+          panelWidth={188}
+        >
+          {(close) => (
+            <>
+              {DEMANDS.map((d) => (
+                <PropertyOption
+                  key={d}
+                  close={close}
+                  current={resolved?.source === 'own' && resolved.level === d}
+                  onSelect={() => actions.setNodeDemand(node.id, d)}
+                >
+                  {DEMAND_WORD[d]}
+                </PropertyOption>
+              ))}
+              <PropertyOption
+                close={close}
+                current={node.demand === undefined}
+                onSelect={() => actions.setNodeDemand(node.id, null)}
+              >
+                Not set
+              </PropertyOption>
+            </>
           )}
         </PropertyRow>
       </div>
