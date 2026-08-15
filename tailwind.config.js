@@ -51,34 +51,40 @@ export default {
       // The type scale. Every size in src/ is one of these — pick from the menu
       // rather than inventing a value; 37 near-duplicate sizes was the loudest
       // "no system here" signal in the UI.
+      //
+      // Eleven steps, down from seventeen. Six keys below are ALIASES holding
+      // their survivor's value: they still resolve, so no call site had to move
+      // when the scale collapsed, and deleting them is a separate mechanical
+      // pass. An alias is not a step — do not reach for one in new code.
       fontSize: {
-        root: '14px',      // body base (index.css)
-        micro: '.52rem',   // mono eyebrows at their smallest
-        eyebrow: '.56rem', // uppercase mono section labels
-        tiny: '.6rem',
-        kbd: '.62rem',
+        root: '14px',       // body base (index.css)
+        micro: '.625rem',   // 8.75px — mono section labels and eyebrows
+        eyebrow: '.625rem', // ALIAS of micro
+        tiny: '.75rem',     // ALIAS of meta
+        kbd: '.75rem',      // ALIAS of meta
         // NB: `badge`, not `chip`. `chip` is also a COLOR key, and Tailwind
         // emits both `.text-chip{font-size}` and `.text-chip{color}` — the
         // colour rule wins on order, so every `text-chip` element silently
-        // inherited the near-white chip surface colour. That is what made the
-        // "Not planned this week" pill invisible on a white card. No fontSize
-        // key may share a name with a colour key.
-        badge: '.68rem',
-        meta: '.72rem',    // counters, dates, secondary metadata
-        compact: '.76rem',
-        ui: '.8rem',       // default control text
-        body: '.84rem',    // default reading text
-        lead: '.9rem',
-        title: '.98rem',   // row / card titles
-        h3: '1.05rem',
-        h2: '1.2rem',
-        h1: '1.4rem',
-        wordmark: '1.5rem',
+        // inherited the near-white chip surface colour. No fontSize key may
+        // share a name with a colour key; designScale.test.ts asserts it.
+        badge: '.75rem',    // ALIAS of meta
+        meta: '.75rem',     // 10.5px — counters, dates, secondary metadata
+        compact: '.8rem',   // ALIAS of ui
+        ui: '.8rem',        // 11.2px — default control text
+        body: '.875rem',    // 12.25px — default reading text, row titles
+        lead: '.95rem',     // 13.3px — the note body at full measure
+        title: '1rem',      // 14px — card titles
+        h3: '1rem',         // ALIAS of title
+        h2: '1.15rem',      // 16.1px
+        h1: '1.4rem',       // 19.6px
+        // Down from 1.5rem. A serif mark at 21px in a 48px header bar competed
+        // with the view title beneath it; at 16.8px it sits with the nav.
+        wordmark: '1.2rem', // 16.8px
         // A document's own title. It has to outrank `h1`, because `h1` is what
         // a heading typed INSIDE a note renders at — with the task page's title
         // set to `h2`, a heading in the body came out larger than the name of
         // the thing it was in.
-        page: '1.75rem',
+        page: '1.85rem',    // 25.9px
       },
       // Corner radii: 4, 6, 11 arbitrary plus `field` (9) and `card` (14).
       borderRadius: {
