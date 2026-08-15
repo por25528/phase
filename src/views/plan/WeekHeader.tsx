@@ -4,6 +4,7 @@ import { SegmentedSwitch } from '../../components/SegmentedControl';
 import { fmtD, addDays } from '../../lib/dates';
 import { ymOf, ymLabel } from '../../lib/calendar';
 import { loadParts, unestimatedLabel, capacityNote, isOverCommitted } from './capacityLabel';
+import { sectionLabel } from '../../components/sectionLabel';
 
 /** Capitalised here rather than by `capitalize`: a label is written, not cased. */
 const PLAN_RANGES = [
@@ -55,7 +56,7 @@ export function WeekHeader({
   const unestimated = isMonth ? null : unestimatedLabel(capacity);
   return (
     <div className="flex items-baseline gap-[10px] mb-[10px] flex-wrap">
-      <h3 className="text-meta font-semibold text-muted">
+      <h3 className={sectionLabel}>
         {isMonth ? ymLabel(ymOf(weekStart)) : `${fmtD(weekStart)} – ${fmtD(addDays(weekStart, 6))}`}
       </h3>
       {/*

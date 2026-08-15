@@ -11,6 +11,7 @@ import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
 import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
+import { sectionLabel } from '../sectionLabel';
 
 /**
  * The one assistant surface, rendered in two places: inside the app by
@@ -58,7 +59,7 @@ const KEY_TO_LEVEL: Record<string, FocusLevel | undefined> = {
 };
 
 function SectionLabel({ children }: { children: string }) {
-  return <p className="text-meta font-semibold text-muted">{children}</p>;
+  return <p className={sectionLabel}>{children}</p>;
 }
 
 /**

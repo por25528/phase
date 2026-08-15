@@ -1,6 +1,7 @@
 import type { Goal } from '../../db/types';
 import { useAppStore } from '../../state/store';
 import { Popover } from '../../components/Popover';
+import { sectionLabel } from '../../components/sectionLabel';
 import { ProgressBar } from '../../components/ProgressBar';
 import { ScheduleMenu } from '../../components/SchedulePopover';
 import { IconCircle, IconDiamond, IconWarning } from '../../components/Icons';
@@ -58,7 +59,7 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
   return (
     <div className="max-w-[620px] flex flex-col gap-[22px]">
       <section>
-        <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">Next</h3>
+        <h3 className={`m-0 mb-[6px] ${sectionLabel}`}>Next</h3>
         {o.next.length === 0 ? (
           <p className="m-0 text-ui text-muted px-[6px]">
             {o.blocked > 0
@@ -134,7 +135,7 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
       </section>
 
       <section>
-        <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">Progress</h3>
+        <h3 className={`m-0 mb-[6px] ${sectionLabel}`}>Progress</h3>
         <div className="flex items-center gap-[10px] px-[6px]">
           <ProgressBar pct={pct} />
           <span className="flex-none text-ui text-ink-soft tabular-nums">
@@ -164,7 +165,7 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
       </section>
 
       <section>
-        <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">Forecast</h3>
+        <h3 className={`m-0 mb-[6px] ${sectionLabel}`}>Forecast</h3>
         <p className="m-0 px-[6px] text-ui text-ink-soft">
           <span
             className={`font-semibold ${HEALTH_TONE[verdict.health]}`}
@@ -181,7 +182,7 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
       </section>
 
       <section>
-        <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">This week</h3>
+        <h3 className={`m-0 mb-[6px] ${sectionLabel}`}>This week</h3>
         {week.total === 0 ? (
           <p className="m-0 px-[6px] text-ui text-muted">
             Nothing committed to this week yet.
@@ -205,7 +206,7 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
 
       {o.upcoming.length > 0 && (
         <section>
-          <h3 className="m-0 text-meta font-semibold text-muted mb-[6px]">Upcoming</h3>
+          <h3 className={`m-0 mb-[6px] ${sectionLabel}`}>Upcoming</h3>
           <div className="-mx-[6px]">
             {o.upcoming.map((m) => (
               <button

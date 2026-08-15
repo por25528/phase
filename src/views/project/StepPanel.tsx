@@ -16,12 +16,13 @@ import { NoteEditor } from '../../components/NoteEditor';
 import { StatusMark } from '../../components/StatusMark';
 import { useNoteDraft } from '../../components/useNoteDraft';
 import { PropertyRow, PropertyStatic } from '../../components/PropertyRow';
+import { sectionLabel } from '../../components/sectionLabel';
 import { fmtD } from '../../lib/dates';
 import { containerStatus, isDone, STATUS_WORD } from '../../lib/status';
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-meta font-semibold text-muted mb-[7px]">
+    <div className={`mb-[7px] ${sectionLabel}`}>
       {children}
     </div>
   );
@@ -184,7 +185,7 @@ export function StepPanel({ goal, node, actions }: {
           there is exactly one place a task gets ticked. */}
       <section>
         <div className="flex items-baseline gap-[8px] mb-[7px]">
-          <div className="text-meta font-semibold text-muted flex-1">Tasks</div>
+          <div className={`flex-1 ${sectionLabel}`}>Tasks</div>
           <span className="text-meta text-faint tabular-nums">
             {childDone} / {children.length}
           </span>

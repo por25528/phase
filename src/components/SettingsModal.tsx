@@ -1,4 +1,5 @@
 import { Modal } from './Modal';
+import { sectionLabel } from './sectionLabel';
 import { AvailabilitySettings } from '../views/plan/AvailabilitySettings';
 import { LivesSettings } from '../views/goals/LivesSettings';
 import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings';
@@ -23,14 +24,14 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const { assistantAccelerator, assistantShortcut, actions } = useAppStore();
   return (
     <Modal open={open} onClose={onClose} title="Settings">
-      <h3 className="text-meta font-semibold text-muted mb-[6px]">Lives</h3>
+      <h3 className={`mb-[6px] ${sectionLabel}`}>Lives</h3>
       <p className="text-ui text-muted mb-[12px] leading-[1.5]">
         The handful of things you are doing at once. A goal belongs to one of
         them, or to none — an errand is nobody's project.
       </p>
       <LivesSettings />
 
-      <h3 className="text-meta font-semibold text-muted mt-[20px] mb-[6px]">Working hours</h3>
+      <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Working hours</h3>
       <p className="text-ui text-muted mb-[12px] leading-[1.5]">
         The hours Phase may schedule into. Everything that reports free time —
         the week's capacity, where a dragged task lands, whether a goal still
@@ -38,7 +39,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       </p>
       <AvailabilitySettings />
 
-      <h3 className="text-meta font-semibold text-muted mt-[20px] mb-[6px]">Assistant shortcut</h3>
+      <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Assistant shortcut</h3>
       <p className="text-ui text-muted mb-[12px] leading-[1.5]">
         Opens the assistant from anywhere on this Mac. If another app owns the
         chord — Spotlight usually owns ⌘ Space — Phase says so here rather than

@@ -2,6 +2,7 @@ import type { ReactNode, Ref } from 'react';
 import type { SidebarPanel } from '../../db/db';
 import { useAppStore } from '../../state/store';
 import { IconChevronRight } from '../../components/Icons';
+import { sectionLabel } from '../../components/sectionLabel';
 
 /**
  * One collapsible sidebar panel.
@@ -41,7 +42,7 @@ export function SidebarSection({
         >
           <IconChevronRight size={11} />
         </span>
-        <span className="text-meta font-semibold text-muted flex-1">
+        <span className={`flex-1 ${sectionLabel}`}>
           {title}
         </span>
         {count && <span className="font-mono text-eyebrow text-muted tabular-nums flex-none">{count}</span>}

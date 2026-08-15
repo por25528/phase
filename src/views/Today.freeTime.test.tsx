@@ -4,6 +4,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, Habit, Task } from '../db/types';
 import { blocksOf } from '../lib/blocks';
+import { sectionLabel } from '../components/sectionLabel';
 
 /**
  * Today's zones were each conditional on something carrying today's date, so a
@@ -300,7 +301,7 @@ describe('the shared primary', () => {
 
     const label = screen.getByText('Rest of today');
     expect(label.className).toContain('px-[8px]');
-    expect(label.className).toContain('text-meta font-semibold text-muted');
+    expect(label.className).toContain(sectionLabel);
   });
 });
 

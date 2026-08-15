@@ -1,6 +1,7 @@
 import { actions } from '../../state/store';
 import { EstimateControl } from '../../components/EstimateControl';
 import { IconX } from '../../components/Icons';
+import { sectionLabel } from '../../components/sectionLabel';
 import type { UnestimatedItem } from '../../lib/unestimated';
 
 /**
@@ -35,7 +36,7 @@ export function UnestimatedPanel({
       className="mb-[10px] rounded-card border border-line-2 bg-panel px-[12px] py-[10px]"
     >
       <div className="flex items-baseline gap-[8px] mb-[8px]">
-        <h4 className="text-meta font-semibold text-muted">
+        <h4 className={sectionLabel}>
           Unestimated
         </h4>
         <p className="text-meta text-muted flex-1 min-w-0">

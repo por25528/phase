@@ -15,6 +15,7 @@ import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
 import { IconCheck, IconChevronRight, IconColumns, IconDots, IconTimeline, IconX } from '../components/Icons';
 import { Popover, PopoverItem } from '../components/Popover';
+import { sectionLabel } from '../components/sectionLabel';
 import { groupByColumn } from '../lib/board';
 import { columnTracks } from '../lib/boardTracks';
 import { focusSummary } from '../lib/plan';
@@ -651,7 +652,7 @@ function CompletedSection({ goals, today, onReopen }: { goals: Goal[]; today: st
         >
           <IconChevronRight size={12} />
         </span>
-        <span className="text-meta font-semibold text-muted">Completed</span>
+        <span className={sectionLabel}>Completed</span>
         <span className="font-mono text-badge text-muted tabular-nums">{goals.length}</span>
       </button>
       {open && (

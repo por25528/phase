@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { IconX } from './Icons';
+import { sectionLabel } from './sectionLabel';
 
 // The `?` cheat sheet. A lightweight dialog (not a modalRegistry Modal) so it
 // never interferes with the ⌘N capture-suppression logic; Escape and a backdrop
@@ -168,7 +169,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           ))}
         </dl>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="text-meta font-semibold text-muted mb-[9px]">
+          <h3 className={`mb-[9px] ${sectionLabel}`}>
             While planning a task
           </h3>
           <dl className="flex flex-col gap-[9px]">
@@ -178,7 +179,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           </dl>
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="text-meta font-semibold text-muted mb-[9px]">
+          <h3 className={`mb-[9px] ${sectionLabel}`}>
             On a goal card
           </h3>
           <dl className="flex flex-col gap-[9px]">
@@ -188,7 +189,7 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
           </dl>
         </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
-          <h3 className="text-meta font-semibold text-muted mb-[9px]">
+          <h3 className={`mb-[9px] ${sectionLabel}`}>
             In a goal's tasks
           </h3>
           <dl className="flex flex-col gap-[9px]">

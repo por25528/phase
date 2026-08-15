@@ -11,6 +11,7 @@ import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
 import { IconCheck, IconGrip, IconX } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
+import { sectionLabel } from '../../../components/sectionLabel';
 
 /**
  * One draggable row.
@@ -235,7 +236,7 @@ export function Backlog({
 
   return (
     <div>
-      <h3 className="flex items-baseline gap-[6px] text-meta font-semibold text-muted py-[6px] px-[6px]">
+      <h3 className={`flex items-baseline gap-[6px] py-[6px] px-[6px] ${sectionLabel}`}>
         <span className="flex-1">To plan</span>
         <span className="text-muted tabular-nums">{total}</span>
       </h3>

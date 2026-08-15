@@ -331,20 +331,33 @@ describe('type roles', () => {
   });
 
   /**
-   * A letter-spaced uppercase mono eyebrow over every group is a second
-   * typeface doing a job a font weight already does. The survivors are the
-   * weekday strips on the calendars, which is what a terse uppercase micro
-   * label is genuinely for — including the date picker's, which is a weekday
-   * strip by the same definition as the other three.
+   * A letter-spaced uppercase mono eyebrow over every group used to be a
+   * second typeface doing a job a font weight already does. It is now the
+   * section-label voice — see `components/sectionLabel.ts` — and the rule that
+   * keeps it from spreading is that uppercase must travel WITH `font-mono`.
+   *
+   * Uppercase in the UI face is still a build failure. The survivors that
+   * carry no mono are the weekday strips on the calendars, which is what a
+   * terse uppercase micro label is genuinely for — including the date picker's,
+   * which is a weekday strip by the same definition as the other three.
    */
-  it('reserves uppercase for terse date labels', () => {
-    const files = offenders(/uppercase/g).map((h) => h.split(':')[0]);
-    expect([...new Set(files)].sort()).toEqual([
-      'components/DatePopover.tsx',
-      'views/plan/MonthGrid.tsx',
-      'views/plan/WeekGrid.tsx',
-      'views/timeline/DaysLane.tsx',
-    ]);
+  const WEEKDAY_STRIPS = [
+    'components/DatePopover.tsx',
+    'views/plan/MonthGrid.tsx',
+    'views/plan/WeekGrid.tsx',
+    'views/timeline/DaysLane.tsx',
+  ];
+
+  it('reserves uppercase for the mono label voice and terse date labels', () => {
+    const bad = offenders(/\buppercase\b/g).filter((hit) => {
+      const [file] = hit.split(':');
+      if (WEEKDAY_STRIPS.includes(file)) return false;
+      // `sectionLabel.ts` declares the voice; every consumer references it by
+      // name and never spells `uppercase` itself, so a hit anywhere else is a
+      // hand-rolled label.
+      return file !== 'components/sectionLabel.ts';
+    });
+    expect(bad).toEqual([]);
   });
 });
 

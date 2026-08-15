@@ -1,5 +1,6 @@
 import { useAppStore } from '../../state/store';
 import { IconCheck } from '../../components/Icons';
+import { sectionLabel } from '../../components/sectionLabel';
 import { weekRecap, loggedTimeForWeek, formatLoggedMinutes } from '../../lib/plan';
 import { weekEffort, type WeekEffort } from '../../lib/actuals';
 import { weekDates } from '../../lib/dates';
@@ -69,7 +70,7 @@ export function RecapPanel() {
 
         {r.nowComplete.length > 0 && (
           <section>
-            <h3 className="text-meta font-semibold text-muted mb-[4px]">Done</h3>
+            <h3 className={`mb-[4px] ${sectionLabel}`}>Done</h3>
             {r.nowComplete.map((e) => (
               <div key={e.nodeId} className="flex items-center gap-[8px] py-[4px] text-body">
                 <span className="text-accent inline-flex" aria-hidden="true"><IconCheck size={13} /></span>
@@ -127,7 +128,7 @@ export function RecapPanel() {
                 so this is DELETED work, not unscheduled work — and the button
                 above says "Unschedule". One panel cannot call two different
                 outcomes "removed". */}
-            <h3 className="text-meta font-semibold text-muted mb-[4px]">Deleted</h3>
+            <h3 className={`mb-[4px] ${sectionLabel}`}>Deleted</h3>
             {r.removed.map((e) => (
               <div key={e.nodeId} className="py-[3px] text-body text-muted line-through">
                 {e.leafTitle} <span className="no-underline text-meta">· {e.goalTitle}</span>

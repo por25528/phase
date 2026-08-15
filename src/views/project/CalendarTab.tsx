@@ -28,6 +28,7 @@ import { addDays, todayStr, weekDates } from '../../lib/dates';
 import { isDone } from '../../lib/status';
 import { fmtMinutes } from '../../lib/effort';
 import { formatEstimateValue } from '../../lib/estimateInput';
+import { sectionLabel } from '../../components/sectionLabel';
 
 /**
  * This goal's week.
@@ -134,7 +135,7 @@ export function CalendarTab({ goal }: { goal: Goal }) {
       >
         <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-[16px]">
           <aside className="min-w-0">
-            <h3 className="text-meta font-semibold text-muted mb-[6px]">To place</h3>
+            <h3 className={`mb-[6px] ${sectionLabel}`}>To place</h3>
             {unplaced.length === 0 ? (
               <p className="text-meta text-faint">Everything in this goal has a time.</p>
             ) : (

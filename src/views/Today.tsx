@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
+import { sectionLabel } from '../components/sectionLabel';
 import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
 import { IconArrowRight, IconWarning } from '../components/Icons';
@@ -254,7 +255,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
             {/* The label is the emphasis now. The row below carries the clock,
                 the estimate and the title exactly as every other row does, so
                 the one thing worth doing sits on the same axis as the rest. */}
-            <div className="px-[8px] mb-[2px] text-meta font-semibold text-muted">
+            <div className={`px-[8px] mb-[2px] ${sectionLabel}`}>
               {primary.reason === 'scheduled-now' ? 'Now' : 'Next'}
             </div>
             <TaskRow
@@ -289,7 +290,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
                 then the capacity sentence under it — the eyebrow slot says
                 WHAT a section is, and "no time left today, but Monday has 9h"
                 is why the offer exists, not what it is called. */}
-            <div className="px-[8px] mb-[2px] text-meta font-semibold text-muted">Free time</div>
+            <div className={`px-[8px] mb-[2px] ${sectionLabel}`}>Free time</div>
             <p className="px-[8px] mb-[6px] text-meta text-muted">{offerHeading(offerInfo, today)}</p>
             <TaskRow
               title={primaryOffer.title}
@@ -327,7 +328,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           10:00 standup at six in the evening. */}
       {rest.length > 0 && (
         <section aria-label="Today’s plan" className="mb-[24px]">
-          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Rest of today</h2>
+          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Rest of today</h2>
           <ul>
             {rest.map((item, i) => (
               <li key={item.key}>
@@ -394,7 +395,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
               repeating the sentence would say it twice about the same time —
               so the capacity line belongs to whichever of the two is showing
               it, and never to both. */}
-          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">
+          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>
             {primaryOffer ? 'Also possible' : 'Free time'}
           </h2>
           {!primaryOffer && (
@@ -440,7 +441,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           vacate the stale sitting and arm the undo without help. */}
       {carried.rows.length > 0 && (
         <section aria-label="Carried over" className="mb-[24px]">
-          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Carried over</h2>
+          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Carried over</h2>
           <ul>
             {carried.rows.map((item) => (
               <li key={item.key}>
@@ -497,7 +498,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       {/* ── Attention ── */}
       {attention.length > 0 && (
         <section aria-label="Attention">
-          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Attention</h2>
+          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Attention</h2>
           <ul>
             {attention.map((a) => (
               <li key={a.id}>
@@ -536,7 +537,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           refuses; read that refusal before reaching for one. */}
       {sections.completedToday.length > 0 && (
         <section aria-label="Done today" className="mt-[24px]">
-          <h2 className="px-[8px] text-meta font-semibold text-muted mb-[6px]">Done today</h2>
+          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Done today</h2>
           <ul>
             {sections.completedToday.map((item) => {
               const logged = loggedForItemOn(sessions, item, today);
