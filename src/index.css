@@ -74,11 +74,11 @@
      * warn means TROUBLE. Project identity is a third channel and must not be
      * mistaken for either.
      */
-    --c-proj-0: 74 128 120;   /* #4A8078 teal  — L .182 */
-    --c-proj-1: 98 111 163;   /* #626FA3 indigo— L .165 */
-    --c-proj-2: 140 98 128;   /* #8C6280 plum  — L .160 */
-    --c-proj-3: 114 121 79;   /* #72794F moss  — L .177 */
-    --c-proj-4: 83 120 143;   /* #53788F steel — L .170 */
+    --c-proj-0: 74 128 120;   /* #4A8078 teal  — L .183 */
+    --c-proj-1: 98 111 163;   /* #626FA3 indigo— L .166 */
+    --c-proj-2: 140 98 128;   /* #8C6280 plum  — L .159 */
+    --c-proj-3: 114 121 79;   /* #72794F moss  — L .178 */
+    --c-proj-4: 83 120 143;   /* #53788F steel — L .173 */
     --c-proj-5: 155 113 96;   /* #9B7160 clay  — L .196 */
 
     --shadow-card: 0 1px 2px rgba(26, 26, 24, 0.05);

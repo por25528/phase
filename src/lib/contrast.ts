@@ -29,7 +29,7 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
 
 /**
  * A CSS comment can legitimately mention a selector or a class in prose (as
- * this file's own header does), and a plain-text scan over raw stylesheet
+ * `index.css`'s own header does), and a plain-text scan over raw stylesheet
  * text would happily match that prose instead of the rule it describes.
  *
  * Comment bodies are blanked to EQUAL-LENGTH runs of spaces rather than
