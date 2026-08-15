@@ -1046,6 +1046,11 @@ function sessionFor(
   };
 }
 
+export type FinishWorkResult =
+  | { outcome: 'done'; label: string }
+  | { outcome: 'needs-confirmation'; label: string }
+  | { outcome: 'refused' };
+
 // ---- actions ----
 export const actions = {
   // Goals / nodes
@@ -2077,6 +2082,55 @@ export const actions = {
     )) return false;
     setFocusDraft(null);
     return true;
+  },
+
+  /**
+   * Mark one piece of work finished, settling any sitting running on it.
+   *
+   * `completeFocus` ends a SITTING; this ends the WORK. When both happen at
+   * once they are ONE write across two slices: two sequential `withUndo` calls
+   * would let the second's sweep discard the first, so the toast would read
+   * `Completed "X"` and restore `goals` alone — un-ticking the task while
+   * keeping its logged minutes, a half-undo that leaves the data in a state
+   * that is neither the old one nor the new one.
+   *
+   * Returns the label it armed, the way `undoLastDelete` returns the one it
+   * restored: the shelf's notice and the undo toast then cannot disagree about
+   * what just happened.
+   */
+  finishWork(ref: WorkRef, nowMs = Date.now()): FinishWorkResult {
+    // Unused until the running-session branch lands; the name is part of the
+    // signature callers already spend, so it is voided rather than renamed.
+    void nowMs;
+    const today = todayStr();
+
+    // The completion slice, built the way `toggleLeaf`/`toggleTask` build it —
+    // deliberately not by CALLING them, because each arms its own `withUndo`
+    // and the second would sweep the first.
+    let completed: Partial<AppState>;
+    let title: string;
+    if (ref.kind === 'step') {
+      if (!isActiveNode(ref.id)) return { outcome: 'refused' };
+      const goals = cloneGoals(state.goals);
+      const node = findInAll(goals, ref.id);
+      if (!node || node.children?.length || isDone(node)) return { outcome: 'refused' };
+      writeStatus(node, 'done', today);
+      title = node.title;
+      completed = { goals };
+    } else {
+      const task = state.tasks.find((t) => t.id === ref.id);
+      if (!task || task.done) return { outcome: 'refused' };
+      title = task.title;
+      completed = {
+        tasks: state.tasks.map((t) => (
+          t.id === ref.id ? { ...t, done: true, doneAt: today } : t
+        )),
+      };
+    }
+
+    const label = `Completed "${title}"`;
+    withUndoSlices(label, completed);
+    return { outcome: 'done', label };
   },
 
   discardFocus(): boolean {
