@@ -165,3 +165,32 @@ describe('a bare leaf gaining metadata', () => {
     expect(document.activeElement).not.toBe(document.body);
   });
 });
+
+describe('adding a task', () => {
+  it('spells the verb the same way everywhere', async () => {
+    await renderTree([{ id: 'p', title: 'Parent', children: [{ id: 'c', title: 'Child' }] }]);
+    // The nested input, inside the expanded container.
+    expect(screen.getByPlaceholderText('+ Add task')).toBeTruthy();
+    expect(screen.queryByPlaceholderText(/add item/i)).toBeNull();
+  });
+
+  // opacity:0 elements stay in the a11y tree and stay focusable, which is the
+  // whole reason the gate is opacity and not `display:none` or conditional
+  // rendering. Hover alone would strand this input for keyboard users.
+  it('leaves the nested input reachable by keyboard, not hover alone', async () => {
+    await renderTree([{ id: 'p', title: 'Parent', children: [{ id: 'c', title: 'Child' }] }]);
+    const input = screen.getByPlaceholderText('+ Add task');
+    input.focus();
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('gates the nested input on subtree hover, not row hover', async () => {
+    await renderTree([{ id: 'p', title: 'Parent', children: [{ id: 'c', title: 'Child' }] }]);
+    const input = screen.getByPlaceholderText('+ Add task');
+    const wrap = input.closest('.subtree-reveal');
+    expect(wrap).not.toBeNull();
+    expect(wrap!.closest('.subtree')).not.toBeNull();
+    // Never the row's own gate — that would reveal on the wrong hover.
+    expect(input.closest('.quiet-control')).toBeNull();
+  });
+});

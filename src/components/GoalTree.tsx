@@ -968,7 +968,7 @@ function GoalTreeNode({
             direct descendant of the tree satisfies neither. A `group` has no
             required children, so it is at home here.
           */}
-          <div role="group" id={groupId}>
+          <div role="group" id={groupId} className="subtree">
             <GoalSiblingList
               nodes={n.children!}
               depth={depth + 1}
@@ -983,7 +983,8 @@ function GoalTreeNode({
             />
             <AddChildInput
               indent={(depth + 1) * 22}
-              placeholder="+ add item…"
+              placeholder="+ Add task"
+              className="subtree-reveal"
               onAdd={(title) => actions.addChild(n.id, title)}
             />
           </div>
@@ -1080,15 +1081,17 @@ function LeafMeta({
 function AddChildInput({
   indent,
   placeholder,
+  className,
   onAdd,
 }: {
   indent: number;
   placeholder: string;
+  className?: string;
   onAdd: (title: string) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
-    <div style={{ marginLeft: indent }} className="px-[6px] py-[2px]">
+    <div style={{ marginLeft: indent }} className={`px-[6px] py-[2px] ${className ?? ''}`}>
       <input
         ref={ref}
         className="ghost-in w-full text-body"
