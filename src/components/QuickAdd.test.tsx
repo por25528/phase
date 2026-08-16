@@ -160,4 +160,44 @@ describe('Quick add', () => {
     expect(store.getState().tasks).toHaveLength(0);
     expect(closed).not.toHaveBeenCalled();
   });
+
+  /**
+   * A duration carries a time unit and means only one thing in a task line, so
+   * it lands as the estimate even without the `~`.
+   */
+  it('reads a bare duration as the estimate', async () => {
+    const { store, user } = await mount();
+
+    await user.type(field(), 'Read ch 4 2h{Enter}');
+
+    expect(store.getState().tasks[0]).toMatchObject({
+      title: 'Read ch 4',
+      estimateMin: 120,
+    });
+  });
+
+  /**
+   * A `@`-less date word used to be swallowed into the title, asserting a
+   * deadline the scheduler never held. Now it is offered — and only applied on
+   * the user's click, because capture and commitment are different acts.
+   */
+  it('offers a bare date word and applies it on click, never before', async () => {
+    const { store, user } = await mount();
+
+    await user.type(field(), 'Ship it by thursday');
+
+    // Not scheduled yet — the word is a suggestion, not a commitment.
+    expect(screen.getByText('Unscheduled')).toBeTruthy();
+    const offer = screen.getByRole('button', { name: /thursday/i });
+
+    await user.click(offer);
+
+    // The input now carries the sigil, and the offer is gone.
+    expect((field() as HTMLInputElement).value).toBe('Ship it @thursday');
+    expect(screen.queryByText('Unscheduled')).toBeNull();
+
+    await user.keyboard('{Enter}');
+    expect(store.getState().tasks[0]).toMatchObject({ title: 'Ship it' });
+    expect(store.getState().tasks[0].date).toBeTruthy();
+  });
 });

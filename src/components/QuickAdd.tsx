@@ -2,7 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAppStore } from '../state/store';
 import { fmtD, todayStr } from '../lib/dates';
 import { formatEstimateValue } from '../lib/estimateInput';
-import { parseQuickAdd, type QuickAddToken } from '../lib/quickAdd';
+import {
+  applyDateSuggestion,
+  parseQuickAdd,
+  type DateSuggestion,
+  type QuickAddToken,
+} from '../lib/quickAdd';
 
 /**
  * One line, anchored under the header.
@@ -104,6 +109,14 @@ export function QuickAdd({
     commit(false);
   }
 
+  // Accepting the offer rewrites the input into its sigil form; the re-parse
+  // then strips the words from the title and sets the date. Nothing is
+  // scheduled until this click — capture and commitment are different acts.
+  function applySuggestion(s: DateSuggestion): void {
+    setText(applyDateSuggestion(text, s));
+    inputRef.current?.focus();
+  }
+
   return (
     <>
       {/* A click-away catcher rather than a dimmer. The composer does not take
@@ -156,6 +169,17 @@ export function QuickAdd({
               <span className="text-warn" role="status">
                 Didn’t recognise {parsed.unresolved.join(', ')} — left it in the title
               </span>
+            )}
+            {/* A bare date word the parser couldn't act on, offered as one
+                appliable click rather than left to rot in the title. */}
+            {parsed.dateSuggestion && (
+              <button
+                type="button"
+                onClick={() => applySuggestion(parsed.dateSuggestion!)}
+                className="text-accent-deep font-semibold px-[7px] py-[2px] min-h-[24px] inline-flex items-center gap-[4px] rounded-field hover:bg-accent-tint transition-colors"
+              >
+                Did you mean {fmtD(parsed.dateSuggestion.date)}? · “{parsed.dateSuggestion.match}”
+              </button>
             )}
             <span className="flex-1" />
             <span className="text-faint hidden sm:inline">

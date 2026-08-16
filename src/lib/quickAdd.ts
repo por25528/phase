@@ -25,6 +25,21 @@ export interface QuickAddToken {
   label: string;
 }
 
+/**
+ * A bare temporal word left in the title that WOULD have scheduled the task if
+ * it had carried an `@`. It is a suggestion, never an auto-date: capture and
+ * commitment are different acts, so the word stays in the title and `date`
+ * stays null until the user accepts it.
+ */
+export interface DateSuggestion {
+  /** The literal phrase found in the title, original casing, e.g. `by thursday`. */
+  match: string;
+  /** The sigil form that resolves to `date`, e.g. `@tomorrow`, `@monday`, `@+7d`. */
+  sigil: string;
+  /** What that sigil resolves to, `YYYY-MM-DD`. */
+  date: string;
+}
+
 export interface QuickAddParse {
   title: string;
   /** Resolved tokens, in the order they appeared. */
@@ -41,6 +56,13 @@ export interface QuickAddParse {
    */
   date: string | null;
   estimateMin: number | null;
+  /**
+   * A `@`-less date word the parser could not act on but recognised. Present
+   * only when nothing scheduled the task and no `@` token was even attempted —
+   * one date decision at a time. The composer renders it as one appliable
+   * offer; a warning the user cannot act on just moves the failure later.
+   */
+  dateSuggestion: DateSuggestion | null;
 }
 
 const DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -99,6 +121,73 @@ export function resolveGoalToken(token: string, goals: readonly Goal[]): Goal | 
   return inside.length === 1 ? inside[0] : null;
 }
 
+/**
+ * A duration token WITHOUT the `~` sigil — `2h`, `30m`, `1h30`.
+ *
+ * A token carrying a time unit has no other meaning in a task title, so it is
+ * an estimate on its own. A BARE INTEGER is deliberately refused: "chapter 4",
+ * "problem 3", "6.006" are quantities, and reading one as a minute count is the
+ * false positive this guard exists to avoid. The unit (`h`/`m`) is what
+ * separates the two; `parseEstimateInput` does the rest, so the bounds and the
+ * `~` form stay in one place.
+ */
+function bareDurationMinutes(word: string): number | null {
+  if (!/[hm]/i.test(word)) return null;
+  const parsed = parseEstimateInput(word);
+  return typeof parsed === 'number' ? parsed : null;
+}
+
+const WEEKDAY = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun';
+
+/** The leftmost bare temporal phrase, longest-form first so `next monday` wins over `monday`. */
+const TEMPORAL_RE = new RegExp(
+  `\\b(next\\s+week|next\\s+(?:${WEEKDAY})|by\\s+(?:${WEEKDAY})|today|tomorrow|tonight|(?:${WEEKDAY}))\\b`,
+  'i',
+);
+
+/** The sigil body a matched phrase would need to carry to schedule the task. */
+function sigilBodyFor(match: string): string {
+  const m = match.trim().toLowerCase();
+  if (m === 'next week') return '+7d';
+  if (m === 'today' || m === 'tonight') return 'today';
+  if (m === 'tomorrow') return 'tomorrow';
+  // `next friday` / `by friday` / bare `friday` all reduce to the weekday word,
+  // which `parseDateToken` resolves to the nearest upcoming occurrence.
+  return m.replace(/^(?:next|by)\s+/, '');
+}
+
+/**
+ * Find a `@`-less date word in a title and report the token that would work.
+ *
+ * Pure: it schedules nothing. The composer turns the result into a one-click
+ * offer; accepting it rewrites the input via `applyDateSuggestion`, so the
+ * sigil it carries must resolve back to the same `date` it names.
+ */
+export function detectBareTemporal(title: string, today: string): DateSuggestion | null {
+  const hit = TEMPORAL_RE.exec(title);
+  if (!hit) return null;
+  const match = hit[1];
+  const body = sigilBodyFor(match);
+  const date = parseDateToken(body, today);
+  if (!date) return null;
+  return { match, sigil: `@${body}`, date };
+}
+
+const RE_META = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Rewrite the bare temporal phrase in `text` into its sigil form, in place.
+ *
+ * Works on the raw input, not the parsed title, so a re-parse both strips the
+ * words from the title and sets the date — one source of truth. Whitespace is
+ * matched loosely (`\s+`) because the composer's text may not be normalised.
+ */
+export function applyDateSuggestion(text: string, s: DateSuggestion): string {
+  const parts = s.match.trim().split(/\s+/).map((p) => p.replace(RE_META, '\\$&'));
+  const re = new RegExp(`\\b${parts.join('\\s+')}\\b`, 'i');
+  return text.replace(re, s.sigil);
+}
+
 export function parseQuickAdd(
   text: string,
   goals: readonly Goal[],
@@ -112,6 +201,13 @@ export function parseQuickAdd(
 
   const words = text.split(/(\s+)/);
   const kept: string[] = [];
+
+  // An explicit `~` estimate is authoritative wherever it sits, so a bare
+  // duration yields to it — otherwise a stray "2h" could override the "~90m"
+  // the user typed on purpose.
+  const hasExplicitEstimate = words.some(
+    (w) => w[0] === '~' && w.length > 1 && typeof parseEstimateInput(w.slice(1)) === 'number',
+  );
 
   for (const word of words) {
     const sigil = word[0];
@@ -153,15 +249,34 @@ export function parseQuickAdd(
       kept.push(word);
       continue;
     }
+
+    // A duration with no `~` is still an estimate — but only the first one, and
+    // only when no explicit `~` claimed the slot.
+    if (estimateMin === null && !hasExplicitEstimate) {
+      const bare = bareDurationMinutes(word);
+      if (bare !== null) {
+        estimateMin = bare;
+        tokens.push({ raw: word, kind: 'estimate', label: `${bare}m` });
+        continue;
+      }
+    }
     kept.push(word);
   }
 
+  const title = kept.join('').replace(/\s+/g, ' ').trim();
+  // Only offer a date word when nothing scheduled the task AND no `@` was even
+  // attempted — a second date guess on top of a failed one is noise.
+  const dateAttempted = unresolved.some((u) => u[0] === '@');
+  const dateSuggestion =
+    date === null && !dateAttempted ? detectBareTemporal(title, today) : null;
+
   return {
-    title: kept.join('').replace(/\s+/g, ' ').trim(),
+    title,
     tokens,
     unresolved,
     goalId,
     date,
     estimateMin,
+    dateSuggestion,
   };
 }
