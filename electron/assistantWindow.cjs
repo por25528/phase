@@ -41,6 +41,12 @@ const path = require('node:path')
 // AssistantOverlay.tsx), so its footprint is one of the figures above by
 // construction.
 //
+// HEIGHT is the tallest of those figures rounded UP to the next whole pixel
+// (308, from confirming's 307.99) — never a margin. A window sized to the
+// fraction would clip a pane whose measured height sits between two
+// integers, so the round trip is always ceil(), the same rule every prior
+// pass in this file has followed (263.2 became 264).
+//
 // If a state grows, measure it again.
 const WIDTH = 620
 const HEIGHT = 308
