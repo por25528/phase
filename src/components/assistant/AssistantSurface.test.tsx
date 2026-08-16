@@ -739,6 +739,35 @@ describe('AssistantSurface', () => {
   });
 
   /*
+   * The same 620-vs-380 split, one component lower down.
+   *
+   * On the shelf an alternative's title and its metadata share a line, the
+   * metadata `shrink-0`. At 380px that leaves the NAME OF THE WORK about 114px
+   * while `Comparative Literature · Usually 45–60m` takes 227 — the hierarchy
+   * this band exists to correct, inverted. `Sidecar` stacked them as two
+   * `block` spans for that reason, and flattening it into one row was a
+   * regression rather than a simplification.
+   *
+   * jsdom has no layout, so this pins the structural branch and not the widths
+   * — the same move the dial test above makes.
+   */
+  it('stacks an alternative row embedded and keeps it on one line on the shelf', () => {
+    const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
+    const snapshot = ready({ advice: { kind: 'work', primary: work(), alternatives } });
+
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
+    const embedded = screen.getByRole('button', { name: /Read chapter 5/ });
+    expect(embedded.className).not.toContain('flex');
+    expect(embedded.querySelector('span')!.className).toContain('block');
+    cleanup();
+
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} presentation="shelf" />);
+    const shelf = screen.getByRole('button', { name: /Read chapter 5/ });
+    expect(shelf.className).toContain('flex');
+    expect(shelf.querySelector('span')!.className).toContain('flex-1');
+  });
+
+  /*
    * The captions used to read "I've got" and "Focus" — one completes a
    * sentence with its control, the other names a thing. Two nouns of the same
    * kind is the fix. They take the mono voice because the bar is the

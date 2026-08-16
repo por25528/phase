@@ -195,8 +195,29 @@ function dialStripClass(shelf: boolean): string {
  * it starts, and the divider ends where the band does.
  */
 const altRow =
-  'flex w-full items-baseline gap-3 rounded-[6px] py-[5px] text-left '
+  'w-full rounded-[6px] py-[5px] text-left '
   + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
+
+/**
+ * A row's own arrangement, and the second place the 620px shape had to stop
+ * being imposed on the 380px one.
+ *
+ * On the shelf the title and its metadata sit on one line, the metadata
+ * `shrink-0` so it states itself in full and the title takes the rest. That is
+ * right at 620px and wrong at 380: `Comparative Literature · Usually 45–60m`
+ * claims about 227px there, leaving the NAME OF THE WORK 114px — less than half
+ * the room its own quiet metadata gets, which inverts the hierarchy this whole
+ * band exists to correct. `Sidecar`, which this replaced, stacked them as two
+ * `block` spans for exactly that reason; flattening it into one row was a
+ * regression, not a simplification.
+ *
+ * So embedded stacks: the title takes its own line at full width, the metadata
+ * sits beneath it. Both still truncate — a long goal title must not widen the
+ * panel, it must be cut.
+ */
+function altRowCls(shelf: boolean): string {
+  return shelf ? `${altRow} flex items-baseline gap-3` : altRow;
+}
 
 /**
  * The alternatives band's own inset, shared with `Skeleton` so the loading
@@ -223,11 +244,21 @@ function AlternativesBand({ label, items, disabled, onPick, shelf }: {
             key={item.key}
             type="button"
             disabled={disabled}
-            className={`${altRow} ${i ? 'border-t border-line-soft' : ''}`}
+            className={`${altRowCls(shelf)} ${i ? 'border-t border-line-soft' : ''}`}
             onClick={() => onPick(item.ref)}
           >
-            <span className="min-w-0 flex-1 truncate text-body text-ink-soft">{item.title}</span>
-            <span className="shrink-0 text-meta text-muted">
+            <span
+              className={shelf
+                ? 'min-w-0 flex-1 truncate text-body text-ink-soft'
+                : 'block truncate text-body text-ink-soft'}
+            >
+              {item.title}
+            </span>
+            <span
+              className={shelf
+                ? 'shrink-0 text-meta text-muted'
+                : 'block truncate text-meta text-muted'}
+            >
               {item.goalTitle ? `${item.goalTitle} · ` : ''}{expectedTimeLabel(item.expected)}
             </span>
           </button>
