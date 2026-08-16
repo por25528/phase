@@ -141,14 +141,29 @@ work's own eyebrow one line below it. In a bottom status bar it competes with
 nothing: the two bands above it are the only content, and the bar reads as the
 instrument's legend, which is the exact quality the mono voice was adopted for.
 
-So the captions become `text-micro font-medium text-muted font-mono uppercase
-tracking-[.11em]` — the same string, still **written out in full and not
-imported from `sectionLabel`**, because they remain captions rather than region
-headings and must not follow that constant if it changes. Stone §5's table
-entry for this site is amended in the same change, so the doc and the code
-agree; the other four exceptions are untouched.
+So the captions take that voice — but **as a second export in
+`src/components/sectionLabel.ts`, named `captionLabel`, not as a string spelled
+at the call site.** An earlier draft of this spec had `AssistantSurface.tsx`
+hand-roll it, reasoning that a caption must not follow the section-label
+constant if that constant changes. The reasoning survives; the implementation
+does not.
 
-Legal under the guard: uppercase travels with `font-mono`, which this carries.
+**Why it moved, and it is not a detail.** `designScale.test.ts`'s uppercase
+guard is a FILE allowlist: it compares only the filename against the four
+weekday strips and `sectionLabel.ts`, and never inspects the line. `font-mono`
+on the same line does NOT make `uppercase` legal — an earlier version of this
+section asserted that it did, and was simply wrong. The guard's own doc comment
+describes a co-occurrence rule its code does not implement; what the code
+enforces is the stricter and better rule stated in its second paragraph — *a
+voice is declared once and imported, never hand-rolled.*
+
+Declaring `captionLabel` beside `sectionLabel` satisfies that rule, keeps
+`AssistantSurface.tsx` free of the word `uppercase`, and still gives the caption
+its own name to diverge under. The guard is not edited and gains no new
+exception — weakening a guard to accommodate a spec's mistake is backwards.
+
+Stone §5's table entry for this site is amended in the same change, so the doc
+and the code agree; the other four exceptions are untouched.
 
 `SegmentedSwitch` at `sm` is unchanged.
 

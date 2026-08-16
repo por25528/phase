@@ -14,7 +14,7 @@ Copied verbatim from `docs/superpowers/specs/2026-08-16-shelf-bands-design.md` a
 
 - **No colour token values change.** Stone is inherited, not amended. No literal hex anywhere — `designScale.test.ts` fails the build on one.
 - **No arbitrary `text-[Nrem]`.** Every size comes from the `fontSize` scale in `tailwind.config.js`.
-- **Uppercase travels with `font-mono`.** Uppercase without it is a build failure.
+- **Only `components/sectionLabel.ts` and the four weekday strips may spell `uppercase`.** `designScale.test.ts`'s uppercase guard is a FILE allowlist, not the `font-mono` co-occurrence rule its own doc comment describes — `font-mono` on the same line does not satisfy it. A new uppercase voice is declared in `sectionLabel.ts` and imported. Do not edit the guard.
 - **Permitted corner radii only:** `[4px]`, `[6px]`, `rounded-field` (8px), `rounded-card` (12px), `rounded-full`.
 - **`border-dashed` is reserved** for the drop preview and guessed-hour calendar blocks. Not used here.
 - **The protocol is frozen:** no change to `AssistantAction`, `AssistantSnapshot`, or `AssistantFocusView` in `src/lib/assistantProtocol.ts`.
@@ -146,9 +146,9 @@ Move the shelf's padding off the root and onto each band, and move the dial stri
 **Interfaces:**
 - Consumes: `Skeleton` from Task 1 (unchanged).
 - Produces:
-  - `const dialCaption: string` — the caption class string, exported from nowhere, used twice inside `DialStrip`.
+  - `captionLabel` — a NEW export in `src/components/sectionLabel.ts`, imported by `AssistantSurface.tsx` and used twice inside `DialStrip`. It is NOT hand-rolled at the call site: `designScale.test.ts` allows only `sectionLabel.ts` to spell `uppercase`, and its rule is that a voice is declared once and imported.
   - `dialStripClass(shelf: boolean): string` — same signature as today. The `shelf` branch must NOT contain the substring `flex-col`; the embedded branch MUST. `AssistantSurface.test.tsx` "stacks the two dials embedded and keeps them side by side on the shelf" pins this via `radiogroup.parentElement.parentElement`, so the two wrapper `<div>`s inside `DialStrip` must stay exactly two deep.
-  - `bandCls(shelf: boolean): string` — padding for a content band. Task 3 and Task 4 consume it.
+  - `aboveBandCls(shelf: boolean): string` — padding for a line that sits ABOVE band 1 (the notice, the two advisory lines) with no bottom inset. Consumed in this task by the notice, and again in Task 4. NOTE: `bandCls` is deliberately NOT defined here — its first caller is `WorkBand` in Task 4, and `noUnusedLocals` is on, so defining it early makes this task fail `tsc -b` by construction.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -160,7 +160,8 @@ Add inside the top-level `describe` block:
    * sentence with its control, the other names a thing. Two nouns of the same
    * kind is the fix. They take the mono voice because the bar is the
    * instrument's legend; that amends Stone §5's exception for this site, and
-   * uppercase is only legal at all because font-mono travels with it.
+   * `captionLabel` is imported from `sectionLabel.ts` rather than spelled
+   * here: `designScale.test.ts` allows only that file to write `uppercase`.
    */
   it('captions the dials as parallel nouns in the mono voice', () => {
     render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
@@ -207,42 +208,31 @@ Expected: FAIL — `captions the dials` fails on `Unable to find an element with
 In `src/components/assistant/AssistantSurface.tsx`, directly below the existing `SectionLabel` component (currently ending line 73), add:
 
 ```tsx
-/**
- * The dial captions, and the one place the mono voice is spoken by something
- * that is NOT a section label.
- *
- * Stone §5 listed this site among five that share the section-label class
- * string by coincidence, and required it to stay `text-meta font-semibold
- * text-muted` — a caption beside its control is not a region heading. That was
- * right while the strip sat at the TOP of the card, one line above the work's
- * own eyebrow, where the two would have competed. In a bottom status bar it
- * competes with nothing, and the bar reads as the legend on an instrument,
- * which is the quality the mono voice was adopted for. Stone §5's table entry
- * for this file is amended in the same change.
- *
- * Written out in full and deliberately NOT `sectionLabel`: these remain
- * captions, and must not follow that constant if the section-label voice
- * changes again.
- */
-const dialCaption = 'text-micro font-medium text-muted font-mono uppercase tracking-[.11em]';
+In `src/components/sectionLabel.ts`, add a second export beside `sectionLabel`:
 
+```ts
 /**
- * A content band's padding. The card's padding used to live on the root as a
- * single `p-3`, which is why every band had to share one inset and no band
- * could carry a full-width hairline. Each band owns its own now, and the
- * hairlines run edge to edge.
+ * A caption sitting beside its control, in the same mono voice.
  *
- * The three helpers below state their padding IN FULL rather than appending an
- * override to `bandCls`. `${bandCls(shelf)} pb-0` would leave which rule wins
- * to the order Tailwind happens to emit `pb-3` and `pb-0` in — `dialogStyles.ts`
- * says it outright: a class list is not a cascade, and that exact trap is why
- * `DateField`'s `size` prop exists. A line above the body is not a band and
- * does not get one's bottom padding.
+ * Not `sectionLabel`, and the difference is not cosmetic — the two are
+ * identical strings today and must be free to diverge. A section label names a
+ * REGION of a surface; this names the CONTROL to its right, and the assistant
+ * shelf's bottom status bar is the one place both appear on the same card.
+ *
+ * It lives here rather than at its call site because `designScale.test.ts`
+ * enforces that this file is the only one allowed to spell `uppercase` — the
+ * rule being that a voice is declared once and imported, never hand-rolled.
+ * Stone §5 originally kept this caption in the UI face for fear it would
+ * compete with a region heading; once the dial strip became a status bar under
+ * the content there was no heading beside it left to compete with, and the bar
+ * reads as the legend on an instrument.
  */
-function bandCls(shelf: boolean): string {
-  return shelf ? 'px-4 pt-3.5 pb-3' : 'px-3 py-2';
-}
+export const captionLabel = sectionLabel;
+```
 
+Then in `src/components/assistant/AssistantSurface.tsx`, import it beside the existing `sectionLabel` import, and add below `SectionLabel`:
+
+```tsx
 /** The notice line, and the two advisory lines, sit ABOVE band 1 with no bottom inset. */
 function aboveBandCls(shelf: boolean): string {
   return shelf ? 'px-4 pt-3' : 'px-3';
@@ -263,7 +253,7 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
   return (
     <div className={dialStripClass(shelf)}>
       <div className="flex items-center gap-2.5">
-        <span className={dialCaption}>Time</span>
+        <span className={captionLabel}>Time</span>
         <SegmentedSwitch
           label="How long you have"
           size="sm"
@@ -273,7 +263,7 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
         />
       </div>
       <div className="flex items-center gap-2.5">
-        <span className={dialCaption}>Focus</span>
+        <span className={captionLabel}>Focus</span>
         <SegmentedSwitch
           label="How much focus you have"
           size="sm"
@@ -401,7 +391,7 @@ git commit -m "feat(shelf): the dials become a status bar under the work"
 - Test: `src/components/assistant/AssistantSurface.test.tsx:415-428`
 
 **Interfaces:**
-- Consumes: `bandCls` from Task 2.
+- Consumes: nothing new from Task 2; `workTitle` is self-contained.
 - Produces: `const workTitle: string` — the heading class string, used by both `FocusPanel` and `AdvicePanel` so the two cannot drift.
 
 - [ ] **Step 1: Rewrite the pinned test**
@@ -471,7 +461,7 @@ Expected: FAIL — `expected 'line-clamp-2 text-h2 font-semibold text-ink' to co
 
 - [ ] **Step 3: Add the shared heading class**
 
-In `src/components/assistant/AssistantSurface.tsx`, directly below `bandCls` (added in Task 2), add:
+In `src/components/assistant/AssistantSurface.tsx`, directly below `aboveBandCls` (added in Task 2), add:
 
 ```tsx
 /**
@@ -550,7 +540,8 @@ The heart of the change, and it lands as one commit because the two halves canno
 - Test: `src/components/assistant/AssistantSurface.test.tsx`
 
 **Interfaces:**
-- Consumes: `bandCls` and `aboveBandCls` (Task 2), `workTitle` (Task 3).
+- Consumes: `aboveBandCls` (Task 2), `workTitle` (Task 3).
+- Defines `bandCls` (moved here from Task 2, where it had no caller and tripped `noUnusedLocals`).
 - Produces:
   - `const GUTTER = 'w-[22px] shrink-0'` — the checkbox slot, occupied in every state.
   - `const RING_SLOT = 'w-[34px] shrink-0'` — the ring slot, occupied in all three session phases.
@@ -685,6 +676,22 @@ Expected: FAIL. `reserves the gutter…` fails with `expected null to be truthy`
 In `src/components/assistant/AssistantSurface.tsx`, replace `bodyClass` **and its doc comment** (the block beginning `/**\n * The one primary/action arrangement…`) with:
 
 ```tsx
+/**
+ * A content band's padding. The card's padding used to live on the root as a
+ * single `p-3`, which is why every band had to share one inset and no band
+ * could carry a full-width hairline. Each band owns its own now, and the
+ * hairlines run edge to edge.
+ *
+ * Stated in full rather than composed with `aboveBandCls`: appending an
+ * override like `${bandCls(shelf)} pb-0` would leave which rule wins to the
+ * order Tailwind happens to emit them in. `dialogStyles.ts` says it outright —
+ * a class list is not a cascade, and that exact trap is why `DateField`'s
+ * `size` prop exists.
+ */
+function bandCls(shelf: boolean): string {
+  return shelf ? 'px-4 pt-3.5 pb-3' : 'px-3 py-2';
+}
+
 /**
  * The leading gutter, and why it is reserved rather than conditional.
  *
@@ -1297,7 +1304,9 @@ Expected: no output, exit 0.
 
 Run: `npx vitest run --config vitest.config.ts src/lib/designScale.test.ts src/lib/paletteContrast.test.ts src/lib/projectColour.test.ts`
 
-Expected: PASS. These fail the build on a literal hex, an arbitrary `text-[Nrem]`, a `fontSize`/`colors` key collision, an off-list corner radius, and uppercase without `font-mono`. The `TIME` / `FOCUS` captions are the one new uppercase in this change and carry `font-mono`.
+Expected: PASS. These fail the build on a literal hex, an arbitrary `text-[Nrem]`, a `fontSize`/`colors` key collision, an off-list corner radius, and `uppercase` spelled outside `components/sectionLabel.ts` or the four weekday strips.
+
+That last one is a FILE allowlist, not a `font-mono` co-occurrence check — an earlier draft of this plan described it wrongly, and Task 2 hit the resulting build failure. `AssistantSurface.tsx` passes because it imports `captionLabel` and never spells `uppercase` itself, NOT because `font-mono` sits beside it. If this run fails here, the fix is to move the voice into `sectionLabel.ts` — never to edit the guard or extend its allowlist.
 
 - [ ] **Step 4: Entry-boundary proof**
 
@@ -1338,6 +1347,6 @@ Expected: only `shelf-shots/` (ignored) and whatever the parallel session owns. 
 
 **Placeholder scan:** the only `<…>` placeholders are in Task 7 Step 2, and they are measured figures that cannot be known before Step 1 runs — the step says exactly where each comes from. No "TBD", no "add error handling", no "similar to Task N".
 
-**Type consistency:** `bandCls(shelf: boolean)` and `aboveBandCls(shelf: boolean)` are defined in Task 2 and consumed in Task 4. `workTitle` is defined in Task 3 and consumed in Task 4 by both panels. `GUTTER`, `RING_SLOT`, `altRow`, `WorkBand` and `AlternativesBand` are all defined and consumed within Task 4. `optionRow`, `Sidecar`, `OtherOptions` and `bodyClass` are all deleted, with Step 9 grepping to confirm no remaining reference.
+**Type consistency:** `aboveBandCls(shelf: boolean)` is defined in Task 2 and consumed there (the notice) and in Task 4. `bandCls(shelf: boolean)` is defined in Task 4 beside its first caller — defining it in Task 2 tripped `noUnusedLocals` and made that task unable to typecheck standalone. `captionLabel` is a new export in `sectionLabel.ts`, imported by `AssistantSurface.tsx`. `workTitle` is defined in Task 3 and consumed in Task 4 by both panels. `GUTTER`, `RING_SLOT`, `altRow`, `WorkBand` and `AlternativesBand` are all defined and consumed within Task 4. `optionRow`, `Sidecar`, `OtherOptions` and `bodyClass` are all deleted, with Step 9 grepping to confirm no remaining reference.
 
 **Task sizing:** Task 4 is the largest by some margin, and it is not splittable: `FocusPanel` renders both bands, so band 1's rewrite references band 2's component and the two halves do not compile apart. An earlier draft split them with a stub and left the tree red between commits; that traded a real review gate for a smaller diff and was reverted.
