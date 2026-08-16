@@ -9,10 +9,14 @@ using Claude MCP to help managing my goals and stuff, it feels overwhelming."*
 
 Of course it does. The agent has no triage.
 
-**Scope: two slices.** §1 adds `set_horizon` — one verb, one existing action,
-no new store mutation. §2 adds a term, and does it by making the board's
-existing "parked" rule date-aware rather than by inventing a second gate. §3
-names what is deliberately deferred, and why the deferral is not tidiness.
+**Scope: one verb.** §1 adds `set_horizon` — one protocol case, one handler
+branch, one schema entry, and one call into an action that already exists. No
+new store mutation, no signature changed, no surface touched.
+
+§2 and §3 are **designed and deliberately not built.** They are kept here
+because the reasoning is the expensive part and it will still be right in
+October; ordering them behind §1 is the point rather than an oversight. The
+implementation plan that follows this spec covers §1 alone.
 
 ## The problem, in the owner's data
 
@@ -162,7 +166,13 @@ also does the specific thing the owner needs this week: `set_horizon` four
 exams out of Someday in four calls, from the terminal, without touching the
 board.
 
-## §2 — The term
+## §2 — The term *(designed, not built)*
+
+> **Deferred on 16 August 2026, by the owner's call, and the reason is in the
+> section itself:** §1 is an afternoon; this is a wide mechanical diff across
+> `backlogGroups`, the execution advisor, `cardPrimaryAction` and every fixture
+> that calls them. Nothing below is known to be wrong — it is known to be
+> expensive at the wrong moment. Revisit alongside §3, after 25 September.
 
 ### It is not a scope. It is an automatic horizon.
 
@@ -259,7 +269,7 @@ One field, in the existing settings surface: a date. No wizard, no term object,
 no start date — `todayStr()` is the start, and a term whose start is in the past
 is a term you are already in.
 
-## §3 — Deliberately not in this spec
+## §3 — Further out, and deliberately so
 
 **The `deadline` / `practice` split.** The model this is heading for gives
 `Goal` a `kind` and a `weeklyMin`, takes deadline-goals out of the horizon
@@ -301,6 +311,12 @@ loop over this one.
 - a store that refuses the move errors rather than reporting success;
 - `persistFailed` after a successful move is reported.
 
+`mcp/server.js`
+- no test. It declares shapes for the model's benefit; `validAgentRequest` is
+  the validation, and it is tested above.
+
+### Deferred with §2
+
 `term.test.ts`
 - absent `termUntil` puts every goal in term, including an undated one;
 - an undated goal is out of term once one is set;
@@ -318,12 +334,19 @@ loop over this one.
 
 ## §5 — Decisions
 
-**Overturned:** none. `PLANNING_HORIZONS` gains a second condition and keeps its
-one-rule-for-every-surface discipline; this spec adds no parallel gate.
+**Overturned:** none, and §1 cannot overturn anything — it adds a verb over an
+action the ⋯ menu already calls, so every rule about horizons, undo and
+column-major order is inherited rather than restated.
 
-**Pinned:** `lifeScope`'s refusal to scope capacity per life stands, and §2 is
-not a counter-example — a term parks work, it does not divide hours.
+**Pinned by §1:** a write from the agent is ONE call into the action the UI
+calls; a refusal is never reported as success; `persistFailed` is re-read after
+every mutation. `set_horizon` is the fourth verb to spend all three and changes
+none of them.
 
-**New, and load-bearing:** a term is a SETTING where a life scope is view state,
+**Deferred with §2:** that `PLANNING_HORIZONS` should gain a second condition
+rather than acquire a parallel gate; that `lifeScope`'s refusal to scope
+capacity is not contradicted by a term, because a term parks work rather than
+dividing hours; and that a term is a SETTING where a life scope is view state,
 because a term is a fact about the year and a scope is a way of looking at a
-board.
+board. All three are conclusions, not open questions — they are simply not
+being spent yet.
