@@ -323,6 +323,10 @@ export function WeekGrid({
               key={iso}
               date={iso}
               isToday={iso === today}
+              // A day strictly before today has elapsed — a past day of the
+              // current week, or every day of a past week. Dimmed so it cannot
+              // be mistaken for available; still droppable unless `readOnly`.
+              isPast={iso < today}
               availabilityWindow={windowForDate(iso, windows)}
               nowMinute={iso === today ? nowMinute : null}
               readOnly={readOnly}

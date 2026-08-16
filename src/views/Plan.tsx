@@ -557,6 +557,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
         <div className="min-w-0 md:pl-[18px]">
           <WeekHeader
             weekStart={weekStart}
+            today={today}
             isPast={isPast}
             capacity={capacity}
             mode={planMode}

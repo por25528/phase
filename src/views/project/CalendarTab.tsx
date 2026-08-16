@@ -179,6 +179,7 @@ export function CalendarTab({ goal }: { goal: Goal }) {
           <div className="min-w-0">
             <WeekHeader
               weekStart={weekStart}
+              today={today}
               isPast={false}
               capacity={capacity}
               onPrev={() => setWeekStart(addDays(weekStart, -7))}

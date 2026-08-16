@@ -56,6 +56,53 @@ export function loadParts(
   return parts;
 }
 
+/**
+ * The week's free figure, split by tense: what is still ahead, and what has
+ * already gone.
+ *
+ * `weekCapacity` sums a PAST day's whole window into `freeMin` — the
+ * NO_PAST_LIMIT rule, which is correct so retrospectives read "you had six
+ * hours and planned two" rather than "you have nothing left". But it means the
+ * week total is mostly ELAPSED time on any day but Monday: "45h free" on a
+ * Saturday is 45 hours that were all Mon–Fri and are all gone. The header is
+ * read as "how much can I still get done", and that number answers a different
+ * question in the same font.
+ *
+ * So the free figure splits the way `planned`/`to place` already split. A day
+ * is `spent` once its date is strictly before today; today's own remaining
+ * window is `left`, because it genuinely still is. `leftMin` is derived from
+ * the week total rather than re-summed from the future days, so `left + spent`
+ * is exactly `freeMin` even if `days` is ever handed empty.
+ */
+export function weekFreeSplit(
+  c: Pick<CapacityFigures, 'freeMin'> & { days: readonly { date: string; freeMin: number }[] },
+  today: string,
+): { leftMin: number; spentMin: number } {
+  const spentMin = c.days.reduce((sum, d) => (d.date < today ? sum + d.freeMin : sum), 0);
+  return { leftMin: Math.max(0, c.freeMin - spentMin), spentMin };
+}
+
+/**
+ * The week header's priced parts, with the free figure split by tense.
+ *
+ * A fully-future week has nothing spent, so the split collapses back to a bare
+ * `45h free` and the week reads exactly as it does today — a future week is
+ * never made uglier to fix a current one. The planned / to-place tail is the
+ * same as `loadParts`.
+ */
+export function weekLoadParts(
+  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'> & { days: readonly { date: string; freeMin: number }[] },
+  today: string,
+): string[] {
+  const { leftMin, spentMin } = weekFreeSplit(c, today);
+  const parts = spentMin === 0
+    ? [`${formatMinutes(leftMin)} free`]
+    : [`${formatMinutes(leftMin)} left`, `${formatMinutes(spentMin)} spent`];
+  if (c.plannedMin > 0) parts.push(`${formatMinutes(c.plannedMin)} planned`);
+  if (c.backlogMin > 0) parts.push(`${formatMinutes(c.backlogMin)} to place`);
+  return parts;
+}
+
 /** `null` when everything is priced — there is then nothing to act on. */
 export function unestimatedLabel(c: Pick<CapacityFigures, 'unestimated'>): string | null {
   return c.unestimated > 0 ? `${c.unestimated} unestimated` : null;

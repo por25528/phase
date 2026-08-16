@@ -16,12 +16,21 @@ import { fmtD } from '../../lib/dates';
  * neighbouring component adds `window.addEventListener` calls.
  */
 export function DayColumn({
-  date, isToday, availabilityWindow, nowMinute, readOnly, onCreate, children,
+  date, isToday, availabilityWindow, nowMinute, isPast, readOnly, onCreate, children,
 }: {
   date: string;
   isToday: boolean;
   availabilityWindow: AvailabilityWindow | null;
   nowMinute: number | null;
+  /**
+   * True when this day is already behind `today` (a past day of the current
+   * week, or any day of a past week). Draws a wash over the column so elapsed
+   * days do not read identically to available ones — the ambiguity that made
+   * the header's "45h free" dangerous rather than merely imprecise. Distinct
+   * from `readOnly`, which is about the WHOLE week and governs drops; a past
+   * day of the current week is dimmed but still droppable.
+   */
+  isPast?: boolean;
   /** True when this column belongs to a past week — every drop is refused. */
   readOnly?: boolean;
   /** Draw a block here. Absent ⇒ no canvas, so the day accepts no gesture. */
@@ -69,8 +78,24 @@ export function DayColumn({
 
       {children}
 
+      {/* A wash toward the page background, painted OVER the blocks so an
+          elapsed day recedes as a whole rather than only in its empty gaps.
+          `pointer-events-none`, so a past day of the current week stays
+          droppable — the recede is a signal, not a lock. `bg-bg`, not
+          `bg-hover`: hover is the "today" highlight above, and past days must
+          not borrow the colour that means "now". */}
+      {isPast && (
+        <div
+          data-testid={`day-past-${date}`}
+          className="absolute inset-0 bg-bg/55 pointer-events-none"
+          style={{ zIndex: Z_NOW_LINE }}
+          aria-hidden="true"
+        />
+      )}
+
       {isToday && nowMinute !== null && (
         <div
+          data-testid={`now-line-${date}`}
           className="absolute left-0 right-0 h-0 border-t border-accent pointer-events-none"
           style={{ top: `${minuteToPx(nowMinute)}px`, zIndex: Z_NOW_LINE }}
           aria-hidden="true"

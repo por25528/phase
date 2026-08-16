@@ -3,7 +3,7 @@ import type { PlanMode } from '../../db/db';
 import { SegmentedSwitch } from '../../components/SegmentedControl';
 import { fmtD, addDays } from '../../lib/dates';
 import { ymOf, ymLabel } from '../../lib/calendar';
-import { loadParts, unestimatedLabel, capacityNote, isOverCommitted } from './capacityLabel';
+import { weekLoadParts, unestimatedLabel, capacityNote, isOverCommitted } from './capacityLabel';
 import { sectionLabel } from '../../components/sectionLabel';
 
 /** Capitalised here rather than by `capitalize`: a label is written, not cased. */
@@ -19,10 +19,18 @@ const PLAN_RANGES = [
  * in Plan.tsx; this component only reflects that state, it does not create it.
  */
 export function WeekHeader({
-  weekStart, isPast, capacity, calendarAvailable = false, onPrev, onNext, onToday,
+  weekStart, today, isPast, capacity, calendarAvailable = false, onPrev, onNext, onToday,
   unestimatedOpen, onToggleUnestimated, mode = 'week', onModeChange,
 }: {
   weekStart: string;
+  /**
+   * Today's date, 'YYYY-MM-DD'. The free figure is split against it: a day
+   * already past is time SPENT, not time free. Without this the header spends
+   * the word "free" on hours that were all Mon–Fri and are all gone — the
+   * question a person reads it as ("what can I still get done") answered with a
+   * retrospective in the same font. See `weekLoadParts`.
+   */
+  today: string;
   isPast: boolean;
   capacity: WeekCapacity;
   /**
@@ -68,7 +76,7 @@ export function WeekHeader({
       */}
       {!isMonth && (
         <span className={`text-ui tabular-nums ${isOverCommitted(capacity) ? 'text-warn' : 'text-muted'}`}>
-          {loadParts(capacity).join(' · ')}
+          {weekLoadParts(capacity, today).join(' · ')}
         </span>
       )}
       {/* The unestimated count is the one part of the readout that names a

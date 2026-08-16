@@ -87,6 +87,39 @@ describe('creating a block by gesture', () => {
   });
 });
 
+describe('telling elapsed from available at a glance', () => {
+  it('washes a past day column so it does not read as available', () => {
+    render(createElement(DayColumn, {
+      date: '2026-07-14', isToday: false, availabilityWindow: WINDOW,
+      nowMinute: null, isPast: true, onCreate: vi.fn(), children: null,
+    }));
+    expect(screen.getByTestId('day-past-2026-07-14')).not.toBeNull();
+  });
+
+  it('leaves a current or future day undimmed', () => {
+    render(createElement(DayColumn, {
+      date: '2026-07-16', isToday: false, availabilityWindow: WINDOW,
+      nowMinute: null, isPast: false, onCreate: vi.fn(), children: null,
+    }));
+    expect(screen.queryByTestId('day-past-2026-07-16')).toBeNull();
+  });
+
+  it('draws the now-line only on today, and only when the minute is known', () => {
+    const { rerender } = render(createElement(DayColumn, {
+      date: '2026-07-15', isToday: true, availabilityWindow: WINDOW,
+      nowMinute: 600, onCreate: vi.fn(), children: null,
+    }));
+    expect(document.querySelector('[data-testid="now-line-2026-07-15"]')).not.toBeNull();
+
+    // A day that is not today never carries the line, even if handed a minute.
+    rerender(createElement(DayColumn, {
+      date: '2026-07-15', isToday: false, availabilityWindow: WINDOW,
+      nowMinute: null, onCreate: vi.fn(), children: null,
+    }));
+    expect(document.querySelector('[data-testid="now-line-2026-07-15"]')).toBeNull();
+  });
+});
+
 describe('when the day refuses work', () => {
   it('renders no canvas on a day with no working hours', () => {
     render(createElement(DayColumn, {

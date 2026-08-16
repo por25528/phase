@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { DayCapacity, WeekCapacity } from '../../lib/capacity';
 import {
   formatMinutes, capacityParts, capacityNote, isOverCommitted, dayLoadLabel, dayLoadHint,
-  loadParts, unestimatedLabel,
+  loadParts, unestimatedLabel, weekFreeSplit, weekLoadParts,
 } from './capacityLabel';
 
 function day(over: Partial<DayCapacity> = {}): DayCapacity {
@@ -123,6 +123,68 @@ describe('capacityParts over a WeekCapacity', () => {
 
   it('summarises the week', () => {
     expect(capacityParts(week)).toEqual(['45h free', '5h planned', '3 unestimated']);
+  });
+});
+
+/*
+ * The week header's free figure is split by tense. `weekCapacity` sums a PAST
+ * day's whole window into `freeMin` (NO_PAST_LIMIT, so retrospectives read
+ * true), so on any day but Monday the week's `freeMin` is mostly ELAPSED. The
+ * header must not spend the word "free" on hours that have already gone.
+ */
+describe('weekFreeSplit / weekLoadParts', () => {
+  // A whole 9h working day, past days holding their full window; Sat/Sun off.
+  // Mirrors what weekCapacity produces: Mon–Fri hold 9h, the weekend is off.
+  const days = (): DayCapacity[] =>
+    ['2026-08-10', '2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14', '2026-08-15', '2026-08-16']
+      .map((date) => {
+        const off = ['2026-08-15', '2026-08-16'].includes(date);
+        const freeMin = off ? 0 : 540;
+        return { date, freeMin, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: true };
+      });
+
+  const week = (_today: string, over: Partial<WeekCapacity> = {}): WeekCapacity => {
+    const d = over.days ?? days();
+    return {
+      days: d,
+      freeMin: d.reduce((s, x) => s + x.freeMin, 0),
+      plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: true, ...over,
+    };
+  };
+
+  it('splits the free figure into what is left and what is spent', () => {
+    // Saturday 15 Aug: Mon–Fri (45h) all elapsed, today and Sunday are off.
+    expect(weekFreeSplit(week('2026-08-15'), '2026-08-15')).toEqual({ leftMin: 0, spentMin: 2700 });
+  });
+
+  it('reads "0m left · 45h spent" on that Saturday — never "45h free"', () => {
+    expect(weekLoadParts(week('2026-08-15'), '2026-08-15')).toEqual(['0m left', '45h spent']);
+  });
+
+  it('counts today\'s own remaining window as left, not spent', () => {
+    // Wednesday: Mon+Tue spent (18h), Wed–Fri still ahead (27h), weekend off.
+    expect(weekFreeSplit(week('2026-08-12'), '2026-08-12')).toEqual({ leftMin: 2700 - 1080, spentMin: 1080 });
+    expect(weekLoadParts(week('2026-08-12'), '2026-08-12')).toEqual(['27h left', '18h spent']);
+  });
+
+  it('reads a fully-future week exactly as it does today — a bare "free"', () => {
+    // Nothing before Monday, so nothing is spent and the split collapses.
+    expect(weekFreeSplit(week('2026-08-03'), '2026-08-03')).toEqual({ leftMin: 2700, spentMin: 0 });
+    expect(weekLoadParts(week('2026-08-03'), '2026-08-03')).toEqual(['45h free']);
+  });
+
+  it('left + spent is exactly freeMin even when days is somehow empty', () => {
+    const w = week('2026-08-15', { days: [], freeMin: 2700 });
+    const { leftMin, spentMin } = weekFreeSplit(w, '2026-08-15');
+    expect(leftMin + spentMin).toBe(2700);
+    expect(weekLoadParts(w, '2026-08-15')).toEqual(['45h free']);
+  });
+
+  it('appends planned and to-place after the split, unchanged', () => {
+    expect(weekLoadParts(week('2026-08-15', { plannedMin: 300, backlogMin: 30 }), '2026-08-15'))
+      .toEqual(['0m left', '45h spent', '5h planned', '30m to place']);
+    expect(weekLoadParts(week('2026-08-03', { plannedMin: 300 }), '2026-08-03'))
+      .toEqual(['45h free', '5h planned']);
   });
 });
 
