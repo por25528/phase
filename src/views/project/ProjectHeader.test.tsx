@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, Session } from '../../db/types';
 
@@ -103,20 +102,34 @@ async function renderProjectHeader(params: {
  * every node the project inherits from.
  */
 describe('ProjectHeader focus needed', () => {
-  it('tags the whole project from the header', async () => {
-    const user = userEvent.setup();
-    const store = await renderProjectHeader({ title: 'Thesis' });
-
-    await user.click(screen.getByRole('button', { name: /Focus needed/ }));
-    await user.click(screen.getByRole('menuitemradio', { name: 'Deep' }));
-
-    expect(store.getState().goals[0].demand).toBe('deep');
-    expect(screen.getByRole('button', { name: 'Focus needed: Deep' })).toBeTruthy();
-  });
-
   it('is absent on a completed project, which is frozen', async () => {
     await renderProjectHeader({ title: 'Thesis', isCompleted: true });
 
     expect(screen.queryByRole('button', { name: /Focus needed/ })).toBeNull();
+  });
+});
+
+/**
+ * The density pass: health becomes one pill instead of the first link in a
+ * four-fact dot-chain, and the demand control leaves the header line — it
+ * moves into `GoalMetaPopover` (Task 5), which is a property, not a header
+ * fact.
+ */
+describe('the header after the density pass', () => {
+  it('no longer carries a demand control — that is a property, and it lives with the properties', async () => {
+    await renderProjectHeader({ title: 'Systems' });
+    expect(screen.queryByRole('button', { name: /Focus needed/ })).toBeNull();
+  });
+
+  it('states health as one object', async () => {
+    await renderProjectHeader({ title: 'Systems' });
+    const pill = screen.getByTestId('health-pill');
+    expect(pill.className).toContain('rounded-[4px]');
+    expect(pill.className).toContain('font-semibold');
+  });
+
+  it('paints no warning colour on a goal that is not at risk', async () => {
+    await renderProjectHeader({ title: 'Systems' });
+    expect(screen.getByTestId('health-pill').className).not.toContain('text-warn');
   });
 });
