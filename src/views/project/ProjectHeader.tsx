@@ -8,9 +8,6 @@ import { goalPct } from '../../lib/pct';
 import { todayStr, fmtD } from '../../lib/dates';
 import { fmtMinutes, goalEffort } from '../../lib/effort';
 import { goalHealth, HEALTH_TONE, HEALTH_WORD } from '../../lib/health';
-import { DEMANDS, DEMAND_WORD } from '../../lib/demand';
-import { Popover } from '../../components/Popover';
-import { PropertyOption } from '../../components/PropertyRow';
 import { GoalMetaPopover } from './GoalMetaPopover';
 
 // ── Header ────────────────────────────────────────────────────────────────────
@@ -119,7 +116,15 @@ export function ProjectHeader({
           onClick={() => setMetaOpen((was) => !was)}
           className="flex items-center gap-[6px] max-w-[420px] px-[8px] py-[5px] rounded-field text-meta tabular-nums hover:bg-hover"
         >
-          <span className={`font-semibold whitespace-nowrap ${HEALTH_TONE[verdict.health]}`}>
+          {/* One object, not the first link in a four-fact chain. It earns the
+              eye through weight and ground — never hue: HEALTH_TONE already
+              reserves colour for at-risk and blocked, so a healthy goal's
+              header stays entirely neutral and colour means something when it
+              finally arrives. */}
+          <span
+            data-testid="health-pill"
+            className={`font-semibold whitespace-nowrap px-[7px] py-[2px] rounded-[4px] bg-hover-deep ${HEALTH_TONE[verdict.health]}`}
+          >
             {HEALTH_WORD[verdict.health]}
           </span>
           {g.deadline && (
@@ -153,44 +158,6 @@ export function ProjectHeader({
             onDraftChange={(start, deadline) => { setDraftStart(start); setDraftDeadline(deadline); }}
             onClose={() => setMetaOpen(false)}
           />
-        )}
-
-        {/* The whole project's demand, in the header's control group rather
-            than the overflow menu — the menu holds Complete/Reopen,
-            irreversible lifecycle verbs, and a property editor among them
-            would read as one. A frozen project is withheld entirely, like
-            every other editor that writes to it. */}
-        {!isCompleted && (
-          <Popover
-            label={g.demand ? `Focus needed: ${DEMAND_WORD[g.demand]}` : 'Focus needed: Not set'}
-            role="menu"
-            align="end"
-            panelWidth={188}
-            triggerClassName="text-meta px-[8px] py-[5px] rounded-field hover:bg-hover text-muted"
-            trigger={g.demand ? DEMAND_WORD[g.demand] : 'Focus'}
-          >
-            {(close) => (
-              <>
-                {DEMANDS.map((d) => (
-                  <PropertyOption
-                    key={d}
-                    close={close}
-                    current={g.demand === d}
-                    onSelect={() => actions.setGoalDemand(g.id, d)}
-                  >
-                    {DEMAND_WORD[d]}
-                  </PropertyOption>
-                ))}
-                <PropertyOption
-                  close={close}
-                  current={g.demand === undefined}
-                  onSelect={() => actions.setGoalDemand(g.id, null)}
-                >
-                  Not set
-                </PropertyOption>
-              </>
-            )}
-          </Popover>
         )}
 
         {/* Lifecycle. A completed goal used to get a permanent bordered card in

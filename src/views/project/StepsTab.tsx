@@ -80,7 +80,7 @@ export function StepsTab({
           <input
             ref={addRootRef}
             className="ghost-in w-full text-body"
-            placeholder={hasSteps ? '+ add task…' : '+ add the first task…'}
+            placeholder={hasSteps ? '+ Add task' : '+ Add the first task'}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && addRootRef.current) {
                 const v = addRootRef.current.value.trim();

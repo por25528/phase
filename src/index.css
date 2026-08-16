@@ -240,6 +240,21 @@
     .group:not(:hover) .quiet-control:not(:focus-visible) { opacity: 0; }
   }
 
+  /* The nested "+ Add task" input, gated on its SUBTREE rather than its row.
+     A separate class pair because `.quiet-control` matches the literal `.group`
+     the row already owns — reusing it would reveal this input on row hover,
+     which is the wrong hover, and Tailwind's bare `group` does not nest.
+     `:focus-within` and opacity (rather than `display:none`) are what keep the
+     input reachable by keyboard; the hover gate is what keeps it visible on
+     touch, where `:hover` never resolves. */
+  .subtree-reveal {
+    opacity: 1;
+    transition: opacity .12s;
+  }
+  @media (hover: hover) {
+    .subtree:not(:hover) .subtree-reveal:not(:focus-within) { opacity: 0; }
+  }
+
   /* Markdown notes use the app's type and colour tokens rather than Tiptap's
      stylesheet. The editor content is the direct child of this wrapper. */
   /* The border exists at rest and is simply not painted, so nothing moves when
