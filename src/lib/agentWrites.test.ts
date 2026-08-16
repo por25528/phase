@@ -89,6 +89,21 @@ function harness(opts: {
         }),
       });
     }),
+    /*
+     * A SIMPLIFICATION of the real action, and deliberately so: the real one
+     * also re-ranks the target column through `setGoalBoard`. The handler
+     * reads only `column`, so modelling the rank here would test the fixture.
+     * It DOES model the early return, because "already there" is a case the
+     * handler has to answer for.
+     */
+    moveGoalToColumn: vi.fn((goalId: string, column: number) => {
+      patch({
+        goals: current.goals.map((g) => {
+          if (g.id !== goalId || (g.column ?? 0) === column) return g;
+          return { ...g, column };
+        }),
+      });
+    }),
     setNodeEstimate: vi.fn((nodeId: string, minutes: number | null) => {
       const goal = current.goals.find((g) => findEverywhere(g.nodes, nodeId));
       if (!goal) return;
@@ -302,6 +317,121 @@ describe('set_life', () => {
     });
     const res = handleAgentWrite({ tool: 'set_life', goalId: 'g1', life: 'CU' }, h.deps);
     expect(errorOf(res)).toBe('"Thesis" did not take that life.');
+  });
+});
+
+describe('set_horizon', () => {
+  it('moves a project, and answers in the board\'s own words', () => {
+    const h = harness({ goals: [GOAL()] });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'g1', horizon: 'someday' },
+      h.deps,
+    );
+    expect(h.spies.moveGoalToColumn).toHaveBeenCalledWith('g1', 3);
+    expect(res).toEqual({
+      ok: true,
+      data: { goalId: 'g1', horizon: 'Someday', moved: true, nowCount: 0 },
+    });
+  });
+
+  /*
+   * `moveGoalToColumn` returns early when the goal is already in the
+   * requested horizon — deliberately, so a no-op cannot arm an undo that
+   * displaces a real one. The postcondition the caller asked for nevertheless
+   * HOLDS, so this is `ok`. Rule 1 forbids reporting a failed WRITE as
+   * success; it does not forbid reporting an already-true STATE as true.
+   */
+  it('is a no-op and not a refusal when the project is already there', () => {
+    const h = harness({ goals: [GOAL({ column: 3 })] });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'g1', horizon: 'someday' },
+      h.deps,
+    );
+    expect(h.spies.moveGoalToColumn).toHaveBeenCalledWith('g1', 3);
+    expect(res).toEqual({
+      ok: true,
+      data: { goalId: 'g1', horizon: 'Someday', moved: false, nowCount: 0 },
+    });
+  });
+
+  it('treats an absent column as Now', () => {
+    const h = harness({ goals: [GOAL()] });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'g1', horizon: 'now' },
+      h.deps,
+    );
+    expect(res).toEqual({
+      ok: true,
+      data: { goalId: 'g1', horizon: 'Now', moved: false, nowCount: 1 },
+    });
+  });
+
+  /*
+   * The cap is a READOUT on the board ("4 of 6 focus slots used"), not a
+   * refusal — `moveGoalToColumn` does not check `NOW_WIP_LIMIT`. So this verb
+   * does not either, and reports the resulting count instead, which is what
+   * lets an agent say "that is seven in Now and the board shows six".
+   */
+  it('reports the resulting Now count rather than enforcing the cap', () => {
+    const h = harness({
+      goals: [
+        GOAL({ id: 'g1', column: 3 }),
+        GOAL({ id: 'g2', column: 0 }),
+        GOAL({ id: 'g3', column: 0 }),
+        GOAL({ id: 'g4', column: 0, completedAt: '2026-08-01' }),
+      ],
+    });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'g1', horizon: 'now' },
+      h.deps,
+    );
+    // g1 joins g2 and g3. The archived g4 is not a focus slot.
+    expect(res).toEqual({
+      ok: true,
+      data: { goalId: 'g1', horizon: 'Now', moved: true, nowCount: 3 },
+    });
+  });
+
+  it('refuses a project that is not there', () => {
+    const h = harness({ goals: [GOAL()] });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'nope', horizon: 'now' },
+      h.deps,
+    );
+    expect(h.spies.moveGoalToColumn).not.toHaveBeenCalled();
+    expect(errorOf(res)).toBe('No project with id "nope".');
+  });
+
+  it('refuses a completed project rather than moving it', () => {
+    const h = harness({ goals: [GOAL({ completedAt: '2026-08-01' })] });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'g1', horizon: 'now' },
+      h.deps,
+    );
+    expect(h.spies.moveGoalToColumn).not.toHaveBeenCalled();
+    expect(errorOf(res)).toBe('"Thesis" is a completed project — reopen it in Phase first.');
+  });
+
+  it('reports a refusal when the store silently declined to write', () => {
+    const h = harness({
+      goals: [GOAL()],
+      actions: { moveGoalToColumn: vi.fn() },
+    });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'g1', horizon: 'someday' },
+      h.deps,
+    );
+    expect(errorOf(res)).toBe('"Thesis" did not move to Someday.');
+  });
+
+  it('reports persistFailed even though the move landed in memory', () => {
+    const h = harness({ goals: [GOAL()], state: { persistFailed: true } });
+    const res = handleAgentWrite(
+      { tool: 'set_horizon', goalId: 'g1', horizon: 'someday' },
+      h.deps,
+    );
+    expect(h.spies.moveGoalToColumn).toHaveBeenCalledWith('g1', 3);
+    expect(errorOf(res)).toContain('could not be saved');
   });
 });
 

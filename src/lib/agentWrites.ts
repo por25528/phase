@@ -7,6 +7,7 @@ import { isValidLocalDate } from './schedule';
 import { findNode, isLeafNode } from './tree';
 import { isDone } from './status';
 import { todayStr } from './dates';
+import { columnOfHorizonWord, HORIZON_LABELS } from './horizons';
 
 /**
  * The write half of the agent surface.
@@ -259,6 +260,39 @@ export function handleAgentWrite(
       // The STORED title, not the one that was typed — the match is
       // case-insensitive, so echoing the request would misreport what landed.
       return settled({ goalId: request.goalId, lifeId, life: lifeTitle });
+    }
+
+    case 'set_horizon': {
+      const owner = project(state, request.goalId);
+      if (failed(owner)) return errorResponse(owner.error);
+      const target = columnOfHorizonWord(request.horizon);
+      const before = owner.found.column ?? 0;
+      actions.moveGoalToColumn(request.goalId, target);
+      /*
+       * Rule 2: `moveGoalToColumn` returns void and refuses SILENTLY — on a
+       * goal it cannot find, and on the horizon the goal is already in. Re-read
+       * rather than mirror its guard.
+       *
+       * The already-there case passes this check by construction: nothing
+       * moved, but `before === target`, so the postcondition holds and `moved`
+       * carries the distinction instead of an error doing it.
+       */
+      const after = getState().goals.find((g) => g.id === request.goalId);
+      if ((after?.column ?? 0) !== target) {
+        return errorResponse(`"${owner.found.title}" did not move to ${HORIZON_LABELS[target]}.`);
+      }
+      // The cap is a readout, not a refusal — `moveGoalToColumn` does not check
+      // `NOW_WIP_LIMIT` and neither does this. Saying what Now now holds is the
+      // difference between an agent that overfills it in silence and one that
+      // can tell its owner it just did.
+      const nowCount = getState().goals
+        .filter((g) => !g.completedAt && (g.column ?? 0) === 0).length;
+      return settled({
+        goalId: request.goalId,
+        horizon: HORIZON_LABELS[target],
+        moved: before !== target,
+        nowCount,
+      });
     }
 
     case 'complete_task': {
