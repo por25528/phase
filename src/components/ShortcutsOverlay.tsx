@@ -25,6 +25,16 @@ const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['Esc'], label: 'Close drawer or dialog' },
 ];
 
+// Capture syntax — the `#goal @date ~45m` grammar that ⌘N reads out of a line.
+// It lived only in the input placeholder, which disappears the instant anyone
+// types, so the one place a person can look up the syntax never held it. Each
+// `keys` entry is a sigil form; the label says what it does.
+const CAPTURE_KEYS: { keys: string[]; label: string }[] = [
+  { keys: ['#goal'], label: 'File the task under a goal' },
+  { keys: ['@date'], label: 'Schedule it — @friday, @tomorrow, @aug-24' },
+  { keys: ['~time'], label: 'Estimate it — ~45m, ~2h, ~1h30' },
+];
+
 // Context keys — they act only inside the Plan view, so the overlay groups
 // them separately rather than implying they work everywhere. `1`-`7` also
 // require a focused backlog row; `[`, `]` and `t` work regardless of focus.
@@ -168,6 +178,20 @@ export function ShortcutsOverlay({ open, onClose }: { open: boolean; onClose: ()
             <ShortcutRow key={shortcut.label} keys={shortcut.keys} label={shortcut.label} />
           ))}
         </dl>
+        <div className="mt-[14px] pt-[12px] border-t border-line-soft">
+          <h3 className={`mb-[9px] ${sectionLabel}`}>
+            Capture syntax
+          </h3>
+          <dl className="flex flex-col gap-[9px]">
+            {CAPTURE_KEYS.map((shortcut) => (
+              <ShortcutRow key={shortcut.label} keys={shortcut.keys} label={shortcut.label} />
+            ))}
+          </dl>
+          <p className="mt-[9px] text-meta text-muted leading-[1.5]">
+            One line does it:{' '}
+            <span className="font-mono text-ink-soft">Draft essay #english @friday ~90m</span>
+          </p>
+        </div>
         <div className="mt-[14px] pt-[12px] border-t border-line-soft">
           <h3 className={`mb-[9px] ${sectionLabel}`}>
             While planning a task
