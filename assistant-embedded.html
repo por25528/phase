@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phase Assistant — embedded harness</title>
+    <!-- A harness page, and the only reason it exists is that the shelf's two
+         presentations are one component. `assistant.html` mounts the overlay
+         and is therefore `presentation="shelf"` forever; nothing rendered the
+         380px `embedded` case at its real width until this page did, which is
+         how a title collapsed to 28px inside `AssistantHost` and survived
+         seven reviews. It boots `src/assistant/embeddedHarness.tsx` — not the
+         overlay entry, so `entryBoundary.test.ts`'s graph is untouched, and
+         not the app entry, so there is still no store on this side.
+
+         No no-FOUC script: the capture script sets the theme class itself,
+         and a page that guessed would race it. -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/assistant/embeddedHarness.tsx"></script>
+  </body>
+</html>
