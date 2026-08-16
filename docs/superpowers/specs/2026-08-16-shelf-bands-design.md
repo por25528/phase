@@ -234,7 +234,11 @@ re-numbered.
 - A new assertion that the running state keeps `Complete session` at its full
   label, so the mockup's expedient cannot creep back in under height pressure.
 - `designScale.test.ts` and `paletteContrast.test.ts` must pass untouched — no
-  literal hex, no arbitrary `text-[Nrem]`, no uppercase without `font-mono`.
+  literal hex, no arbitrary `text-[Nrem]`, and no `uppercase` spelled outside
+  `sectionLabel.ts`. Not "no uppercase without `font-mono`": that is the
+  misreading §4 exists to correct — the guard is a FILE allowlist and never
+  looks at the line, so the caption is legal because `captionLabel` is
+  imported, not because `font-mono` sits beside it.
 - `npm run build` then `npx electron scripts/measure-shelf.cjs`, and `HEIGHT`
   set from its output.
 

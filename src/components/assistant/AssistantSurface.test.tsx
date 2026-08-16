@@ -742,8 +742,14 @@ describe('AssistantSurface', () => {
    * The captions used to read "I've got" and "Focus" — one completes a
    * sentence with its control, the other names a thing. Two nouns of the same
    * kind is the fix. They take the mono voice because the bar is the
-   * instrument's legend; that amends Stone §5's exception for this site, and
-   * uppercase is only legal at all because font-mono travels with it.
+   * instrument's legend; that amends Stone §5's exception for this site.
+   *
+   * The uppercase is legal because the voice is DECLARED in `sectionLabel.ts`
+   * and imported from there — `designScale.test.ts`'s guard is a FILE
+   * allowlist that never inspects the line, so `font-mono` beside `uppercase`
+   * satisfies nothing. `AssistantSurface.tsx` passes it by spelling
+   * `uppercase` zero times, which is why what this asserts is the class the
+   * caption resolves to and not a rule about how it was written.
    */
   it('captions the dials as parallel nouns in the mono voice', () => {
     render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
