@@ -9,9 +9,11 @@ import { durationOf } from '../../../lib/slot';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
-import { IconCheck, IconGrip, IconX } from '../../../components/Icons';
+import { IconArrowUpRight, IconCheck, IconX } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 import { sectionLabel } from '../../../components/sectionLabel';
+import { projectSpineClass } from '../../../lib/projectColour';
+import { formatMinutes } from '../capacityLabel';
 
 /**
  * One draggable row.
@@ -19,16 +21,14 @@ import { sectionLabel } from '../../../components/sectionLabel';
  * No border, no fill, no radius at rest — the rail holds dozens of these and
  * every border is a decision the eye has to process for nothing.
  *
- * It DOES carry a grip, reversing the earlier call here that "the hover tint
- * and `cursor-grab` are the whole affordance; a permanent grip glyph would
- * advertise what the cursor already says". `cursor-grab` only says it once the
- * pointer is already on the row, which cannot help someone who has not worked
- * out that the rail and the calendar are connected — and the evidence that
- * they do not is that the Plan view needs a hint above the grid explaining the
- * connection in a sentence. A 12px mark on each row states it where the
- * question is asked. Faint rather than hover-revealed for the same reason: an
- * affordance that appears on hover is an affordance for people who already
- * suspected it was there.
+ * It carries NO grip, which reverses the reversal recorded here before it. The
+ * argument for the glyph was that `cursor-grab` "only says it once the pointer
+ * is already on the row", and that is still true — but the group SPINE now
+ * makes the same statement statically, and groups the rows while doing it, so
+ * the glyph was the second mark saying one thing. Removing it returns 18px to a
+ * 249px row, which is the difference between one line and two for most titles;
+ * `showPlanHint` still names both routes in a sentence until the first
+ * placement retires it.
  *
  * The complete/delete controls follow the same rule: text at rest, revealed on
  * hover or keyboard focus (the pattern `Habits.tsx` already uses in this rail).
@@ -88,18 +88,6 @@ function BacklogRow({
         isDragging ? 'opacity-40' : 'hover:bg-hover'
       } ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
     >
-      {/*
-        Decorative, not a handle: `listeners` stay on the ROW, which is what has
-        been draggable all along — moving them here would shrink a full-width
-        target to 12px. This only says the row can be dragged.
-
-        `aria-hidden` because the row's own label already reads "drag onto a
-        day, or press 1–7"; a second announcement of the same fact is noise on
-        the surface that can least afford it.
-      */}
-      <span aria-hidden="true" className="flex-none text-faint-2">
-        <IconGrip size={12} />
-      </span>
       {/* The rail is 249px, so a title shares the row with a due chip and the
           estimate. Wrapping to a SECOND line rather than truncating on the
           first is what tells two problem sets apart: `6.006 Proble…` and
@@ -227,6 +215,10 @@ export function Backlog({
   // Counted from `items`, never `shown`: the cap hides rows, but this number
   // is what tells you how much is unplanned, and it must stay honest.
   const total = groups.reduce((sum, g) => sum + g.items.length, 0);
+  const totalMin = groups.reduce(
+    (sum, g) => sum + g.items.reduce((n, it) => n + (it.estimateMin ?? 0), 0),
+    0,
+  );
 
   function toggle(key: string) {
     setExpanded((current) => {
@@ -241,7 +233,13 @@ export function Backlog({
     <div>
       <h3 className={`flex items-baseline gap-[6px] py-[6px] px-[6px] ${sectionLabel}`}>
         <span className="flex-1">To plan</span>
-        <span className="text-muted tabular-nums">{total}</span>
+        {/* Count AND time. The count alone cannot be checked against the
+            header's meter, and those two figures being comparable is the point
+            of showing either. Summed over `items`, never `shown`, for the same
+            reason the count is. */}
+        <span className="text-muted tabular-nums">
+          {totalMin > 0 ? `${total} · ${formatMinutes(totalMin)}` : total}
+        </span>
       </h3>
 
       {/*
@@ -294,11 +292,38 @@ export function Backlog({
         </div>
       ) : (
         capped.map((group, i) => (
-          <div key={group.key} className={i === 0 ? '' : 'mt-[14px]'}>
-            <div className="flex items-baseline gap-[6px] px-[6px]">
-              <span title={group.goalTitle} className="text-body font-semibold text-ink flex-1 min-w-0 truncate">
-                {group.goalTitle}
-              </span>
+          <div
+            key={group.key}
+            className={`border-l-2 ml-[6px] pl-[7px] ${projectSpineClass(group.goalId)} ${
+              i === 0 ? '' : 'mt-[14px]'
+            }`}
+          >
+            <div className="flex items-baseline gap-[6px] pr-[6px]">
+              {/*
+                The project's name is the route to the project. A rail row has
+                never had one — the only way to reach the tree a step belongs to
+                was to leave for Goals and find it — and the name was already
+                sitting here doing nothing. One control per GROUP rather than a
+                `⋯` on every row, which is less UI for the same capability.
+              */}
+              {group.goalId ? (
+                <button
+                  type="button"
+                  onClick={() => actions.openProject(group.goalId!)}
+                  title={group.goalTitle}
+                  aria-label={`Open project “${group.goalTitle}”`}
+                  className="group flex items-center gap-[4px] flex-1 min-w-0 text-body font-semibold text-ink text-left rounded-[4px] hover:text-accent"
+                >
+                  <span className="truncate">{group.goalTitle}</span>
+                  <span aria-hidden="true" className="quiet-control flex-none text-faint">
+                    <IconArrowUpRight size={11} />
+                  </span>
+                </button>
+              ) : (
+                <span title={group.goalTitle} className="text-body font-semibold text-ink flex-1 min-w-0 truncate">
+                  {group.goalTitle}
+                </span>
+              )}
               {group.goalId && (
                 <span className="flex-none font-mono text-eyebrow text-muted tabular-nums">
                   {group.pct}%
