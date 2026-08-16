@@ -12,6 +12,7 @@ import { projectVelocity, describeVelocity } from '../../lib/velocity';
 import { projectCalibration, describeCalibration } from '../../lib/actuals';
 import type { GoalEffort } from '../../lib/effort';
 import type { HealthVerdict } from '../../lib/health';
+import { DEMANDS, DEMAND_WORD } from '../../lib/demand';
 import {
   goalDateDraftIsDirty,
   needsDateConfirmation,
@@ -161,6 +162,54 @@ export function GoalMetaPopover({
           )}
         </div>
       </div>
+
+      {/* Focus needed — an INLINE segmented control, never a nested Popover.
+          This dialog registers its own capture-phase Escape listener on window
+          (above); a Popover inside it would register a second one on the same
+          node, capture listeners on one node fire in registration order, and
+          this one always registers first because it opened first. One Escape
+          would close both. Three values plus "Not set" do not need a
+          disclosure, so the fix is to have no second popover at all.
+
+          Withheld on a completed goal, like every other editor that writes to
+          a frozen project — the header gated this and the gate has to travel
+          with the control. */}
+      {!g.completedAt && (
+        <div className="mt-[12px] pt-[12px] border-t border-line">
+          <div className="text-meta font-[550] text-muted mb-[6px]">Focus needed</div>
+          <div role="radiogroup" aria-label="Focus needed" className="flex flex-wrap gap-[4px]">
+            {DEMANDS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                role="radio"
+                aria-checked={g.demand === d}
+                onClick={() => actions.setGoalDemand(g.id, d)}
+                className={`text-meta px-[8px] min-h-[24px] inline-flex items-center rounded-field ${
+                  g.demand === d
+                    ? 'bg-accent-tint text-accent-deep font-semibold'
+                    : 'text-muted hover:bg-hover hover:text-ink'
+                }`}
+              >
+                {DEMAND_WORD[d]}
+              </button>
+            ))}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={g.demand === undefined}
+              onClick={() => actions.setGoalDemand(g.id, null)}
+              className={`text-meta px-[8px] min-h-[24px] inline-flex items-center rounded-field ${
+                g.demand === undefined
+                  ? 'bg-accent-tint text-accent-deep font-semibold'
+                  : 'text-muted hover:bg-hover hover:text-ink'
+              }`}
+            >
+              Not set
+            </button>
+          </div>
+        </div>
+      )}
 
       <dl className="mt-[12px] pt-[12px] border-t border-line grid grid-cols-[auto_1fr] gap-x-[12px] gap-y-[5px] text-meta">
         <dt className="text-muted">Progress</dt>
