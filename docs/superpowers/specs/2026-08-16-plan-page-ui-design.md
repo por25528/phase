@@ -203,41 +203,44 @@ states both routes in a sentence. Removing `IconGrip` reclaims ~18px of a 249px
 row, which is the difference between one line and two for most titles. The
 `Backlog.tsx` doc comment is rewritten to record this reversal and its reason.
 
-**Row `⋯` menu.** Delete moves off the row into a menu, per the de-cluttering
-rule. This is a **new** `lib/backlogRowActions.ts` + `BacklogRowMenu` on the
-existing `Popover`/`PopoverItem` primitives — **not** a reuse of
-`RowActions.tsx`, which takes a `GoalNode` and offers indent/outdent/breakdown.
-Those are tree verbs and the rail holds two kinds of item. The split mirrors
-`rowActions.ts`/`RowActions.tsx` (pure verb list, tested without mounting;
-component binds to the store), which is the same split `commands.ts`/`App.tsx`
-uses.
+**No row `⋯` menu. The route to a project goes on the GROUP HEADER.**
 
-Three verbs, so that **every row's menu holds two** — a menu with one item in it
-is worse than the `×` it replaced, which is the trap this section exists to
-avoid:
+The brief asks for row actions to collapse into a `⋯`. That rule is aimed at
+cluttered rows, and this row is not one: `rowActions.ts` records that the
+tree's menu exists because a leaf carried *ten* controls, whereas a rail row
+carries two — the checkbox and, on loose tasks only, `×`. A menu replacing a
+single `×` adds a click and a popover to a 249px row.
 
-| Verb | Applies to | Action |
-|---|---|---|
-| Schedule… | both kinds | opens the existing `ScheduleMenu` (`SchedulePopover.tsx`) |
-| Open in project | goal leaves (`goalId` present) | `openProject(goalId, id)` |
-| Delete | loose tasks only (`kind === 'task'`) | `removeTask(id)` |
+An earlier draft of this spec proposed `backlogRowActions` + a `⋯` carrying
+`Schedule… / Open in project / Delete`. It does not survive contact with the
+code: `ScheduleMenu` takes `goalId: string` and `node: GoalNode`
+(`SchedulePopover.tsx:22`), and every one of its three callers passes a real
+node. A `BacklogItem` has neither — `goalId` is `string | null` and there is no
+node on it. Without `Schedule…` the menu holds exactly one verb per row, which
+is strictly worse than the `×` it replaces. Recorded here because it is the
+trap, not a detour.
 
-`Schedule…` is the verb that makes the menu worth having, and it needs **no new
-store action**: `ScheduleMenu` already resolves to `scheduleTask`/`scheduleNode`,
-which already arm undo for a distance booking and already refuse via
-`describeNoRoom`. It is also the rail's first *visible* route onto the
-calendar — today the only ways are dragging and the undiscoverable `1`–`7`,
-which is precisely why `showPlanHint` has to exist to explain them in a
-sentence.
+So:
 
-`Delete` staying loose-task-only preserves the existing rule that a goal's task
-is deleted in the Goals view, where its tree is visible. `Open in project` is
-new capability, not a move: a rail row currently has no route at all to the
-thing it belongs to.
+- **`×` stays on the row** for loose tasks, hover/focus-revealed via
+  `.quiet-control` exactly as today. It already arms the 5-second undo.
+- **The group header becomes the route to its project.** It renders the
+  project's title inert today; it becomes a `<button>` calling
+  `actions.openProject(goalId)`, with an `IconArrowUpRight` appearing on hover
+  to say so. One control per *group* rather than per row — less UI than the
+  menu, not more, and it sits on the thing it names.
+- Loose tasks have no project, so their group ("Loose tasks", `goalId === null`)
+  stays inert. The button is rendered only when `group.goalId` is non-null,
+  which is the same condition already guarding the `%` figure beside it.
 
-No verb here needs a new undoable mutation — the `CLAUDE.md` test for whether a
-menu change is secretly a feature. `Schedule…` and `Delete` reuse actions that
-already arm their own undo; `Open in project` writes nothing.
+This closes the real gap — a rail row currently has no route at all to the
+thing it belongs to — without inventing a menu to hold it.
+
+**Generalising `ScheduleMenu` to loose tasks is explicitly out of scope**, and
+noted here as the reason the rail still has no visible scheduling verb. It
+would be a genuine win (it would also unblock scheduling a loose task from
+`TaskPage`), but it changes a shared component with three callers and belongs
+in its own change.
 
 The checkbox **stays on the row**. Ticking is the app's single gesture for
 completion and the row keeps controls that are also readouts — the estimate,
@@ -289,10 +292,11 @@ Candidates for `CLAUDE.md` once shipped:
 2. **Month's meter is the sum of the week rows drawn, and says so.** The gutter
    sums to the header by construction. The title names the month; the meter
    names its span. `capacity.ts` gains nothing.
-3. **The rail's `⋯` is not the tree's `⋯`.** `backlogRowActions` is its own
-   verb list because the rail holds two kinds of item and none of the tree's
-   structural verbs apply to a flat list. Its verb set is sized so every row
-   shows at least two — a one-item menu is a worse `×`.
+3. **A menu needs more than one verb to exist.** The rail keeps `×` on the row
+   and puts the project route on the group header, because every `⋯` that
+   survived scrutiny here held one item. `ScheduleMenu` is node-only, which is
+   what makes the third verb unavailable — check that before proposing a rail
+   menu again.
 4. **One filled control per screen, and it lives in the app header.** Restated
    from `App.tsx:475`, now actually true on Plan.
 
@@ -310,8 +314,9 @@ Candidates for `CLAUDE.md` once shipped:
   state, left-cornered date, today pill.
 - `MonthGrid.test.tsx` — gutter renders one row per week, click routes to Week
   with the right `weekStart`, accessible name names the week.
-- New `backlogRowActions.test.ts` — Delete offered for loose tasks only; Open
-  in project offered for goal leaves only.
+- `Backlog` — the group header opens its project; it is inert for the loose-task
+  group (`goalId === null`); `×` still deletes a loose task and is still absent
+  on a goal leaf.
 - `WeekHeader` — figures render in **both** modes; meter and text agree.
 - `designScale.test.ts`, `paletteContrast.test.ts`, `projectColour.test.ts`
   must stay green untouched. If any needs editing, the change is wrong.
@@ -321,7 +326,7 @@ Candidates for `CLAUDE.md` once shipped:
 1. `capacityMeter` + header rebuild (title, meter, nav group,
    `IconChevronLeft`).
 2. Month capacity per week row + gutter + cell density and load figure.
-3. Rail: project spine, grip removal, `backlogRowActions` + `⋯`, button
+3. Rail: project spine, grip removal, group-header project route, button
    demotion, empty-state copy.
 4. Skeleton + single notice slot.
 
