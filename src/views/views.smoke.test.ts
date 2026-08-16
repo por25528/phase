@@ -275,7 +275,7 @@ describe('the three views render against a populated store', () => {
       const html = renderToStaticMarkup(createElement(Plan));
 
       expect(html).toContain('Nothing left to plan');
-      expect(html).toContain('No habits yet');
+      expect(html).toContain('Habits repeat on a schedule and build a streak');
     });
 
     it('Today says what to do about an empty account rather than showing a blank page', async () => {

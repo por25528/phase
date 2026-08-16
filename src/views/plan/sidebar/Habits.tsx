@@ -11,7 +11,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useAppStore } from '../../../state/store';
 import { Tag } from '../../../components/Tag';
 import { TodayCheckbox } from '../../../components/TodayCheckbox';
-import { IconGrip, IconPencil, IconX } from '../../../components/Icons';
+import { IconGrip, IconPencil, IconX, IconPlus } from '../../../components/Icons';
 import { HabitDots } from './HabitDots';
 import { useReducedMotion } from '../../../components/useReducedMotion';
 import { todayStr, addDays, weekDates, streak } from '../../../lib/dates';
@@ -94,7 +94,7 @@ function AddHabitForm({
         <button
           type="button"
           onClick={submit}
-          className="px-[13px] py-[5px] rounded-field bg-ink text-paper text-ui font-semibold hover:bg-ink-hover"
+          className="px-[13px] py-[5px] rounded-field border border-line-2 bg-panel text-ink-soft text-ui font-semibold hover:bg-hover hover:text-ink"
         >
           Add
         </button>
@@ -201,7 +201,7 @@ function SortableHabitRow({
         <button
           type="button"
           onClick={commitRename}
-          className="px-[12px] py-[4px] rounded-field bg-ink text-paper text-ui font-semibold hover:bg-ink-hover flex-none"
+          className="px-[12px] py-[4px] rounded-field border border-line-2 bg-panel text-ink-soft text-ui font-semibold hover:bg-hover hover:text-ink flex-none"
         >
           Save
         </button>
@@ -328,7 +328,9 @@ export function Habits({ reveal }: { reveal?: RevealTarget | null }) {
   return (
     <div className="hb-rail">
       {habits.length === 0 && !adding && (
-        <div className="text-muted text-body italic py-[6px]">No habits yet. Add one to start a streak.</div>
+        <p className="px-[6px] text-body text-muted">
+          Habits repeat on a schedule and build a streak.
+        </p>
       )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={habits.map((h) => h.id)} strategy={verticalListSortingStrategy}>
@@ -358,9 +360,10 @@ export function Habits({ reveal }: { reveal?: RevealTarget | null }) {
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="mt-[8px] px-[13px] py-[6px] rounded-field bg-ink text-paper text-ui font-semibold hover:bg-ink-hover"
+          className="mt-[8px] px-[13px] py-[6px] rounded-field border border-line-2 bg-panel text-ink-soft text-ui font-semibold hover:bg-hover hover:text-ink inline-flex items-center gap-[5px]"
         >
-          + Habit
+          <IconPlus size={12} />
+          New habit
         </button>
       )}
     </div>
