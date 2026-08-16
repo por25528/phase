@@ -83,20 +83,27 @@ describe('response helpers', () => {
  * because the two processes cannot import from each other. Read it as TEXT and
  * pin both halves of the contract, so the copy cannot drift: every tool the
  * schema advertises stays in the protocol vocabulary, and the horizon enum
- * stays the labels, lowercased.
+ * stays the labels, in both casings.
  */
 describe('AGENT_TOOLS vs mcp/server.js', () => {
   const SERVER = readFileSync(new URL('../../mcp/server.js', import.meta.url), 'utf8');
 
   function declaredTools(): string[] {
     const tools: string[] = [];
-    for (const block of ['WRITES', 'ARGUMENT_READS']) {
-      const match = SERVER.match(new RegExp(`const ${block} = \\{([\\s\\S]*?)\\n\\};`));
-      if (!match) throw new Error(`could not locate const ${block} in mcp/server.js`);
-      // Entries are `name: [description, schema]`, so keys are the two-space
-      // indented identifiers immediately followed by `: [`. READS' keys are
-      // followed by a string and are deliberately not matched.
-      for (const key of match[1].matchAll(/^\s{2}(\w+): \[/gm)) {
+    // READS' entries are `name: 'description'` — the key is the two-space
+    // indented identifier followed by `: '`. WRITES' and ARGUMENT_READS' are
+    // `name: [description, schema]`, so `: [`. READS used to be skipped
+    // entirely, and a no-argument read added here but not to AGENT_TOOLS would
+    // have passed the drift test — that gap is closed, not a fact of shape.
+    const blocks: Array<[string, RegExp]> = [
+      ['READS', /^\s{2}(\w+): '/gm],
+      ['WRITES', /^\s{2}(\w+): \[/gm],
+      ['ARGUMENT_READS', /^\s{2}(\w+): \[/gm],
+    ];
+    for (const [name, keyPattern] of blocks) {
+      const match = SERVER.match(new RegExp(`const ${name} = \\{([\\s\\S]*?)\\n\\};`));
+      if (!match) throw new Error(`could not locate const ${name} in mcp/server.js`);
+      for (const key of match[1].matchAll(keyPattern)) {
         tools.push(key[1]);
       }
     }
@@ -120,8 +127,11 @@ describe('AGENT_TOOLS vs mcp/server.js', () => {
     ).toEqual([]);
   });
 
-  it('set_horizon\'s z.enum in mcp/server.js is exactly HORIZON_LABELS, lowercased', () => {
-    const expected = HORIZON_LABELS.map((l) => l.toLowerCase());
+  it('set_horizon\'s z.enum in mcp/server.js is HORIZON_LABELS, in both casings', () => {
+    const expected = [
+      ...HORIZON_LABELS.map((l) => l.toLowerCase()),
+      ...HORIZON_LABELS,
+    ];
     const words = setHorizonEnumWords();
     expect(
       words,

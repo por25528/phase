@@ -1,6 +1,6 @@
 import type { StepStatus } from '../db/types';
 import type { WorkRef } from './expectedTime';
-import { isHorizonWord, type HorizonWord } from './horizons';
+import { isHorizonWord } from './horizons';
 
 /**
  * The only verbs that may cross into the app from outside it, and the only
@@ -29,7 +29,7 @@ export type AgentRequest =
   | { tool: 'estimate'; nodeId: string; minutes: number | null }
   | { tool: 'set_status'; nodeId: string; status: StepStatus; blockedOn?: string }
   | { tool: 'set_life'; goalId: string; life: string | null }
-  | { tool: 'set_horizon'; goalId: string; horizon: HorizonWord }
+  | { tool: 'set_horizon'; goalId: string; horizon: string }
   | { tool: 'complete_task'; ref: WorkRef }
   | { tool: 'schedule'; ref: WorkRef; day: string; startMin?: number; minutes?: number }
   | { tool: 'delete'; ref: WorkRef }

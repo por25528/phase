@@ -48,8 +48,13 @@ export type HorizonWord = Lowercase<(typeof HORIZON_LABELS)[number]>;
  * normalises the same way. The trim is deliberate too — a model echoing a
  * word may pad it with the whitespace the JSON formatting left. This is a
  * wire value, not a title someone typed.
+ *
+ * Deliberately NOT a type predicate: it admits spellings — capitalised,
+ * padded — that `HorizonWord` does not contain, so narrowing to it would let
+ * a future `switch (request.horizon)` typecheck against values that are not
+ * the union.
  */
-export function isHorizonWord(value: unknown): value is HorizonWord {
+export function isHorizonWord(value: unknown): boolean {
   return typeof value === 'string'
     && HORIZON_LABELS.some((l) => l.toLowerCase() === value.trim().toLowerCase());
 }

@@ -86,7 +86,7 @@ and persistence come for free.
 | `estimate` | `nodeId`, `minutes` (or `null`) | `setNodeEstimate` | Tasks only — a group has no estimate of its own |
 | `set_status` | `nodeId`, `status`, `blockedOn?` | `setNodeStatus`, or `toggleLeaf` for `done` | Tasks only; `blockedOn` is accepted only with `blocked` |
 | `set_life` | `goalId`, `life` (or `null`) | `setGoalLife` | By NAME, not id — naming one that does not exist answers with the ones that do |
-| `set_horizon` | `goalId`, `horizon` | `moveGoalToColumn` | `now`/`next`/`later`/`someday`; returns `nowCount`, and never enforces the WIP cap the board only reports |
+| `set_horizon` | `goalId`, `horizon` | `moveGoalToColumn` | `now`/`next`/`later`/`someday` — capitalised spellings are accepted too, because `list_projects` answers with the capitalised labels; returns `nowCount`, and never enforces the WIP cap the board only reports |
 | `complete_task` | `ref` | `toggleLeaf` / `toggleTask` | The same function the checkbox calls |
 | `schedule` | `ref`, `day`, `startMin?` | `scheduleNode` / `scheduleTask` | Books a sitting; see the length limit below |
 | `delete` | `ref` | `removeNodes` / `removeTask` | Reversible — see `undo_last` |
