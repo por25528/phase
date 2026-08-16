@@ -316,7 +316,7 @@ out in full. They share the string by coincidence, not by role:
 | `RecapPanel.tsx:115` | a button — carries `hover:text-ink` |
 | `Timeline.tsx:584` | a sticky row label in the left column |
 | `Timeline.tsx:617` | a sticky row label in the left column |
-| `AssistantSurface.tsx:77` | "Focus", sitting beside its control |
+| ~~`AssistantSurface.tsx:77`~~ | "Focus", sitting beside its control — **amended 2026-08-16.** When the dial strip became a bottom status bar (`2026-08-16-shelf-bands-design.md` §4) this caption took the mono voice: in a status bar it competes with no region heading, and the bar reads as the instrument's legend. It did not merely change voice — it MOVED, and is now `captionLabel` in `components/sectionLabel.ts`, imported like any other. This row originally required it to stay hand-rolled at its call site; that was wrong. `designScale.test.ts` enforces that `sectionLabel.ts` is the only file allowed to spell `uppercase` — the rule being that a voice is declared once and imported rather than copied, which is the same rule that made `sectionLabel` a constant after 36 hand-copies. Weakening that guard to keep this one string at its call site would have inverted it. It stays a SEPARATE export from `sectionLabel`, which is the distinction this row was really protecting: a section label names a REGION, a caption names the CONTROL beside it, and the shelf's status bar is the one card where both appear. The other four exceptions stand. |
 
 That leaves **31 conversions**: `Today.tsx` ×7, `OverviewTab.tsx` ×5,
 `SettingsModal.tsx` ×3, `ShortcutsOverlay.tsx` ×3, `RecapPanel.tsx` ×2,

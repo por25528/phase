@@ -14,7 +14,7 @@ import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
 import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
-import { sectionLabel } from '../sectionLabel';
+import { captionLabel, sectionLabel } from '../sectionLabel';
 import { SessionRing } from './SessionRing';
 import { TodayCheckbox } from '../TodayCheckbox';
 
@@ -73,6 +73,25 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 /**
+ * The notice line, and the two advisory lines, sit ABOVE band 1 with no bottom
+ * inset — a line above the body is not a band and does not get one's bottom
+ * padding.
+ *
+ * The card's padding used to live on the root as a single `p-3`, which is why
+ * every band had to share one inset and no band could carry a full-width
+ * hairline. Each band owns its own now, and the hairlines run edge to edge.
+ *
+ * This states its padding IN FULL rather than appending an override to the band
+ * helper it sits above. `${bandCls(shelf)} pb-0` would leave which rule wins to
+ * the order Tailwind happens to emit `pb-3` and `pb-0` in — `dialogStyles.ts`
+ * says it outright: a class list is not a cascade, and that exact trap is why
+ * `DateField`'s `size` prop exists.
+ */
+function aboveBandCls(shelf: boolean): string {
+  return shelf ? 'px-4 pt-3' : 'px-3';
+}
+
+/**
  * The shelf's two dials, and the only always-present controls on it.
  *
  * They are two axes and never one: the left says how long you have, which
@@ -99,7 +118,7 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
   return (
     <div className={dialStripClass(shelf)}>
       <div className="flex items-center gap-2.5">
-        <span className="text-meta font-semibold text-muted">I&rsquo;ve got</span>
+        <span className={captionLabel}>Time</span>
         <SegmentedSwitch
           label="How long you have"
           size="sm"
@@ -109,7 +128,7 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
         />
       </div>
       <div className="flex items-center gap-2.5">
-        <span className="text-meta font-semibold text-muted">Focus</span>
+        <span className={captionLabel}>Focus</span>
         <SegmentedSwitch
           label="How much focus you have"
           size="sm"
@@ -122,10 +141,21 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
   );
 }
 
+/**
+ * On the shelf this is band 3: a status bar under the content, on `bg-bg`,
+ * with the hairline ABOVE it. Embedded it stays where it was, above the body
+ * with the hairline below — `AssistantHost` renders inside a
+ * `max-h-[70vh] overflow-y-auto` panel, so a bar at the bottom would scroll
+ * out of view instead of pinning, which is the whole point of a status bar.
+ *
+ * The `flex-col` in the embedded branch and its absence in the shelf branch
+ * are both load-bearing: the 380px host has nothing for a second
+ * caption-plus-switch pair to live in on one line.
+ */
 function dialStripClass(shelf: boolean): string {
   return shelf
-    ? 'flex items-center gap-2.5 border-b border-line pb-2'
-    : 'flex flex-col gap-1.5 border-b border-line pb-2';
+    ? 'flex items-center gap-4 border-t border-line bg-bg px-4 py-[7px]'
+    : 'flex flex-col gap-1.5 border-b border-line px-3 pb-2 pt-3';
 }
 
 /**
@@ -513,11 +543,15 @@ export function AssistantSurface({
     );
   }
 
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3">
-      <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf={shelf} />
+  const body = (
+    <>
       {snapshot.notice && (
-        <p className={`text-meta ${snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted'}`}>
+        <p className={[
+          aboveBandCls(shelf),
+          shelf ? 'truncate' : '',
+          'text-meta',
+          snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted',
+        ].join(' ')}>
           {snapshot.notice.text}
         </p>
       )}
@@ -540,6 +574,17 @@ export function AssistantSurface({
           />
         )}
       </div>
+    </>
+  );
+
+  // The dial bar is LAST on the shelf and FIRST embedded — see dialStripClass.
+  // The root carries no padding of its own any more: each band owns its inset,
+  // which is what lets the hairlines between them run edge to edge.
+  return (
+    <div className={`flex h-full min-h-0 flex-col overflow-hidden ${shelf ? '' : 'gap-2 pb-3'}`}>
+      {!shelf && <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf={false} />}
+      {body}
+      {shelf && <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf />}
     </div>
   );
 }

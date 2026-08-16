@@ -595,6 +595,46 @@ describe('AssistantSurface', () => {
     expect(shelfOuter.className).not.toContain('flex-col');
   });
 
+  /*
+   * The captions used to read "I've got" and "Focus" — one completes a
+   * sentence with its control, the other names a thing. Two nouns of the same
+   * kind is the fix. They take the mono voice because the bar is the
+   * instrument's legend; that amends Stone §5's exception for this site, and
+   * uppercase is only legal at all because font-mono travels with it.
+   */
+  it('captions the dials as parallel nouns in the mono voice', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    for (const word of ['Time', 'Focus']) {
+      const caption = screen.getByText(word);
+      expect(caption.className).toContain('font-mono');
+      expect(caption.className).toContain('uppercase');
+    }
+    expect(screen.queryByText(/I’ve got/)).toBeNull();
+  });
+
+  /*
+   * The dials are view state, the least important thing on the card, and they
+   * held the position the eye lands on first. On the shelf they become a
+   * bottom status bar. Embedded keeps them on top: that panel is
+   * `max-h-[70vh] overflow-y-auto`, so a bottom bar there would scroll away
+   * rather than pin.
+   */
+  it('puts the dial bar last on the shelf and first embedded', () => {
+    const positionOfDials = () => {
+      const bar = screen.getByRole('group', { name: 'How long you have' })
+        .parentElement!.parentElement!;
+      const card = bar.parentElement!;
+      return [...card.children].indexOf(bar) === card.children.length - 1;
+    };
+
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    expect(positionOfDials()).toBe(true);
+    cleanup();
+
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    expect(positionOfDials()).toBe(false);
+  });
+
   it('sends the right verb from the right dial', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
