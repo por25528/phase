@@ -92,7 +92,7 @@ export function BoardTab({
         <p className="text-ui text-muted px-[6px]">
           Nothing to arrange yet.{' '}
           <button type="button" onClick={onUseWork} className="font-semibold text-accent-deep hover:underline">
-            Add tasks in Work
+            Add tasks
           </button>
           {' '}and they will appear here by state.
         </p>
@@ -106,7 +106,7 @@ export function BoardTab({
         <p className="text-ui text-muted px-[6px] mb-[10px]">
           Only a few open tasks — {' '}
           <button type="button" onClick={onUseWork} className="font-semibold text-accent-deep hover:underline">
-            Work
+            Tasks
           </button>
           {' '} shows their order, which is probably what matters here.
         </p>

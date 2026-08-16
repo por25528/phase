@@ -185,10 +185,10 @@ describe('the goal board', () => {
    * handful of open tasks the tree wins — it shows ORDER, which is what a
    * reading list or a problem set is actually organised by.
    */
-  it('points a thin goal back at Work instead of showing empty columns', async () => {
+  it('points a thin goal back at Tasks instead of showing empty columns', async () => {
     const { onUseWork } = await mount({ id: 'g', title: 'Small', nodes: [leaf('One'), leaf('Two')] });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Work' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Tasks' }));
 
     expect(onUseWork).toHaveBeenCalled();
   });
