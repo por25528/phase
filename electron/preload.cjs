@@ -49,6 +49,19 @@ contextBridge.exposeInMainWorld('phaseAssistant', {
 // compromised renderer still has no escape hatch. shellIpc.test.ts pins the
 // main-process side; assistantIpc.test.ts pins this surface.
 contextBridge.exposeInMainWorld('phaseShell', {
+  /**
+   * Whether this window wears the macOS inset title bar, so the header has to
+   * leave room for the traffic lights. A STATIC fact, not a channel: it is
+   * settled by `titleBarStyle: 'hiddenInset'` at window construction and cannot
+   * change for the life of the window, so a round trip would only be a slower
+   * way to read `process.platform`.
+   *
+   * The renderer is deliberately not left to infer this from the user agent.
+   * The main process is the side that sets the title bar style, and a second
+   * opinion parsed out of a UA string is the kind of drift the fixed-channel
+   * discipline above exists to prevent.
+   */
+  insetTitleBar: process.platform === 'darwin',
   /** Ask the shell to raise the assistant overlay; resolves true when it ran. */
   openAssistant: () => ipcRenderer.invoke('phase-shell:open-assistant'),
   /** Fires when the shell wants the settings surface open. Returns unsubscribe. */

@@ -32,10 +32,36 @@ describe('App toast announcements', () => {
       const html = renderToStaticMarkup(createElement(App));
 
       expect(html.match(/aria-current="page"/g)).toHaveLength(2);
-      expect(html).toMatch(/aria-current="page"[^>]*bg-ink text-paper font-semibold[^>]*>Goals<\/button>/);
+      // The header tab is a raised segment over the `bg-chip` track, the one
+      // answer `SegmentedControl.tsx` settled on — NOT the solid inverted
+      // segment that file lists among the four treatments it retired.
+      expect(html).toMatch(/aria-current="page"[^>]*bg-raised text-ink shadow-card[^>]*>Goals<\/button>/);
+      expect(html).not.toMatch(/aria-current="page"[^>]*bg-ink text-paper/);
       expect(html).toMatch(/aria-current="page"[^>]*text-ink font-semibold[^>]*>Goals/);
     } finally {
       actions.closeProject();
+    }
+  });
+
+  /**
+   * The desktop tabs are content-sized, so a weight that changes with selection
+   * re-measures the label and shoves its neighbours sideways on every
+   * navigation — the trap `SegmentedControl.tsx` documents ("Bolding the
+   * selected one would resize its text"). The bottom bar is exempt and is not
+   * covered here: its tabs are `flex-1` thirds, which absorb it.
+   *
+   * Selection may move colour and surface. It may not move weight.
+   */
+  it('keeps every desktop nav tab at one font weight, so selecting one cannot resize it', () => {
+    const html = renderToStaticMarkup(createElement(App));
+    // `title` is what distinguishes the header tabs: only they carry the
+    // number-key hint, so this cannot accidentally match the bottom bar.
+    const tabs = html.match(/<button[^>]*title="(?:Today|Plan|Goals) \(\d\)"[^>]*>/g);
+
+    expect(tabs).toHaveLength(3);
+    for (const tab of tabs!) {
+      expect(tab).toContain('font-medium');
+      expect(tab).not.toContain('font-semibold');
     }
   });
 });
@@ -52,6 +78,7 @@ describe('desktop entry-point routing', () => {
   function fixture(available: boolean): PhaseShellBridge {
     return {
       available,
+      insetTitleBar: false,
       openAssistant: vi.fn(async () => true),
       onOpenSettings: () => () => {},
       getLaunchAtLogin: async () => (available ? false : null),
@@ -84,6 +111,7 @@ describe('desktop entry-point routing', () => {
     try {
       const desktop: PhaseShellBridge = {
         available: true,
+        insetTitleBar: false,
         openAssistant: async () => {
           throw new Error('shell unavailable');
         },

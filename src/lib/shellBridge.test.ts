@@ -12,6 +12,8 @@ describe('shellBridge', () => {
   it('returns a safe stub in the plain browser', async () => {
     const bridge = shellBridge();
     expect(bridge.available).toBe(false);
+    // No traffic lights in a browser tab, so no gutter to reserve for them.
+    expect(bridge.insetTitleBar).toBe(false);
     expect(await bridge.openAssistant()).toBe(false);
     expect(await bridge.getLaunchAtLogin()).toBeNull();
     expect(await bridge.setLaunchAtLogin(true)).toBeNull();
@@ -60,9 +62,35 @@ describe('shellBridge', () => {
     expect(Object.keys(bridge).sort()).toEqual([
       'available',
       'getLaunchAtLogin',
+      'insetTitleBar',
       'onOpenSettings',
       'openAssistant',
       'setLaunchAtLogin',
     ]);
+  });
+
+  /**
+   * The header spends this straight into a class list, so it has to be a real
+   * boolean on every path. A preload built before the field existed reports
+   * `undefined`, and the browser stub has no preload at all — neither may reach
+   * the template as anything but `false`.
+   */
+  it('reports the title bar inset as a boolean, whatever the preload says', () => {
+    const base = {
+      openAssistant: vi.fn(async () => true),
+      onOpenSettings: vi.fn(() => vi.fn()),
+      getLaunchAtLogin: vi.fn(async () => null),
+      setLaunchAtLogin: vi.fn(async () => null),
+    };
+
+    (window as unknown as AnyWindow).phaseShell = { ...base, insetTitleBar: true };
+    expect(shellBridge().insetTitleBar).toBe(true);
+
+    (window as unknown as AnyWindow).phaseShell = { ...base, insetTitleBar: false };
+    expect(shellBridge().insetTitleBar).toBe(false);
+
+    // An older preload, with no such key.
+    (window as unknown as AnyWindow).phaseShell = base;
+    expect(shellBridge().insetTitleBar).toBe(false);
   });
 });

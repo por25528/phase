@@ -369,15 +369,63 @@ export function App() {
           utility cluster is `hidden lg:flex` and neither has a shortcut, Export
           and Import backup had NO reachable entry point at all under 1024px.
           `clip` is the one overflow value that does not infect the other axis,
-          so the horizontal protection stays and the menu escapes. */}
-      <header className="sticky top-0 z-30 bg-bg border-b border-line flex items-center gap-[12px] lg:gap-[30px] px-[16px] sm:px-[36px] py-[13px] overflow-x-clip">
+          so the horizontal protection stays and the menu escapes.
+
+          The left padding is asymmetric on the desktop build, and MEASURED.
+          `main.cjs` opens the window `titleBarStyle: 'hiddenInset'`, which puts
+          web content under the title bar — window origin and content origin are
+          the same point — while macOS keeps drawing the traffic lights on top
+          of it. Probed against a live window, the three buttons span x=11→73pt
+          and the wordmark's box ran x=36→97pt: the lights sat ON the first half
+          of `Phase.` and nothing in the web layer could report the collision,
+          because `capturePage()` photographs web contents and the buttons are
+          not in it. 80px clears the zoom button by 7pt.
+
+          Left and right are spelled separately rather than `px-…` plus a `pl-…`
+          override: both set `padding-left`, so which one wins is decided by
+          their order in the emitted stylesheet rather than by the order they
+          appear here, and that is not a thing to make a header's left edge
+          depend on.
+
+          Known gap: entering macOS fullscreen hides the traffic lights, and the
+          gutter stays. Closing it needs the shell to tell the renderer about
+          enter/leave-full-screen — a new channel, which is more surface than a
+          secondary state is worth until someone asks. */}
+      <header
+        className={`sticky top-0 z-30 bg-bg border-b border-line flex items-center gap-[12px] lg:gap-[30px] pr-[16px] sm:pr-[36px] py-[13px] overflow-x-clip ${
+          shell.insetTitleBar ? 'pl-[80px]' : 'pl-[16px] sm:pl-[36px]'
+        }`}
+      >
         <div className="flex items-baseline gap-[10px] flex-none">
           <span className="font-disp text-wordmark font-[650] tracking-[-0.01em]">
             Phase<span className="text-accent">.</span>
           </span>
         </div>
-        {/* Primary nav. Below md it moves to the bottom bar for thumb reach. */}
-        <nav aria-label="Views" className="hidden md:flex gap-[4px] min-w-0">
+        {/* Primary nav. Below md it moves to the bottom bar for thumb reach.
+
+            A segmented track in the vocabulary `SegmentedControl.tsx` settled
+            on — `bg-raised` over `bg-chip`, never a solid inverted segment.
+            This bar was the last surviving instance of the treatment that file
+            lists among the four it retired ("SOLID INVERTED segment"), and it
+            never got converted because it is the one segmented control that is
+            navigation rather than a value or a view state. Its cost here was
+            specific: `bg-ink text-paper` put a SECOND filled black object in a
+            bar that already has one, so `+ Add` — the only thing here that
+            should carry fill, being the only thing that writes anything — had
+            to share the eye with a tab that merely says where you are.
+
+            `aria-current="page"`, not `aria-pressed`: these are destinations.
+            That is the whole reason this cannot simply BE a `SegmentedSwitch`,
+            and why the vocabulary is borrowed rather than the component.
+
+            Every tab stays `font-medium`. Bolding the active one resized its
+            text and shoved its neighbours sideways on every navigation — the
+            desktop tabs are content-sized, so unlike the bottom bar's `flex-1`
+            thirds there was nothing to absorb it. */}
+        <nav
+          aria-label="Views"
+          className="hidden md:flex flex-none items-center gap-[2px] h-[28px] p-[2px] rounded-field bg-chip min-w-0"
+        >
           {NAV_TABS.map(([key, label], i) => {
             const active = isNavItemActive(key);
             return (
@@ -386,10 +434,10 @@ export function App() {
                 onClick={() => actions.setView(key)}
                 aria-current={active ? 'page' : undefined}
                 title={`${label} (${i + 1})`}
-                className={`px-[14px] py-[6px] rounded-full text-body whitespace-nowrap ${
-                  active
-                    ? 'bg-ink text-paper font-semibold'
-                    : 'text-ink-soft font-medium hover:bg-hover-deep'
+                /* `rounded-[6px]` inside the track's `rounded-field` (8px) is
+                   concentric: nested radii step DOWN, they do not mix. */
+                className={`px-[12px] py-[3px] leading-[18px] rounded-[6px] text-body font-medium whitespace-nowrap transition-colors duration-100 ${
+                  active ? 'bg-raised text-ink shadow-card' : 'text-muted hover:text-ink'
                 }`}
               >
                 {label}
@@ -399,60 +447,75 @@ export function App() {
         </nav>
         <div className="flex-1 min-w-0" />
 
-        <button
-          type="button"
-          onClick={() => setPaletteOpen(true)}
-          disabled={hydration !== 'ready'}
-          aria-label="Search (⌘K)"
-          title="Search (⌘K)"
-          className="flex-none flex items-center gap-[7px] rounded-field border border-line-2 text-muted text-ui px-[9px] sm:pl-[10px] sm:pr-[8px] py-[6px] hover:text-ink hover:border-muted disabled:opacity-40 disabled:pointer-events-none"
-        >
-          <IconSearch />
-          <span className="hidden sm:inline">Search</span>
-          <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] border border-line-2 rounded-[4px] px-[4px] py-[1px]">⌘K</kbd>
-        </button>
+        {/* The utility cluster — ONE group, not three islands. The header's own
+            `lg:gap-[30px]` used to fall between Search, Add and the `⋯`, so at
+            desktop widths the three sat as far apart from each other as the
+            wordmark sits from the nav, and read as three unrelated objects
+            rather than the toolbar they are. The wide gap is for separating
+            REGIONS; inside a region 8px is the whole relationship.
 
-        <button
-          type="button"
-          onClick={runAddAction}
-          disabled={hydration !== 'ready'}
-          aria-label={addAction.title}
-          title={addAction.title}
-          className="flex-none flex items-center gap-[7px] rounded-field bg-ink text-paper text-ui font-semibold px-[9px] sm:pl-[12px] sm:pr-[10px] py-[6px] hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
-        >
-          <IconPlus />
-          <span className="hidden sm:inline whitespace-nowrap">{addAction.label}</span>
-          <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
-        </button>
+            Every control here is 28px, which is what the `⋯` already was — the
+            bar is standardised UP to the shared component rather than the
+            component down to the bar, so `ProjectHeader`, the other place
+            `HeaderMenu` is spent, does not move. */}
+        <div className="flex-none flex items-center gap-[8px]">
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            disabled={hydration !== 'ready'}
+            aria-label="Search (⌘K)"
+            title="Search (⌘K)"
+            className="flex items-center gap-[7px] h-[28px] rounded-field border border-line-2 text-muted text-ui px-[9px] sm:pl-[10px] sm:pr-[8px] hover:text-ink hover:border-muted disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <IconSearch />
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] border border-line-2 rounded-[4px] px-[4px] py-[1px]">⌘K</kbd>
+          </button>
 
-        <HeaderMenu open={menuOpen} onOpenChange={setMenuOpen}>
-          <HeaderMenuItem onClick={() => actions.setTheme(NEXT_THEME[theme])}>
-            {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
-            Theme: {THEME_LABEL[theme]}
-          </HeaderMenuItem>
-          <HeaderMenuItem onClick={actions.openSettings}>
-            <IconClock />
-            Working hours
-          </HeaderMenuItem>
-          <HeaderMenuItem onClick={() => setShowShortcuts(true)}>
-            {/* Stays a character: `?` is ASCII, it is in the font, and it is the
-                literal key you press. The 14px box keeps it in the icon gutter. */}
-            <span aria-hidden="true" className="w-[14px] text-center">?</span>
-            Keyboard shortcuts
-          </HeaderMenuItem>
-          <HeaderMenuItem onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'}>
-            <IconArrowDown />
-            Export backup
-          </HeaderMenuItem>
-          <HeaderMenuItem onClick={reclaimSpace} disabled={hydration !== 'ready'}>
-            <IconBackspace />
-            Reclaim space
-          </HeaderMenuItem>
-          <HeaderMenuItem onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'}>
-            <IconArrowUp />
-            Import backup
-          </HeaderMenuItem>
-        </HeaderMenu>
+          {/* The one filled control in the header, and the only one that writes
+              anything. Everything around it navigates, searches or configures. */}
+          <button
+            type="button"
+            onClick={runAddAction}
+            disabled={hydration !== 'ready'}
+            aria-label={addAction.title}
+            title={addAction.title}
+            className="flex items-center gap-[7px] h-[28px] rounded-field bg-ink text-paper text-ui font-semibold px-[9px] sm:pl-[12px] sm:pr-[10px] hover:bg-ink-hover disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <IconPlus />
+            <span className="hidden sm:inline whitespace-nowrap">{addAction.label}</span>
+            <kbd className="hidden sm:inline font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">⌘N</kbd>
+          </button>
+
+          <HeaderMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <HeaderMenuItem onClick={() => actions.setTheme(NEXT_THEME[theme])}>
+              {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
+              Theme: {THEME_LABEL[theme]}
+            </HeaderMenuItem>
+            <HeaderMenuItem onClick={actions.openSettings}>
+              <IconClock />
+              Working hours
+            </HeaderMenuItem>
+            <HeaderMenuItem onClick={() => setShowShortcuts(true)}>
+              {/* Stays a character: `?` is ASCII, it is in the font, and it is the
+                  literal key you press. The 14px box keeps it in the icon gutter. */}
+              <span aria-hidden="true" className="w-[14px] text-center">?</span>
+              Keyboard shortcuts
+            </HeaderMenuItem>
+            <HeaderMenuItem onClick={() => actions.exportBackup()} disabled={hydration !== 'ready'}>
+              <IconArrowDown />
+              Export backup
+            </HeaderMenuItem>
+            <HeaderMenuItem onClick={reclaimSpace} disabled={hydration !== 'ready'}>
+              <IconBackspace />
+              Reclaim space
+            </HeaderMenuItem>
+            <HeaderMenuItem onClick={() => fileInputRef.current?.click()} disabled={hydration !== 'ready'}>
+              <IconArrowUp />
+              Import backup
+            </HeaderMenuItem>
+          </HeaderMenu>
+        </div>
 
         <input
           ref={fileInputRef}
@@ -533,7 +596,7 @@ export function App() {
           </div>
         ) : view === 'today' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[22px]">
-            <Today onOpenSettings={actions.openSettings} />
+            <Today onOpenSettings={actions.openSettings} onCapture={openTaskCapture} />
           </div>
         ) : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[18px]">

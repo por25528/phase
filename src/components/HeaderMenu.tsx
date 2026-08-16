@@ -55,7 +55,14 @@ export function HeaderMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
-        className="w-[28px] h-[28px] grid place-items-center rounded-full border border-line-2 text-ink-soft hover:text-ink hover:border-muted"
+        /* `rounded-field`, not `rounded-full`. A circle here was the third
+           container shape in a cluster of three — pill Search, 8px Add, round
+           `⋯` — so the header stated a different corner for every control it
+           held. Size is untouched at 28px on purpose: it is what the app
+           header standardised onto, and `ProjectHeader` spends this same
+           component, so a shape change travels safely where a size change
+           would have moved a row this work never looked at. */
+        className="w-[28px] h-[28px] grid place-items-center rounded-field border border-line-2 text-ink-soft hover:text-ink hover:border-muted"
       >
         {/* The glyph this replaced needed `text-title -mt-[3px]` to sit on the
             button's optical centre, because U+22EF rides low on its baseline in

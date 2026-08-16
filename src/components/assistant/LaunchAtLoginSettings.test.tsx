@@ -13,6 +13,7 @@ vi.mock('../../lib/shellBridge', () => ({
 function fixture(over: Partial<PhaseShellBridge> = {}): PhaseShellBridge {
   return {
     available: true,
+    insetTitleBar: false,
     openAssistant: vi.fn(async () => true),
     onOpenSettings: vi.fn(() => () => {}),
     getLaunchAtLogin: vi.fn(async () => false),

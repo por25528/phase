@@ -12,6 +12,16 @@
 export interface PhaseShellBridge {
   /** False in the plain browser: every call is a no-op and nothing ever fires. */
   available: boolean;
+  /**
+   * Whether the window wears the macOS inset title bar, so the app header has
+   * to reserve its left edge for the traffic lights. False in the browser,
+   * where there are none and a reserved gutter would just be dead space.
+   *
+   * A fact rather than a verb — the one non-function on this surface — because
+   * the title bar style is fixed when the window is constructed and cannot
+   * change while it lives.
+   */
+  insetTitleBar: boolean;
   /** Ask the desktop shell to raise the assistant overlay. */
   openAssistant(): Promise<boolean>;
   /** Subscribe to the shell asking for the settings surface. Returns unsubscribe. */
@@ -23,6 +33,8 @@ export interface PhaseShellBridge {
 }
 
 interface ShellPreload {
+  /** Absent on any preload built before the header reserved the gutter. */
+  insetTitleBar?: boolean;
   openAssistant(): Promise<boolean>;
   onOpenSettings(fn: () => void): () => void;
   getLaunchAtLogin(): Promise<boolean | null>;
@@ -41,6 +53,7 @@ export function shellBridge(): PhaseShellBridge {
   if (!preload) {
     return {
       available: false,
+      insetTitleBar: false,
       openAssistant: async () => false,
       onOpenSettings: () => noop,
       getLaunchAtLogin: async () => null,
@@ -49,6 +62,9 @@ export function shellBridge(): PhaseShellBridge {
   }
   return {
     available: true,
+    // `=== true`, so a preload predating this field reads as "no gutter"
+    // rather than as `undefined` leaking into the header's class list.
+    insetTitleBar: preload.insetTitleBar === true,
     openAssistant: () => preload.openAssistant(),
     onOpenSettings: (fn) => preload.onOpenSettings(fn),
     getLaunchAtLogin: () => preload.getLaunchAtLogin(),
