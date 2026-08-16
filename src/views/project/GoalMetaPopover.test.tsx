@@ -95,23 +95,26 @@ describe('Focus, inside the status popover', () => {
     expect(store.getState().goals[0].demand).toBeUndefined();
   });
 
-  // The regression the inline control exists to prevent. A nested Popover
-  // would register a SECOND capture-phase Escape listener on window, behind
-  // this dialog's own, and a single press bubbling from inside it would fire
-  // onClose twice — once per listener — rather than once for the one dialog
-  // that exists.
-  it('does not close the popover when Escape is pressed inside the Focus control', async () => {
-    const { onClose } = await renderPopover(OPEN);
-    const radio = screen.getByRole('radio', { name: 'Deep' });
-    radio.focus();
-    fireEvent.keyDown(radio, { key: 'Escape' });
-    // One Escape, one dismissal — never two surfaces for one press.
-    expect(onClose).toHaveBeenCalledTimes(1);
+  // The Focus control must be inline, never a nested Popover: a Popover
+  // registers its OWN capture-phase Escape listener on window, and that
+  // listener would sit behind this dialog's own, so one Escape press would
+  // dismiss both surfaces. That failure is not observable behaviourally —
+  // Popover's Escape handler calls its own internal setOpen(false) and never
+  // touches this dialog's onClose, so onClose fires exactly once either way,
+  // whether the control is inline or a nested Popover. So the guard has to be
+  // structural: a nested Popover's trigger carries aria-haspopup, and nothing
+  // else in this dialog does, so the dialog must contain none.
+  it('renders the Focus control inline, with no nested disclosure', async () => {
+    await renderPopover(OPEN);
+    expect(
+      screen.getByRole('dialog', { name: 'Goal status' }).querySelector('[aria-haspopup]'),
+    ).toBeNull();
   });
 
   it('withholds the control on a completed goal, like every other editor', async () => {
     await renderPopover({ ...OPEN, completedAt: '2026-08-01' });
     expect(screen.queryByRole('radiogroup', { name: 'Focus needed' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Deep' })).toBeNull();
   });
 
   // The Task 4 coverage debt's reflection half: selecting a value must not
