@@ -259,12 +259,33 @@ const GUTTER = 'w-[22px] shrink-0';
 const RING_SLOT = 'w-[34px] shrink-0';
 
 /**
- * Band 1: the work. One row — gutter, ring slot, the text column, the actions.
+ * Band 1: the work. Gutter, ring slot, the text column, the actions.
  *
  * Both panels render through this, which is the only reason the running state
  * and the idle state agree about where the title starts. `min-w-0` on the text
  * column is what lets `workTitle`'s `truncate` engage inside a flex row;
  * without it the column takes its content's width and the row overflows.
+ *
+ * **The actions sit beside the work on the shelf and BELOW it embedded, and
+ * that branch is not cosmetic.** The one-row arrangement is what the 620px
+ * overlay was designed around: subtract the gutter, the ring slot, two gaps
+ * and two buttons from 588px and the title still measures 260px. Do the same
+ * subtraction inside `AssistantHost`'s 380px panel and there is nothing left —
+ * 28.4px in `active` and `break`, which draws as `D…`, and 48.6px in
+ * `confirming`, where the sentence asking whether the session was real work
+ * wraps into 189px of vertical text. That is the state this component exists
+ * to make legible, rendered illegibly.
+ *
+ * Stacking is what the embedded panel did before the bands landed
+ * (`bodyClass(false)` was `flex min-h-0 flex-col gap-2`), and the spec that
+ * introduced them says in three places that this presentation does not change.
+ * It gives the title 274px of the same 356px box. The buttons go to the
+ * reading edge, per `dialogFooter` — the filled one is still last, and still
+ * the reason you opened the panel.
+ *
+ * The gutter and the ring keep their reserved slots in BOTH arrangements: the
+ * title's left edge must not move when a session ends, and that is true at
+ * either width.
  */
 function WorkBand({ checkbox, ring, eyebrow, title, subtitle, extra, actions, shelf }: {
   checkbox: ReactNode;
@@ -277,16 +298,18 @@ function WorkBand({ checkbox, ring, eyebrow, title, subtitle, extra, actions, sh
   shelf: boolean;
 }) {
   return (
-    <div className={`${bandCls(shelf)} flex items-center gap-3`}>
-      <div data-gutter className={GUTTER}>{checkbox}</div>
-      {ring}
-      <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-        <SectionLabel>{eyebrow}</SectionLabel>
-        {title}
-        {subtitle}
-        {extra}
+    <div className={`${bandCls(shelf)} flex ${shelf ? 'items-center gap-3' : 'flex-col gap-2'}`}>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div data-gutter className={GUTTER}>{checkbox}</div>
+        {ring}
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <SectionLabel>{eyebrow}</SectionLabel>
+          {title}
+          {subtitle}
+          {extra}
+        </div>
       </div>
-      <div className="flex shrink-0 gap-2">{actions}</div>
+      <div className={`flex shrink-0 gap-2 ${shelf ? '' : 'justify-end'}`}>{actions}</div>
     </div>
   );
 }

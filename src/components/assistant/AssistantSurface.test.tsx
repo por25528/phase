@@ -234,6 +234,37 @@ describe('AssistantSurface', () => {
     expect(container.querySelector('[data-ring-slot]')).toBeNull();
   });
 
+  /*
+   * The band's one-row arrangement is what 620px was designed around. At the
+   * embedded panel's 380px the gutter, the ring slot, the gaps and two
+   * `shrink-0` buttons take the row, and the title measured 28.4px running —
+   * drawn as `D…` — and 48.6px in `confirming`, where the question about the
+   * session wrapped into 189px of vertical text (`scripts/shot-shelf.cjs`,
+   * which renders the real component at both real widths; jsdom has no layout
+   * and cannot see any of it). Stacking is what this panel did before the
+   * bands landed, and it gives the title 274px back.
+   *
+   * Structural, not pixels: the actions are a SIBLING FOLLOWING the block that
+   * holds the title, in a column embedded and in a row on the shelf. Both
+   * arrangements keep the reserved gutter, which is the other thing the title's
+   * left edge depends on.
+   */
+  it('stacks the actions under the work embedded and keeps them on the title row on the shelf', () => {
+    const band = () => screen.getByRole('button', { name: 'Start session' })
+      .parentElement!.parentElement!;
+
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    expect(band().className).toContain('flex-col');
+    expect(band().querySelector('[data-gutter]')).toBeTruthy();
+    expect(band().contains(screen.getByRole('heading', { name: 'Problem set 4' }))).toBe(true);
+    cleanup();
+
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    expect(band().className).not.toContain('flex-col');
+    expect(band().querySelector('[data-gutter]')).toBeTruthy();
+    expect(band().contains(screen.getByRole('heading', { name: 'Problem set 4' }))).toBe(true);
+  });
+
   it('distinguishes history, planned estimate, and starter language', () => {
     const { rerender } = render(
       <AssistantSurface
