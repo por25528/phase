@@ -180,6 +180,61 @@ describe('searchEntries', () => {
     expect(hit.snippet).toContain('deadlines');
   });
 
+  /**
+   * A parent-goal (context) match used to score at 0.5×, so EVERY child of a
+   * matching goal outranked a direct title hit in a different goal — the
+   * "pset" query put a goal's whole subtree above the one task literally
+   * titled "6.006 Problem Set 4". Context is a tiebreak among title matches
+   * now, never a way to outrank one.
+   */
+  it('ranks a direct title match above a subtree hit inherited from its goal', () => {
+    const entries = buildSearchIndex([
+      goal({
+        id: 'g-course', title: 'Finish Pset 7',
+        nodes: [
+          { id: 'n-memo', title: 'Implement + memoize' },
+          { id: 'n-recur', title: 'Write the recurrence' },
+        ],
+      }),
+      goal({
+        id: 'g-other', title: 'Other course',
+        nodes: [{ id: 'n-literal', title: '6.006 Problem Set 4' }],
+      }),
+    ], [], []);
+
+    const hits = searchEntries(entries, 'pset');
+    const literalRank = hits.findIndex((h) => h.entry.id === 'n-literal');
+    const childRanks = hits
+      .filter((h) => h.entry.id === 'n-memo' || h.entry.id === 'n-recur')
+      .map((h) => hits.indexOf(h));
+    expect(literalRank).toBeGreaterThanOrEqual(0);
+    // Every context-only child sits below the literal title match.
+    expect(childRanks.every((r) => r > literalRank)).toBe(true);
+  });
+
+  it('keeps context-only children below the goal whose title they inherit', () => {
+    const entries = buildSearchIndex([goal({
+      id: 'g-course', title: 'Finish Pset 7',
+      nodes: [{ id: 'n-memo', title: 'Implement + memoize' }],
+    })], [], []);
+
+    const hits = searchEntries(entries, 'pset');
+    expect(hits[0].entry.id).toBe('g-course');
+  });
+
+  /** The row-level disambiguators: a task carries its committed date, a step its deadline. */
+  it('carries a task’s date and a step’s deadline so identical titles differ', () => {
+    const entries = buildSearchIndex([goal({
+      id: 'g1', title: 'Course',
+      nodes: [{ id: 'n1', title: 'Problem Set 4', deadline: '2026-07-30' }],
+    })], [
+      { id: 't1', title: 'Problem Set 4', done: false, goalId: null, date: '2026-08-02' },
+    ], []);
+
+    expect(entries.find((e) => e.id === 't1')?.date).toBe('2026-08-02');
+    expect(entries.find((e) => e.id === 'n1')?.date).toBe('2026-07-30');
+  });
+
   it('ranks a title match above a body match', () => {
     const entries = buildSearchIndex([
       goal({ id: 'g-title', title: 'Deadlines', notes: 'Unrelated project notes', nodes: [] }),

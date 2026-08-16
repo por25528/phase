@@ -20,6 +20,12 @@ export interface SearchEntry {
   /** Set on step entries so the drawer can scroll to and highlight the node. */
   nodeId?: string;
   /**
+   * A row-level disambiguator, so two entries reading "6.006 Problem Set 4" can
+   * be told apart. A task's committed `date`, or a step's `deadline` — the one
+   * date each carries. Absent when neither has one.
+   */
+  date?: string;
+  /**
    * A node with children. The palette's verbs read this: a container has no
    * status and no estimate, so "Mark as done" and "Schedule today" are not
    * things that can be done to it.
@@ -39,7 +45,9 @@ export interface SearchHit {
 }
 
 // A match in the title is worth double one in the project context: typing
-// "raft" should surface the Raft project before every step inside it.
+// "raft" should surface the Raft project before every step inside it. These
+// weights only order matches WITHIN a tier — the context/body signal can never
+// cross the title tier below.
 const CONTEXT_WEIGHT = 0.5;
 const BODY_WEIGHT = 0.25;
 
@@ -47,6 +55,15 @@ const BODY_WEIGHT = 0.25;
 // tiers rather than nudges — done work never outranks open work on a tie.
 const DONE_PENALTY = 5_000;
 const ARCHIVED_PENALTY = 10_000;
+
+// A match that lives only in the context/body — never the entry's own title —
+// is demoted a full tier below every title match. Scoring context at 0.5×
+// meant a matching goal's whole subtree outranked a direct title hit in a
+// different goal ("pset" put "Implement + memoize" above "6.006 Problem Set
+// 4"). Context is a tiebreak among title matches now, never a way to outrank
+// one. Smaller than DONE_PENALTY, so an open context-only hit still sorts
+// above a done title hit — the open-beats-done tier stays the strongest.
+const NO_TITLE_PENALTY = 2_000;
 
 function flattenNodes(
   nodes: GoalNode[],
@@ -63,6 +80,7 @@ function flattenNodes(
       ...(node.notes === undefined ? {} : { body: stripAssetRefs(node.notes) }),
       goalId: goal.id,
       nodeId: node.id,
+      ...(node.deadline === undefined ? {} : { date: node.deadline }),
       container: Boolean(node.children && node.children.length > 0),
       done: isDone(node),
       archived,
@@ -100,6 +118,7 @@ export function buildSearchIndex(
       title: task.title,
       context: task.goalId ? goalTitle.get(task.goalId) : undefined,
       goalId: task.goalId,
+      ...(task.date === undefined ? {} : { date: task.date }),
       done: task.done,
     });
   }
@@ -165,6 +184,9 @@ function scoreEntry(entry: SearchEntry, terms: string[]): SearchHit | null {
   let total = 0;
   const titleMatches = new Set<number>();
   let snippet: string | undefined;
+  // Whether the entry's own TITLE matched any term. A context/body-only entry
+  // is demoted a whole tier, so it can never outrank a real title hit.
+  let titled = false;
 
   for (const term of terms) {
     const inTitle = matchTerm(entry.title, term);
@@ -174,22 +196,25 @@ function scoreEntry(entry: SearchEntry, terms: string[]): SearchHit | null {
     // Every term must land somewhere, so a multi-term query narrows.
     if (!inTitle && !inContext && !inBody) return null;
 
+    // The title matching is the tier signal, tracked independently of which
+    // signal wins the magnitude below — a weak title match losing the max to a
+    // strong context match still keeps the entry in the title tier, and still
+    // highlights.
+    if (inTitle) {
+      titled = true;
+      inTitle.indices.forEach((i) => titleMatches.add(i));
+    }
+
     const titleScore = inTitle ? inTitle.score : 0;
     const contextScore = inContext ? inContext.score * CONTEXT_WEIGHT : 0;
     const bodyScore = inBody ? inBody.score * BODY_WEIGHT : 0;
 
-    if (titleScore >= contextScore && titleScore >= bodyScore) {
-      total += titleScore;
-      inTitle!.indices.forEach((i) => titleMatches.add(i));
-    } else if (contextScore >= bodyScore) {
-      total += contextScore;
-    } else {
-      total += bodyScore;
-    }
+    total += Math.max(titleScore, contextScore, bodyScore);
     if (inBody && snippet === undefined) snippet = makeSnippet(entry.body!, inBody.indices);
   }
 
   let score = total / terms.length;
+  if (!titled) score -= NO_TITLE_PENALTY;
   if (entry.done) score -= DONE_PENALTY;
   if (entry.archived) score -= ARCHIVED_PENALTY;
 

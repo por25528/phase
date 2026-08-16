@@ -11,7 +11,7 @@ import {
   type ObjectActionId,
 } from '../lib/commands';
 import { cardPrimaryAction } from '../lib/plan';
-import { todayStr } from '../lib/dates';
+import { fmtDY, todayStr } from '../lib/dates';
 import type { Goal, Habit, Task } from '../db/types';
 
 /**
@@ -324,20 +324,27 @@ export function CommandPalette({
               }
 
               const { entry, titleMatches, snippet } = row.hit;
+              // The disambiguator line: goal and date, so two rows reading
+              // "6.006 Problem Set 4" can be told apart. A loose task carries no
+              // goal, so its date is the only thing distinguishing it — which is
+              // why the line renders on date alone, not only when a goal exists.
+              const subtitle = [entry.context, entry.date ? fmtDY(entry.date, todayStr()) : undefined]
+                .filter(Boolean)
+                .join(' · ');
               return (
                 <button key={`${entry.kind}-${entry.id}`} type="button" {...common}>
                   <span className="flex-1 min-w-0">
                     <span
                       className={`block truncate text-lead ${
-                        entry.done ? 'line-through text-faint' : 'text-ink-soft'
+                        entry.done ? 'line-through text-muted' : 'text-ink-soft'
                       }`}
                     >
                       <Highlighted title={entry.title} matches={titleMatches} />
                     </span>
-                    {entry.context && (
+                    {(subtitle || entry.archived) && (
                       <span className="block truncate text-compact text-muted mt-[1px]">
-                        {entry.context}
-                        {entry.archived && ' · archived'}
+                        {subtitle}
+                        {entry.archived && `${subtitle ? ' · ' : ''}archived`}
                       </span>
                     )}
                     {snippet !== undefined && (

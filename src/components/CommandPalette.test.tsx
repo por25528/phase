@@ -139,4 +139,27 @@ describe('the command palette', () => {
     await user.keyboard('{ArrowRight}');
     expect(options()).toEqual(['Open in its goal', 'Mark as not done']);
   });
+
+  /**
+   * Two loose tasks with the same title were indistinguishable rows — neither
+   * carries a goal, so the second line was blank on both. The committed date is
+   * the disambiguator.
+   */
+  it('disambiguates identical loose-task titles by their date', async () => {
+    const dupes: Task[] = [
+      { id: 'd1', title: '6.006 Problem Set 4', done: false, goalId: null, date: '2026-07-30' },
+      { id: 'd2', title: '6.006 Problem Set 4', done: false, goalId: null, date: '2026-08-02' },
+    ];
+    const onCommand = vi.fn();
+    const onObjectAction = vi.fn();
+    render(createElement(CommandPalette, {
+      open: true, onClose: vi.fn(), goals: [], tasks: dupes, habits: [], onCommand, onObjectAction,
+    }));
+    const user = userEvent.setup();
+
+    await user.type(input(), 'problem set 4');
+    const rows = options();
+    expect(rows.some((t) => t.includes('Jul 30'))).toBe(true);
+    expect(rows.some((t) => t.includes('Aug 2'))).toBe(true);
+  });
 });
