@@ -94,7 +94,7 @@ export function WeekHeader({
     : weekLoadParts(capacity, today);
 
   return (
-    <div className="flex items-center gap-[14px] mb-[12px] flex-wrap">
+    <div className="flex items-baseline gap-[14px] mb-[12px] flex-wrap">
       <h2 className="text-h1 font-semibold tracking-[-.012em] leading-[1.15] whitespace-nowrap">
         {isMonth ? ymLabel(ymOf(weekStart)) : `${fmtD(weekStart)} – ${fmtD(addDays(weekStart, 6))}`}
       </h2>
@@ -118,7 +118,7 @@ export function WeekHeader({
 
       <span className="flex-1" />
 
-      <div className="flex items-center gap-[8px]">
+      <div className="flex items-center gap-[8px] self-center">
         {onModeChange && (
           // `aria-pressed`, not `role="tab"`: these are two states of one
           // control, and a tablist would promise arrow-key navigation between

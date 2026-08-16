@@ -38,34 +38,7 @@ export function CapacityMeter({
 
   return (
     <div className="min-w-[180px] max-w-[420px] flex-1">
-      <div className="relative h-[6px] rounded-full bg-track overflow-hidden">
-        <div className="absolute inset-0 flex">
-          <div
-            data-testid="meter-planned"
-            className={`h-full ${fill}`}
-            style={{ width: `${meter.plannedFrac * 100}%` }}
-          />
-          {/* "To place" is committed but not on the grid, so it is the same
-              bar at a lower contrast — not a second colour. `faint-2` is
-              decorative here by definition: the figure beside it carries the
-              information. */}
-          <div
-            data-testid="meter-backlog"
-            className={`h-full ${meter.over ? 'bg-warn/45' : 'bg-faint-2'}`}
-            style={{ width: `${meter.backlogFrac * 100}%` }}
-          />
-        </div>
-        {meter.over && (
-          <div
-            data-testid="capacity-mark"
-            aria-hidden="true"
-            className="absolute top-0 bottom-0 w-px bg-panel"
-            style={{ left: `${meter.capacityMarkFrac * 100}%` }}
-          />
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-baseline gap-x-[13px] gap-y-[2px] mt-[6px] text-meta tabular-nums text-muted">
+      <div className="flex flex-wrap items-baseline gap-x-[13px] gap-y-[2px] text-meta tabular-nums text-muted">
         {parts.map((part) => (
           <span key={part}>{part}</span>
         ))}
@@ -91,6 +64,33 @@ export function CapacityMeter({
                 total as a month's — it is the opposite of decorative. */}
             <span className="font-mono text-micro text-muted">{spanLabel}</span>
           </>
+        )}
+      </div>
+
+      <div className="relative h-[6px] rounded-full bg-track overflow-hidden mt-[6px]">
+        <div className="absolute inset-0 flex">
+          <div
+            data-testid="meter-planned"
+            className={`h-full ${fill}`}
+            style={{ width: `${meter.plannedFrac * 100}%` }}
+          />
+          {/* "To place" is committed but not on the grid, so it is the same
+              bar at a lower contrast — not a second colour. `faint-2` is
+              decorative here by definition: the figure beside it carries the
+              information. */}
+          <div
+            data-testid="meter-backlog"
+            className={`h-full ${meter.over ? 'bg-warn/45' : 'bg-faint-2'}`}
+            style={{ width: `${meter.backlogFrac * 100}%` }}
+          />
+        </div>
+        {meter.over && (
+          <div
+            data-testid="capacity-mark"
+            aria-hidden="true"
+            className="absolute top-0 bottom-0 w-px bg-panel"
+            style={{ left: `${meter.capacityMarkFrac * 100}%` }}
+          />
         )}
       </div>
     </div>
