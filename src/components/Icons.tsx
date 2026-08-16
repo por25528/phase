@@ -152,6 +152,16 @@ export function IconChevronRight(p: IconProps) {
   return <Icon {...p}><path d="M9.5 5.5L16 12l-6.5 6.5" /></Icon>;
 }
 
+/**
+ * Step backwards. The mirror of `IconChevronRight`, written out rather than
+ * rotated at the call site: this one is a NAVIGATION control sitting next to
+ * its opposite, and a `rotate-180` there would make the pair's markup
+ * asymmetric for no reason a reader could see.
+ */
+export function IconChevronLeft(p: IconProps) {
+  return <Icon {...p}><path d="M14.5 5.5L8 12l6.5 6.5" /></Icon>;
+}
+
 /** Was `→` (U+2192), which Public Sans does not carry even though `↑`/`↓` are. */
 export function IconArrowRight(p: IconProps) {
   return <Icon {...p}><path d="M4 12h15M12.5 5.5L19 12l-6.5 6.5" /></Icon>;
