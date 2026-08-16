@@ -11,3 +11,4 @@ build/icon.png
 
 # Claude Code workspace settings — machine-local
 .claude/
+shelf-shots/
