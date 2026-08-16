@@ -67,6 +67,9 @@ describe('isoWeekNumber', () => {
   it('numbers ISO weeks from the Thursday that anchors them', () => {
     expect(isoWeekNumber('2026-01-01')).toBe(1);
     expect(isoWeekNumber('2026-08-10')).toBe(33);
+    // Early January (2027-01-03) in the previous year's final week (53)
     expect(isoWeekNumber('2027-01-03')).toBe(53);
+    // Late December (2025-12-29, a Monday) in the following year's first week
+    expect(isoWeekNumber('2025-12-29')).toBe(1);
   });
 });
