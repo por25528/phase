@@ -184,6 +184,45 @@ describe('todayPlan', () => {
   });
 
   /**
+   * The loose bucket is not a project, so the "one row per project" ration —
+   * which stops a single project's queue dominating — must not apply to it.
+   * Rationing it that way was what put ONE of nine open loose tasks on an
+   * otherwise empty page. Each loose task is its own candidate; the cap still
+   * holds the line at PROPOSAL_MAX.
+   */
+  it('offers every loose task, not one, up to the cap', () => {
+    const tasks = Array.from({ length: 9 }, (_, i) => task({ id: `t${i}`, title: `Task ${i}` }));
+    const p = plan({ goals: [], tasks });
+    if (p.kind !== 'offer') throw new Error('expected an offer');
+    expect(p.rows).toHaveLength(PROPOSAL_MAX);
+    expect(p.rows.every((r) => r.kind === 'task')).toBe(true);
+  });
+
+  it('orders loose tasks by their nearest visible due date', () => {
+    const tasks = [
+      task({ id: 't-far', title: 'Someday', date: undefined }),
+      task({ id: 't-soon', title: 'Tomorrow', date: '2026-07-16' }),
+      task({ id: 't-mid', title: 'In three days', date: '2026-07-18' }),
+    ];
+    const p = plan({ goals: [], tasks });
+    if (p.kind !== 'offer') throw new Error('expected an offer');
+    expect(p.rows.map((r) => r.id)).toEqual(['t-soon', 't-mid', 't-far']);
+  });
+
+  /**
+   * A real project is still rationed to one row even when many loose tasks are
+   * present — only the loose bucket is un-rationed.
+   */
+  it('still takes one row per real project alongside a full loose bucket', () => {
+    const g = goal({ nodes: [{ id: 'n1', title: 'Draft' }, { id: 'n2', title: 'Revise' }] });
+    const tasks = Array.from({ length: 9 }, (_, i) => task({ id: `t${i}`, title: `Task ${i}` }));
+    const p = plan({ goals: [g], tasks });
+    if (p.kind !== 'offer') throw new Error('expected an offer');
+    expect(p.rows.filter((r) => r.goalId === 'g1')).toHaveLength(1);
+    expect(p.rows).toHaveLength(PROPOSAL_MAX);
+  });
+
+  /**
    * Inherited from `backlogGroups` and pinned here, because the offer must not
    * be able to drift from the rail: a parked project's untouched work is not
    * something to spend an afternoon on, but its committed work is a number the
@@ -249,6 +288,12 @@ describe('todayPlan exclusions', () => {
 
     expect(after).toHaveLength(PROPOSAL_MAX);
     expect(after[0].key).toBe('step:n1');
+  });
+
+  it('excludes an already-shown loose task and keeps the rest', () => {
+    const tasks = Array.from({ length: 3 }, (_, i) => task({ id: `t${i}`, title: `Task ${i}` }));
+    const after = proposalRows([], tasks, WEEK, TODAY, new Set(['task:t0']));
+    expect(after.map((r) => r.id)).toEqual(['t1', 't2']);
   });
 
   it('threads the exclusion through todayPlan', () => {

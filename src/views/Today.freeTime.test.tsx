@@ -214,6 +214,26 @@ describe('the free-time offer', () => {
     expect(screen.queryByLabelText('Free time')).toBeNull();
     expect(screen.getByText(/Nothing committed to today/)).toBeTruthy();
   });
+
+  /**
+   * "Loose tasks" is one group but not one project, so the page used to ration
+   * nine open tasks down to a single row on an otherwise empty screen. Each
+   * loose task is its own candidate now, filling up to the PROPOSAL_MAX cap.
+   */
+  it('surfaces several loose tasks, not one, when the day is empty', async () => {
+    await mountToday({
+      goals: [],
+      tasks: Array.from({ length: 9 }, (_, i) => ({
+        id: `t${i}`, title: `Loose ${i}`, done: false, goalId: null, estimateMin: 30,
+      })),
+    });
+
+    const shown = Array.from({ length: 9 }, (_, i) => `Loose ${i}`).filter((title) =>
+      [...document.querySelectorAll('span')].some((span) => span.textContent === title),
+    );
+    // PROPOSAL_MAX (5) rows, never one and never all nine.
+    expect(shown).toHaveLength(5);
+  });
 });
 
 describe('the shared primary', () => {

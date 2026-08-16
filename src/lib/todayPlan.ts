@@ -106,9 +106,17 @@ function row(item: BacklogItem, goalTitle: string): ProposalRow {
 }
 
 /**
- * One row per project — its first backlog item, which `backlogGroups` has
+ * One row per PROJECT — its first backlog item, which `backlogGroups` has
  * already sorted by urgency — then the projects themselves ordered by that
  * same near-deadline rule, so the row at the top is the one with a date on it.
+ *
+ * The loose bucket is the one exception, and for the same reason `backlogGroups`
+ * treats it differently everywhere else: "Loose tasks" is not a project, it is
+ * the bucket that means "belongs to no project". Rationing it to one row — the
+ * rule that stops a single project's queue dominating — is exactly what put ONE
+ * of nine open loose tasks on an otherwise empty page. So each loose task is its
+ * own candidate, ordered by due like everything else; the `PROPOSAL_MAX` cap is
+ * what still stops the section becoming a second backlog rail.
  */
 export function proposalRows(
   goals: Goal[],
@@ -117,13 +125,17 @@ export function proposalRows(
   today: string,
   exclude: ReadonlySet<string> = new Set(),
 ): ProposalRow[] {
-  const firsts: { item: BacklogItem; goalTitle: string }[] = [];
+  const candidates: { item: BacklogItem; goalTitle: string }[] = [];
   for (const group of backlogGroups(goals, tasks, week, today)) {
-    const item = group.items.find((i) => !exclude.has(`${i.kind}:${i.id}`));
-    if (item) firsts.push({ item, goalTitle: group.goalTitle });
+    const open = group.items.filter((i) => !exclude.has(`${i.kind}:${i.id}`));
+    if (group.goalId === null) {
+      for (const item of open) candidates.push({ item, goalTitle: group.goalTitle });
+    } else if (open.length > 0) {
+      candidates.push({ item: open[0], goalTitle: group.goalTitle });
+    }
   }
-  const ordered = sortByDue(firsts.map((f) => f.item), today);
-  const titleFor = new Map(firsts.map((f) => [`${f.item.kind}:${f.item.id}`, f.goalTitle]));
+  const ordered = sortByDue(candidates.map((f) => f.item), today);
+  const titleFor = new Map(candidates.map((f) => [`${f.item.kind}:${f.item.id}`, f.goalTitle]));
   return ordered
     .slice(0, PROPOSAL_MAX)
     .map((item) => row(item, titleFor.get(`${item.kind}:${item.id}`) ?? ''));
