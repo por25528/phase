@@ -92,6 +92,18 @@ function aboveBandCls(shelf: boolean): string {
 }
 
 /**
+ * The primary title, in both panels, so the running state and the idle state
+ * cannot disagree about how a name overflows.
+ *
+ * `truncate`, not `line-clamp-2`. The clamp was correct at 165px; at the band
+ * layout's 433px one line carries the name, and a single line makes the card's
+ * height independent of its content — which is what `HEIGHT` in
+ * `electron/assistantWindow.cjs` is budgeting against, since that window clips
+ * rather than scrolls. The full string stays on `title`.
+ */
+const workTitle = 'truncate text-h2 font-semibold text-ink leading-[1.25]';
+
+/**
  * The shelf's two dials, and the only always-present controls on it.
  *
  * They are two axes and never one: the left says how long you have, which
@@ -311,7 +323,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       )}
       <div className="flex min-w-0 flex-col gap-1">
         <SectionLabel>Focus session</SectionLabel>
-        <h2 className="line-clamp-2 text-h2 font-semibold text-ink">{focus.title}</h2>
+        <h2 className={workTitle} title={focus.title}>{focus.title}</h2>
         {focus.goalTitle && <p className="truncate text-meta text-muted">{focus.goalTitle}</p>}
         {focus.phase === 'confirming' ? (
           <p className="text-body text-ink">
@@ -435,7 +447,7 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
       />
       <div className="flex min-w-0 flex-col gap-1">
         <SectionLabel>{REASON_WORD[primary.reason]}</SectionLabel>
-        <h2 className="line-clamp-2 text-h2 font-semibold text-ink">{primary.title}</h2>
+        <h2 className={workTitle} title={primary.title}>{primary.title}</h2>
         <p className="flex min-w-0 items-baseline gap-1.5 text-meta text-muted">
           {primary.goalTitle && <span className="truncate">{primary.goalTitle}</span>}
           {primary.goalTitle && <span aria-hidden>·</span>}

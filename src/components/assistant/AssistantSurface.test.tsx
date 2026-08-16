@@ -425,7 +425,16 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'close' });
   });
 
-  it('wraps a long primary title to two lines while quiet metadata truncates', () => {
+  /*
+   * OVERTURNS the previous pin, which required `line-clamp-2`.
+   *
+   * That was right when the title had 165px of a 620px window and needed two
+   * lines to say anything. The band layout gives it 433px, and one line makes
+   * the card's height independent of its content — which is what a window that
+   * is fixed-height and CLIPS rather than scrolls actually wants. The full
+   * string stays reachable on `title`.
+   */
+  it('truncates a long primary title to one line and keeps it in the tooltip', () => {
     const long = 'Write the extremely long literature review section that keeps growing '
       + 'until it no longer fits on one line at any sane width';
     render(
@@ -434,11 +443,33 @@ describe('AssistantSurface', () => {
           advice: { kind: 'work', primary: work({ title: long }), alternatives: [] },
         })}
         onAction={() => {}}
+        presentation="shelf"
       />,
     );
     const title = screen.getByRole('heading', { name: long });
-    expect(title.className).toContain('line-clamp-2');
+    expect(title.className).toContain('truncate');
+    expect(title.className).not.toContain('line-clamp-2');
+    expect(title.getAttribute('title')).toBe(long);
     expect(screen.getByText('Algorithms').className).toContain('truncate');
+  });
+
+  /*
+   * The same rule during a session: `FocusPanel` and `AdvicePanel` must not
+   * disagree about how a title overflows, which is why both spend `workTitle`.
+   */
+  it('truncates the running session title the same way', () => {
+    const long = 'Write the extremely long literature review section that keeps growing '
+      + 'until it no longer fits on one line at any sane width';
+    render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView({ title: long }) })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const title = screen.getByRole('heading', { name: long });
+    expect(title.className).toContain('truncate');
+    expect(title.getAttribute('title')).toBe(long);
   });
 
   it('gives every icon button an accessible name', () => {
