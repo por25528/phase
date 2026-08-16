@@ -1291,8 +1291,7 @@ Expected: FAIL — `month-gutter-row` not found.
 Create `src/views/plan/MonthGutter.tsx`:
 
 ```tsx
-import { capacityMeter } from './capacityLabel';
-import { formatMinutes } from './capacityLabel';
+import { capacityMeter, formatMinutes } from './capacityLabel';
 import type { MonthCapacityRow } from './monthCapacity';
 
 /** The gutter's width, shared with `MonthGrid`'s two grid templates. */
