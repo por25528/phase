@@ -28,6 +28,7 @@ import { ScheduleMenu } from './SchedulePopover';
 import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
 import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
 import { scheduleCell } from '../lib/rowSchedule';
+import { metaPlacement, type MetaPlacement } from '../lib/rowMeta';
 import { todayStr } from '../lib/dates';
 import { DEMANDS, DEMAND_WORD, type Demand } from '../lib/demand';
 
@@ -471,6 +472,14 @@ function GoalTreeNode({
   // `E` in a row would do nothing.
   const [estimateOpen, setEstimateOpen] = useState(0);
   const scheduleRef = useRef<HTMLButtonElement>(null);
+  // Same ownership move as `scheduleRef`, for the estimate badge: a leaf's
+  // metadata can relocate to a different parent element the instant it gains
+  // an estimate (inline → below), which unmounts the instance that was
+  // mid-commit. A ref and a signal owned by this stable row, not by whichever
+  // `EstimateControl` happens to be mounted, are what let focus survive the
+  // move — see `EstimateControl`'s `badgeRef`/`pendingFocusRef`.
+  const estimateBadgeRef = useRef<HTMLButtonElement>(null);
+  const estimateFocusPending = useRef(false);
   useEffect(() => {
     if (isNew) actions.clearNewNode();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot, on mount
@@ -478,6 +487,7 @@ function GoalTreeNode({
   const hasKids = Boolean(n.children && n.children.length > 0);
   const isOpen = hasKids && expanded.has(n.id);
   const when = scheduleCell(n, todayStr());
+  const placement: MetaPlacement = hasKids ? 'inline' : metaPlacement(n, todayStr());
   const ind = depth * 22;
 
   const {
@@ -734,8 +744,15 @@ function GoalTreeNode({
     }
   }
 
+  // The row is a two-column grid now, not one flex line. Column 1 holds the
+  // leading controls; column 2 stacks the title over its metadata, which is what
+  // deletes the ~700px gutter the pinned right-edge cells used to leave.
+  //
+  // `items-start`, so the leading controls stay aligned to line 1 rather than
+  // centring themselves across a two-line row.
+  // `group` stays LITERAL: `.quiet-control` matches `.group`, not `group/name`.
   const ROW_CLS =
-    'flex items-center gap-[9px] px-[6px] py-[4px] rounded-[6px] hover:bg-hover group cursor-pointer ' +
+    'grid grid-cols-[auto_1fr] gap-x-[9px] items-start px-[6px] py-[4px] rounded-[6px] hover:bg-hover group cursor-pointer ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-0';
 
   return (
@@ -770,227 +787,181 @@ function GoalTreeNode({
         // title never reaches this.
         onDoubleClick={hasKids ? () => actions.openArea(n.id) : undefined}
       >
-        {/* Drag handle — {listeners} here, NOT on the whole row, to avoid
-            colliding with row-level Space/Arrow handlers. tabIndex={-1} keeps
-            it out of the tab order (the row itself is the focusable unit). */}
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          tabIndex={-1}
-          aria-label="Drag to reorder"
-          onClick={(e) => e.stopPropagation()}
-          className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-faint cursor-grab active:cursor-grabbing"
-        >
-          {/* The plan sidebar already drew this handle properly; the tree used
-              `⠿` — a BRAILLE PATTERN — for the same affordance. */}
-          <IconGrip size={13} />
-        </button>
-
-        {/* Twirl (container) or fixed-width spacer (leaf) */}
-        {hasKids ? (
+        {/* ── column 1: leading controls, pinned to line 1 ── */}
+        <div className="flex items-center gap-[9px] min-h-[26px]">
+          {/* Drag handle — {listeners} here, NOT on the whole row, to avoid
+              colliding with row-level Space/Arrow handlers. */}
           <button
             type="button"
-            aria-expanded={isOpen}
-            aria-label={isOpen ? 'Collapse' : 'Expand'}
+            {...attributes}
+            {...listeners}
             tabIndex={-1}
-            className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint transition-transform duration-150 rounded-[4px] hover:bg-hover"
-            style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
-            onClick={(e) => {
-              e.stopPropagation();
-              actions.toggleExpand(n.id);
-            }}
+            aria-label="Drag to reorder"
+            onClick={(e) => e.stopPropagation()}
+            className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-faint cursor-grab active:cursor-grabbing"
           >
-            <IconChevronRight size={13} />
+            <IconGrip size={13} />
           </button>
-        ) : (
-          <span className="w-[14px] h-[14px] flex-shrink-0" aria-hidden="true" />
-        )}
 
-        {/* Status box on leaves only. Click/Space still only toggle done — the
-            other two states are set via `S` or the hover control below. */}
-        {!hasKids && (
-          <LeafStatusBox
-            status={stepStatus(n)}
-            onToggle={() => actions.toggleLeaf(n.id)}
-            label={`Mark "${n.title}" as done`}
-          />
-        )}
-
-        {n.checkpoint && (
-          <span className="text-accent flex-shrink-0 inline-flex" aria-hidden="true">
-            <IconDiamond size={9} />
-          </span>
-        )}
-
-        {/* The chip marks a CHANGE in demand, never a repetition of it. The
-            condition is the RAW field, not the resolved value `demandIndex`
-            would hand back: a `deep` goal inherits its value onto every leaf,
-            and thirty rows saying `Deep` is a column that says one word thirty
-            times. No border of any kind — the dashed class is reserved for the
-            drop preview and a guessed-hour calendar block, and a bordered chip
-            here would out-weigh the title beside it. */}
-        {n.demand !== undefined && (
-          <span className="text-meta text-muted flex-none px-[5px] py-[3px] truncate">
-            {DEMAND_WORD[n.demand]}
-          </span>
-        )}
-
-        {/* Title */}
-        {editing ? (
-          <InlineEdit
-            value={n.title}
-            className={`flex-1 text-lead ${
-              hasKids ? 'font-semibold text-ink' : isDone(n) ? 'line-through text-muted' : 'text-ink-soft'
-            }`}
-            onCommit={commitRename}
-            onCancel={() => setEditing(false)}
-          />
-        ) : (
-          /*
-           * The title lets its clicks through now.
-           *
-           * It used to stop them, because underneath was a completion toggle
-           * and a rename double-click therefore ticked the box off and on
-           * again — net zero for `done` but NOT for `doneAt`, so renaming a
-           * pset you finished last Tuesday silently rewrote when you finished
-           * it. Under a row click that merely opens the inspector there is
-           * nothing left to defend against, and swallowing the click would make
-           * the largest part of the row the one part that does not open it.
-           */
-          <span
-            className={`flex-1 text-lead select-none ${
-              hasKids
-                ? 'font-semibold text-ink'
-                : isDone(n)
-                  ? 'line-through text-muted'
-                  : 'text-ink-soft'
-            }`}
-            onDoubleClick={() => setEditing(true)}
-          >
-            {n.title}
-          </span>
-        )}
-
-        {/* Why a blocked leaf is stuck — the status box already names "blocked"
-            in its label; this is the reason a person typed in. */}
-        {!hasKids && stepStatus(n) === 'blocked' && n.blockedOn && (
-          <span className="text-meta text-muted truncate max-w-[180px] flex-shrink" title={n.blockedOn}>
-            {n.blockedOn}
-          </span>
-        )}
-
-        {/* Progress % (containers only) */}
-        {hasKids && (
-          <span className="text-compact text-muted tabular-nums flex-shrink-0">
-            {Math.round(nodePct(n))}%
-          </span>
-        )}
-
-        {/* A container's status is DERIVED, never stored — see containerStatus. */}
-        {hasKids && containerStatus(n) === 'blocked' && (
-          <span className="text-meta text-warn flex-shrink-0">blocked</span>
-        )}
-
-        {/* WHEN — one cell, fixed width, so the column is a column.
-            `GoalNode` carries `plannedStartMin`, `plannedDay`, `plannedWeek`
-            and `deadline`, and the row used to show none of them; four
-            separate cells would be four columns of mostly-empty metadata, so
-            `scheduleCell` picks the most specific one. The placeholder keeps
-            the estimate beside it aligned across rows that have no date. */}
-        {/* The cell states the answer AND sets it. Scheduling used to be
-            reachable from the inspector and from a drag onto the Plan grid and
-            from nowhere on the row, so the commonest thing to do to a task you
-            are looking at cost a panel or a trip to another surface.
-
-            Containers get the readout without the control, matching the store:
-            a group is scheduled through its tasks. */}
-        <span className="hidden sm:flex w-[92px] flex-none justify-end" onClick={(e) => e.stopPropagation()}>
           {hasKids ? (
-            <span
-              className={`text-meta tabular-nums truncate px-[5px] py-[3px] ${
-                when?.tone === 'warn' ? 'text-warn' : 'text-muted'
-              }`}
-              title={when?.hint}
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-label={isOpen ? 'Collapse' : 'Expand'}
+              tabIndex={-1}
+              className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint transition-transform duration-150 rounded-[4px] hover:bg-hover"
+              style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                actions.toggleExpand(n.id);
+              }}
             >
-              {when?.text ?? ''}
-            </span>
+              <IconChevronRight size={13} />
+            </button>
           ) : (
-            <Popover
-              label={when?.text ? `Scheduled ${when.text}. Change it` : `Schedule "${n.title}"`}
-              role="menu"
-              align="end"
-              panelWidth={188}
-              triggerRef={scheduleRef}
-              triggerClassName={`text-meta tabular-nums truncate rounded-[4px] px-[5px] py-[3px] min-h-[24px] inline-flex items-center hover:bg-hover hover:text-ink ${
-                when?.tone === 'warn' ? 'text-warn' : when?.text ? 'text-muted' : 'text-faint quiet-control'
-              }`}
-              trigger={when?.text ?? 'plan'}
-            >
-              {(close) => <ScheduleMenu goalId={goalId} node={n} close={close} />}
-            </Popover>
+            <span className="w-[14px] h-[14px] flex-shrink-0" aria-hidden="true" />
           )}
-        </span>
 
-        {/* Estimate — LEAVES only, matching `setNodeEstimate`'s own guard: a
-            container's duration is the sum of its children's, not a figure of
-            its own, and `addChild` deletes `estimateMin` when a leaf becomes a
-            container for exactly that reason.
-
-            This is the point of decomposition, and until now it was the one
-            place you could NOT say how long a step takes — the rail was the
-            sole host, and it shows only unplaced work from Now/Next projects.
-            So a Later project's steps, and anything already on the calendar,
-            had no estimate route at all. */}
-        <span className="w-[56px] flex-none flex justify-end">
           {!hasKids && (
-            <EstimateControl
-              minutes={n.estimateMin}
-              label={n.title}
-              openRequest={estimateOpen}
-              onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+            <LeafStatusBox
+              status={stepStatus(n)}
+              onToggle={() => actions.toggleLeaf(n.id)}
+              label={`Mark "${n.title}" as done`}
             />
           )}
-        </span>
 
-        {/* Cycle status — leaves only, same rule as `S`: a container's status
-            is derived and never stored.
+          {n.checkpoint && (
+            <span className="text-accent flex-shrink-0 inline-flex" aria-hidden="true">
+              <IconDiamond size={9} />
+            </span>
+          )}
+        </div>
 
-            This one control stayed on the row while rename, add-subtask and
-            delete moved into the `⋯` beside it, because it is the only one of
-            the four that is also a READOUT: `LeafStatusBox` shows done or not
-            done, and nothing else on the row distinguishes a task in progress
-            from one nobody has touched. */}
-        {!hasKids && (
-          <button
-            type="button"
-            tabIndex={-1}
-            className="quiet-control"
-            aria-label={`Change status of "${n.title}"`}
-            onClick={(e) => {
-              e.stopPropagation();
-              actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
-            }}
-          >
-            ◐
-          </button>
-        )}
+        {/* ── column 2: the title, and under it what the task says about itself ── */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-[9px] min-h-[26px]">
+            {/* A container's demand chip has no line 2 to go to. */}
+            {hasKids && n.demand !== undefined && (
+              <span className="text-meta text-muted flex-none truncate">{DEMAND_WORD[n.demand]}</span>
+            )}
 
-        {/* Everything below daily frequency, in one menu.
-            The row used to carry rename, add-subtask, cycle-status and delete
-            as four separate hover controls, on top of six that never left —
-            ten targets to manipulate one task, and sixty small glyphs to read
-            past on a list of twenty. */}
-        <span onClick={(e) => e.stopPropagation()} className="flex-none">
-          <RowActions
-            node={n}
-            isFirstSibling={isFirstSibling}
-            depth={depth}
-            onRename={() => setEditing(true)}
-            onEstimate={() => setEstimateOpen((c) => c + 1)}
-            onSchedule={() => scheduleRef.current?.click()}
-          />
-        </span>
+            {editing ? (
+              <InlineEdit
+                value={n.title}
+                className={`flex-1 text-lead ${
+                  hasKids ? 'font-semibold text-ink' : isDone(n) ? 'line-through text-muted' : 'text-ink-soft'
+                }`}
+                onCommit={commitRename}
+                onCancel={() => setEditing(false)}
+              />
+            ) : (
+              /* The title lets its clicks through: under a row click that merely
+                 opens the inspector there is nothing to defend against, and
+                 swallowing it would make the largest part of the row the one
+                 part that does not open it. `truncate` because the title is the
+                 one user string here with no bound. */
+              <span
+                className={`flex-1 min-w-0 truncate text-lead select-none ${
+                  hasKids
+                    ? 'font-semibold text-ink'
+                    : isDone(n)
+                      ? 'line-through text-muted'
+                      : 'text-ink-soft'
+                }`}
+                title={n.title}
+                onDoubleClick={() => setEditing(true)}
+              >
+                {n.title}
+              </span>
+            )}
+
+            {hasKids && (
+              <span className="text-compact text-muted tabular-nums flex-shrink-0">
+                {Math.round(nodePct(n))}%
+              </span>
+            )}
+
+            {/* A container's status is DERIVED, never stored — see containerStatus. */}
+            {hasKids && containerStatus(n) === 'blocked' && (
+              <span className="text-meta text-warn flex-shrink-0">blocked</span>
+            )}
+
+            {/* A container's read-only WHEN readout keeps its place: it has no
+                second line, and it is narrow enough not to leave a gutter. */}
+            {hasKids && when?.text && (
+              <span
+                className={`text-meta tabular-nums truncate flex-none px-[5px] py-[3px] ${
+                  when.tone === 'warn' ? 'text-warn' : 'text-muted'
+                }`}
+                title={when.hint}
+              >
+                {when.text}
+              </span>
+            )}
+
+            {/* A bare leaf's metadata rides HERE — on the line that already
+                exists — so hovering it reveals controls without changing the
+                row's height. */}
+            {!hasKids && placement === 'inline' && (
+              <LeafMeta
+                node={n}
+                goalId={goalId}
+                when={when}
+                placement="inline"
+                scheduleRef={scheduleRef}
+                estimateOpen={estimateOpen}
+                onEstimate={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+                estimateBadgeRef={estimateBadgeRef}
+                estimateFocusPending={estimateFocusPending}
+              />
+            )}
+
+            {/* Cycle status — leaves only. The one control that stayed on the
+                row while rename, add-subtask and delete moved into `⋯`, because
+                it is the only one of the four that is also a READOUT. */}
+            {!hasKids && (
+              <button
+                type="button"
+                tabIndex={-1}
+                className="quiet-control flex-none"
+                aria-label={`Change status of "${n.title}"`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
+                }}
+              >
+                ◐
+              </button>
+            )}
+
+            <span onClick={(e) => e.stopPropagation()} className="flex-none">
+              <RowActions
+                node={n}
+                isFirstSibling={isFirstSibling}
+                depth={depth}
+                onRename={() => setEditing(true)}
+                onEstimate={() => setEstimateOpen((c) => c + 1)}
+                onSchedule={() => scheduleRef.current?.click()}
+              />
+            </span>
+          </div>
+
+          {!hasKids && placement === 'below' && (
+            <div className="mt-[1px]">
+              <LeafMeta
+                node={n}
+                goalId={goalId}
+                when={when}
+                placement="below"
+                scheduleRef={scheduleRef}
+                estimateOpen={estimateOpen}
+                onEstimate={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+                estimateBadgeRef={estimateBadgeRef}
+                estimateFocusPending={estimateFocusPending}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── children (fade in on expand; unmount on collapse for clean DOM) ── */}
@@ -1034,6 +1005,88 @@ function GoalTreeNode({
         </FadeIn>
       )}
     </div>
+  );
+}
+
+/**
+ * A leaf's metadata — demand, WHEN, estimate, blocked reason — in ONE component
+ * rendered in either of two positions.
+ *
+ * One component and not two so the placements cannot drift in what they hold.
+ * The point of the inline case is that hovering a bare row reveals exactly the
+ * controls a populated row already shows; two components would let that
+ * quietly stop being true.
+ */
+function LeafMeta({
+  node: n,
+  goalId,
+  when,
+  placement,
+  scheduleRef,
+  estimateOpen,
+  onEstimate,
+  estimateBadgeRef,
+  estimateFocusPending,
+}: {
+  node: GoalNode;
+  goalId: string;
+  when: ReturnType<typeof scheduleCell>;
+  placement: MetaPlacement;
+  scheduleRef: React.RefObject<HTMLButtonElement | null>;
+  estimateOpen: number;
+  onEstimate: (minutes: number | null) => void;
+  estimateBadgeRef: React.RefObject<HTMLButtonElement | null>;
+  estimateFocusPending: React.MutableRefObject<boolean>;
+}) {
+  const inline = placement === 'inline';
+  return (
+    <span
+      data-testid={inline ? 'row-meta-inline' : 'row-meta-below'}
+      className={
+        inline
+          ? 'flex-none flex items-center gap-[2px]'
+          : 'flex items-center gap-[6px] flex-wrap min-w-0'
+      }
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* The chip marks a CHANGE in demand, never a repetition — the condition
+          is the RAW field, so a `deep` goal draws zero chips on its leaves. */}
+      {n.demand !== undefined && (
+        <span className="text-meta text-muted flex-none truncate">{DEMAND_WORD[n.demand]}</span>
+      )}
+
+      <Popover
+        label={when?.text ? `Scheduled ${when.text}. Change it` : `Schedule "${n.title}"`}
+        role="menu"
+        align={inline ? 'end' : 'start'}
+        panelWidth={188}
+        triggerRef={scheduleRef}
+        triggerClassName={`text-meta tabular-nums truncate rounded-[4px] px-[5px] py-[3px] min-h-[24px] inline-flex items-center hover:bg-hover hover:text-ink ${
+          when?.tone === 'warn' ? 'text-warn' : when?.text ? 'text-muted' : 'text-faint quiet-control'
+        }`}
+        trigger={when?.text ?? 'plan'}
+      >
+        {(close) => <ScheduleMenu goalId={goalId} node={n} close={close} />}
+      </Popover>
+
+      <EstimateControl
+        minutes={n.estimateMin}
+        label={n.title}
+        openRequest={estimateOpen}
+        onChange={onEstimate}
+        badgeRef={estimateBadgeRef}
+        pendingFocusRef={estimateFocusPending}
+      />
+
+      {/* Why a blocked leaf is stuck. It stays OUT of the status control:
+          hiding it behind the thing that set the status would let the row say
+          "blocked" without ever saying what by. */}
+      {stepStatus(n) === 'blocked' && n.blockedOn && (
+        <span className="text-meta text-muted truncate max-w-[220px]" title={n.blockedOn}>
+          {n.blockedOn}
+        </span>
+      )}
+    </span>
   );
 }
 

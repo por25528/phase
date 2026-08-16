@@ -54,6 +54,8 @@ export function EstimateControl({
   className = '',
   openRequest = 0,
   alwaysShow = false,
+  badgeRef: externalBadgeRef,
+  pendingFocusRef,
 }: {
   minutes: number | undefined;
   /** The item's title, for the accessible name. */
@@ -79,9 +81,26 @@ export function EstimateControl({
    * reads as a broken row rather than as an empty property.
    */
   alwaysShow?: boolean;
+  /**
+   * Same pattern as `Popover`'s `triggerRef`: a ref the HOST owns instead of
+   * one this component keeps to itself. GoalTree's row can reposition the
+   * badge to a different parent element between renders (a leaf's metadata
+   * moves from inline to a second line the instant it gains an estimate), and
+   * an internal `useRef` dies with the instance that gets unmounted there. An
+   * externally-owned ref is the same object across that move, because the
+   * host — not this component — is what stays put.
+   */
+  badgeRef?: React.RefObject<HTMLButtonElement | null>;
+  /**
+   * Carries "a commit just happened, focus the badge" across the same move.
+   * Only meaningful paired with `badgeRef`: without a host that can survive
+   * the reposition, there is nowhere for the signal to land.
+   */
+  pendingFocusRef?: React.MutableRefObject<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
-  const badgeRef = useRef<HTMLButtonElement>(null);
+  const ownBadgeRef = useRef<HTMLButtonElement>(null);
+  const badgeRef = externalBadgeRef ?? ownBadgeRef;
   const seenOpenRequest = useRef(openRequest);
   useEffect(() => {
     if (openRequest === seenOpenRequest.current) return;
@@ -104,10 +123,28 @@ export function EstimateControl({
     if (editing || !returnFocus.current) return;
     returnFocus.current = false;
     badgeRef.current?.focus();
-  }, [editing]);
+  }, [editing, badgeRef]);
+  /*
+   * The instance-survival case above covers every host except GoalTree's row,
+   * where a leaf's metadata can relocate to a different parent element in the
+   * very same commit that set the estimate — the editing instance is torn
+   * down rather than re-rendered at `editing: false`, so its own effect never
+   * runs. `pendingFocusRef` is the dying instance's note to whichever badge
+   * mounts next; this reads it once, on mount, and only when it is this
+   * component's own commit that left it set.
+   */
+  useEffect(() => {
+    if (!pendingFocusRef?.current) return;
+    pendingFocusRef.current = false;
+    badgeRef.current?.focus();
+    // Mount-only: this is recovering a signal left by an instance that no
+    // longer exists, not something that should re-fire as `editing` changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function close(commit: boolean) {
     returnFocus.current = commit;
+    if (commit && pendingFocusRef) pendingFocusRef.current = true;
     setEditing(false);
   }
 
@@ -189,6 +226,7 @@ export function EstimateControl({
           // The field blurs itself after committing, so `handleBlur` runs on
           // the next tick and would otherwise close this as a non-commit.
           returnFocus.current = true;
+          if (pendingFocusRef) pendingFocusRef.current = true;
         }}
       />
       {ESTIMATE_PRESETS.map((preset) => (
