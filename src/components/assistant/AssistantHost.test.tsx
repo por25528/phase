@@ -119,10 +119,6 @@ describe('AssistantHost', () => {
     });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Other options' }));
-    });
-
-    await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Revise notes/ }));
     });
 
