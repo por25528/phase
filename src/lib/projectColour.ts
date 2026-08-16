@@ -52,3 +52,29 @@ export function projectColourIndex(goalId: string): number {
 export function projectBlockClass(goalId: string | null): string {
   return goalId === null ? NEUTRAL : BLOCK_CLASSES[projectColourIndex(goalId)];
 }
+
+/**
+ * The rail's group spine — the same hue that project's blocks wear on the
+ * calendar, as a plain left border.
+ *
+ * Written out in full for the same reason `BLOCK_CLASSES` is: Tailwind's
+ * scanner reads source TEXT and cannot evaluate `border-proj-${i}`, so an
+ * interpolated class generates no CSS and every spine would render invisible.
+ *
+ * No fill and no alpha. A block on the calendar is an object and takes a wash;
+ * a spine is a grouping mark on a 249px rail, and a tinted background behind
+ * four rows of text would be the loudest thing in the sidebar.
+ */
+const SPINE_CLASSES = [
+  'border-proj-0',
+  'border-proj-1',
+  'border-proj-2',
+  'border-proj-3',
+  'border-proj-4',
+  'border-proj-5',
+] as const;
+
+/** Left rail for a rail group belonging to `goalId` (null ⇒ loose tasks). */
+export function projectSpineClass(goalId: string | null): string {
+  return goalId === null ? 'border-line-2' : SPINE_CLASSES[projectColourIndex(goalId)];
+}

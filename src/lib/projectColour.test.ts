@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { contrastRatio, themeTokens, type Rgb } from './contrast';
-import { projectColourIndex, projectBlockClass, PROJECT_COLOURS } from './projectColour';
+import { projectColourIndex, projectBlockClass, projectSpineClass, PROJECT_COLOURS } from './projectColour';
 
 describe('assigning a project its colour', () => {
   it('is deterministic', () => {
@@ -76,4 +76,19 @@ describe('palette contrast', () => {
       expect(contrastRatio(hue, DARK_PANEL)).toBeGreaterThanOrEqual(3);
     });
   }
+});
+
+describe('projectSpineClass', () => {
+  it('agrees with projectBlockClass about which hue a project owns', () => {
+    for (const id of ['a1b2c3d', 'zzz9999', 'q0w9e8r']) {
+      const i = projectColourIndex(id);
+      expect(projectSpineClass(id)).toContain(`border-proj-${i}`);
+      expect(projectBlockClass(id)).toContain(`border-l-proj-${i}`);
+    }
+  });
+
+  it('gives a loose task the neutral line, never an invented hue', () => {
+    expect(projectSpineClass(null)).toContain('border-line-2');
+    expect(projectSpineClass(null)).not.toMatch(/proj-\d/);
+  });
 });
