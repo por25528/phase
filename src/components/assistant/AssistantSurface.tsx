@@ -27,8 +27,9 @@ import { TodayCheckbox } from '../TodayCheckbox';
  *
  * The layout is one column with one focal point: the running session if there
  * is one, otherwise the single primary recommendation. Everything else — the
- * alternatives behind Other options, the notice — is deliberately smaller and
- * greyer than that one thing. A notice is a LINE ABOVE the body and never a
+ * alternatives in their own band below the work, the notice — stays quieter
+ * and unbordered rather than that one thing's filled card, never hidden
+ * behind a disclosure. A notice is a LINE ABOVE the body and never a
  * replacement for it: there is no state of the shelf with nothing to press.
  */
 

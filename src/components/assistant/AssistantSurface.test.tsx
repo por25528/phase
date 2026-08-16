@@ -209,10 +209,10 @@ describe('AssistantSurface', () => {
     expect(container.querySelector('[data-ring-slot]')).toBeTruthy();
   });
 
-  it('reserves the same two slots during an active session', () => {
+  it.each(['active', 'break'] as const)('reserves the same two slots during a %s session', (phase) => {
     const { container } = render(
       <AssistantSurface
-        snapshot={ready({ activeFocus: focusView({ phase: 'active' }) })}
+        snapshot={ready({ activeFocus: focusView({ phase }) })}
         onAction={() => {}}
         presentation="shelf"
       />,
@@ -920,8 +920,8 @@ describe('marking the offered work done', () => {
   });
 
   /*
-   * The Sidecar is a list of things to PICK, and a list of choices is not a
-   * commit — the same reason optionRow is not one of the dialog variants.
+   * AlternativesBand's rows are a list of things to PICK, and a list of
+   * choices is not a commit.
    */
   it('puts no checkbox on the alternatives', () => {
     render(<AssistantSurface
