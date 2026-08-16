@@ -16,7 +16,23 @@
 - **`persistFailed` is re-read after every mutation**, through the existing `settled` helper — in-memory state advances even when nothing reached IndexedDB.
 - **The horizon argument is a WORD, never a column index.** `'now' | 'next' | 'later' | 'someday'`, lowercase, exact.
 - **Do not re-implement the WIP cap.** `moveGoalToColumn` does not enforce `NOW_WIP_LIMIT`; the board's `4 of 6 focus slots used` is a readout, not a refusal.
-- **Do not reuse `goalImport`'s `horizonFromWord`.** It carries legacy aliases whose meaning already changed once (`later` meant column 3 under the old scheme, column 2 under the new).
+- **Do not reuse `goalImport`'s `priorityToColumn`.** It answers `0` for anything unrecognised instead of refusing, which makes it unusable as a validator for untrusted input.
+
+> **Two corrections applied 17 August 2026, after the whole-branch review.** This
+> plan was executed as written and then amended; the steps below still show the
+> code as it was first transcribed, so read them as the record of what was built,
+> not as current source.
+>
+> 1. The constraint above originally named the function `horizonFromWord` and
+>    said it returned column 3 for `later`. **Both were false** — no such
+>    function exists, and `priorityToColumn` checks `PRIORITY_WORDS` before
+>    `LEGACY_PRIORITY_WORDS`, so `later` is 2 there too. The real reason to keep
+>    them apart is that it cannot refuse.
+> 2. **Case-sensitivity was reversed.** Steps below argue that `isHorizonWord`
+>    should reject `'Now'`. It now accepts it, because `agentReads.ts:84` emits
+>    capitalised labels, so the plan's own rule made the most obvious call fail.
+>    `columnOfHorizonWord` had to normalise in the same change or `'Now'` would
+>    pass the gate and render `HORIZON_LABELS[-1]` as `undefined`.
 - **`electron/agentSocket.cjs` and `electron/agentIpc.cjs` are NOT touched.** They frame and relay; neither knows a verb by name, and both import nothing from `src/` by design. If a task seems to need an edit there, the design is wrong — stop and report.
 - Run `npm test` and `npx tsc -b` before every commit (project convention, `CLAUDE.md`).
 - Branch: `feat/agent-set-life` (already checked out). Do not create a new branch.

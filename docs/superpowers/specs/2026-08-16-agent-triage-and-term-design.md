@@ -65,17 +65,39 @@ is invisible from outside the app, there is no read verb that reports one, and
 A verb whose argument cannot be discovered from any read is a verb the model has
 to guess at.
 
-The mapping is `HORIZON_LABELS.findIndex` against the lowercased word, so
+The mapping is `HORIZON_LABELS.findIndex` against the normalised word, so
 `horizons.ts` stays the one definition. It deliberately does **not** reuse
-`goalImport`'s `horizonFromWord`: that parser carries legacy aliases from the
-old priority scheme, where `later` meant column 3 and now means column 2. A word
-whose meaning has already changed once is not a word a new verb should inherit.
-Round-tripping an export is `create_project`'s problem and stays there.
+`goalImport`'s `priorityToColumn`: that parser answers **0 for anything it does
+not recognise** (`goalImport.ts:23,28`) rather than refusing, which makes it
+unusable as a validator for untrusted wire input — and refusing is this
+function's whole job. Round-tripping an export is `create_project`'s problem and
+stays there.
 
-`validAgentRequest` accepts exactly those four lowercase words and rejects
-everything else, including a number. This is the seam's job and it runs in the
-renderer, per the standing rule that the Electron modules import nothing from
+> **Corrected 17 August 2026.** This paragraph previously said the rejected
+> function was called `horizonFromWord` and that it returned column 3 for
+> `later`. Both were false: no such function exists, and `priorityToColumn`
+> consults `PRIORITY_WORDS` before `LEGACY_PRIORITY_WORDS`, so `later` is 2
+> there as well. For the four words this verb accepts the two functions agree
+> exactly — the real reason to keep them apart is refusal, not disagreement.
+> Caught by the whole-branch review; the code comment carried the same error.
+
+`validAgentRequest` accepts those four words in **either casing** and rejects
+everything else, including a number. It runs in the renderer, per the standing
+rule that the Electron modules import nothing from
 `src/`.
+
+**Either casing, because the read hands back the other one.** This shipped
+case-SENSITIVE, argued as "a horizon word is an enum on a wire, not a title
+somebody typed." That argument does not survive contact with `agentReads.ts:84`,
+which answers `HORIZON_LABELS[goal.column ?? 0]` — *capitalised*. So the most
+natural call a model can make, feeding `list_projects`' own `horizon` field
+straight into `set_horizon`, was the one call guaranteed to fail; and `set_life`,
+added one commit earlier, already trims and lowercases. Two adjacent verbs took
+opposite positions on one question. Normalisation lives in BOTH `isHorizonWord`
+and `columnOfHorizonWord`, which is not belt-and-braces: relaxing only the guard
+would let `'Now'` past the gate and then render `HORIZON_LABELS[-1]` as
+`did not move to undefined`. And `mcp/server.js` normalises too, because its
+`z.enum` runs in the other process and would otherwise refuse before the socket.
 
 ### The handler
 
