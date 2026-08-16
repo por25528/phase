@@ -187,7 +187,7 @@ describe('the three views render against a populated store', () => {
     const { Plan } = await import('./Plan');
     const html = renderToStaticMarkup(createElement(Plan));
 
-    expect(html).not.toContain('Loading…');
+    expect(html).not.toContain('Loading your plan'); // the hydration skeleton
     expect(html).toContain('To plan');          // the backlog rail
     expect(html).toContain('Investor deck');    // an unplanned step, in the rail
     expect(html).toContain('free');             // the capacity readout

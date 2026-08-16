@@ -37,6 +37,8 @@ import { WeekHeader } from './plan/WeekHeader';
 import { UnestimatedPanel } from './plan/UnestimatedPanel';
 import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
 import { RecapPanel } from './plan/RecapPanel';
+import { PlanNotice } from './plan/PlanNotice';
+import { PlanSkeleton } from './plan/PlanSkeleton';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
@@ -541,9 +543,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim, { blockId: data.blockId });
   }
 
-  if (hydration !== 'ready') {
-    return <div className="text-muted text-body py-[40px]">Loading…</div>;
-  }
+  if (hydration !== 'ready') return <PlanSkeleton />;
 
   return (
     <DndContext
@@ -598,44 +598,11 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             />
           )}
 
-          {availability.length === 0 && (
-            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
-              No working hours set — every day is off, so nothing can be scheduled.{' '}
-              <button
-                type="button"
-                // Straight into Settings. The editor used to be an accordion in
-                // the rail beside this banner; it is a dialog now, and the one
-                // banner that exists because availability is unset should be
-                // the shortest route to setting it.
-                onClick={onOpenSettings}
-                className="font-semibold text-accent hover:text-accent-deep"
-              >
-                Set your working hours
-              </button>
-            </div>
-          )}
-
-          {/*
-            First-run hint. Both routes onto the grid are invisible affordances
-            — the rail rows carry no grip glyph, and `1`-`7` is announced
-            nowhere — so a new user can sit in front of a full backlog and an
-            empty week with no idea the two are connected.
-
-            No dismiss control and no persisted flag: `showPlanHint` retires it
-            the moment anything is placed, which is the exact moment the lesson
-            has landed. A ✕ here would only let someone dismiss the answer to
-            the question they still have.
-          */}
-          {planHint && (
-            <div className="mb-[10px] px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
-              Drag anything from <span className="font-semibold text-ink">To plan</span> onto a day
-              to schedule it — or click a row and press{' '}
-              <kbd className="font-mono text-kbd border border-line-2 rounded-[4px] px-[4px] py-[1px] text-muted">1</kbd>
-              –
-              <kbd className="font-mono text-kbd border border-line-2 rounded-[4px] px-[4px] py-[1px] text-muted">7</kbd>{' '}
-              for Mon–Sun.
-            </div>
-          )}
+          <PlanNotice
+            needsHours={availability.length === 0}
+            showHint={planHint}
+            onOpenSettings={onOpenSettings}
+          />
 
           {planMode === 'month' && monthDraft && (
             <BlockComposer
