@@ -1693,14 +1693,13 @@ describe('the backlog rail', () => {
     expect(screen.queryByText(/·/)).toBeNull();
   });
 
-  it('draws no grip glyph on a row', async () => {
-    const { container } = await mountRail({ goals: [PROJECT], tasks: [] }).then(
-      (r) => ({ ...r, container: document.body }),
-    );
-    // IconGrip is the only 6-dot cluster in this subtree; its removal is the
-    // 18px the title reclaims.
-    expect(container.querySelectorAll('svg circle').length).toBe(0);
-  });
+  // NOTE: an earlier draft asserted `querySelectorAll('svg circle')` was empty
+  // to prove the grip glyph is gone. DROPPED in pre-flight review, and do not
+  // reinstate it: it passes only because no OTHER circle-bearing icon
+  // (IconClock, IconDots, IconCircle, IconSearch) happens to sit in the rail
+  // today, so adding one next month breaks a test whose failure message talks
+  // about circles. Removing a decorative glyph is a visual fact and Task 12's
+  // visual pass covers it.
 
   it('still deletes a loose task from the row', async () => {
     const { store, user } = await mountRail({ goals: [], tasks: [LOOSE] });
