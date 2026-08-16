@@ -398,8 +398,11 @@ export function CapacityMeter({
             <span className="tabular-nums">{unestimated}</span>
           )
         )}
+        {/* `text-muted`, NOT `text-faint`. This states which days the figures
+            cover, and a reader who does not take it in will read a six-week
+            total as a month's — it is the opposite of decorative. */}
         {spanLabel && (
-          <span className="font-mono text-micro text-faint">{spanLabel}</span>
+          <span className="font-mono text-micro text-muted">{spanLabel}</span>
         )}
       </div>
     </div>
@@ -1322,7 +1325,10 @@ export function MonthGutter({ row, onOpen }: {
       aria-label={`Open week ${row.isoWeekLabel} — ${planned} planned`}
       className="group border-b border-line-soft flex flex-col justify-center items-end gap-[2px] pr-[8px] text-right hover:bg-hover"
     >
-      <span className="font-mono text-micro tracking-[.08em] text-faint group-hover:text-muted">
+      {/* `text-muted`, NOT `text-faint`: this names the week and is read.
+          Task 2's review caught the identical slip on the header's span
+          label — the Global Constraints reserve `faint` for decoration. */}
+      <span className="font-mono text-micro tracking-[.08em] text-muted group-hover:text-ink">
         {row.isoWeekLabel}
       </span>
       {/* A week with nothing on it says nothing — the same silence rule the day
