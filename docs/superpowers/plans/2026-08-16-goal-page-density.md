@@ -290,13 +290,26 @@ describe('a leaf with nothing to say', () => {
 
   // The whole point of one component in two positions: hovering a bare row must
   // reveal the SAME controls a populated row shows, not a reduced set.
-  it('offers the same controls a populated row offers', async () => {
+  //
+  // Asserted as "both kinds of control are present in both placements", NOT as
+  // string equality of their labels. The labels SHOULD differ — an unset
+  // control says `Schedule "X"` / `Set estimate for "X"` while a set one says
+  // `Scheduled This week. Change it` / `Estimate for "X": 45m. Change it`,
+  // because each names its own state. A test demanding they match would be
+  // asserting a bug.
+  it('offers the same two controls in both placements', async () => {
     await renderTree([{ id: 'a', title: 'Bare task' }, { id: 'b', title: 'Full task', estimateMin: 45 }]);
     const bare = within(row('Bare task')).getByTestId('row-meta-inline');
     const full = within(row('Full task')).getByTestId('row-meta-below');
-    const names = (el: HTMLElement) =>
-      within(el).getAllByRole('button').map((b) => b.getAttribute('aria-label')?.replace(/"[^"]*"/, '"X"')).sort();
-    expect(names(bare)).toEqual(names(full));
+
+    expect(within(bare).getByRole('button', { name: /^Schedule "/ })).toBeTruthy();
+    expect(within(bare).getByRole('button', { name: /^Set estimate for "/ })).toBeTruthy();
+
+    expect(within(full).getByRole('button', { name: /^Schedule "/ })).toBeTruthy();
+    expect(within(full).getByRole('button', { name: /^Estimate for ".*": 45m/ })).toBeTruthy();
+
+    // Neither placement holds a control the other lacks.
+    expect(within(bare).getAllByRole('button')).toHaveLength(within(full).getAllByRole('button').length);
   });
 });
 
