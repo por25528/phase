@@ -752,12 +752,14 @@ import { describe, expect, it } from 'vitest';
 import { monthCapacity } from './monthCapacity';
 import type { Goal, Task } from '../../db/types';
 
+// AvailabilityWindow.dow is 0 = MONDAY … 6 = Sunday, matching weekDates()
+// order — NOT the JS Date convention. 0-4 is Mon-Fri; 1-5 would be Tue-Sat.
 const windows = [
+  { dow: 0, startMin: 540, endMin: 1020 },
   { dow: 1, startMin: 540, endMin: 1020 },
   { dow: 2, startMin: 540, endMin: 1020 },
   { dow: 3, startMin: 540, endMin: 1020 },
   { dow: 4, startMin: 540, endMin: 1020 },
-  { dow: 5, startMin: 540, endMin: 1020 },
 ];
 
 const input = {
@@ -1221,8 +1223,9 @@ const cap = monthCapacity({
   ym: '2026-08',
   goals: [], tasks: [],
   windows: [
+    // 0 = Monday. See the note in monthCapacity.test.ts.
+    { dow: 0, startMin: 540, endMin: 1020 },
     { dow: 1, startMin: 540, endMin: 1020 },
-    { dow: 2, startMin: 540, endMin: 1020 },
   ],
   now: { date: '2026-08-16', minute: 600 },
   allDayBlocks: false,
