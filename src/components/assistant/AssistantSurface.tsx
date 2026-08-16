@@ -185,13 +185,26 @@ function dialStripClass(shelf: boolean): string {
  * displacing a running sitting are different acts — but one region, because a
  * reader must not have to look in two places for the same question.
  *
- * The row is still one button with the whole row as its hit area. `-mx-1`
- * against the row's own `px-1` keeps the hover surface aligned to the band's
- * text rather than to its padding box.
+ * The row is still one button with the whole row as its hit area, and that box
+ * is exactly the band's content box — no horizontal padding of its own, and no
+ * negative margin to cancel one. It carried `px-1 -mx-1` to bleed the hover
+ * surface past the text, which also dragged the `border-line-soft` divider
+ * BETWEEN the rows 4px out on each side: an inner rule cannot start left of
+ * the inset its band's own hairline is drawn to, or the subordinate line reads
+ * as the wider of the two. The text now starts where the section label above
+ * it starts, and the divider ends where the band does.
  */
 const altRow =
-  'flex w-full items-baseline gap-3 rounded-[6px] px-1 py-[5px] text-left '
+  'flex w-full items-baseline gap-3 rounded-[6px] py-[5px] text-left '
   + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
+
+/**
+ * The alternatives band's own inset, shared with `Skeleton` so the loading
+ * shape and the thing that replaces it cannot drift apart.
+ */
+function altBandCls(shelf: boolean): string {
+  return `border-t border-line ${shelf ? 'px-4 pt-2 pb-2.5' : 'px-3 py-2'}`;
+}
 
 function AlternativesBand({ label, items, disabled, onPick, shelf }: {
   label: string;
@@ -202,7 +215,7 @@ function AlternativesBand({ label, items, disabled, onPick, shelf }: {
 }) {
   if (items.length === 0) return null;
   return (
-    <div className={`border-t border-line ${shelf ? 'px-4 pt-2 pb-2.5' : 'px-3 py-2'}`}>
+    <div className={altBandCls(shelf)}>
       <SectionLabel>{label}</SectionLabel>
       <div className="mt-[2px] flex flex-col">
         {items.map((item, i) => (
@@ -210,7 +223,7 @@ function AlternativesBand({ label, items, disabled, onPick, shelf }: {
             key={item.key}
             type="button"
             disabled={disabled}
-            className={`${altRow} -mx-1 ${i ? 'border-t border-line-soft' : ''}`}
+            className={`${altRow} ${i ? 'border-t border-line-soft' : ''}`}
             onClick={() => onPick(item.ref)}
           >
             <span className="min-w-0 flex-1 truncate text-body text-ink-soft">{item.title}</span>
@@ -321,22 +334,28 @@ function WorkBand({ checkbox, ring, eyebrow, title, subtitle, extra, actions, sh
  * token — the same value `text-ink` resolves to — so the light theme's loading
  * state was three solid black bars.
  *
- * The three shapes are band 1 (the work), band 2 (the alternatives) and band 3
- * (the dials), in that order and at those heights, so the card does not reflow
- * into a different layout when the snapshot lands.
+ * The three shapes are the work, the alternatives and the dials, in the order
+ * and at the insets THAT presentation puts them in, so the card does not
+ * reflow into a different layout when the snapshot lands. It takes the same
+ * `shelf` prop the bands do and spends their own class helpers, because it was
+ * hard-coded to the shelf — `px-4` where the embedded bands use `px-3`, the
+ * dial strip's `bg-bg` bar inside a `bg-panel` card, and the dials last where
+ * embedded they come first. A skeleton that promises the wrong layout is worse
+ * than no skeleton: it reflows twice.
  */
-function Skeleton() {
+function Skeleton({ shelf }: { shelf: boolean }) {
+  // `flex-1` and not a width: the dial strip's own class is a flex row on the
+  // shelf, and a plain block child of it would collapse to zero width.
+  const row = (height: string) => (
+    <div data-testid="skeleton-row" className={`${height} flex-1 rounded-field bg-hover`} />
+  );
+  const work = <div className={bandCls(shelf)}>{row('h-[46px]')}</div>;
+  const alternatives = <div className={altBandCls(shelf)}>{row('h-[42px]')}</div>;
+  // Two captioned switches stacked embedded, one row of them on the shelf.
+  const dials = <div className={dialStripClass(shelf)}>{row(shelf ? 'h-[26px]' : 'h-[58px]')}</div>;
   return (
     <div role="status" aria-label="Preparing your next step" className="flex flex-col">
-      <div className="px-4 pt-3.5 pb-3">
-        <div data-testid="skeleton-row" className="h-[46px] rounded-field bg-hover" />
-      </div>
-      <div className="border-t border-line px-4 pt-2 pb-2.5">
-        <div data-testid="skeleton-row" className="h-[42px] rounded-field bg-hover" />
-      </div>
-      <div className="border-t border-line bg-bg px-4 py-[7px]">
-        <div data-testid="skeleton-row" className="h-[26px] rounded-[6px] bg-hover" />
-      </div>
+      {shelf ? <>{work}{alternatives}{dials}</> : <>{dials}{work}{alternatives}</>}
     </div>
   );
 }
@@ -393,8 +412,12 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
   // nothing from a mark saying which button is focused — the ring was on
   // 100% of the time and distinguished nothing, in the one hue the system
   // reserves for action. Tab and it appears, where it means something.
+  //
+  // The pairs are fragments and not rows: `WorkBand` already wraps whatever it
+  // is handed in a `flex gap-2`, so a second one here was a wrapper whose only
+  // effect was to hide the buttons from the arrangement outside it.
   const actions = focus.phase === 'confirming' ? (
-    <div className="flex gap-2">
+    <>
       <button
         type="button"
         className={ghostBtn}
@@ -409,9 +432,9 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       >
         Log {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)}
       </button>
-    </div>
+    </>
   ) : focus.phase === 'active' ? (
-    <div className="flex gap-2">
+    <>
       <button type="button" className={secondaryBtn} onClick={() => onAction({ type: 'pause-focus' })}>
         Take break
       </button>
@@ -422,9 +445,9 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       >
         Complete session
       </button>
-    </div>
+    </>
   ) : (
-    <div className="flex gap-2">
+    <>
       <button
         type="button"
         className={secondaryBtn}
@@ -435,7 +458,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       <button type="button" className={primaryBtn} onClick={() => onAction({ type: 'resume-focus' })}>
         Continue
       </button>
-    </div>
+    </>
   );
   return (
     <>
@@ -451,7 +474,10 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       />
       <AlternativesBand
         label="Switch to"
-        items={alternatives.slice(0, 2)}
+        // The same cap the idle panel takes, from the same constant: both
+        // labels are one region, and a hard-coded 2 here would make `Switch to`
+        // and `Or` disagree the day `MAX_ALTERNATIVES` moves.
+        items={alternatives.slice(0, MAX_ALTERNATIVES)}
         disabled={false}
         onPick={(ref) => onAction({ type: 'switch-focus', ref })}
         shelf={shelf}
@@ -469,15 +495,20 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
 }) {
   const { advice } = snapshot;
 
+  // The two bodies that are a sentence rather than a band, and they take a
+  // band's inset anyway. The card's padding used to live on the root as one
+  // `p-3`; when it moved onto the bands these two returns were left with
+  // nothing, so the text sat at x=0, flush against the card's own rounded
+  // corner. `needs-hours` is what a new install shows on its FIRST summon.
   if (advice.kind === 'needs-hours') {
     return (
-      <p className="text-body text-ink">
+      <p className={`${bandCls(shelf)} text-body text-ink`}>
         Phase doesn&apos;t know your working hours yet. Set them in Settings and it can say what fits.
       </p>
     );
   }
   if (advice.kind === 'clear') {
-    return <p className="text-body text-ink">Nothing needs you right now.</p>;
+    return <p className={`${bandCls(shelf)} text-body text-ink`}>Nothing needs you right now.</p>;
   }
 
   const { primary } = advice;
@@ -562,7 +593,7 @@ export function AssistantSurface({
     return () => window.removeEventListener('keydown', onKey);
   }, [onAction]);
 
-  if (snapshot.status === 'loading') return <Skeleton />;
+  if (snapshot.status === 'loading') return <Skeleton shelf={shelf} />;
 
   if (isLeavingStage(sendoff.stage)) {
     return (
