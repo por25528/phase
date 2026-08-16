@@ -20,11 +20,24 @@ describe('CapacityMeter', () => {
     expect(container.querySelector('[data-testid="capacity-mark"]')).toBeNull();
   });
 
-  it('shows the capacity tick and warns when over', () => {
+  it('wears the healthy tokens on both segments when the week fits', () => {
+    const { container } = render(<CapacityMeter figures={healthy} parts={[]} />);
+    expect(container.querySelector('[data-testid="meter-planned"]')?.className)
+      .toContain('bg-accent');
+    expect(container.querySelector('[data-testid="meter-backlog"]')?.className)
+      .toContain('bg-faint-2');
+  });
+
+  it('shows the capacity tick and warns on both segments when over', () => {
     const { container } = render(<CapacityMeter figures={over} parts={[]} />);
     expect(container.querySelector('[data-testid="capacity-mark"]')).toBeTruthy();
-    expect(container.querySelector('[data-testid="meter-planned"]')?.className)
-      .toContain('bg-warn');
+    const planned = container.querySelector('[data-testid="meter-planned"]')?.className;
+    const backlog = container.querySelector('[data-testid="meter-backlog"]')?.className;
+    expect(planned).toContain('bg-warn');
+    expect(backlog).toContain('bg-warn/45');
+    // The healthy tokens must be GONE, not merely joined by the warn ones.
+    expect(planned).not.toContain('bg-accent');
+    expect(backlog).not.toContain('bg-faint-2');
   });
 
   it('states its span when given one', () => {

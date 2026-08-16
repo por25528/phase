@@ -85,7 +85,12 @@ export function CapacityMeter({
           )
         )}
         {spanLabel && (
-          <span className="font-mono text-micro text-faint">{spanLabel}</span>
+          <>
+            {/* `text-muted`, NOT `text-faint`. This states which days the figures
+                cover, and a reader who does not take it in will read a six-week
+                total as a month's — it is the opposite of decorative. */}
+            <span className="font-mono text-micro text-muted">{spanLabel}</span>
+          </>
         )}
       </div>
     </div>
