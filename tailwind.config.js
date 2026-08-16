@@ -58,8 +58,12 @@ export default {
       // pass. An alias is not a step — do not reach for one in new code.
       fontSize: {
         root: '14px',       // body base (index.css)
-        micro: '.625rem',   // 8.75px — mono section labels and eyebrows
-        eyebrow: '.625rem', // ALIAS of micro
+        // 11px — mono section labels and eyebrows. Raised from .625rem (10px at
+        // the app's 16px html base): ten-pixel type in the dark UI at 1440px is
+        // a squint, and this is the app's smallest role, so it sets the floor.
+        // Stays a step BELOW `meta` (12px) so the label/metadata hierarchy holds.
+        micro: '.6875rem',  // 11px — mono section labels and eyebrows
+        eyebrow: '.6875rem', // ALIAS of micro
         tiny: '.75rem',     // ALIAS of meta
         kbd: '.75rem',      // ALIAS of meta
         // NB: `badge`, not `chip`. `chip` is also a COLOR key, and Tailwind

@@ -184,7 +184,7 @@ export function AreaPage({ goal: g, node }: { goal: Goal; node: GoalNode }) {
                   </span>
                   <span
                     className={`flex-1 min-w-0 truncate text-ui ${
-                      isDone(child) ? 'line-through text-faint' : 'text-ink-soft'
+                      isDone(child) ? 'line-through text-muted' : 'text-ink-soft'
                     }`}
                   >
                     {child.title}

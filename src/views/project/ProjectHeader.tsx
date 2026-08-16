@@ -139,7 +139,7 @@ export function ProjectHeader({
               A 40px numeral over a page-wide bar claimed to be the goal's
               primary object; it is a compact secondary read of a figure that
               can change basis underneath it. */}
-          {effort.total > 0 && <span className="text-faint whitespace-nowrap">· {pct}%</span>}
+          {effort.total > 0 && <span className="text-muted whitespace-nowrap">· {pct}%</span>}
         </button>
 
         {metaOpen && (

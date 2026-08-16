@@ -246,7 +246,7 @@ export function StepPanel({ goal, node, actions }: {
               </span>
               <span
                 className={`flex-1 min-w-0 truncate ${
-                  isDone(child) ? 'line-through text-faint' : 'text-ink-soft'
+                  isDone(child) ? 'line-through text-muted' : 'text-ink-soft'
                 }`}
               >
                 {child.title}

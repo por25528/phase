@@ -841,7 +841,7 @@ function GoalTreeNode({
           <InlineEdit
             value={n.title}
             className={`flex-1 text-lead ${
-              hasKids ? 'font-semibold text-ink' : isDone(n) ? 'line-through text-faint' : 'text-ink-soft'
+              hasKids ? 'font-semibold text-ink' : isDone(n) ? 'line-through text-muted' : 'text-ink-soft'
             }`}
             onCommit={commitRename}
             onCancel={() => setEditing(false)}
@@ -863,7 +863,7 @@ function GoalTreeNode({
               hasKids
                 ? 'font-semibold text-ink'
                 : isDone(n)
-                  ? 'line-through text-faint'
+                  ? 'line-through text-muted'
                   : 'text-ink-soft'
             }`}
             onDoubleClick={() => setEditing(true)}
