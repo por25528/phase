@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
 import { sectionLabel } from '../components/sectionLabel';
+import { SectionHeader } from '../components/SectionHeader';
 import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
 import { IconArrowRight, IconWarning } from '../components/Icons';
@@ -20,7 +21,7 @@ import { useLocalDate } from '../hooks/useLocalDate';
 import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
 import { dueChip } from '../lib/backlog';
 import { weekOf } from '../lib/plan';
-import { rowBtn } from '../components/dialogStyles';
+import { primaryBtn, rowBtn, rowBtnPrimary } from '../components/dialogStyles';
 
 /**
  * What to do now.
@@ -37,7 +38,18 @@ import { rowBtn } from '../components/dialogStyles';
  * cards — a surface that answers one question stops answering it the moment it
  * also answers nine others.
  */
-export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function Today({
+  onOpenSettings,
+  onCapture,
+}: {
+  onOpenSettings: () => void;
+  /**
+   * Open task capture. Optional because only the empty state spends it: the
+   * shell owns the ⌘N host, and a page that renders rows has no business
+   * carrying a second way in.
+   */
+  onCapture?: () => void;
+}) {
   const { goals, tasks, sessions, availability, allDayBlocks, actions } = useAppStore();
   const today = useLocalDate();
   const [nowMinute, setNowMinute] = useState(() => {
@@ -95,6 +107,18 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
   // the primary; listing it again put the same task on screen twice, and the
   // section's own name promised otherwise.
   const rest = primary ? open.filter((i) => i.key !== primary.key) : open;
+  /**
+   * The day's weight, for the header.
+   *
+   * Commitments plus carry-overs — the two populations this page holds you to,
+   * and never the free-time offer, which is work you have not agreed to yet.
+   * A carry-over promoted to primary is counted once: `sections.carryOvers` and
+   * `sections.commitments` are disjoint, so the primary is in exactly one of
+   * them. It takes the UNCAPPED carry-over total rather than `carried.rows`,
+   * because a header stating "5 left" over eight rows' worth of work would be
+   * the cap leaking into a figure that is supposed to be the whole day.
+   */
+  const leftCount = open.length + sections.carryOvers.length;
   // Indexed against the list it is drawn in, not the one it was derived from.
   const divider = nowDividerIndex(rest, nowMinute);
   const doneCount = sections.completedToday.length;
@@ -190,13 +214,19 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
     if (!started) actions.showToast(`Couldn't start a session on "${title}" — one is already running`);
   }
 
+  /**
+   * The page's one filled control. Everything else Today offers — Replan,
+   * booking a carry-over, booking an offer — moves work AROUND the day; this is
+   * the only button that starts doing any of it, and it was rendering as the
+   * third identical outlined button on the page.
+   */
   function startSessionButton(ref: WorkRef, title: string) {
     return (
       <button
         type="button"
         onClick={() => startSession(ref, title)}
         aria-label={`Start session on “${title}”`}
-        className={`relative z-10 ${rowBtn}`}
+        className={`relative z-10 ${rowBtnPrimary}`}
       >
         Start session
       </button>
@@ -215,22 +245,51 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   return (
     <div className="max-w-[720px] mx-auto">
-      <div className="mb-[18px]">
-        <h1 className="text-h2 font-semibold tracking-[-0.01em]">{greeting(new Date().getHours())}</h1>
-        <p className="text-meta text-muted mt-[2px]">{dateKicker(today)}</p>
+      {/* ── The day ──
+          The kicker moved ABOVE the greeting and into the mono label voice.
+          Below it, `text-meta` in the UI face, it was a subtitle that happened
+          to be shouting: `dateKicker` upper-cases at runtime, so the app's rule
+          that all-caps travels with `font-mono` was broken in the one place its
+          build guard cannot see. As an eyebrow it reads as the instrument stamp
+          it always was, and the greeting below becomes the page's title — at
+          `text-h1`, which is what every other view's title is set at.
+
+          The one figure on the reading edge is the day's WEIGHT: everything
+          committed to today plus everything that slipped into it. No section
+          states that total (each states its own bucket), and it is the answer
+          to the question you open this page already asking. */}
+      <div className="mb-[18px] px-[8px]">
+        <p className={sectionLabel}>{dateKicker(today)}</p>
+        <div className="flex items-baseline justify-between gap-[16px] mt-[3px]">
+          <h1 className="text-h1 font-semibold tracking-[-0.015em]">
+            {greeting(new Date().getHours())}
+          </h1>
+          {leftCount > 0 && (
+            <span className="flex-none text-ui text-muted tabular-nums">{leftCount} left</span>
+          )}
+        </div>
       </div>
 
       {/* ── What slipped ──
           Above Now, because a day planned on top of yesterday's unfinished work
-          is a day that will slip again. Two buttons, and neither of them moves
-          anything: `Replan` opens a preview, `Leave it` dismisses the strip
-          until the data changes. */}
+          is a day that will slip again. `Replan` opens a preview and moves
+          nothing on its own.
+
+          It used to be a filled `bg-warn-tint` card carrying bold warn text and
+          a white button, which made a secondary condition the loudest object on
+          the page — louder than the one thing worth doing, directly below it.
+          The status is now carried by the MARK alone: a warn triangle, neutral
+          chrome, ordinary ink. Nothing about how urgent this is has changed;
+          what changed is that it no longer outranks the work. */}
       {slipped.length > 0 && (
-        <div className="mb-[16px] flex flex-wrap items-center gap-[10px] px-[12px] py-[9px] rounded-card bg-warn-tint">
-          <span className="text-ui text-warn font-semibold">
+        <div className="mb-[20px] px-[8px] flex flex-wrap items-center gap-x-[9px] gap-y-[4px]">
+          <span className="flex-none inline-flex text-warn" aria-hidden="true">
+            <IconWarning size={14} />
+          </span>
+          <span className="text-ui text-ink">
             {slipped.length} task{slipped.length === 1 ? '' : 's'} unfinished
           </span>
-          <span className="text-meta text-ink-soft tabular-nums">
+          <span className="text-meta text-muted tabular-nums">
             {fmtMinutes(slipped.reduce((n, s2) => n + s2.minutes, 0))}
           </span>
           <span className="flex-1" />
@@ -249,15 +308,13 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           renders with its own checkbox and clock; a free-time primary is the
           offer's first row promoted, so its click still books it. */}
       {(primaryItem || primaryOffer || !offerInfo) && (
-      <section aria-label="Now" className="mb-[24px]">
+      <section aria-label="Now" className="mb-[20px]">
         {primary && primaryItem ? (
           <>
             {/* The label is the emphasis now. The row below carries the clock,
                 the estimate and the title exactly as every other row does, so
                 the one thing worth doing sits on the same axis as the rest. */}
-            <div className={`px-[8px] mb-[2px] ${sectionLabel}`}>
-              {primary.reason === 'scheduled-now' ? 'Now' : 'Next'}
-            </div>
+            <SectionHeader label={primary.reason === 'scheduled-now' ? 'Now' : 'Next'} />
             <TaskRow
               title={primaryItem.title}
               subtitle={primaryItem.goalTitle}
@@ -286,12 +343,13 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
         ) : primary && primaryOffer && offerInfo ? (
           <>
             {/* The free time IS the reason this row leads, so the heading that
-                names it moves up here with the row it explains. A label, and
-                then the capacity sentence under it — the eyebrow slot says
-                WHAT a section is, and "no time left today, but Monday has 9h"
-                is why the offer exists, not what it is called. */}
-            <div className={`px-[8px] mb-[2px] ${sectionLabel}`}>Free time</div>
-            <p className="px-[8px] mb-[6px] text-meta text-muted">{offerHeading(offerInfo, today)}</p>
+                names it moves up here with the row it explains. The capacity
+                sentence sits on the far end of the section rule rather than on
+                a line of its own: the eyebrow slot says WHAT a section is, and
+                "no time left today, but Monday has 9h" is why the offer exists
+                — a fact about the section, which is exactly what that slot is
+                for, and one line saved above the row it explains. */}
+            <SectionHeader label="Free time" right={offerHeading(offerInfo, today)} />
             <TaskRow
               title={primaryOffer.title}
               subtitle={primaryOffer.goalTitle}
@@ -311,12 +369,32 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
               }
             />
           </>
+        ) : doneCount > 0 ? (
+          /* A finished day. No verb here: `Done today` is rendering the record
+             directly below, so the page is not empty and does not need filling
+             — and offering to add work is a strange thing to say to someone who
+             has just cleared the board. */
+          <p className="px-[8px] text-ui text-muted">Nothing left today — {doneCount} done.</p>
         ) : (
-          <p className="px-[8px] text-ui text-muted">
-            {doneCount > 0
-              ? `Nothing left today — ${doneCount} done.`
-              : 'Nothing committed to today. Plan a task, or capture one with ⌘N.'}
-          </p>
+          /* The genuinely empty day, and the first screen a new database shows.
+             It used to be one grey sentence naming a shortcut in prose, on a
+             page with nothing else on it — the shortcut was the only way in and
+             it was written as if it were punctuation. The sentence states the
+             fact, the button IS the invitation, and `⌘N` sits on the button as
+             a key rather than inside a paragraph as a word. Same verb as the
+             header's `+ Add` on this view (`addAction.ts`: Today makes a task),
+             so the two cannot advertise different things. */
+          <div className="px-[8px]">
+            <p className="text-ui text-muted">Nothing committed to today.</p>
+            {onCapture && (
+              <button type="button" onClick={onCapture} className={`mt-[10px] ${primaryBtn}`}>
+                Add a task
+                <kbd className="ml-[8px] font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">
+                  ⌘N
+                </kbd>
+              </button>
+            )}
+          </div>
         )}
       </section>
       )}
@@ -327,8 +405,8 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           is behind us, so the remaining list still shows a single unticked
           10:00 standup at six in the evening. */}
       {rest.length > 0 && (
-        <section aria-label="Today’s plan" className="mb-[24px]">
-          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Rest of today</h2>
+        <section aria-label="Today’s plan" className="mb-[20px]">
+          <SectionHeader label="Rest of today" />
           <ul>
             {rest.map((item, i) => (
               <li key={item.key}>
@@ -373,7 +451,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           between commitments, and the moment it lists everything open it is a
           second backlog rail on a page that is not the backlog. */}
       {offer.kind === 'no-hours' && (
-        <section aria-label="Free time" className="mb-[24px]">
+        <section aria-label="Free time" className="mb-[20px]">
           <div className="px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
             {/* "Nobody told me when you work" and "you are out of time" are
                 different sentences, and only one of them is true here. */}
@@ -390,19 +468,15 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
 
       {offerInfo && restOffers.length > 0 && (
-        <section aria-label="Free time" className="mb-[24px]">
+        <section aria-label="Free time" className="mb-[20px]">
           {/* When the primary above already carries the free-time heading,
               repeating the sentence would say it twice about the same time —
               so the capacity line belongs to whichever of the two is showing
               it, and never to both. */}
-          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>
-            {primaryOffer ? 'Also possible' : 'Free time'}
-          </h2>
-          {!primaryOffer && (
-            <p className="px-[8px] -mt-[4px] mb-[6px] text-meta text-muted">
-              {offerHeading(offerInfo, today)}
-            </p>
-          )}
+          <SectionHeader
+            label={primaryOffer ? 'Also possible' : 'Free time'}
+            right={primaryOffer ? undefined : offerHeading(offerInfo, today)}
+          />
           <ul>
             {restOffers.map((row) => {
               const chip = dueChip(row.due, today);
@@ -440,8 +514,12 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           exactly one thing on this page — and `scheduleTask`/`scheduleNode`
           vacate the stale sitting and arm the undo without help. */}
       {carried.rows.length > 0 && (
-        <section aria-label="Carried over" className="mb-[24px]">
-          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Carried over</h2>
+        <section aria-label="Carried over" className="mb-[20px]">
+          {/* The only section whose rows are CAPPED, so the only one whose total
+              says something the rows cannot. `+N more` below states the same
+              arithmetic from the other end and stays: it sits with the rows it
+              is withholding, where a reader counting them will look. */}
+          <SectionHeader label="Carried over" right={carried.rows.length + carried.overflow} />
           <ul>
             {carried.rows.map((item) => (
               <li key={item.key}>
@@ -498,7 +576,7 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
       {/* ── Attention ── */}
       {attention.length > 0 && (
         <section aria-label="Attention">
-          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Attention</h2>
+          <SectionHeader label="Attention" />
           <ul>
             {attention.map((a) => (
               <li key={a.id}>
@@ -536,8 +614,8 @@ export function Today({ onOpenSettings }: { onOpenSettings: () => void }) {
           things were finished needs a completion timestamp, which the spec
           refuses; read that refusal before reaching for one. */}
       {sections.completedToday.length > 0 && (
-        <section aria-label="Done today" className="mt-[24px]">
-          <h2 className={`px-[8px] mb-[6px] ${sectionLabel}`}>Done today</h2>
+        <section aria-label="Done today" className="mt-[20px]">
+          <SectionHeader label="Done today" />
           <ul>
             {sections.completedToday.map((item) => {
               const logged = loggedForItemOn(sessions, item, today);

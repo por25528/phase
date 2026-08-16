@@ -119,3 +119,25 @@ export const labelCls = 'text-meta font-medium text-muted';
 export const rowBtn =
   `${CONTROL_LINE} inline-flex items-center justify-center px-[10px] py-[4px] rounded-field `
   + 'border border-line-2 bg-panel text-ui font-semibold text-ink hover:bg-hover';
+
+/**
+ * The ONE filled button on a working surface — the reason you came to the page.
+ *
+ * This does not reopen `rowBtn`'s argument. That one was about HEIGHT: a 33px
+ * `primaryBtn` inside a 31px row breaks the row rhythm and puts Now back on its
+ * own axis. The metrics here are `rowBtn`'s exactly (1 + 4 + 21 + 4 + 1 becomes
+ * 5 + 21 + 5, the border's 2px paid back as padding), so the rhythm is untouched
+ * and only the FILL differs.
+ *
+ * What it fixes is that Today rendered `Replan`, `Start session` and a
+ * carry-over's `Today` as three identical outlined buttons, so the page offered
+ * no answer to "which of these is the point" — the one control that begins work
+ * looked exactly like the one that dismisses yesterday. `bg-ink`, not `bg-accent`:
+ * `dialogStyles` already reserves colour for trouble, and the app shell's own
+ * ⌘N button is filled ink for the same reason.
+ *
+ * A surface gets at most one. Two filled buttons is the state this exists to end.
+ */
+export const rowBtnPrimary =
+  `${CONTROL_LINE} inline-flex items-center justify-center px-[10px] py-[5px] rounded-field `
+  + 'bg-ink text-paper text-ui font-semibold hover:bg-ink-hover';

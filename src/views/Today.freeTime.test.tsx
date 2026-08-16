@@ -299,14 +299,21 @@ describe('the shared primary', () => {
 
   /**
    * The one action the surface exists to offer used to render as `text-meta
-   * text-muted` — eleven-pixel grey text, quieter than the row it sat on.
+   * text-muted` — eleven-pixel grey text, quieter than the row it sat on. It
+   * then spent a spell as `rowBtn`, which fixed that and left a second problem:
+   * `Replan`, a carry-over's `Today` and this one were three identical outlined
+   * buttons, so the page ranked none of them. It is the FILLED one now, and the
+   * only one on the surface — which is the whole of what `rowBtnPrimary` says.
    */
-  it('renders Start session as a button rather than as metadata', async () => {
+  it('renders Start session as the surface’s one filled button', async () => {
     await mountToday();
 
     const btn = screen.getByRole('button', { name: 'Start session on “Draft the intro”' });
-    expect(btn.className).toContain('border');
+    expect(btn.className).toContain('bg-ink');
     expect(btn.className).not.toContain('text-muted');
+    // A second filled button would rank two things first, which ranks neither.
+    const filled = screen.getAllByRole('button').filter((b) => b.className.includes('bg-ink'));
+    expect(filled).toEqual([btn]);
   });
 
   /** Three labels, three left edges, two colours. One of each now. */
