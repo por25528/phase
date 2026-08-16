@@ -53,6 +53,18 @@ describe('validAgentRequest', () => {
     expect(validAgentRequest({ tool: 'schedule', ref, day: '2026-08-14' })).toBe(true);
     expect(validAgentRequest({ tool: 'schedule', ref, day: 'friday' })).toBe(false);
   });
+
+  it('accepts only the four lowercase words on set_horizon', () => {
+    for (const horizon of ['now', 'next', 'later', 'someday']) {
+      expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon })).toBe(true);
+    }
+    expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon: 'Now' })).toBe(false);
+    expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon: 'archived' })).toBe(false);
+    // A column index is what this verb exists NOT to take: it appears in no
+    // read, so a model would have to guess it.
+    expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon: 3 })).toBe(false);
+    expect(validAgentRequest({ tool: 'set_horizon', horizon: 'now' })).toBe(false);
+  });
 });
 
 describe('response helpers', () => {

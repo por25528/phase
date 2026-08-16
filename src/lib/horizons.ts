@@ -31,3 +31,31 @@ export const PLANNING_HORIZONS = 2;
 export function isPlanningHorizon(column: number | undefined): boolean {
   return (column ?? 0) < PLANNING_HORIZONS;
 }
+
+/**
+ * The horizon words the agent surface speaks, derived from the labels so the
+ * two cannot drift. `Lowercase<>` over `HORIZON_LABELS` means adding a fifth
+ * horizon adds its word for free.
+ */
+export type HorizonWord = Lowercase<(typeof HORIZON_LABELS)[number]>;
+
+/**
+ * Exact, lowercase, and deliberately case-SENSITIVE — see the note in
+ * `horizons.test.ts`. This is a wire value, not a title someone typed.
+ */
+export function isHorizonWord(value: unknown): value is HorizonWord {
+  return typeof value === 'string' && HORIZON_LABELS.some((l) => l.toLowerCase() === value);
+}
+
+/**
+ * The column a horizon word names.
+ *
+ * Deliberately NOT `goalImport`'s `horizonFromWord`: that parser carries
+ * aliases from the old priority scheme, where `later` meant column 3 and now
+ * means column 2. Round-tripping an export is `create_project`'s problem and
+ * stays there; a new verb should not inherit a word whose meaning has already
+ * changed once.
+ */
+export function columnOfHorizonWord(word: HorizonWord): number {
+  return HORIZON_LABELS.findIndex((l) => l.toLowerCase() === word);
+}
