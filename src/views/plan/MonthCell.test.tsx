@@ -88,3 +88,60 @@ describe('a day in the month grid', () => {
     expect(chip.className).toContain('line-through');
   });
 });
+
+const dayCap = (over: boolean) => ({
+  date: '2026-08-06',
+  freeMin: 300,
+  plannedMin: over ? 540 : 180,
+  backlogMin: 0,
+  unestimated: 0,
+  blockedBy: [] as string[],
+  hasData: false,
+});
+
+describe('MonthCell load figure', () => {
+  it('states the planned time for the day', () => {
+    render(
+      <MonthCell
+        date="2026-08-06" items={[]} inMonth isToday={false}
+        capacity={dayCap(false)} onCreate={() => {}} onOpenDay={() => {}}
+      />,
+    );
+    expect(screen.getByText('3h')).toBeTruthy();
+  });
+
+  it('warns when the day is over-committed', () => {
+    const { container } = render(
+      <MonthCell
+        date="2026-08-06" items={[]} inMonth isToday={false}
+        capacity={dayCap(true)} onCreate={() => {}} onOpenDay={() => {}}
+      />,
+    );
+    expect(container.querySelector('[data-testid="month-day-load"]')?.className)
+      .toContain('text-warn');
+  });
+
+  // Same silence rule dayLoadLabel already keeps: an empty day looks empty.
+  it('says nothing on a day with nothing planned', () => {
+    const { container } = render(
+      <MonthCell
+        date="2026-08-06" items={[]} inMonth isToday={false}
+        capacity={{ ...dayCap(false), plannedMin: 0 }}
+        onCreate={() => {}} onOpenDay={() => {}}
+      />,
+    );
+    expect(container.querySelector('[data-testid="month-day-load"]')).toBeNull();
+  });
+
+  it('marks today with a filled pill rather than coloured text', () => {
+    const { container } = render(
+      <MonthCell
+        date="2026-08-16" items={[]} inMonth isToday
+        onCreate={() => {}} onOpenDay={() => {}}
+      />,
+    );
+    const num = container.querySelector('[data-testid="month-day-number"]');
+    expect(num?.className).toContain('bg-ink');
+    expect(num?.className).not.toContain('text-accent');
+  });
+});

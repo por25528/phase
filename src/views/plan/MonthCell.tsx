@@ -3,6 +3,8 @@ import { clockLabel } from '../../lib/clock';
 import { projectBlockClass } from '../../lib/projectColour';
 import type { ScheduledItem } from '../../lib/scheduled';
 import { parseD } from '../../lib/dates';
+import type { DayCapacity } from '../../lib/capacity';
+import { formatMinutes, isOverCommitted, dayLoadHint } from './capacityLabel';
 
 /**
  * How many chips a cell shows before collapsing the rest.
@@ -22,7 +24,7 @@ export const MONTH_CHIP_CAP = 3;
  * the week grid's blocks use.
  */
 export function MonthCell({
-  date, items, inMonth, isToday, readOnly, onCreate, onOpenDay,
+  date, items, inMonth, isToday, readOnly, capacity, onCreate, onOpenDay,
 }: {
   date: string;
   items: ScheduledItem[];
@@ -31,12 +33,28 @@ export function MonthCell({
   isToday: boolean;
   /** True for a day already spent — creation is refused, as on the grid. */
   readOnly?: boolean;
+  /**
+   * This day's figures. Absent in hosts that have none (tests, future
+   * callers) — the cell then draws no load and reads exactly as it did before.
+   */
+  capacity?: DayCapacity;
   onCreate: (date: string) => void;
   onOpenDay: (date: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !!readOnly });
   const shown = items.slice(0, MONTH_CHIP_CAP);
   const hidden = items.length - shown.length;
+  /*
+   * The same silence rule `dayLoadLabel` keeps: a day with nothing planned that
+   * is not over-committed reports nothing, because an empty cell already looks
+   * empty and 42 instances of "0m" is noise on the calmest surface in the app.
+   * The figure is `plannedMin` ALONE, not `dayLoadLabel`'s "1h 30m / 6h" — that
+   * form is sized for a week column heading and does not fit an 86px cell.
+   */
+  const over = capacity ? isOverCommitted(capacity) : false;
+  const load = capacity && (capacity.plannedMin > 0 || over)
+    ? formatMinutes(capacity.plannedMin)
+    : null;
 
   return (
     <div
@@ -45,7 +63,7 @@ export function MonthCell({
       data-date={date}
       role="group"
       aria-label={`${date}${isToday ? ' — today' : ''}`}
-      className={`relative min-w-0 min-h-0 flex flex-col border-l border-t border-line-soft px-[3px] pt-[2px] ${
+      className={`relative min-w-0 min-h-0 flex flex-col border-l border-t border-line-soft px-[5px] pt-[4px] ${
         inMonth ? 'text-ink' : 'text-faint bg-hover/30'
       } ${isOver && !readOnly ? 'bg-accent/5' : ''}`}
     >
@@ -53,7 +71,6 @@ export function MonthCell({
         The create target, rendered FIRST so everything below stacks above it in
         paint order. Not `-z-10`: the cell carries its own background, so a
         negative z-index would paint this behind it and swallow every click.
-        Same layering rule DayCanvas uses on the week grid.
       */}
       <button
         type="button"
@@ -64,13 +81,34 @@ export function MonthCell({
         className="absolute inset-0 cursor-default disabled:cursor-not-allowed"
       />
 
-      <div className={`relative flex-none text-tiny tabular-nums text-center ${
-        isToday ? 'text-accent font-semibold' : ''
-      }`}>
-        {parseD(date).getDate()}
+      {/* Date left, load right. Centring the number was the one thing on this
+          grid that no other calendar does — a date is an anchor, and an anchor
+          goes in a corner. */}
+      <div className="relative flex-none flex items-baseline justify-between gap-[4px]">
+        <span
+          data-testid="month-day-number"
+          className={`text-meta tabular-nums ${
+            isToday
+              ? 'bg-ink text-paper rounded-full w-[18px] h-[18px] inline-flex items-center justify-center font-semibold -ml-[2px]'
+              : 'text-ink-soft'
+          }`}
+        >
+          {parseD(date).getDate()}
+        </span>
+        {load && (
+          <span
+            data-testid="month-day-load"
+            title={capacity ? dayLoadHint(capacity) : undefined}
+            className={`font-mono text-micro tabular-nums ${
+              over ? 'text-warn font-semibold' : 'text-muted'
+            }`}
+          >
+            {load}
+          </span>
+        )}
       </div>
 
-      <div className="relative flex-1 min-h-0 overflow-hidden space-y-[1px] pt-[1px]">
+      <div className="relative flex-1 min-h-0 overflow-hidden space-y-[1px] pt-[2px]">
         {shown.map((it) => (
           <div
             key={`${it.kind}:${it.id}`}
@@ -88,7 +126,7 @@ export function MonthCell({
           <button
             type="button"
             onClick={() => onOpenDay(date)}
-            className="w-full text-left truncate text-tiny text-muted hover:text-ink px-[3px]"
+            className="w-full text-left truncate text-meta text-muted hover:text-ink px-[3px]"
           >
             +{hidden} more
           </button>
