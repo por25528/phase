@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtD, fmtDY, millisecondsUntilNextLocalMidnight, weekDates } from './dates';
+import { fmtD, fmtDY, isoWeekNumber, millisecondsUntilNextLocalMidnight, weekDates } from './dates';
 
 describe('millisecondsUntilNextLocalMidnight', () => {
   it('returns the remaining local-clock time through the next day boundary', () => {
@@ -60,5 +60,13 @@ describe('fmtDY', () => {
 
   it('compares years and not distance — Dec 31 and Jan 1 are a day apart', () => {
     expect(fmtDY('2027-01-01', '2026-12-31')).toBe('Jan 1, 2027');
+  });
+});
+
+describe('isoWeekNumber', () => {
+  it('numbers ISO weeks from the Thursday that anchors them', () => {
+    expect(isoWeekNumber('2026-01-01')).toBe(1);
+    expect(isoWeekNumber('2026-08-10')).toBe(33);
+    expect(isoWeekNumber('2027-01-03')).toBe(53);
   });
 });

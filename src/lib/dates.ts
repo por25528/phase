@@ -92,3 +92,20 @@ export function streak(habit: Habit): number {
 export function fmtDY(s: string, today: string): string {
   return s.slice(0, 4) === today.slice(0, 4) ? fmtD(s) : `${fmtD(s)}, ${s.slice(0, 4)}`;
 }
+
+/**
+ * The ISO-8601 week number for a date. Thursday-anchored: the week belongs to
+ * whichever year holds its Thursday, which is what stops 29 December landing in
+ * week 1 of the wrong year.
+ */
+export function isoWeekNumber(date: string): number {
+  const d = parseD(date);
+  const thursday = new Date(d);
+  // getDay(): Sunday 0 … Saturday 6. Shift so Monday is 0, then step to Thursday.
+  thursday.setDate(d.getDate() - ((d.getDay() + 6) % 7) + 3);
+  const firstThursday = new Date(thursday.getFullYear(), 0, 4);
+  firstThursday.setDate(
+    firstThursday.getDate() - ((firstThursday.getDay() + 6) % 7) + 3,
+  );
+  return 1 + Math.round((thursday.getTime() - firstThursday.getTime()) / (7 * 86_400_000));
+}
