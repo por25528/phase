@@ -226,12 +226,29 @@ function OtherOptions({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The loading state, shaped like the thing that replaces it.
+ *
+ * Rows are `bg-hover`, a SURFACE token. They were `bg-fill`, which is the ink
+ * token — the same value `text-ink` resolves to — so the light theme's loading
+ * state was three solid black bars.
+ *
+ * The three shapes are band 1 (the work), band 2 (the alternatives) and band 3
+ * (the dials), in that order and at those heights, so the card does not reflow
+ * into a different layout when the snapshot lands.
+ */
 function Skeleton() {
   return (
-    <div role="status" aria-label="Preparing your next step" className="flex flex-col gap-2 p-3">
-      <div data-testid="skeleton-row" className="h-8 rounded-field bg-fill" />
-      <div data-testid="skeleton-row" className="h-16 rounded-card bg-fill" />
-      <div data-testid="skeleton-row" className="h-8 rounded-field bg-fill" />
+    <div role="status" aria-label="Preparing your next step" className="flex flex-col">
+      <div className="px-4 pt-3.5 pb-3">
+        <div data-testid="skeleton-row" className="h-[46px] rounded-field bg-hover" />
+      </div>
+      <div className="border-t border-line px-4 pt-2 pb-2.5">
+        <div data-testid="skeleton-row" className="h-[42px] rounded-field bg-hover" />
+      </div>
+      <div className="border-t border-line bg-bg px-4 py-[7px]">
+        <div data-testid="skeleton-row" className="h-[26px] rounded-[6px] bg-hover" />
+      </div>
     </div>
   );
 }

@@ -63,6 +63,19 @@ describe('AssistantSurface', () => {
     expect(screen.queryByText(/loading/i)).toBeNull();
   });
 
+  /*
+   * `bg-fill` is the INK token (#1A1A18 light, #EBE7DE dark), not a surface.
+   * Filling the skeleton with it painted three solid black bars in light mode
+   * — the loading state was the least Stone-conformant thing in the app.
+   */
+  it('fills skeleton rows with a surface token, never the ink token', () => {
+    render(<AssistantSurface snapshot={{ status: 'loading' }} onAction={() => {}} />);
+    for (const row of screen.getAllByTestId('skeleton-row')) {
+      expect(row.className).toContain('bg-hover');
+      expect(row.className).not.toContain('bg-fill');
+    }
+  });
+
   it('makes the one primary recommendation the focal heading', () => {
     render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
     expect(screen.getByRole('heading', { name: 'Problem set 4' })).toBeTruthy();
