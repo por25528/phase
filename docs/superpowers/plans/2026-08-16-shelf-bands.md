@@ -203,11 +203,8 @@ Run: `npx vitest run --config vitest.config.ts src/components/assistant/Assistan
 
 Expected: FAIL — `captions the dials` fails on `Unable to find an element with the text: Time`; `puts the dial bar last` fails with `expected false to be true`.
 
-- [ ] **Step 3: Add the caption constant and the band helper**
+- [ ] **Step 3: Add the caption export and the band helper**
 
-In `src/components/assistant/AssistantSurface.tsx`, directly below the existing `SectionLabel` component (currently ending line 73), add:
-
-```tsx
 In `src/components/sectionLabel.ts`, add a second export beside `sectionLabel`:
 
 ```ts
