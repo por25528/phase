@@ -137,7 +137,12 @@ const WRITES = {
   ],
   set_horizon: [
     'Move a project between the board\'s four commitment horizons. "now" is what you are actively working on, "next" is queued, "later" and "someday" are parked — the calendar rail and the daily suggestions only draw from now and next. Answers with how many projects Now holds afterwards.',
-    { goalId: z.string(), horizon: z.enum(['now', 'next', 'later', 'someday']) },
+    // Either casing is accepted: `list_projects` answers in the CAPITALISED
+    // labels, and feeding a read's output back into a write must work. The
+    // enum still advertises the canonical lowercase words. `agentProtocol.test.ts`
+    // pins this enum to `HORIZON_LABELS` lowercased, and this schema is the
+    // only copy the wire can see before the socket.
+    { goalId: z.string(), horizon: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['now', 'next', 'later', 'someday'])) },
   ],
   complete_task: [
     'Tick a task or step as done.',

@@ -34,28 +34,42 @@ export function isPlanningHorizon(column: number | undefined): boolean {
 
 /**
  * The horizon words the agent surface speaks, derived from the labels so the
- * two cannot drift. `Lowercase<>` over `HORIZON_LABELS` means adding a fifth
- * horizon adds its word for free.
+ * two cannot drift. `Lowercase<>` over `HORIZON_LABELS` adds a fifth horizon's
+ * word to the TYPE for free — the hand-maintained copies in `mcp/server.js`'s
+ * `z.enum` and `goalImport.ts`'s `PRIORITY_WORDS` would not update with it.
  */
 export type HorizonWord = Lowercase<(typeof HORIZON_LABELS)[number]>;
 
 /**
- * Exact, lowercase, and deliberately case-SENSITIVE — see the note in
- * `horizons.test.ts`. This is a wire value, not a title someone typed.
+ * Is this a horizon word, in either casing?
+ *
+ * Case-INSENSITIVE on purpose: `list_projects` answers in the CAPITALISED
+ * labels, and feeding a read's output back into a write must work. `set_life`
+ * normalises the same way. The trim is deliberate too — a model echoing a
+ * word may pad it with the whitespace the JSON formatting left. This is a
+ * wire value, not a title someone typed.
  */
 export function isHorizonWord(value: unknown): value is HorizonWord {
-  return typeof value === 'string' && HORIZON_LABELS.some((l) => l.toLowerCase() === value);
+  return typeof value === 'string'
+    && HORIZON_LABELS.some((l) => l.toLowerCase() === value.trim().toLowerCase());
 }
 
 /**
  * The column a horizon word names.
  *
- * Deliberately NOT `goalImport`'s `horizonFromWord`: that parser carries
- * aliases from the old priority scheme, where `later` meant column 3 and now
- * means column 2. Round-tripping an export is `create_project`'s problem and
- * stays there; a new verb should not inherit a word whose meaning has already
- * changed once.
+ * Either casing is accepted, for the same reason `isHorizonWord` does:
+ * `list_projects` answers in the CAPITALISED labels, and feeding a read's
+ * output back into a write must work — `set_life` normalises the same way.
+ * The parameter is a `string`, not `HorizonWord`, precisely because a read's
+ * answer is a `HORIZON_LABELS` element, which the validator must still
+ * resolve to a column.
+ *
+ * Deliberately NOT `goalImport`'s `priorityToColumn`: it answers 0 — Now —
+ * for anything unrecognised instead of refusing, which is the right default
+ * for an ABSENT field and the wrong answer for a present one. A function that
+ * can never reject bad input cannot validate untrusted wire data, which is
+ * this function's whole job.
  */
-export function columnOfHorizonWord(word: HorizonWord): number {
-  return HORIZON_LABELS.findIndex((l) => l.toLowerCase() === word);
+export function columnOfHorizonWord(word: string): number {
+  return HORIZON_LABELS.findIndex((l) => l.toLowerCase() === word.trim().toLowerCase());
 }

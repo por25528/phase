@@ -143,7 +143,7 @@ Which writes arm an undo entry at all:
 
 | Arms one | Arms nothing |
 |---|---|
-| `delete` (15s), `complete_task`, `set_status` → `done`, `estimate`, `schedule` | `create_project`, `add_task`, `rename`, `set_status` → `todo`/`doing`/`blocked` |
+| `delete` (15s), `complete_task`, `set_status` → `done`, `set_horizon`, `estimate`, `schedule` | `create_project`, `add_task`, `rename`, `set_life`, `set_status` → `todo`/`doing`/`blocked` |
 
 `schedule` arms one because it has no `blockId`: a booking made from a distance
 is not direct manipulation, and a press you did not watch land needs a way back.

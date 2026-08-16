@@ -16,14 +16,16 @@ describe('horizon words', () => {
   });
 
   /*
-   * Case-SENSITIVE, unlike `set_life`'s name matching. A life title is
-   * something a person typed and may capitalise however they like; a horizon
-   * word is an enum on a wire protocol, and `mcp/server.js` already constrains
-   * it with `z.enum`. Accepting 'Now' would be inventing a second spelling of
-   * a value that has exactly one.
+   * Case-INSENSITIVE, like `set_life`'s name matching. `list_projects` answers
+   * in the CAPITALISED labels, so feeding a read's own output back into
+   * `set_horizon` has to work — a model that spells the enum it was handed is
+   * not inventing a new value. The trim matters for the same reason: the word
+   * may arrive padded by formatting.
    */
-  it('does not accept a capitalised word', () => {
-    expect(isHorizonWord('Now')).toBe(false);
+  it('accepts either casing, and trims', () => {
+    expect(isHorizonWord('Now')).toBe(true);
+    expect(isHorizonWord('NOW')).toBe(true);
+    expect(isHorizonWord('  Someday  ')).toBe(true);
   });
 
   it('rejects a non-string', () => {
@@ -36,6 +38,15 @@ describe('horizon words', () => {
     expect(columnOfHorizonWord('next')).toBe(1);
     expect(columnOfHorizonWord('later')).toBe(2);
     expect(columnOfHorizonWord('someday')).toBe(3);
+  });
+
+  // The validator and the resolver must normalise TOGETHER: a capitalised
+  // word that passes `isHorizonWord` but misses `findIndex` would return -1,
+  // and the error path renders `HORIZON_LABELS[-1]` as "did not move to
+  // undefined". This test is the guard against that pair drifting apart.
+  it('maps a capitalised word to the column its label sits in', () => {
+    expect(columnOfHorizonWord('Now')).toBe(0);
+    expect(columnOfHorizonWord(' SOMEDAY ')).toBe(3);
   });
 
   it('agrees with isPlanningHorizon about which words the calendar plans from', () => {

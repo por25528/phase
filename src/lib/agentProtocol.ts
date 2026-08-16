@@ -113,8 +113,8 @@ export function validAgentRequest(value: unknown): value is AgentRequest {
     case 'set_horizon':
       // A word, not a column: a column index is invisible from outside the app
       // and no read verb reports one, so an index-taking verb would be
-      // unusable without a second one beside it. `list_projects` already
-      // answers in these words.
+      // unusable without a second one beside it. `list_projects` answers in
+      // the same words CAPITALISED, and this gate accepts either casing.
       return id(req.goalId) && isHorizonWord(req.horizon);
     case 'complete_task':
     case 'delete':

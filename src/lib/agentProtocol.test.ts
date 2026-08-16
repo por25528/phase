@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { validAgentRequest, okResponse, errorResponse } from './agentProtocol';
+import { readFileSync } from 'node:fs';
+import { validAgentRequest, okResponse, errorResponse, AGENT_TOOLS } from './agentProtocol';
+import { HORIZON_LABELS } from './horizons';
 
 describe('validAgentRequest', () => {
   it('accepts a no-argument read', () => {
@@ -54,11 +56,13 @@ describe('validAgentRequest', () => {
     expect(validAgentRequest({ tool: 'schedule', ref, day: 'friday' })).toBe(false);
   });
 
-  it('accepts only the four lowercase words on set_horizon', () => {
+  it('accepts the four horizon words, in either casing', () => {
     for (const horizon of ['now', 'next', 'later', 'someday']) {
       expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon })).toBe(true);
     }
-    expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon: 'Now' })).toBe(false);
+    // `list_projects` answers CAPITALISED, so a read's own output must be
+    // accepted on the way back in.
+    expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon: 'Now' })).toBe(true);
     expect(validAgentRequest({ tool: 'set_horizon', goalId: 'g1', horizon: 'archived' })).toBe(false);
     // A column index is what this verb exists NOT to take: it appears in no
     // read, so a model would have to guess it.
@@ -71,5 +75,57 @@ describe('response helpers', () => {
   it('wraps data and errors distinguishably', () => {
     expect(okResponse({ a: 1 })).toEqual({ ok: true, data: { a: 1 } });
     expect(errorResponse('nope')).toEqual({ ok: false, error: 'nope' });
+  });
+});
+
+/*
+ * AGENT_TOOLS has no runtime consumer — `mcp/server.js` declares its own copy
+ * because the two processes cannot import from each other. Read it as TEXT and
+ * pin both halves of the contract, so the copy cannot drift: every tool the
+ * schema advertises stays in the protocol vocabulary, and the horizon enum
+ * stays the labels, lowercased.
+ */
+describe('AGENT_TOOLS vs mcp/server.js', () => {
+  const SERVER = readFileSync(new URL('../../mcp/server.js', import.meta.url), 'utf8');
+
+  function declaredTools(): string[] {
+    const tools: string[] = [];
+    for (const block of ['WRITES', 'ARGUMENT_READS']) {
+      const match = SERVER.match(new RegExp(`const ${block} = \\{([\\s\\S]*?)\\n\\};`));
+      if (!match) throw new Error(`could not locate const ${block} in mcp/server.js`);
+      // Entries are `name: [description, schema]`, so keys are the two-space
+      // indented identifiers immediately followed by `: [`. READS' keys are
+      // followed by a string and are deliberately not matched.
+      for (const key of match[1].matchAll(/^\s{2}(\w+): \[/gm)) {
+        tools.push(key[1]);
+      }
+    }
+    return tools;
+  }
+
+  function setHorizonEnumWords(): string[] {
+    const entry = SERVER.match(/^\s{2}set_horizon: \[([\s\S]*?)^\s{2}\w+: \[/m);
+    if (!entry) throw new Error('could not locate the set_horizon entry in mcp/server.js');
+    const enumMatch = entry[1].match(/z\.enum\(\[([^\]]*)\]\)/s);
+    if (!enumMatch) throw new Error('could not locate a z.enum inside the set_horizon entry');
+    return enumMatch[1].split(',').map((w) => w.trim().replace(/^'|'$/g, ''));
+  }
+
+  it('every tool declared by mcp/server.js appears in AGENT_TOOLS', () => {
+    const declared = declaredTools();
+    const missing = declared.filter((t) => !(AGENT_TOOLS as readonly string[]).includes(t));
+    expect(
+      missing,
+      `tools declared in mcp/server.js but missing from AGENT_TOOLS: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('set_horizon\'s z.enum in mcp/server.js is exactly HORIZON_LABELS, lowercased', () => {
+    const expected = HORIZON_LABELS.map((l) => l.toLowerCase());
+    const words = setHorizonEnumWords();
+    expect(
+      words,
+      `set_horizon's z.enum in mcp/server.js is [${words.join(', ')}], expected [${expected.join(', ')}]`,
+    ).toEqual(expected);
   });
 });
