@@ -344,10 +344,13 @@ function WorkBand({ checkbox, ring, eyebrow, title, subtitle, extra, actions, sh
  * than no skeleton: it reflows twice.
  */
 function Skeleton({ shelf }: { shelf: boolean }) {
-  // `flex-1` and not a width: the dial strip's own class is a flex row on the
-  // shelf, and a plain block child of it would collapse to zero width.
+  // `w-full` and never `flex-1`: the dial strip's own class is a flex
+  // container, so a plain block child collapses to zero WIDTH inside its shelf
+  // row — and `flex-1` fixes that by setting `flex-basis: 0`, which collapses
+  // the same child to zero HEIGHT inside its embedded column. A width states
+  // the one thing that is in question in both.
   const row = (height: string) => (
-    <div data-testid="skeleton-row" className={`${height} flex-1 rounded-field bg-hover`} />
+    <div data-testid="skeleton-row" className={`${height} w-full rounded-field bg-hover`} />
   );
   const work = <div className={bandCls(shelf)}>{row('h-[46px]')}</div>;
   const alternatives = <div className={altBandCls(shelf)}>{row('h-[42px]')}</div>;
