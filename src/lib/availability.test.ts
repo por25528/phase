@@ -37,6 +37,21 @@ describe('parseAvailability', () => {
   });
 });
 
+/*
+ * The default now covers all seven days 09:00–18:00. A planner is installed
+ * ON a Saturday as often as any other day — that is exactly when people decide
+ * to get organised — and a default that excluded the weekend met that person
+ * with "No time left today" and an empty Today. Nothing on first run asked, so
+ * the default has to be the one that can help on the day it is met. A user who
+ * wants their weekends back sets working hours in Settings; the reverse — a
+ * weekday-only default silently hiding Saturday — cannot be discovered at all.
+ */
+describe('DEFAULT_AVAILABILITY', () => {
+  it('covers all seven days, 09:00–18:00', () => {
+    expect(DEFAULT_AVAILABILITY).toEqual([0, 1, 2, 3, 4, 5, 6].map((dow) => ({ dow, startMin: 540, endMin: 1080 })));
+  });
+});
+
 describe('windowForDate', () => {
   // 2026-07-27 is a Monday.
   it('finds Monday as dow 0', () => {
@@ -48,11 +63,14 @@ describe('windowForDate', () => {
     expect(windowForDate('2026-07-31', DEFAULT_AVAILABILITY)?.dow).toBe(4);
   });
 
-  it('returns null for a day off (Saturday)', () => {
-    expect(windowForDate('2026-08-01', DEFAULT_AVAILABILITY)).toBeNull();
+  it('now finds Saturday (dow 5) and Sunday (dow 6) in the default', () => {
+    expect(windowForDate('2026-08-01', DEFAULT_AVAILABILITY)?.dow).toBe(5);
+    expect(windowForDate('2026-08-02', DEFAULT_AVAILABILITY)?.dow).toBe(6);
   });
 
-  it('returns null for Sunday', () => {
-    expect(windowForDate('2026-08-02', DEFAULT_AVAILABILITY)).toBeNull();
+  it('returns null for a day the window set genuinely omits', () => {
+    // A user who kept a weekday-only week: no dow 5 window, so Saturday is off.
+    const weekdays = DEFAULT_AVAILABILITY.filter((w) => w.dow <= 4);
+    expect(windowForDate('2026-08-01', weekdays)).toBeNull();
   });
 });
