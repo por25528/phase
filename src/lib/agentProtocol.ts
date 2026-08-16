@@ -27,6 +27,7 @@ export type AgentRequest =
   | { tool: 'rename'; nodeId: string; title: string }
   | { tool: 'estimate'; nodeId: string; minutes: number | null }
   | { tool: 'set_status'; nodeId: string; status: StepStatus; blockedOn?: string }
+  | { tool: 'set_life'; goalId: string; life: string | null }
   | { tool: 'complete_task'; ref: WorkRef }
   | { tool: 'schedule'; ref: WorkRef; day: string; startMin?: number; minutes?: number }
   | { tool: 'delete'; ref: WorkRef }
@@ -39,7 +40,7 @@ export type AgentResponse =
 export const AGENT_TOOLS = [
   'today', 'week', 'backlog', 'list_projects', 'get_project',
   'create_project', 'add_task', 'rename', 'estimate', 'set_status',
-  'complete_task', 'schedule', 'delete', 'undo_last',
+  'set_life', 'complete_task', 'schedule', 'delete', 'undo_last',
 ] as const;
 
 export function okResponse(data: unknown): AgentResponse {
@@ -103,6 +104,10 @@ export function validAgentRequest(value: unknown): value is AgentRequest {
         && (req.status === 'todo' || req.status === 'doing'
           || req.status === 'blocked' || req.status === 'done')
         && (req.blockedOn === undefined || title(req.blockedOn));
+    case 'set_life':
+      // A life is named, not id'd: an id is invisible from outside the app, so
+      // `null` (unassign) is the only non-string this may carry.
+      return id(req.goalId) && (req.life === null || title(req.life));
     case 'complete_task':
     case 'delete':
       return validRef(req.ref);

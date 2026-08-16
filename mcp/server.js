@@ -131,6 +131,10 @@ const WRITES = {
       blockedOn: z.string().optional(),
     },
   ],
+  set_life: [
+    'Move a project into a life, BY NAME (not id — an id is not visible from out here). Pass null to unassign it. Naming one that does not exist answers with the ones that do.',
+    { goalId: z.string(), life: z.string().nullable() },
+  ],
   complete_task: [
     'Tick a task or step as done.',
     { ref: REF },
