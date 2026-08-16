@@ -96,7 +96,15 @@ app.on('window-all-closed', () => {})
 
 app.whenReady().then(async () => {
   fs.mkdirSync(OUT, { recursive: true })
+  const failed = []
   for (const theme of ['dark', 'light']) {
+    // Heights collected per theme, not across both: dark and light legitimately
+    // land on the same figure for a given state (confirming measured 277.99 in
+    // both), so a single set spanning both themes would blur a real collapse
+    // (every state landing on one height within a theme) with that expected
+    // cross-theme overlap. active/break also share a height by design, so the
+    // guard below is "more than one distinct height", never "all seven".
+    const heights = []
     for (const [name, snapshot] of Object.entries(STATES)) {
       process.env.PHASE_SHELF_SNAPSHOT = JSON.stringify(snapshot)
       const win = new BrowserWindow({
@@ -114,7 +122,14 @@ app.whenReady().then(async () => {
       })
       win.webContents.on('preload-error', (_e, p, err) => console.error(`${name} PRELOAD ${p}: ${err && err.stack}`))
       win.webContents.on('did-fail-load', (_e, c, d) => console.error(`${name} LOAD ${c} ${d}`))
-      await win.loadFile(path.join(__dirname, '..', 'dist', 'assistant.html'))
+      try {
+        await win.loadFile(path.join(__dirname, '..', 'dist', 'assistant.html'))
+      } catch (err) {
+        console.error(`${theme}/${name} THREW ${err.message}`)
+        failed.push(`${theme}/${name}`)
+        win.destroy()
+        continue
+      }
       await win.webContents.executeJavaScript(
         `document.documentElement.classList.toggle('dark', ${theme === 'dark'})`)
       await new Promise((r) => setTimeout(r, 1000))
@@ -122,6 +137,7 @@ app.whenReady().then(async () => {
         "document.querySelector('[data-shelf]')?.getBoundingClientRect().height ?? -1")
       if (!(h > 0)) {
         console.error(`${theme}/${name} NOT RENDERED`)
+        failed.push(`${theme}/${name}`)
         win.destroy()
         continue
       }
@@ -130,8 +146,23 @@ app.whenReady().then(async () => {
       })
       fs.writeFileSync(path.join(OUT, `${theme}-${name}.png`), img.toPNG())
       console.log(`${theme}/${name} h=${h}`)
+      heights.push(h)
       win.destroy()
     }
+    // If PHASE_SHELF_SNAPSHOT never reached the renderer, every window in this
+    // theme draws whatever the component falls back to and every height comes
+    // back identical — fourteen plausible-looking PNGs that are all the same
+    // picture. That is a worthless run, not a small one, so it fails loudly
+    // rather than printing green.
+    if (heights.length > 1 && new Set(heights).size === 1) {
+      console.error(`IDENTICAL: every ${theme} state measured the same height — the snapshot never varied per window`)
+      failed.push(`${theme}/*`)
+    }
   }
-  app.exit(0)
+
+  // A state that never rendered (or threw) is silently missing a PNG, and an
+  // unconditional exit(0) would tell a caller gating on the exit code that the
+  // run succeeded anyway. Name what failed and fail the process for it.
+  if (failed.length) console.error('FAILED: ' + failed.join(', '))
+  app.exit(failed.length > 0 ? 1 : 0)
 })
