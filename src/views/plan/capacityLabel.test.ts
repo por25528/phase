@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { DayCapacity, WeekCapacity } from '../../lib/capacity';
 import {
   formatMinutes, capacityParts, capacityNote, isOverCommitted, dayLoadLabel, dayLoadHint,
-  loadParts, unestimatedLabel, weekFreeSplit, weekLoadParts,
+  loadParts, unestimatedLabel, weekFreeSplit, weekLoadParts, capacityMeter,
 } from './capacityLabel';
 
 function day(over: Partial<DayCapacity> = {}): DayCapacity {
@@ -218,5 +218,64 @@ describe('dayLoadHint', () => {
   it('omits the verdict when the day fits', () => {
     expect(dayLoadHint({ freeMin: 360, plannedMin: 60, backlogMin: 0, unestimated: 0, hasData: true }))
       .toBe('6h free · 1h planned');
+  });
+});
+
+describe('capacityMeter', () => {
+  const base = { freeMin: 600, plannedMin: 0, backlogMin: 0 };
+
+  it('spans freeMin when the week fits', () => {
+    const m = capacityMeter({ ...base, plannedMin: 300, backlogMin: 150 });
+    expect(m.over).toBe(false);
+    expect(m.plannedFrac).toBeCloseTo(0.5);
+    expect(m.backlogFrac).toBeCloseTo(0.25);
+    // 1.0 means "the mark is the bar's own right edge" — not drawn.
+    expect(m.capacityMarkFrac).toBeCloseTo(1);
+  });
+
+  it('spans the committed total when over, and marks where free ran out', () => {
+    const m = capacityMeter({ freeMin: 600, plannedMin: 700, backlogMin: 100 });
+    expect(m.over).toBe(true);
+    // D = 800. Segments fill the whole bar.
+    expect(m.plannedFrac).toBeCloseTo(0.875);
+    expect(m.backlogFrac).toBeCloseTo(0.125);
+    expect(m.plannedFrac + m.backlogFrac).toBeCloseTo(1);
+    expect(m.capacityMarkFrac).toBeCloseTo(0.75);
+  });
+
+  it('never lets the segments exceed the bar', () => {
+    for (const c of [
+      { freeMin: 0, plannedMin: 300, backlogMin: 0 },
+      { freeMin: 60, plannedMin: 0, backlogMin: 999 },
+      { freeMin: 1000, plannedMin: 1, backlogMin: 1 },
+    ]) {
+      const m = capacityMeter(c);
+      expect(m.plannedFrac + m.backlogFrac).toBeLessThanOrEqual(1.0000001);
+      expect(m.plannedFrac).toBeGreaterThanOrEqual(0);
+      expect(m.backlogFrac).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('returns zeros rather than NaN when there is nothing at all', () => {
+    const m = capacityMeter({ freeMin: 0, plannedMin: 0, backlogMin: 0 });
+    expect(m.plannedFrac).toBe(0);
+    expect(m.backlogFrac).toBe(0);
+    expect(m.capacityMarkFrac).toBe(1);
+    expect(m.over).toBe(false);
+  });
+
+  // The whole reason this function exists: the bar cannot contradict the text.
+  it('agrees with isOverCommitted on every input', () => {
+    const table = [
+      { freeMin: 600, plannedMin: 0, backlogMin: 0 },
+      { freeMin: 600, plannedMin: 600, backlogMin: 0 },
+      { freeMin: 600, plannedMin: 599, backlogMin: 2 },
+      { freeMin: 600, plannedMin: 0, backlogMin: 601 },
+      { freeMin: 0, plannedMin: 0, backlogMin: 0 },
+      { freeMin: 0, plannedMin: 1, backlogMin: 0 },
+    ];
+    for (const c of table) {
+      expect(capacityMeter(c).over).toBe(isOverCommitted(c));
+    }
   });
 });

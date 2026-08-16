@@ -181,3 +181,57 @@ export function isOverCommitted(
   // half would call an impossible week healthy right up until you scheduled it.
   return c.plannedMin + c.backlogMin > c.freeMin;
 }
+
+/**
+ * The header's load bar, as fractions of one track.
+ *
+ * The bar spans `D = max(freeMin, plannedMin + backlogMin)`, NOT `freeMin`.
+ * That single choice is what makes the over-committed case well-defined: with
+ * `freeMin` as the denominator the segments run past 1.0 the moment you take on
+ * more than you have, and every renderer then has to invent its own clamping.
+ * Spanning the larger of the two means the segments always fit exactly, and the
+ * over case is expressed by the bar being FULL and by `capacityMarkFrac` moving
+ * inward to show where the free time ran out.
+ *
+ * `over` is `isOverCommitted(c)` — delegated, never recomputed. The bar and the
+ * text beside it are read as one statement, so they must be one derivation; a
+ * bar reading full above text reading healthy is the planned/to-place
+ * contradiction all over again.
+ *
+ * Note the denominator is `freeMin` and not `weekFreeSplit`'s `leftMin`. Using
+ * the remaining-today figure would be more intuitive and would make the bar
+ * disagree with its own warn state on every day but Monday, because
+ * `isOverCommitted` compares against the whole week's `freeMin`. Two numbers
+ * that get compared to each other have to cover the same days.
+ */
+export interface MeterGeometry {
+  /** 0–1 of the bar's width. */
+  plannedFrac: number;
+  /** 0–1 of the bar's width. */
+  backlogFrac: number;
+  /**
+   * Where free time runs out, as a fraction of the bar. Rendered as a hairline
+   * tick, and ONLY when `over` — on a healthy week it is 1.0, which is the
+   * bar's own right edge and therefore says nothing.
+   */
+  capacityMarkFrac: number;
+  over: boolean;
+}
+
+export function capacityMeter(
+  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'>,
+): MeterGeometry {
+  const committed = c.plannedMin + c.backlogMin;
+  const span = Math.max(c.freeMin, committed);
+  // No availability and nothing committed: there is no bar to draw, and
+  // dividing by zero here would put NaN into a style attribute.
+  if (span <= 0) {
+    return { plannedFrac: 0, backlogFrac: 0, capacityMarkFrac: 1, over: false };
+  }
+  return {
+    plannedFrac: c.plannedMin / span,
+    backlogFrac: c.backlogMin / span,
+    capacityMarkFrac: Math.min(1, c.freeMin / span),
+    over: isOverCommitted(c),
+  };
+}
