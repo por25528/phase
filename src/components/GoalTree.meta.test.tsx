@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode } from '../db/types';
+import { cssBlock } from '../lib/contrast';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: never[] }> => ({ goals: [], habits: [], tasks: [], sessions: [] })),
@@ -174,14 +177,35 @@ describe('adding a task', () => {
     expect(screen.queryByPlaceholderText(/add item/i)).toBeNull();
   });
 
-  // opacity:0 elements stay in the a11y tree and stay focusable, which is the
-  // whole reason the gate is opacity and not `display:none` or conditional
-  // rendering. Hover alone would strand this input for keyboard users.
-  it('leaves the nested input reachable by keyboard, not hover alone', async () => {
-    await renderTree([{ id: 'p', title: 'Parent', children: [{ id: 'c', title: 'Child' }] }]);
-    const input = screen.getByPlaceholderText('+ Add task');
-    input.focus();
-    expect(document.activeElement).toBe(input);
+  // This has to be a SOURCE-level assertion, not a DOM one: jsdom's
+  // `HTMLElement.focus()` does not consult computed style — a real browser
+  // refuses focus on a `display: none` element, jsdom happily grants it. A
+  // test that called `.focus()` on the input and checked `document.activeElement`
+  // would pass whether the CSS hid it with `opacity: 0` (keyboard-reachable) or
+  // `display: none` (stranded) — it cannot discriminate the regression it
+  // claims to guard, in this environment. So it reads `index.css` instead,
+  // the same approach `designScale.test.ts` and `contrast.test.ts` use for
+  // stylesheet-level guarantees.
+  it('gates the nested input with opacity, never display or visibility', () => {
+    // `import.meta.url` is not a resolvable `file://` URL under the jsdom
+    // environment this file runs in (unlike the plain-node test files that
+    // already do this), so the path is built from the repo root instead.
+    const css = readFileSync(join(process.cwd(), 'src', 'index.css'), 'utf8');
+
+    // At rest, `.subtree-reveal` must stay in flow and in the a11y tree.
+    const base = cssBlock(css, '.subtree-reveal');
+    expect(base).toMatch(/\bopacity\s*:\s*1\b/);
+    expect(base).not.toMatch(/\bdisplay\s*:\s*none\b/);
+    expect(base).not.toMatch(/\bvisibility\s*:\s*hidden\b/);
+
+    // The hover-gated rule inside `@media (hover: hover)` is what actually
+    // hides the input on an unhovered subtree — it must do so with opacity,
+    // never `display: none` or `visibility: hidden`, either of which would
+    // remove it from the keyboard/focus tree.
+    const hidden = cssBlock(css, '.subtree:not(:hover) .subtree-reveal:not(:focus-within)');
+    expect(hidden).toMatch(/\bopacity\s*:\s*0\b/);
+    expect(hidden).not.toMatch(/\bdisplay\s*:\s*none\b/);
+    expect(hidden).not.toMatch(/\bvisibility\s*:\s*hidden\b/);
   });
 
   it('gates the nested input on subtree hover, not row hover', async () => {
