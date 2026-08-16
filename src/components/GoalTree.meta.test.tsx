@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode } from '../db/types';
 
@@ -131,5 +131,37 @@ describe('a container', () => {
     const parent = row('Parent');
     expect(within(parent).getByText('0%')).toBeTruthy();
     expect(within(parent).queryByTestId('row-meta-below')).toBeNull();
+  });
+});
+
+// `LeafMeta` used to render at two different JSX positions depending on
+// `metaPlacement` — inline under column 2's flex row, or in a second `<div>`
+// below it. The instant a bare leaf gained its first estimate or schedule,
+// `metaPlacement` flipped `inline` → `below` and `LeafMeta` unmounted from one
+// parent and remounted under another, destroying its subtree's state —
+// including whatever had just received focus inside it. A stable `key`
+// cannot fix this: keys only disambiguate siblings under a single parent, and
+// here the parent itself changed. The fix renders `LeafMeta` at one position
+// always and repositions it with CSS (`flex-wrap` + `order-last`), so the
+// element — and its focus — never moves in the DOM.
+describe('a bare leaf gaining metadata', () => {
+  it('keeps focus on the estimate control after setting an estimate', async () => {
+    await renderTree([{ id: 'a', title: 'Bare task' }]);
+    const inline = within(row('Bare task')).getByTestId('row-meta-inline');
+    const badge = within(inline).getByRole('button', { name: /^Set estimate for "/ });
+    fireEvent.click(badge);
+    const preset = screen.getByRole('button', { name: /^Set estimate for ".*" to 30m$/ });
+    fireEvent.click(preset);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('keeps focus on the schedule trigger after setting a schedule', async () => {
+    await renderTree([{ id: 'a', title: 'Bare task' }]);
+    const inline = within(row('Bare task')).getByTestId('row-meta-inline');
+    const scheduleBtn = within(inline).getByRole('button', { name: /^Schedule "/ });
+    fireEvent.click(scheduleBtn);
+    const tomorrow = screen.getByRole('menuitem', { name: 'Tomorrow' });
+    fireEvent.click(tomorrow);
+    expect(document.activeElement).not.toBe(document.body);
   });
 });

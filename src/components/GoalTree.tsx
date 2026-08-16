@@ -472,14 +472,6 @@ function GoalTreeNode({
   // `E` in a row would do nothing.
   const [estimateOpen, setEstimateOpen] = useState(0);
   const scheduleRef = useRef<HTMLButtonElement>(null);
-  // Same ownership move as `scheduleRef`, for the estimate badge: a leaf's
-  // metadata can relocate to a different parent element the instant it gains
-  // an estimate (inline → below), which unmounts the instance that was
-  // mid-commit. A ref and a signal owned by this stable row, not by whichever
-  // `EstimateControl` happens to be mounted, are what let focus survive the
-  // move — see `EstimateControl`'s `badgeRef`/`pendingFocusRef`.
-  const estimateBadgeRef = useRef<HTMLButtonElement>(null);
-  const estimateFocusPending = useRef(false);
   useEffect(() => {
     if (isNew) actions.clearNewNode();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot, on mount
@@ -839,7 +831,7 @@ function GoalTreeNode({
 
         {/* ── column 2: the title, and under it what the task says about itself ── */}
         <div className="min-w-0">
-          <div className="flex items-center gap-[9px] min-h-[26px]">
+          <div className="flex items-center flex-wrap gap-x-[9px] gap-y-[1px] min-h-[26px]">
             {/* A container's demand chip has no line 2 to go to. */}
             {hasKids && n.demand !== undefined && (
               <span className="text-meta text-muted flex-none truncate">{DEMAND_WORD[n.demand]}</span>
@@ -899,20 +891,29 @@ function GoalTreeNode({
               </span>
             )}
 
-            {/* A bare leaf's metadata rides HERE — on the line that already
-                exists — so hovering it reveals controls without changing the
-                row's height. */}
-            {!hasKids && placement === 'inline' && (
+            {/* A leaf's metadata renders at this ONE position always, in DOM
+                order between the title and `◐` — never at a second position
+                depending on `placement`. `LeafMeta` used to render in two
+                different JSX spots (inline here, or in a sibling `<div>`
+                below), and the moment a bare leaf's `placement` flipped from
+                `inline` to `below`, React saw the element move to a
+                different PARENT and tore the whole subtree down — focus, any
+                open popover, draft text, all of it — rather than merely
+                reflowing it. A stable `key` cannot fix that: keys only
+                disambiguate siblings under one parent. Placement is now a
+                CSS-only concern: `below` adds `basis-full order-last` so the
+                metadata wraps onto its own line while `◐` and `⋯` stay on
+                line 1 (the container above is `flex-wrap`), and `inline`
+                adds neither. */}
+            {!hasKids && (
               <LeafMeta
                 node={n}
                 goalId={goalId}
                 when={when}
-                placement="inline"
+                placement={placement}
                 scheduleRef={scheduleRef}
                 estimateOpen={estimateOpen}
                 onEstimate={(minutes) => actions.setNodeEstimate(n.id, minutes)}
-                estimateBadgeRef={estimateBadgeRef}
-                estimateFocusPending={estimateFocusPending}
               />
             )}
 
@@ -945,22 +946,6 @@ function GoalTreeNode({
               />
             </span>
           </div>
-
-          {!hasKids && placement === 'below' && (
-            <div className="mt-[1px]">
-              <LeafMeta
-                node={n}
-                goalId={goalId}
-                when={when}
-                placement="below"
-                scheduleRef={scheduleRef}
-                estimateOpen={estimateOpen}
-                onEstimate={(minutes) => actions.setNodeEstimate(n.id, minutes)}
-                estimateBadgeRef={estimateBadgeRef}
-                estimateFocusPending={estimateFocusPending}
-              />
-            </div>
-          )}
         </div>
       </div>
 
@@ -1025,8 +1010,6 @@ function LeafMeta({
   scheduleRef,
   estimateOpen,
   onEstimate,
-  estimateBadgeRef,
-  estimateFocusPending,
 }: {
   node: GoalNode;
   goalId: string;
@@ -1035,17 +1018,21 @@ function LeafMeta({
   scheduleRef: React.RefObject<HTMLButtonElement | null>;
   estimateOpen: number;
   onEstimate: (minutes: number | null) => void;
-  estimateBadgeRef: React.RefObject<HTMLButtonElement | null>;
-  estimateFocusPending: React.MutableRefObject<boolean>;
 }) {
   const inline = placement === 'inline';
   return (
     <span
       data-testid={inline ? 'row-meta-inline' : 'row-meta-below'}
+      // `LeafMeta` always renders at the same JSX position now (see the call
+      // site); placement is purely which classes this span carries. `below`
+      // adds `basis-full order-last` — `basis-full` on a `flex-wrap` parent
+      // forces the wrap onto its own line, and `order-last` is what keeps `◐`
+      // and `⋯` on line 1: without it, the forced wrap would push THEM onto a
+      // third line too, since they'd fall after this element in source order.
       className={
         inline
           ? 'flex-none flex items-center gap-[2px]'
-          : 'flex items-center gap-[6px] flex-wrap min-w-0'
+          : 'flex items-center gap-[6px] flex-wrap min-w-0 basis-full order-last'
       }
       onClick={(e) => e.stopPropagation()}
     >
@@ -1074,8 +1061,6 @@ function LeafMeta({
         label={n.title}
         openRequest={estimateOpen}
         onChange={onEstimate}
-        badgeRef={estimateBadgeRef}
-        pendingFocusRef={estimateFocusPending}
       />
 
       {/* Why a blocked leaf is stuck. It stays OUT of the status control:
