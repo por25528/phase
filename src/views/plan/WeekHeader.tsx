@@ -4,7 +4,7 @@ import { SegmentedSwitch } from '../../components/SegmentedControl';
 import { IconChevronLeft, IconChevronRight } from '../../components/Icons';
 import { fmtD, addDays } from '../../lib/dates';
 import { ymOf, ymLabel } from '../../lib/calendar';
-import { weekLoadParts, loadParts, capacityNote } from './capacityLabel';
+import { weekLoadParts, capacityNote } from './capacityLabel';
 import { CapacityMeter } from './CapacityMeter';
 
 /** Capitalised here rather than by `capitalize`: a label is written, not cased. */
@@ -84,12 +84,17 @@ export function WeekHeader({
    * has to be on screen beside it.
    */
   const figures = isMonth ? monthCapacity : capacity;
+  // Month mode still needs the tense split — `monthCapacity.total.days` carries
+  // every day of every drawn week, which is exactly what `weekLoadParts` wants,
+  // so a past month (or the elapsed part of the current one) reports "spent"
+  // rather than being folded into "free". See CLAUDE.md: "'Free' is
+  // tense-sensitive."
   const parts = isMonth
-    ? (monthCapacity ? loadParts(monthCapacity) : [])
+    ? (monthCapacity ? weekLoadParts(monthCapacity, today) : [])
     : weekLoadParts(capacity, today);
 
   return (
-    <div className="flex items-start gap-[14px] mb-[12px] flex-wrap">
+    <div className="flex items-center gap-[14px] mb-[12px] flex-wrap">
       <h2 className="text-h1 font-semibold tracking-[-.012em] leading-[1.15] whitespace-nowrap">
         {isMonth ? ymLabel(ymOf(weekStart)) : `${fmtD(weekStart)} – ${fmtD(addDays(weekStart, 6))}`}
       </h2>

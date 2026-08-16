@@ -110,15 +110,12 @@ describe('the backlog rail', () => {
     expect(screen.queryByRole('button', { name: /Open project/ })).toBeNull();
   });
 
-  it('states the rail total as a count and a time', async () => {
+  it('states the rail total as a bare count, never a time', async () => {
     await mountRail({ goals: [PROJECT], tasks: [] });
-    // 45 + 60 = 1h 45m across 2 items.
-    expect(screen.getByText('2 · 1h 45m')).toBeTruthy();
-  });
-
-  it('states a bare count when nothing carries an estimate', async () => {
-    await mountRail({ goals: [], tasks: [LOOSE] });
-    expect(screen.getByText('1')).toBeTruthy();
+    // 2 items — no time total: the rail spans every week, the header's "to
+    // place" meter covers only this week's committed-unplaced work, and the
+    // two can never be reconciled into one figure.
+    expect(screen.getByText('2')).toBeTruthy();
     expect(screen.queryByText(/·/)).toBeNull();
   });
 

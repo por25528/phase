@@ -13,7 +13,6 @@ import { IconArrowUpRight, IconCheck, IconX } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 import { sectionLabel } from '../../../components/sectionLabel';
 import { projectSpineClass } from '../../../lib/projectColour';
-import { formatMinutes } from '../capacityLabel';
 
 /**
  * One draggable row.
@@ -215,10 +214,6 @@ export function Backlog({
   // Counted from `items`, never `shown`: the cap hides rows, but this number
   // is what tells you how much is unplanned, and it must stay honest.
   const total = groups.reduce((sum, g) => sum + g.items.length, 0);
-  const totalMin = groups.reduce(
-    (sum, g) => sum + g.items.reduce((n, it) => n + (it.estimateMin ?? 0), 0),
-    0,
-  );
 
   function toggle(key: string) {
     setExpanded((current) => {
@@ -233,13 +228,14 @@ export function Backlog({
     <div>
       <h3 className={`flex items-baseline gap-[6px] py-[6px] px-[6px] ${sectionLabel}`}>
         <span className="flex-1">To plan</span>
-        {/* Count AND time. The count alone cannot be checked against the
-            header's meter, and those two figures being comparable is the point
-            of showing either. Summed over `items`, never `shown`, for the same
-            reason the count is. */}
-        <span className="text-muted tabular-nums">
-          {totalMin > 0 ? `${total} · ${formatMinutes(totalMin)}` : total}
-        </span>
+        {/* Count only, deliberately no time total. This rail lists unplaced
+            work from EVERY week, while the header's "to place" meter is only
+            this week's committed-unplaced — the two populations can never
+            agree, so a time figure here would invite a comparison it cannot
+            survive. It would also lie by omission: an unestimated row
+            contributes nothing to a sum, so it would hide inside a total that
+            looks like it prices everything. */}
+        <span className="text-muted tabular-nums">{total}</span>
       </h3>
 
       {/*

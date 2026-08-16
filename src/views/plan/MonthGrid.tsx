@@ -80,8 +80,15 @@ export function MonthGrid({
       >
         {weeks.map((row, i) => (
           <Fragment key={row[0]}>
-            {gutter && gutter.rows[i] && (
-              <MonthGutter row={gutter.rows[i]} onOpen={onOpenWeek!} />
+            {gutter && (
+              gutter.rows[i] && onOpenWeek
+                ? <MonthGutter row={gutter.rows[i]} onOpen={onOpenWeek} />
+                // `rows[i]` (or `onOpenWeek`) missing must still occupy the
+                // grid cell — an omitted element here would let CSS grid
+                // auto-placement shift the rest of this row's seven day cells
+                // one track left, a silent visual corruption rather than a
+                // missing gutter.
+                : <span />
             )}
             {row.map((date) => (
               <MonthCell

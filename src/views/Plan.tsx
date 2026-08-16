@@ -173,13 +173,18 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
   });
 
   /*
-   * Month mode's figures. Memoised on the data, NOT recomputed per render: this
-   * is six `weekCapacity` calls plus six leaf-tree walks, and the now-line ticks
-   * every 60 seconds — the exact hazard the memo block above exists for.
+   * Month mode's figures. Memoised so this does not recompute on every
+   * unrelated re-render — it is six `weekCapacity` calls plus six leaf-tree
+   * walks. `nowMinute` IS in the dependency array, so it genuinely does
+   * recompute on the 60-second now-line tick: today's remaining window really
+   * does move as the minute changes, and that cost is the same order as the
+   * un-memoised week `capacity` computed alongside it. The memo's job is
+   * narrower than "never recompute" — it is "recompute only when the inputs
+   * that matter change", and the minute is one of them.
    *
-   * `now` is rebuilt every render (it closes over `nowMinute`), so it cannot be
-   * a dependency; `today` and `nowMinute` are listed instead, which is the same
-   * pair it is built from.
+   * `now` itself is rebuilt every render (it closes over `nowMinute`), so it
+   * cannot be a dependency; `today` and `nowMinute` are listed instead, which
+   * is the same pair it is built from.
    */
   const monthCap = useMemo(
     () => (planMode === 'month'

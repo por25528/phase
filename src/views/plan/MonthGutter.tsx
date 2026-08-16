@@ -31,7 +31,7 @@ export function MonthGutter({ row, onOpen }: {
       type="button"
       data-testid="month-gutter-row"
       onClick={() => onOpen(row.week)}
-      aria-label={`Open week ${row.isoWeekLabel} — ${planned} planned`}
+      aria-label={`Open week ${row.isoWeekLabel} — ${planned} planned${meter.over ? ' — over-committed' : ''}`}
       className="group border-b border-line-soft flex flex-col justify-center items-end gap-[2px] pr-[8px] text-right hover:bg-hover"
     >
       {/* `text-muted`, NOT `text-faint`: this names the week and is read.

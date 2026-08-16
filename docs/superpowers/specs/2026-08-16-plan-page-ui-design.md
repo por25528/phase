@@ -184,9 +184,12 @@ its load, so the route is reachable without a pointer.
 
 ## 4. The rail — `Backlog.tsx`, `PlanSidebar.tsx`, `Habits.tsx`
 
-**Section header** carries count *and* total time (`4 · 3h 20m`), the time
-derived from the same `weekCapacity` the header meter uses — not re-summed
-locally, or the rail and the header would drift.
+**Section header** carries the count alone, never a total time. The rail lists
+unplaced work from every week, while the header's "to place" meter covers only
+this week's committed-unplaced work — the two populations can never agree, so
+a time total here would invite a comparison it cannot survive. It would also
+mislead by omission: an unestimated row contributes nothing to a sum, so a
+total would hide it behind a figure that does not price it.
 
 **Project spine.** Each group gets a 2px left border in its own hue via a new
 `projectSpineClass(goalId)` in `projectColour.ts`, beside the existing

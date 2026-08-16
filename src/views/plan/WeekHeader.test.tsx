@@ -62,4 +62,36 @@ describe('WeekHeader', () => {
     // No month capacity handed down ⇒ no week figures relabelled as a month's.
     expect(screen.queryByText('2 unestimated')).toBeNull();
   });
+
+  // Fix for: month mode used to call `loadParts`, which has no notion of
+  // tense and prints the WHOLE window as "free" — a past day's `freeMin` is
+  // its entire held window (NO_PAST_LIMIT), not what remains. Mid-month that
+  // reads as "160h free" for hours that are mostly gone.
+  it('splits a month\'s free figure by tense, same as a week', () => {
+    const monthCap: WeekCapacity = {
+      days: [
+        // Before `today`: spent, not free.
+        { date: '2026-08-10', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+        { date: '2026-08-11', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+        // On/after `today`: still ahead.
+        { date: '2026-08-16', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+        { date: '2026-08-17', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+      ],
+      freeMin: 1200, plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: false,
+    };
+    render(
+      <WeekHeader
+        {...base}
+        today="2026-08-16"
+        mode="month"
+        monthCapacity={monthCap}
+        monthSpanLabel="Aug 3 – Aug 30"
+      />,
+    );
+    // Spent: the two days before today (300 + 300 = 10h). Left: freeMin minus
+    // spent (1200 - 600 = 600 = 10h).
+    expect(screen.getByText('10h left')).toBeTruthy();
+    expect(screen.getByText('10h spent')).toBeTruthy();
+    expect(screen.queryByText(/^20h free$/)).toBeNull();
+  });
 });

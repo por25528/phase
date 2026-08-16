@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { monthCapacity } from './monthCapacity';
+import { makeBlock } from '../../lib/blocks';
 import type { Goal, Task } from '../../db/types';
 
 // AvailabilityWindow.dow is 0 = MONDAY … 6 = Sunday, matching weekDates()
@@ -21,6 +22,50 @@ const input = {
   allDayBlocks: false,
 };
 
+// August 2026's grid draws six Monday-first rows starting 2026-07-27, which
+// straddles July and August — the row `plannedWeek` this fixture aims work at
+// to prove the straddling row actually carries minutes, not just a unique key.
+const STRADDLING_WEEK = '2026-07-27';
+
+/**
+ * A populated fixture: real minutes in every bucket the invariant sums.
+ *
+ * - `n1` is a leaf committed to the straddling week with an estimate and NO
+ *   sitting — that is `backlogMin` ("to place"), billed to the week it is
+ *   committed to (weekCapacity's own rule: a leaf has no day-level
+ *   commitment, only a week).
+ * - `n2` is a leaf with a real sitting (`makeBlock`) ON a day inside the
+ *   straddling week (2026-07-28, a Tuesday) — that is `plannedMin`.
+ * - `n3` is a leaf committed to the straddling week with NO estimate — that
+ *   is `unestimated`.
+ * - `t1` is a dated task, also inside the straddling week, with no estimate
+ *   of its own — adds to `backlogMin`/`unestimated` via the task path.
+ */
+const POPULATED_GOAL: Goal = {
+  id: 'g1',
+  title: 'Populated project',
+  column: 0, // Now — inside PLANNING_HORIZONS
+  nodes: [
+    { id: 'n1', title: 'Committed, unplaced', estimateMin: 90, plannedWeek: STRADDLING_WEEK },
+    { id: 'n2', title: 'Sat down and worked', estimateMin: 60, blocks: [makeBlock('2026-07-28', 600, 45)] },
+    { id: 'n3', title: 'Committed, unpriced', plannedWeek: STRADDLING_WEEK },
+  ],
+};
+
+const POPULATED_TASK: Task = {
+  id: 't1',
+  title: 'A dated task',
+  done: false,
+  goalId: null,
+  date: '2026-07-29',
+};
+
+const populatedInput = {
+  ...input,
+  goals: [POPULATED_GOAL],
+  tasks: [POPULATED_TASK],
+};
+
 describe('monthCapacity', () => {
   it('returns one row per week the grid draws', () => {
     const m = monthCapacity(input);
@@ -32,14 +77,24 @@ describe('monthCapacity', () => {
   // THE invariant. If this fails the header and the gutter are lying to each
   // other, which is the entire reason this module exists rather than a
   // month-wide capacity computation.
+  //
+  // Run against a POPULATED fixture: with empty goals/tasks every sum is
+  // `0 === 0` and three of the four assertions below prove nothing. Each
+  // total is also asserted non-zero, so this cannot silently go vacuous
+  // again if the fixture above is ever pared back down to nothing.
   it('sums its rows exactly into its total', () => {
-    const m = monthCapacity(input);
+    const m = monthCapacity(populatedInput);
     const sum = (pick: (c: { freeMin: number; plannedMin: number; backlogMin: number; unestimated: number }) => number) =>
       m.rows.reduce((n, r) => n + pick(r.capacity), 0);
     expect(m.total.freeMin).toBe(sum((c) => c.freeMin));
     expect(m.total.plannedMin).toBe(sum((c) => c.plannedMin));
     expect(m.total.backlogMin).toBe(sum((c) => c.backlogMin));
     expect(m.total.unestimated).toBe(sum((c) => c.unestimated));
+
+    expect(m.total.freeMin).toBeGreaterThan(0);
+    expect(m.total.plannedMin).toBeGreaterThan(0);
+    expect(m.total.backlogMin).toBeGreaterThan(0);
+    expect(m.total.unestimated).toBeGreaterThan(0);
   });
 
   it('labels its span with the first and last day it actually covers', () => {
@@ -48,16 +103,44 @@ describe('monthCapacity', () => {
     expect(m.spanLabel).toMatch(/Sep 6$/);
   });
 
-  it('counts a straddling week once, in its own row', () => {
-    const m = monthCapacity(input);
+  it('counts a straddling week once, in its own row, with its minutes in it', () => {
+    const m = monthCapacity(populatedInput);
     const weeks = m.rows.map((r) => r.week);
     expect(new Set(weeks).size).toBe(weeks.length);
+
+    // The straddling row is the first — prove it actually carries the
+    // fixture's minutes, not just a unique key.
+    const straddling = m.rows.find((r) => r.week === STRADDLING_WEEK);
+    expect(straddling).toBeDefined();
+    expect(straddling!.capacity.plannedMin).toBe(45); // n2's sitting
+    expect(straddling!.capacity.backlogMin).toBeGreaterThan(0); // n1 + t1
+    expect(straddling!.capacity.unestimated).toBeGreaterThan(0); // n3
+
+    // And counted exactly once: no other row should also carry n2's sitting
+    // or n1/n3's week commitment.
+    const others = m.rows.filter((r) => r.week !== STRADDLING_WEEK);
+    expect(others.reduce((n, r) => n + r.capacity.plannedMin, 0)).toBe(0);
+    expect(others.reduce((n, r) => n + r.capacity.backlogMin, 0)).toBe(0);
+    expect(others.reduce((n, r) => n + r.capacity.unestimated, 0)).toBe(0);
   });
 
-  it('handles a five-row month', () => {
-    // February 2027 starts Mon 1st and ends Sun 28th — exactly 4 rows.
+  // February 2027 starts Monday 1st and ends Sunday 28th — a whole number of
+  // weeks, so the grid draws exactly four Monday-first rows and never spills
+  // into a fifth for either neighbouring month.
+  it('handles a four-row month', () => {
     const m = monthCapacity({ ...input, ym: '2027-02' });
     expect(m.rows.length).toBe(4);
+    expect(m.total.freeMin).toBe(m.rows.reduce((n, r) => n + r.capacity.freeMin, 0));
+  });
+
+  // September 2026 starts Tuesday 1st, so its first row is the trailing week
+  // of August (Mon 31 Aug) and its last is the leading week of October — five
+  // Monday-first rows, verified against monthGrid directly before writing
+  // this: Aug 31, Sep 7, 14, 21, 28.
+  it('handles a five-row month', () => {
+    const m = monthCapacity({ ...input, ym: '2026-09' });
+    expect(m.rows.length).toBe(5);
+    expect(m.rows[0].week).toBe('2026-08-31');
     expect(m.total.freeMin).toBe(m.rows.reduce((n, r) => n + r.capacity.freeMin, 0));
   });
 
