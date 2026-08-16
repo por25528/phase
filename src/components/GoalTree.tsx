@@ -891,32 +891,6 @@ function GoalTreeNode({
               </span>
             )}
 
-            {/* A leaf's metadata renders at this ONE position always, in DOM
-                order between the title and `◐` — never at a second position
-                depending on `placement`. `LeafMeta` used to render in two
-                different JSX spots (inline here, or in a sibling `<div>`
-                below), and the moment a bare leaf's `placement` flipped from
-                `inline` to `below`, React saw the element move to a
-                different PARENT and tore the whole subtree down — focus, any
-                open popover, draft text, all of it — rather than merely
-                reflowing it. A stable `key` cannot fix that: keys only
-                disambiguate siblings under one parent. Placement is now a
-                CSS-only concern: `below` adds `basis-full order-last` so the
-                metadata wraps onto its own line while `◐` and `⋯` stay on
-                line 1 (the container above is `flex-wrap`), and `inline`
-                adds neither. */}
-            {!hasKids && (
-              <LeafMeta
-                node={n}
-                goalId={goalId}
-                when={when}
-                placement={placement}
-                scheduleRef={scheduleRef}
-                estimateOpen={estimateOpen}
-                onEstimate={(minutes) => actions.setNodeEstimate(n.id, minutes)}
-              />
-            )}
-
             {/* Cycle status — leaves only. The one control that stayed on the
                 row while rename, add-subtask and delete moved into `⋯`, because
                 it is the only one of the four that is also a READOUT. */}
@@ -945,6 +919,42 @@ function GoalTreeNode({
                 onSchedule={() => scheduleRef.current?.click()}
               />
             </span>
+
+            {/* A leaf's metadata renders at this ONE position always, LAST in
+                DOM order — after `◐` and after `⋯` — never at a second
+                position depending on `placement`. `LeafMeta` used to render in
+                two different JSX spots (inline here, or in a sibling `<div>`
+                below), and the moment a bare leaf's `placement` flipped from
+                `inline` to `below`, React saw the element move to a
+                different PARENT and tore the whole subtree down — focus, any
+                open popover, draft text, all of it — rather than merely
+                reflowing it. A stable `key` cannot fix that: keys only
+                disambiguate siblings under one parent.
+
+                It is last, and NOT reordered with `order-last`, because a
+                keyboard user Tabs through this row in DOM order: `order-*`
+                would move it visually without moving the Popover triggers it
+                contains (schedule, estimate) out of tab-order lockstep with
+                what a sighted user sees. Placement is a CSS-only concern
+                otherwise: `below` adds `basis-full`, which — being last in
+                DOM order already — wraps it onto its own second line inside
+                the `flex-wrap` container above, and `inline` adds neither, so
+                it simply renders after `◐ ⋯` on line 1. That inline case is a
+                deliberate visual change from the single-line row this
+                replaced: hovering a bare row now reveals `plan`/`+ est` to the
+                RIGHT of `◐ ⋯` rather than to the left, traded for DOM order
+                matching visual order in both placements. */}
+            {!hasKids && (
+              <LeafMeta
+                node={n}
+                goalId={goalId}
+                when={when}
+                placement={placement}
+                scheduleRef={scheduleRef}
+                estimateOpen={estimateOpen}
+                onEstimate={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1025,15 +1035,19 @@ function LeafMeta({
     <span
       data-testid={inline ? 'row-meta-inline' : 'row-meta-below'}
       // `LeafMeta` always renders at the same JSX position now (see the call
-      // site); placement is purely which classes this span carries. `below`
-      // adds `basis-full order-last` — `basis-full` on a `flex-wrap` parent
-      // forces the wrap onto its own line, and `order-last` is what keeps `◐`
-      // and `⋯` on line 1: without it, the forced wrap would push THEM onto a
-      // third line too, since they'd fall after this element in source order.
+      // site, where it is LAST — after `◐` and `⋯`); placement is purely
+      // which classes this span carries. `below` adds `basis-full` —
+      // on a `flex-wrap` parent that forces the wrap onto its own line, and
+      // because this element is already last in DOM order, that line is the
+      // last line too, with nothing to push down after it. `order-*` is
+      // deliberately not used here: it would move this element visually
+      // without moving its focusable children (the schedule and estimate
+      // Popover triggers) out of DOM tab-order lockstep with what a sighted
+      // user sees, which is the divergence this arrangement exists to avoid.
       className={
         inline
           ? 'flex-none flex items-center gap-[2px]'
-          : 'flex items-center gap-[6px] flex-wrap min-w-0 basis-full order-last'
+          : 'flex items-center gap-[6px] flex-wrap min-w-0 basis-full'
       }
       onClick={(e) => e.stopPropagation()}
     >

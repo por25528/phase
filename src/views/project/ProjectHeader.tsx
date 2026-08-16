@@ -123,7 +123,7 @@ export function ProjectHeader({
               finally arrives. */}
           <span
             data-testid="health-pill"
-            className={`font-semibold whitespace-nowrap px-[7px] py-[2px] rounded-[4px] bg-hover ${HEALTH_TONE[verdict.health]}`}
+            className={`font-semibold whitespace-nowrap px-[7px] py-[2px] rounded-[4px] bg-hover-deep ${HEALTH_TONE[verdict.health]}`}
           >
             {HEALTH_WORD[verdict.health]}
           </span>
