@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createElement } from 'react';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import { MonthGrid } from './MonthGrid';
 import { GRID_VIEWPORT_PX } from '../../lib/grid';
+import { monthCapacity } from './monthCapacity';
 
 afterEach(() => cleanup());
 
@@ -31,5 +32,61 @@ describe('the month grid', () => {
   it('stands as tall as the week grid, so its 1fr rows have space to divide', () => {
     mount();
     expect(screen.getByTestId('month-grid').style.height).toBe(`${GRID_VIEWPORT_PX}px`);
+  });
+});
+
+const cap = monthCapacity({
+  ym: '2026-08',
+  goals: [], tasks: [],
+  windows: [
+    // 0 = Monday. See the note in monthCapacity.test.ts.
+    { dow: 0, startMin: 540, endMin: 1020 },
+    { dow: 1, startMin: 540, endMin: 1020 },
+  ],
+  now: { date: '2026-08-16', minute: 600 },
+  allDayBlocks: false,
+});
+
+describe('MonthGrid gutter', () => {
+  it('renders one gutter button per week row', () => {
+    render(createElement(DndContext, null, createElement(MonthGrid, {
+      ym: '2026-08', today: '2026-08-16', itemsByDay: new Map(),
+      isPastDay: () => false, onCreate: vi.fn(), onOpenDay: vi.fn(),
+      capacity: cap, onOpenWeek: vi.fn(),
+    })));
+    expect(screen.getAllByTestId('month-gutter-row').length).toBe(cap.rows.length);
+  });
+
+  it('routes a gutter click to that row’s week', () => {
+    const opened: string[] = [];
+    render(createElement(DndContext, null, createElement(MonthGrid, {
+      ym: '2026-08', today: '2026-08-16', itemsByDay: new Map(),
+      isPastDay: () => false, onCreate: vi.fn(), onOpenDay: vi.fn(),
+      capacity: cap, onOpenWeek: (w: string) => opened.push(w),
+    })));
+    fireEvent.click(screen.getAllByTestId('month-gutter-row')[1]);
+    expect(opened).toEqual([cap.rows[1].week]);
+  });
+
+  it('names each gutter button so it is reachable without a pointer', () => {
+    render(createElement(DndContext, null, createElement(MonthGrid, {
+      ym: '2026-08', today: '2026-08-16', itemsByDay: new Map(),
+      isPastDay: () => false, onCreate: vi.fn(), onOpenDay: vi.fn(),
+      capacity: cap, onOpenWeek: vi.fn(),
+    })));
+    // `getAllByRole`, not `getByRole`: a six-week month draws six gutter
+    // buttons, and the brief's `getByRole` is ambiguous by construction — every
+    // row's name matches this same pattern. The intent (each button carries a
+    // real, role-reachable name) is unchanged; only the query cardinality is.
+    const buttons = screen.getAllByRole('button', { name: /^Open week W\d+/ });
+    expect(buttons.length).toBe(cap.rows.length);
+  });
+
+  it('draws no gutter when it has no figures', () => {
+    render(createElement(DndContext, null, createElement(MonthGrid, {
+      ym: '2026-08', today: '2026-08-16', itemsByDay: new Map(),
+      isPastDay: () => false, onCreate: vi.fn(), onOpenDay: vi.fn(),
+    })));
+    expect(screen.queryAllByTestId('month-gutter-row').length).toBe(0);
   });
 });

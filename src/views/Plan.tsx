@@ -30,6 +30,7 @@ import { WeekGrid } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { BlockComposer } from './plan/BlockComposer';
 import { MonthGrid } from './plan/MonthGrid';
+import { monthCapacity } from './plan/monthCapacity';
 import { ymOfWeek, weekShowingMonth, shiftYm, monthGrid } from '../lib/calendar';
 import type { CanvasSpan } from '../lib/canvasCreate';
 import { WeekHeader } from './plan/WeekHeader';
@@ -168,6 +169,22 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     allDayBlocks,
     hasData: false, // slice 2 flips this when a calendar is connected
   });
+
+  /*
+   * Month mode's figures. Memoised on the data, NOT recomputed per render: this
+   * is six `weekCapacity` calls plus six leaf-tree walks, and the now-line ticks
+   * every 60 seconds — the exact hazard the memo block above exists for.
+   *
+   * `now` is rebuilt every render (it closes over `nowMinute`), so it cannot be
+   * a dependency; `today` and `nowMinute` are listed instead, which is the same
+   * pair it is built from.
+   */
+  const monthCap = useMemo(
+    () => (planMode === 'month'
+      ? monthCapacity({ ym, goals, tasks, windows: availability, now: { date: today, minute: nowMinute }, allDayBlocks })
+      : null),
+    [planMode, ym, goals, tasks, availability, today, nowMinute, allDayBlocks],
+  );
 
   /**
    * Reveal a task/habit chosen in the command palette.
@@ -567,6 +584,8 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             onToday={() => setWeekStart(weekOf(today))}
             unestimatedOpen={showUnestimated}
             onToggleUnestimated={() => setShowUnestimated((was) => !was)}
+            monthCapacity={monthCap?.total}
+            monthSpanLabel={monthCap?.spanLabel}
           />
 
           {/* Opened from the header's count. Closes itself once nothing is
@@ -636,6 +655,8 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
               isPastDay={(date) => date < today}
               onCreate={setMonthDraft}
               onOpenDay={(date) => { actions.setPlanMode('week'); setWeekStart(weekOf(date)); }}
+              capacity={monthCap ?? undefined}
+              onOpenWeek={(week) => { actions.setPlanMode('week'); setWeekStart(week); }}
             />
           ) : (
           <WeekGrid

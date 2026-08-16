@@ -1,7 +1,11 @@
+import { Fragment } from 'react';
 import { monthGrid, ymOf } from '../../lib/calendar';
 import { GRID_VIEWPORT_PX } from '../../lib/grid';
 import type { ScheduledItem } from '../../lib/scheduled';
+import type { DayCapacity } from '../../lib/capacity';
+import type { MonthCapacity } from './monthCapacity';
 import { MonthCell } from './MonthCell';
+import { MonthGutter, MONTH_GUTTER_PX } from './MonthGutter';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -25,17 +29,30 @@ const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
  * so the two modes occupy one rectangle and the toggle does not move the page.
  */
 export function MonthGrid({
-  ym, today, itemsByDay, isPastDay, onCreate, onOpenDay,
+  ym, today, itemsByDay, isPastDay, capacity, onCreate, onOpenDay, onOpenWeek,
 }: {
   /** 'YYYY-MM' — the month to draw. */
   ym: string;
   today: string;
   itemsByDay: Map<string, ScheduledItem[]>;
   isPastDay: (date: string) => boolean;
+  /** Per-week figures for the gutter. Absent ⇒ no gutter is drawn. */
+  capacity?: MonthCapacity;
   onCreate: (date: string) => void;
   onOpenDay: (date: string) => void;
+  /** Open a week in week mode. Absent ⇒ no gutter is drawn. */
+  onOpenWeek?: (week: string) => void;
 }) {
   const weeks = monthGrid(ym);
+  const gutter = capacity && onOpenWeek ? capacity : null;
+  const cols = gutter ? `${MONTH_GUTTER_PX}px repeat(7, minmax(0, 1fr))` : 'repeat(7, minmax(0, 1fr))';
+  // One flat lookup so a cell's figure costs nothing to find. `monthCapacity`
+  // already produced every DayCapacity the grid needs; re-deriving them per
+  // cell would be the seven-passes-per-render mistake Plan.tsx's memo block
+  // exists to prevent.
+  const dayCap = new Map<string, DayCapacity>(
+    (capacity?.total.days ?? []).map((d) => [d.date, d]),
+  );
 
   return (
     <div
@@ -43,31 +60,43 @@ export function MonthGrid({
       className="flex flex-col min-h-0 border-r border-b border-line-soft"
       style={{ height: `${GRID_VIEWPORT_PX}px` }}
     >
-      <div className="grid grid-cols-7 flex-none">
+      <div className="grid flex-none" style={{ gridTemplateColumns: cols }}>
+        {gutter && <span />}
         {DOW.map((d) => (
           <div
             key={d}
-            className="text-center font-mono text-tiny tracking-[.12em] uppercase text-muted pb-[4px]"
+            className="text-center font-mono text-micro tracking-[.12em] uppercase text-muted pb-[4px]"
           >
             {d}
           </div>
         ))}
       </div>
       <div
-        className="grid grid-cols-7 flex-1 min-h-0"
-        style={{ gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))` }}
+        className="grid flex-1 min-h-0"
+        style={{
+          gridTemplateColumns: cols,
+          gridTemplateRows: `repeat(${weeks.length}, minmax(0, 1fr))`,
+        }}
       >
-        {weeks.flat().map((date) => (
-          <MonthCell
-            key={date}
-            date={date}
-            items={itemsByDay.get(date) ?? []}
-            inMonth={ymOf(date) === ym}
-            isToday={date === today}
-            readOnly={isPastDay(date)}
-            onCreate={onCreate}
-            onOpenDay={onOpenDay}
-          />
+        {weeks.map((row, i) => (
+          <Fragment key={row[0]}>
+            {gutter && gutter.rows[i] && (
+              <MonthGutter row={gutter.rows[i]} onOpen={onOpenWeek!} />
+            )}
+            {row.map((date) => (
+              <MonthCell
+                key={date}
+                date={date}
+                items={itemsByDay.get(date) ?? []}
+                capacity={dayCap.get(date)}
+                inMonth={ymOf(date) === ym}
+                isToday={date === today}
+                readOnly={isPastDay(date)}
+                onCreate={onCreate}
+                onOpenDay={onOpenDay}
+              />
+            ))}
+          </Fragment>
         ))}
       </div>
     </div>
