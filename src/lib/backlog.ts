@@ -260,13 +260,38 @@ export function hiddenProjectCounts(goals: Goal[], today: string): HiddenProject
 /**
  * How many items a project shows before it collapses behind "+N more".
  *
- * Three, not five. The rail's job is "what could I pull in next", and at five
- * a handful of projects filled the whole viewport — you scrolled past one
- * project's tail to reach the next project's head, which is the long list the
- * cap exists to prevent. Three fits several projects on screen at once, so the
- * rail reads as a shortlist per project rather than a queue.
+ * The FLOOR of the shortlist, not a fixed size. A project is never reduced
+ * below three teaser rows — enough to read as "here is the head of this
+ * project's queue" rather than a single stranded row.
+ *
+ * A fixed three was the whole size, and it starved a rail it did not need to:
+ * one project with nine unplaced steps drew three rows and "+6 more" on a
+ * screen that was 60% empty, and two different problem sets both clipped to
+ * `6.006 Proble…` behind it. The cap now GROWS as fewer projects share the
+ * rail — see `backlogCap` — so one project fills the room it has while several
+ * still split it and land back near three each.
  */
 export const BACKLOG_CAP = 3;
+
+/**
+ * Roughly how many rows the rail can draw before it genuinely overflows and
+ * starts scrolling. Not a measurement — the rail's height is the viewport's,
+ * unknown here — but the budget the adaptive cap spends across the groups on
+ * screen. Twelve fills a mostly-empty rail with a single project's queue
+ * without letting four projects stack into an endless list.
+ */
+export const BACKLOG_ROW_BUDGET = 12;
+
+/**
+ * The effective per-project cap for a rail showing `groupCount` projects: the
+ * row budget split evenly, floored at `BACKLOG_CAP` so a crowded rail still
+ * shows each project's head. One project gets the whole budget; four split it
+ * back to three each. It only ever GROWS the old fixed three, never shrinks it.
+ */
+export function backlogCap(groupCount: number): number {
+  if (groupCount <= 0) return BACKLOG_ROW_BUDGET;
+  return Math.max(BACKLOG_CAP, Math.floor(BACKLOG_ROW_BUDGET / groupCount));
+}
 
 /** The `expanded` key for the group with no project. */
 export const LOOSE_GROUP_KEY = 'loose';
@@ -275,11 +300,11 @@ export const LOOSE_GROUP_KEY = 'loose';
 export interface CappedGroup extends BacklogGroup {
   /** `goalId`, or `LOOSE_GROUP_KEY` — what `expanded` is tested against. */
   key: string;
-  /** The first `BACKLOG_CAP` items, or all of them when expanded. */
+  /** The first `backlogCap(groupCount)` items, or all of them when expanded. */
   shown: BacklogItem[];
   /** `items.length - shown.length`. Zero when expanded or already short. */
   hidden: number;
-  /** `items.length > BACKLOG_CAP`, whether or not it is currently expanded. */
+  /** `items.length > cap`, whether or not it is currently expanded. */
   expandable: boolean;
 }
 
@@ -296,11 +321,14 @@ export interface CappedGroup extends BacklogGroup {
  * strands the user inside an expanded group.
  */
 export function capBacklog(groups: BacklogGroup[], expanded: Set<string>): CappedGroup[] {
+  // One cap for the whole rail: the budget is split by how many projects share
+  // it, so a group's shortlist depends on its neighbours, not on itself.
+  const cap = backlogCap(groups.length);
   return groups.map((group) => {
     const key = group.goalId ?? LOOSE_GROUP_KEY;
-    const expandable = group.items.length > BACKLOG_CAP;
+    const expandable = group.items.length > cap;
     const shown =
-      expandable && !expanded.has(key) ? group.items.slice(0, BACKLOG_CAP) : group.items;
+      expandable && !expanded.has(key) ? group.items.slice(0, cap) : group.items;
     return { ...group, key, shown, hidden: group.items.length - shown.length, expandable };
   });
 }

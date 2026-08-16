@@ -100,10 +100,13 @@ function BacklogRow({
       <span aria-hidden="true" className="flex-none text-faint-2">
         <IconGrip size={12} />
       </span>
-      {/* The rail is 249px and a chip costs it ~44px, so a long title MUST
-          clip — that is settled. What was not is that the clipped text had no
-          way back: `Book the gr…` names nothing. A `title` costs no layout. */}
-      <span title={item.title} className="flex-1 min-w-0 truncate">{item.title}</span>
+      {/* The rail is 249px, so a title shares the row with a due chip and the
+          estimate. Wrapping to a SECOND line rather than truncating on the
+          first is what tells two problem sets apart: `6.006 Proble…` and
+          `6.006 Proble…` named nothing and named the same nothing. Two lines is
+          the cap — past that it clips — and `title` still carries the full
+          string for the rare overflow. */}
+      <span title={item.title} className="flex-1 min-w-0 line-clamp-2 break-words">{item.title}</span>
       {/* Only inside the next week, and always for anything overdue. Printing a
           date on every row would make the urgent ones harder to find, not
           easier — the sort already put them on top; this says why. */}

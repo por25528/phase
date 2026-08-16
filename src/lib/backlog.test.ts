@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Goal, GoalNode, Task } from '../db/types';
 import {
-  backlogGroups, BACKLOG_CAP, capBacklog, hiddenProjectCounts, dueChip, LOOSE_GROUP_KEY,
+  backlogGroups, BACKLOG_CAP, BACKLOG_ROW_BUDGET, backlogCap, capBacklog,
+  hiddenProjectCounts, dueChip, LOOSE_GROUP_KEY,
 } from './backlog';
 import type { BacklogGroup } from './backlog';
 import { makeBlock } from './blocks';
@@ -309,16 +310,17 @@ describe('capBacklog', () => {
   });
 
   it('caps a long group and reports how many are hidden', () => {
+    // A single project has the whole rail, so its cap is the full row budget.
     const [g] = capBacklog([group('g1', 24)], new Set());
-    expect(g.shown).toHaveLength(BACKLOG_CAP);
-    expect(g.hidden).toBe(24 - BACKLOG_CAP);
+    expect(g.shown).toHaveLength(BACKLOG_ROW_BUDGET);
+    expect(g.hidden).toBe(24 - BACKLOG_ROW_BUDGET);
     expect(g.expandable).toBe(true);
   });
 
   it('keeps the first items in order — the rail is the top of the project', () => {
     const [g] = capBacklog([group('g1', 24)], new Set());
     expect(g.shown.map((i) => i.id)).toEqual(
-      Array.from({ length: BACKLOG_CAP }, (_, i) => `g1-${i}`),
+      Array.from({ length: BACKLOG_ROW_BUDGET }, (_, i) => `g1-${i}`),
     );
   });
 
@@ -333,9 +335,12 @@ describe('capBacklog', () => {
   });
 
   it('expands one group without touching its siblings', () => {
+    // Two projects split the budget — six each — and expanding one leaves the
+    // other's cap where it was.
     const [a, b] = capBacklog([group('g1', 24), group('g2', 24)], new Set(['g1']));
     expect(a.shown).toHaveLength(24);
-    expect(b.shown).toHaveLength(BACKLOG_CAP);
+    expect(b.shown).toHaveLength(backlogCap(2));
+    expect(backlogCap(2)).toBe(6);
   });
 
   it('keys the loose group so it can be expanded like any other', () => {
@@ -346,7 +351,7 @@ describe('capBacklog', () => {
 
   it('ignores an expanded key that matches no group', () => {
     const [g] = capBacklog([group('g1', 24)], new Set(['nope']));
-    expect(g.shown).toHaveLength(BACKLOG_CAP);
+    expect(g.shown).toHaveLength(BACKLOG_ROW_BUDGET);
   });
 
   it('leaves items intact so the caller can still count the true total', () => {
@@ -354,6 +359,35 @@ describe('capBacklog', () => {
     // subset — that number is the honest signal of over-commitment.
     const capped = capBacklog([group('g1', 24), group('g2', 7)], new Set());
     expect(capped.reduce((sum, g) => sum + g.items.length, 0)).toBe(31);
+  });
+});
+
+describe('backlogCap', () => {
+  it('gives a single project the whole row budget', () => {
+    expect(backlogCap(1)).toBe(BACKLOG_ROW_BUDGET);
+  });
+
+  it('splits the budget as more projects share the rail', () => {
+    expect(backlogCap(2)).toBe(6);
+    expect(backlogCap(3)).toBe(4);
+    expect(backlogCap(4)).toBe(3);
+  });
+
+  it('never falls below the floor, however crowded the rail', () => {
+    // Six projects would each get two by division, but the floor holds each
+    // project's head visible rather than stranding it on one teaser row.
+    expect(backlogCap(6)).toBe(BACKLOG_CAP);
+    expect(backlogCap(12)).toBe(BACKLOG_CAP);
+  });
+
+  it('only ever grows the old fixed three, never shrinks it', () => {
+    for (let n = 1; n <= 12; n += 1) {
+      expect(backlogCap(n)).toBeGreaterThanOrEqual(BACKLOG_CAP);
+    }
+  });
+
+  it('is defined for an empty rail', () => {
+    expect(backlogCap(0)).toBe(BACKLOG_ROW_BUDGET);
   });
 });
 
