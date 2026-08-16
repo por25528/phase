@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type {
   AssistantAction, AssistantFocusView, AssistantSnapshot,
@@ -115,7 +115,7 @@ const workTitle = 'truncate text-h2 font-semibold text-ink leading-[1.25]';
  * form data, the same distinction Board/Timeline already makes. `sm` because
  * the shelf is a dense toolbar, and because 26px clears the 24px target floor.
  *
- * One component, two arrangements, the same idiom `bodyClass(shelf)` already
+ * One component, two arrangements, the same idiom `bandCls(shelf)` already
  * uses below: side by side on the 620px shelf, stacked on the 380px embedded
  * host, which has nothing for a second label-plus-switch pair to live in on
  * one line. A width-based wrap would answer a question neither presentation
@@ -171,32 +171,28 @@ function dialStripClass(shelf: boolean): string {
 }
 
 /**
- * A row in a list of choices — an alternative to start, or to switch to.
- * Deliberately NOT one of the three dialog variants: those three
- * answer "which of these commits", and a list of things to pick from is not a
- * commit at all. Left-aligned and full-width, because it is read as a row.
+ * Band 2: what else you could be doing.
+ *
+ * The rows used to be `optionRow` — bordered boxes on `bg-panel` — while the
+ * primary recommendation had no container at all, so the only things on the
+ * card wearing a border were the ones you were being invited NOT to pick. They
+ * are text rows on hairlines now, and the primary is the only emphasised thing
+ * on the surface.
+ *
+ * One band, two labels: `Or` when nothing is running, `Switch to` when
+ * something is. Two verbs, because starting work you have not begun and
+ * displacing a running sitting are different acts — but one region, because a
+ * reader must not have to look in two places for the same question.
+ *
+ * The row is still one button with the whole row as its hit area. `-mx-1`
+ * against the row's own `px-1` keeps the hover surface aligned to the band's
+ * text rather than to its padding box.
  */
-const optionRow =
-  'w-full rounded-field border border-line bg-panel px-3 py-1.5 text-left text-ui text-ink '
+const altRow =
+  'flex w-full items-baseline gap-3 rounded-[6px] px-1 py-[5px] text-left '
   + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
 
-/**
- * The alternatives, in the open.
- *
- * They used to sit behind an `Other options` disclosure, which did not merely
- * hide them: expanded with two, the card computed past the window's fixed
- * height, and the window CLIPS rather than scrolls — so the second one was
- * partly off the bottom of the screen. This spends the shelf's WIDTH instead,
- * which is the budget that is not scarce, and every row is one click from
- * starting.
- *
- * `shelf` only. `AssistantHost` renders the same surface in-app at 380px,
- * where a 200px column beside a primary would leave the title 160px to live
- * in; there the same rows stack underneath. One component, two arrangements —
- * the disclosure dies in both, because it is the disclosure that loses rows,
- * not the layout.
- */
-function Sidecar({ label, items, disabled, onPick, shelf }: {
+function AlternativesBand({ label, items, disabled, onPick, shelf }: {
   label: string;
   items: RecommendedWork[];
   disabled: boolean;
@@ -205,65 +201,91 @@ function Sidecar({ label, items, disabled, onPick, shelf }: {
 }) {
   if (items.length === 0) return null;
   return (
-    <div className={shelf ? 'flex min-w-0 flex-col gap-1' : 'flex flex-col gap-1'}>
+    <div className={`border-t border-line ${shelf ? 'px-4 pt-2 pb-2.5' : 'px-3 py-2'}`}>
       <SectionLabel>{label}</SectionLabel>
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          disabled={disabled}
-          className={optionRow}
-          onClick={() => onPick(item.ref)}
-        >
-          <span className="block truncate text-ink-soft">{item.title}</span>
-          <span className="block truncate text-meta text-muted">
-            {item.goalTitle ? `${item.goalTitle} · ` : ''}{expectedTimeLabel(item.expected)}
-          </span>
-        </button>
-      ))}
+      <div className="mt-[2px] flex flex-col">
+        {items.map((item, i) => (
+          <button
+            key={item.key}
+            type="button"
+            disabled={disabled}
+            className={`${altRow} -mx-1 ${i ? 'border-t border-line-soft' : ''}`}
+            onClick={() => onPick(item.ref)}
+          >
+            <span className="min-w-0 flex-1 truncate text-body text-ink-soft">{item.title}</span>
+            <span className="shrink-0 text-meta text-muted">
+              {item.goalTitle ? `${item.goalTitle} · ` : ''}{expectedTimeLabel(item.expected)}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
 /**
- * The one primary/action arrangement, and where the alternatives go with it.
- * On the shelf the column sits beside the primary at a fixed 200px; embedded,
- * everything stacks.
+ * A content band's padding. The card's padding used to live on the root as a
+ * single `p-3`, which is why every band had to share one inset and no band
+ * could carry a full-width hairline. Each band owns its own now, and the
+ * hairlines run edge to edge.
+ *
+ * Stated in full rather than composed with `aboveBandCls`: appending an
+ * override like `${bandCls(shelf)} pb-0` would leave which rule wins to the
+ * order Tailwind happens to emit them in. `dialogStyles.ts` says it outright —
+ * a class list is not a cascade, and that exact trap is why `DateField`'s
+ * `size` prop exists.
  */
-function bodyClass(shelf: boolean): string {
-  return shelf
-    ? 'grid min-h-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1'
-    : 'flex min-h-0 flex-col gap-2';
+function bandCls(shelf: boolean): string {
+  return shelf ? 'px-4 pt-3.5 pb-3' : 'px-3 py-2';
 }
 
 /**
- * A quiet text disclosure. Revealed content is capped at two rows, internally
- * scrollable.
+ * The leading gutter, and why it is reserved rather than conditional.
  *
- * `FocusPanel` only, now: the advice panel's alternatives moved into the open
- * (`Sidecar`), but switching work mid-session stays reachable exactly where it
- * is today — the running state's own alternatives are unaffected by that
- * change, because the reason the sidecar is withheld while a session runs is
- * WIDTH (two full-length buttons need the room), not a decision to remove the
- * ability to switch.
+ * `confirming` renders no checkbox and no ring — that is a deliberate pin, and
+ * it stands: the state is already asking "was that real work?", and a tick
+ * there would answer a different question. But withholding the CONTROLS used
+ * to withhold their ROOM too, so the shelf's most important line jumped 34px
+ * left the instant a session ended.
+ *
+ * The checkbox slot is occupied in every state. The ring slot is occupied
+ * across all three session phases — `active`, `break` AND `confirming` — so
+ * the indent holds for as long as a session lasts, which is the interval over
+ * which anyone actually watches this line. Idle work indents by the checkbox
+ * alone; that step happens only when the whole card's content changes anyway.
  */
-function OtherOptions({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+const GUTTER = 'w-[22px] shrink-0';
+const RING_SLOT = 'w-[34px] shrink-0';
+
+/**
+ * Band 1: the work. One row — gutter, ring slot, the text column, the actions.
+ *
+ * Both panels render through this, which is the only reason the running state
+ * and the idle state agree about where the title starts. `min-w-0` on the text
+ * column is what lets `workTitle`'s `truncate` engage inside a flex row;
+ * without it the column takes its content's width and the row overflows.
+ */
+function WorkBand({ checkbox, ring, eyebrow, title, subtitle, extra, actions, shelf }: {
+  checkbox: ReactNode;
+  ring: ReactNode;
+  eyebrow: string;
+  title: ReactNode;
+  subtitle: ReactNode;
+  extra?: ReactNode;
+  actions: ReactNode;
+  shelf: boolean;
+}) {
   return (
-    <div>
-      <button
-        type="button"
-        aria-expanded={open}
-        className="text-ui font-medium text-ink-soft hover:text-ink"
-        onClick={() => setOpen((was) => !was)}
-      >
-        Other options
-      </button>
-      {open && (
-        <div className="mt-1 flex max-h-32 flex-col gap-1.5 overflow-y-auto">
-          {children}
-        </div>
-      )}
+    <div className={`${bandCls(shelf)} flex items-center gap-3`}>
+      <div data-gutter className={GUTTER}>{checkbox}</div>
+      {ring}
+      <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+        <SectionLabel>{eyebrow}</SectionLabel>
+        {title}
+        {subtitle}
+        {extra}
+      </div>
+      <div className="flex shrink-0 gap-2">{actions}</div>
     </div>
   );
 }
@@ -306,37 +328,37 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
   // The ring has no progress to draw against a figure still in question, and a
   // tick would answer a different question than the one on screen.
   const running = focus.phase !== 'confirming';
-  const info = (
-    <div className="flex min-w-0 items-center gap-3">
-      {running && (
-        <TodayCheckbox
-          checked={false}
-          ariaLabel={`Complete "${focus.title}"`}
-          onToggle={() => onAction({ type: 'complete-work', ref: focus.ref })}
-        />
-      )}
+  // `running` is `focus.phase !== 'confirming'`. The ring SLOT is present in
+  // all three session phases; the ring itself only when something is running.
+  const ring = (
+    <div data-ring-slot className={RING_SLOT}>
       {running && (
         <SessionRing
           state={ringState(focus.expected, focus.elapsedMin, focusLevel)}
           paused={focus.phase === 'break'}
         />
       )}
-      <div className="flex min-w-0 flex-col gap-1">
-        <SectionLabel>Focus session</SectionLabel>
-        <h2 className={workTitle} title={focus.title}>{focus.title}</h2>
-        {focus.goalTitle && <p className="truncate text-meta text-muted">{focus.goalTitle}</p>}
-        {focus.phase === 'confirming' ? (
-          <p className="text-body text-ink">
-            This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
-          </p>
-        ) : (
-          <p className="text-meta text-muted">
-            {elapsedAgainstExpected(focus.elapsedMin, focus.expected, focusLevel)}
-            {focus.phase === 'break' ? ' · On a break' : ''}
-          </p>
-        )}
-      </div>
     </div>
+  );
+  const checkbox = running ? (
+    <TodayCheckbox
+      checked={false}
+      ariaLabel={`Complete "${focus.title}"`}
+      onToggle={() => onAction({ type: 'complete-work', ref: focus.ref })}
+    />
+  ) : null;
+  const subtitle = focus.goalTitle
+    ? <p className="truncate text-meta text-muted">{focus.goalTitle}</p>
+    : null;
+  const extra = focus.phase === 'confirming' ? (
+    <p className="text-body text-ink">
+      This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
+    </p>
+  ) : (
+    <p className="text-meta text-muted">
+      {elapsedAgainstExpected(focus.elapsedMin, focus.expected, focusLevel)}
+      {focus.phase === 'break' ? ' · On a break' : ''}
+    </p>
   );
   // The filled button is whatever moves the session forward from where you
   // are: on a break you came back to resume, mid-session you came to finish,
@@ -392,27 +414,25 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
     </div>
   );
   return (
-    <div className="flex flex-col gap-2">
-      <div className={bodyClass(shelf)}>
-        {info}
-        {actions}
-      </div>
-      {alternatives.length > 0 && (
-        <OtherOptions>
-          {alternatives.slice(0, 2).map((alt) => (
-            <button
-              key={alt.key}
-              type="button"
-              className={optionRow}
-              onClick={() => onAction({ type: 'switch-focus', ref: alt.ref })}
-            >
-              <span className="text-ink-soft">{alt.title}</span>
-              {alt.goalTitle && <span className="ml-2 truncate text-meta text-muted">{alt.goalTitle}</span>}
-            </button>
-          ))}
-        </OtherOptions>
-      )}
-    </div>
+    <>
+      <WorkBand
+        shelf={shelf}
+        checkbox={checkbox}
+        ring={ring}
+        eyebrow="Focus session"
+        title={<h2 className={workTitle} title={focus.title}>{focus.title}</h2>}
+        subtitle={subtitle}
+        extra={extra}
+        actions={actions}
+      />
+      <AlternativesBand
+        label="Switch to"
+        items={alternatives.slice(0, 2)}
+        disabled={false}
+        onPick={(ref) => onAction({ type: 'switch-focus', ref })}
+        shelf={shelf}
+      />
+    </>
   );
 }
 
@@ -438,53 +458,52 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
 
   const { primary } = advice;
   const alternatives = advice.alternatives.slice(0, MAX_ALTERNATIVES);
-  const primaryColumn = (
-    <div className="flex min-w-0 items-center gap-3">
-      <TodayCheckbox
-        checked={false}
-        ariaLabel={`Complete "${primary.title}"`}
-        onToggle={() => onAction({ type: 'complete-work', ref: primary.ref })}
-      />
-      <div className="flex min-w-0 flex-col gap-1">
-        <SectionLabel>{REASON_WORD[primary.reason]}</SectionLabel>
-        <h2 className={workTitle} title={primary.title}>{primary.title}</h2>
-        <p className="flex min-w-0 items-baseline gap-1.5 text-meta text-muted">
-          {primary.goalTitle && <span className="truncate">{primary.goalTitle}</span>}
-          {primary.goalTitle && <span aria-hidden>·</span>}
-          <span className="shrink-0">{expectedTimeLabel(primary.expected)}</span>
-        </p>
-      </div>
-    </div>
-  );
-  const startButton = (
-    <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
-      Start session
-    </button>
-  );
 
   return (
-    <div className="flex flex-col gap-2">
+    <>
       {advice.beyondWindow && (
-        <p className="text-meta text-muted">Nothing that short left — this is next when you&apos;re ready.</p>
+        <p className={`${aboveBandCls(shelf)} text-meta text-muted`}>
+          Nothing that short left — this is next when you&apos;re ready.
+        </p>
       )}
       {advice.beyondFocus && (
-        <p className="text-meta text-muted">Nothing light left — this is next when you&apos;re ready.</p>
+        <p className={`${aboveBandCls(shelf)} text-meta text-muted`}>
+          Nothing light left — this is next when you&apos;re ready.
+        </p>
       )}
-      {shelf && alternatives.length > 0 ? (
-        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_1px_200px] gap-x-3.5">
-          <div className={bodyClass(true)}>{primaryColumn}{startButton}</div>
-          <div className="bg-line" />
-          <Sidecar label="Or" items={alternatives} disabled={pending} onPick={onStart} shelf />
-        </div>
-      ) : (
-        <>
-          <div className={bodyClass(shelf)}>{primaryColumn}{startButton}</div>
-          {!shelf && (
-            <Sidecar label="Or" items={alternatives} disabled={pending} onPick={onStart} shelf={false} />
-          )}
-        </>
-      )}
-    </div>
+      <WorkBand
+        shelf={shelf}
+        checkbox={
+          <TodayCheckbox
+            checked={false}
+            ariaLabel={`Complete "${primary.title}"`}
+            onToggle={() => onAction({ type: 'complete-work', ref: primary.ref })}
+          />
+        }
+        ring={null}
+        eyebrow={REASON_WORD[primary.reason]}
+        title={<h2 className={workTitle} title={primary.title}>{primary.title}</h2>}
+        subtitle={
+          <p className="flex min-w-0 items-baseline gap-1.5 text-meta text-muted">
+            {primary.goalTitle && <span className="truncate">{primary.goalTitle}</span>}
+            {primary.goalTitle && <span aria-hidden>·</span>}
+            <span className="shrink-0">{expectedTimeLabel(primary.expected)}</span>
+          </p>
+        }
+        actions={
+          <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
+            Start session
+          </button>
+        }
+      />
+      <AlternativesBand
+        label="Or"
+        items={alternatives}
+        disabled={pending}
+        onPick={onStart}
+        shelf={shelf}
+      />
+    </>
   );
 }
 

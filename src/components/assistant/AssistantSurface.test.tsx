@@ -135,22 +135,103 @@ describe('AssistantSurface', () => {
     }
   });
 
-  it('withholds the column while a session is running', () => {
-    const focus = {
-      ref: { kind: 'step' as const, id: 'n1', goalId: 'g1' },
-      title: 'Problem set 4', phase: 'active' as const,
-      elapsedMin: 12, expected: { kind: 'estimate' as const, minutes: 45 },
-    };
+  /*
+   * OVERTURNS the previous pin, which required the alternatives to be absent
+   * during a session.
+   *
+   * CLAUDE.md records why they were withheld: WIDTH — two full-length buttons
+   * needed the room — "not a decision to remove the ability to switch". The
+   * band layout gives the width back, so the constraint is gone and the
+   * `Other options` disclosure with it. The label changes because the verb
+   * does: you START work you have not begun, and you SWITCH TO one that
+   * displaces a running sitting.
+   */
+  it('offers the alternatives to switch to while a session is running', () => {
+    const onAction = vi.fn();
+    const alternatives = [work({
+      key: 'step:n2',
+      ref: { kind: 'step', id: 'n2', goalId: 'g1' },
+      title: 'Read chapter 5',
+    })];
+    render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView(), advice: { kind: 'work', primary: work(), alternatives } })}
+        onAction={onAction}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Other options' })).toBeNull();
+    expect(screen.getByText('Switch to')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete session' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Read chapter 5/ }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'switch-focus',
+      ref: { kind: 'step', id: 'n2', goalId: 'g1' },
+    });
+  });
+
+  /*
+   * Two labels, because they are two verbs. One band, because they are one
+   * region — a reader must never have to look in two places for "what else
+   * could I be doing".
+   */
+  it('labels the same band Or when nothing is running', () => {
     const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
     render(
       <AssistantSurface
-        snapshot={ready({ activeFocus: focus, advice: { kind: 'work', primary: work(), alternatives } })}
+        snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives } })}
         onAction={() => {}}
         presentation="shelf"
       />,
     );
-    expect(screen.queryByText('Read chapter 5')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Complete session' })).toBeTruthy();
+    expect(screen.getByText('Or')).toBeTruthy();
+    expect(screen.queryByText('Switch to')).toBeNull();
+  });
+
+  /*
+   * The heading started at 71px during a session and 37px the instant it
+   * ended, because the checkbox and the ring are both withheld in
+   * `confirming`. The slots are reserved instead: the checkbox slot always,
+   * the ring slot across all three session phases. `confirming` still renders
+   * NEITHER control — the existing pin on that stands — it just keeps the room.
+   */
+  it('reserves the gutter in confirming so the title does not shift left', () => {
+    const { container } = render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView({ phase: 'confirming', proposedMinutes: 200 }) })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(container.querySelector('[data-gutter]')).toBeTruthy();
+    expect(container.querySelector('[data-ring-slot]')).toBeTruthy();
+  });
+
+  it('reserves the same two slots during an active session', () => {
+    const { container } = render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView({ phase: 'active' }) })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.getByRole('checkbox')).toBeTruthy();
+    expect(container.querySelector('[data-gutter]')).toBeTruthy();
+    expect(container.querySelector('[data-ring-slot]')).toBeTruthy();
+  });
+
+  /*
+   * Idle work has no ring to reserve room for — that step happens only when
+   * the whole card's content changes anyway.
+   */
+  it('reserves the checkbox slot but no ring slot when idle', () => {
+    const { container } = render(
+      <AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />,
+    );
+    expect(container.querySelector('[data-gutter]')).toBeTruthy();
+    expect(container.querySelector('[data-ring-slot]')).toBeNull();
   });
 
   it('distinguishes history, planned estimate, and starter language', () => {
