@@ -1,6 +1,9 @@
 // The stdio MCP server. It declares tools and forwards them down the socket —
 // it decides nothing, because nothing under mcp/ is covered by the test suite
-// (see vitest.config.ts). Any branch worth testing belongs in src/lib.
+// (see vitest.config.ts). Any branch worth testing belongs in src/lib. What IS
+// pinned is this file's TEXT: `src/lib/agentProtocol.test.ts` reads it and
+// asserts every declared tool (and the horizon enum) against AGENT_TOOLS, so a
+// schema and its validator cannot drift.
 
 import net from 'node:net';
 import os from 'node:os';
@@ -130,6 +133,22 @@ const WRITES = {
       status: z.enum(['todo', 'doing', 'blocked', 'done']),
       blockedOn: z.string().optional(),
     },
+  ],
+  set_life: [
+    'Move a project into a life, BY NAME (not id — an id is not visible from out here). Pass null to unassign it. Naming one that does not exist answers with the ones that do.',
+    { goalId: z.string(), life: z.string().nullable() },
+  ],
+  set_horizon: [
+    'Move a project between the board\'s four commitment horizons: now, next, later, someday. "now" is what you are actively working on, "next" is queued, "later" and "someday" are parked — the calendar rail and the daily suggestions only draw from now and next. A capitalised spelling (Now, Next, Later, Someday) is accepted too: list_projects answers with the capitalised labels. Answers with how many projects Now holds afterwards.',
+    // The enum is DOUBLED rather than preprocessed: a z.preprocess pipe's input
+    // side is `unknown`, and the SDK generates the tool schema with
+    // `io: 'input'`, so `horizon` dropped out of the schema's `required` set —
+    // the model was told an optional argument that is in fact rejected. Eight
+    // literal words keep both the required marking and the advertised list.
+    // `agentProtocol.test.ts` pins this enum to `HORIZON_LABELS` in both
+    // casings, and this schema is the only copy the wire can see before the
+    // socket.
+    { goalId: z.string(), horizon: z.enum(['now', 'next', 'later', 'someday', 'Now', 'Next', 'Later', 'Someday']) },
   ],
   complete_task: [
     'Tick a task or step as done.',

@@ -85,6 +85,8 @@ and persistence come for free.
 | `rename` | `nodeId`, `title` | `renameNode` | Groups rename too |
 | `estimate` | `nodeId`, `minutes` (or `null`) | `setNodeEstimate` | Tasks only — a group has no estimate of its own |
 | `set_status` | `nodeId`, `status`, `blockedOn?` | `setNodeStatus`, or `toggleLeaf` for `done` | Tasks only; `blockedOn` is accepted only with `blocked` |
+| `set_life` | `goalId`, `life` (or `null`) | `setGoalLife` | By NAME, not id — naming one that does not exist answers with the ones that do |
+| `set_horizon` | `goalId`, `horizon` | `moveGoalToColumn` | `now`/`next`/`later`/`someday` — capitalised spellings are accepted too, because `list_projects` answers with the capitalised labels; returns `nowCount`, and never enforces the WIP cap the board only reports |
 | `complete_task` | `ref` | `toggleLeaf` / `toggleTask` | The same function the checkbox calls |
 | `schedule` | `ref`, `day`, `startMin?` | `scheduleNode` / `scheduleTask` | Books a sitting; see the length limit below |
 | `delete` | `ref` | `removeNodes` / `removeTask` | Reversible — see `undo_last` |
@@ -141,7 +143,7 @@ Which writes arm an undo entry at all:
 
 | Arms one | Arms nothing |
 |---|---|
-| `delete` (15s), `complete_task`, `set_status` → `done`, `estimate`, `schedule` | `create_project`, `add_task`, `rename`, `set_status` → `todo`/`doing`/`blocked` |
+| `delete` (15s), `complete_task`, `set_status` → `done`, `set_horizon`, `estimate`, `schedule` | `create_project`, `add_task`, `rename`, `set_life`, `set_status` → `todo`/`doing`/`blocked` |
 
 `schedule` arms one because it has no `blockId`: a booking made from a distance
 is not direct manipulation, and a press you did not watch land needs a way back.

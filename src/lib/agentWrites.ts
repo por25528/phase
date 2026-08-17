@@ -7,6 +7,7 @@ import { isValidLocalDate } from './schedule';
 import { findNode, isLeafNode } from './tree';
 import { isDone } from './status';
 import { todayStr } from './dates';
+import { columnOfHorizonWord, HORIZON_LABELS } from './horizons';
 
 /**
  * The write half of the agent surface.
@@ -221,6 +222,76 @@ export function handleAgentWrite(
         nodeId: request.nodeId,
         status: request.status,
         ...(request.blockedOn === undefined ? {} : { blockedOn: request.blockedOn }),
+      });
+    }
+
+    case 'set_life': {
+      const owner = project(state, request.goalId);
+      if (failed(owner)) return errorResponse(owner.error);
+      // Named, not id'd, and resolved HERE rather than by the store: a life id
+      // is invisible from outside the app, and there is no read verb that
+      // reports one — so the refusal has to double as the way to discover what
+      // there is to pick from.
+      let lifeId: string | null = null;
+      let lifeTitle: string | null = null;
+      if (request.life !== null) {
+        const wanted = request.life.trim().toLowerCase();
+        const match = state.lives.find((l) => l.title.trim().toLowerCase() === wanted);
+        if (!match) {
+          const known = state.lives.map((l) => `"${l.title}"`).join(', ');
+          return errorResponse(
+            known
+              ? `No life called "${request.life}". Phase has ${known}.`
+              : `No life called "${request.life}" — Phase has none yet, so create one there first.`,
+          );
+        }
+        lifeId = match.id;
+        lifeTitle = match.title;
+      }
+      actions.setGoalLife(request.goalId, lifeId);
+      // `setGoalLife` returns void and refuses SILENTLY — on a goal it cannot
+      // find, and on a life id that is not in `lives`. Rule 2: re-read rather
+      // than mirror its guard. The field is ABSENT when unassigned, never
+      // `undefined` in place, which is why this compares against `?? null`.
+      const after = getState().goals.find((g) => g.id === request.goalId);
+      if ((after?.lifeId ?? null) !== lifeId) {
+        return errorResponse(`"${owner.found.title}" did not take that life.`);
+      }
+      // The STORED title, not the one that was typed — the match is
+      // case-insensitive, so echoing the request would misreport what landed.
+      return settled({ goalId: request.goalId, lifeId, life: lifeTitle });
+    }
+
+    case 'set_horizon': {
+      const owner = project(state, request.goalId);
+      if (failed(owner)) return errorResponse(owner.error);
+      const target = columnOfHorizonWord(request.horizon);
+      const before = owner.found.column ?? 0;
+      actions.moveGoalToColumn(request.goalId, target);
+      /*
+       * Rule 2: `moveGoalToColumn` returns void and refuses SILENTLY — on a
+       * goal it cannot find, and on the horizon the goal is already in. Re-read
+       * rather than mirror its guard.
+       *
+       * The already-there case passes this check by construction: nothing
+       * moved, but `before === target`, so the postcondition holds and `moved`
+       * carries the distinction instead of an error doing it.
+       */
+      const after = getState().goals.find((g) => g.id === request.goalId);
+      if ((after?.column ?? 0) !== target) {
+        return errorResponse(`"${owner.found.title}" did not move to ${HORIZON_LABELS[target]}.`);
+      }
+      // The cap is a readout, not a refusal — `moveGoalToColumn` does not check
+      // `NOW_WIP_LIMIT` and neither does this. Saying what Now now holds is the
+      // difference between an agent that overfills it in silence and one that
+      // can tell its owner it just did.
+      const nowCount = getState().goals
+        .filter((g) => !g.completedAt && (g.column ?? 0) === 0).length;
+      return settled({
+        goalId: request.goalId,
+        horizon: HORIZON_LABELS[target],
+        moved: before !== target,
+        nowCount,
       });
     }
 
