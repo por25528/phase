@@ -45,10 +45,12 @@ function hasPlacedLeaf(nodes: GoalNode[]): boolean {
  * - There is something to place. On a genuinely empty install the hint would
  *   describe dragging from an empty rail; the Projects view's own empty state
  *   is the right teacher there.
- * - Working hours exist. With no availability, no day can accept a drop at all,
- *   and the view already shows a banner saying exactly that. Two stacked
- *   banners, one of which describes an action that cannot succeed, is worse
- *   than one.
+ * - Working hours exist. Not because a drop would fail without them — since
+ *   Job 1 nothing refuses a drop for being outside a window — but because
+ *   `PlanNotice` gives that state the louder of its two sentences, and a hint
+ *   that can never be the one shown is a condition evaluated for nothing.
+ *   Keeping the gate here means the two agree at the source rather than by the
+ *   accident of which branch `PlanNotice` happens to test first.
  */
 export function showPlanHint(
   goals: Goal[],

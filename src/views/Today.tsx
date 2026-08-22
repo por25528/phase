@@ -21,6 +21,7 @@ import { useLocalDate } from '../hooks/useLocalDate';
 import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
 import { dueChip } from '../lib/backlog';
 import { weekOf } from '../lib/plan';
+import { aimFor } from '../lib/slot';
 import { primaryBtn, rowBtn, rowBtnPrimary } from '../components/dialogStyles';
 
 /**
@@ -165,10 +166,17 @@ export function Today({
    * when the item will not fit contiguously, so there is no optimistic UI here
    * and no second way to say "no room".
    */
-  function place(row: ProposalRow, date: string, isToday: boolean): void {
-    // Aim at the clock on today so the block lands at the next usable minute;
-    // at 0 on a later day, which `resolveSlot` clamps to the first gap.
-    const aim = isToday ? nowMinute : 0;
+  function place(row: ProposalRow, date: string): void {
+    /*
+     * Aim at the day's working start, clamped forward to the clock on today.
+     *
+     * This was `isToday ? nowMinute : 0`, and the `0` only ever worked because
+     * the availability window fenced `resolveSlot` and swallowed it. With the
+     * fence gone (Job 1) a bare 0 books midnight, so the window has to be the
+     * AIM instead — which is what `aimFor` is, and which also folds in the
+     * today clamp this line used to spell out.
+     */
+    const aim = aimFor(date, availability, { date: today, minute: nowMinute });
     if (row.kind === 'task') actions.scheduleTask(row.id, date, aim);
     else if (row.goalId) actions.scheduleNode(row.goalId, row.id, date, aim);
   }
@@ -195,11 +203,11 @@ export function Today({
    * covers `meta`, so an interactive child there has to sit above it or the
    * row swallows the press. `startSessionButton` already does exactly this.
    */
-  function planButton(row: ProposalRow, date: string, isToday: boolean) {
+  function planButton(row: ProposalRow, date: string) {
     return (
       <button
         type="button"
-        onClick={() => place(row, date, isToday)}
+        onClick={() => place(row, date)}
         aria-label={`Plan “${row.title}” ${dayLabel(date, today)}`}
         className={`relative z-10 quiet-control ${rowBtn}`}
       >
@@ -363,7 +371,7 @@ export function Today({
               meta={
                 <>
                   <span className="tabular-nums">{expectedTimeLabel(primary.expected)}</span>
-                  {planButton(primaryOffer, offerInfo.date, offerInfo.today)}
+                  {planButton(primaryOffer, offerInfo.date)}
                   {startSessionButton(primary.ref, primary.title)}
                 </>
               }
@@ -454,8 +462,13 @@ export function Today({
         <section aria-label="Free time" className="mb-[20px]">
           <div className="px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
             {/* "Nobody told me when you work" and "you are out of time" are
-                different sentences, and only one of them is true here. */}
-            No working hours set, so Phase can’t offer you a time.{' '}
+                different sentences, and only one of them is true here. Kept
+                after Job 1 removed the fence: placing work needs no window any
+                more, but OFFERING a time does — the offer has to name a day
+                with room on it, and with no windows every day prices at zero.
+                See the note in PlanNotice.tsx. */}
+            No working hours set, so Phase can’t offer you a time — though you
+            can still put work on any day yourself.{' '}
             <button
               type="button"
               onClick={onOpenSettings}
@@ -497,7 +510,7 @@ export function Today({
                         {row.estimateMin !== undefined && (
                           <span className="tabular-nums">{fmtMinutes(row.estimateMin)}</span>
                         )}
-                        {planButton(row, offerInfo.date, offerInfo.today)}
+                        {planButton(row, offerInfo.date)}
                       </>
                     }
                   />
@@ -550,7 +563,6 @@ export function Today({
                             goalTitle: item.goalTitle ?? '',
                           },
                           today,
-                          true,
                         )}
                         aria-label={`Plan “${item.title}” today`}
                         className={`relative z-10 quiet-control ${rowBtn}`}

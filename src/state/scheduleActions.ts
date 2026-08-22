@@ -1,6 +1,6 @@
-import type { AvailabilityWindow, BusyBlock, GoalNode } from '../db/types';
+import type { BusyBlock, GoalNode } from '../db/types';
 import { addBlock, clearBlocks, makeBlock, setOnlyBlock } from '../lib/blocks';
-import { freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN, type PlacedSpan } from '../lib/slot';
+import { freeIntervals, NO_PAST_LIMIT, SLOT_GRANULARITY_MIN, WHOLE_DAY, type PlacedSpan } from '../lib/slot';
 import { weekOf } from '../lib/plan';
 
 /**
@@ -44,7 +44,6 @@ export interface ClampResizeInput {
   date: string;
   startMin: number;      // where the block currently starts — unchanged by a resize
   requestedMin: number;  // the duration the drag is asking for
-  windows: AvailabilityWindow[];
   blocks: BusyBlock[];
   placed: PlacedSpan[];  // MUST exclude the block being resized
   allDayBlocks: boolean;
@@ -65,12 +64,19 @@ export interface ClampResizeInput {
  * `NO_PAST_LIMIT` is used deliberately: resizing something already scheduled at
  * 09:00 must stay possible at 14:00, and the real clock's past-clamp would
  * otherwise report no gap at all.
+ *
+ * `WHOLE_DAY`, not the day's availability window: dragging a block's bottom
+ * edge past 18:00 was refused by the same fence Job 1 removed from every other
+ * placement, and a resize that stopped at a line nothing draws is the friction
+ * the user named. The gap cap is unchanged and is the point of the function —
+ * a resize still must not be able to create the overlap a drop is forbidden
+ * from creating.
  */
 export function clampResize(input: ClampResizeInput): number | null {
-  const { date, startMin, requestedMin, windows, blocks, placed, allDayBlocks } = input;
+  const { date, startMin, requestedMin, blocks, placed, allDayBlocks } = input;
   if (!Number.isFinite(requestedMin) || requestedMin <= 0) return null;
 
-  const gap = freeIntervals(date, windows, blocks, placed, NO_PAST_LIMIT, allDayBlocks)
+  const gap = freeIntervals(date, WHOLE_DAY, blocks, placed, NO_PAST_LIMIT, allDayBlocks)
     .find((g) => startMin >= g.startMin && startMin < g.endMin);
   if (!gap) return null;
 

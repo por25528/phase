@@ -1,8 +1,9 @@
 import type { AvailabilityWindow, BusyBlock } from '../db/types';
+import { DEFAULT_START_MIN, MINUTES_PER_DAY, windowForDate } from './availability';
 import {
   mergeIntervals,
   normalizeEstimate,
-  remainingWindow,
+  remainingSpan,
   type Interval,
   type Now,
 } from './capacity';
@@ -22,6 +23,51 @@ export const SLOT_GRANULARITY_MIN = 5;
  */
 export { NO_PAST_LIMIT } from './capacity';
 
+/**
+ * Every minute of the day — the region a MANUAL placement searches.
+ *
+ * This constant is the whole of Job 1. `resolveSlot` used to take
+ * `AvailabilityWindow[]` and refuse anything outside the day's window, so the
+ * same setting that priced the week also decided whether a drop was allowed;
+ * "remove working hours so I can place a block anywhere" is that gate and
+ * nothing else. It cannot be reinstated by accident either — availability is
+ * no longer reachable from this function's arguments at all, so a caller that
+ * wants the window has to name it (only the two REPLAN paths do, and they are
+ * automatic rather than manual).
+ *
+ * What survives untouched is COLLISION handling. `freeIntervals` still
+ * subtracts calendar events and work already placed, and `resolveSlot` still
+ * slides a block to the nearest gap that fits. Removing the fence widened the
+ * region; it did not make two bars able to claim the same minutes.
+ */
+export const WHOLE_DAY: Interval = Object.freeze({ startMin: 0, endMin: MINUTES_PER_DAY });
+
+/**
+ * Where a placement made FROM A DISTANCE should point on `date`.
+ *
+ * A drag and a drawn block carry their own aim — the minute the pointer was
+ * over. `ScheduleMenu`'s "Today", the backlog's `1`-`7`, a month-cell drop and
+ * Today's free-time offer carry none: they name a DAY and leave the hour to
+ * be chosen. That used to be spelled `aimMin: 0` and it worked only because
+ * the availability window fenced the search — with the fence gone, 0 means
+ * midnight and every one of those verbs would book 00:00.
+ *
+ * So the window becomes the AIM instead of the gate, which is the honest
+ * reading of what a person means by "when I work": point there, and let the
+ * gap search move off it if the hour is taken. A day with no window at all —
+ * every day switched off in Settings — still gets a sensible hour rather than
+ * a refusal, because nothing is refused any more.
+ *
+ * Today is clamped forward to the clock. Not because the past is forbidden (a
+ * drag onto this morning is allowed, and is how you record what actually
+ * happened) but because "put this on today" said at 3pm cannot mean 8am: the
+ * aim is the only thing left that carries that intent.
+ */
+export function aimFor(date: string, windows: AvailabilityWindow[], now: Now): number {
+  const start = windowForDate(date, windows)?.startMin ?? DEFAULT_START_MIN;
+  return date === now.date ? Math.max(start, now.minute) : start;
+}
+
 /** A span already occupying part of a day. */
 export interface PlacedSpan {
   startMin: number;
@@ -38,8 +84,13 @@ export function durationOf(estimateMin: number | undefined): number {
 }
 
 /**
- * The disjoint, ascending free gaps on `date`: the remaining availability
- * window minus calendar events minus work already placed.
+ * The disjoint, ascending free gaps on `date`: `span` minus calendar events
+ * minus work already placed.
+ *
+ * `span` was `AvailabilityWindow[]` and this function looked the day's window
+ * up itself, which is what made availability a fence. It is now a REGION the
+ * caller chooses: `WHOLE_DAY` for a manual placement, `windowForDate(...)` for
+ * the two automatic replan paths that propose hours on your behalf.
  *
  * Busy blocks and placed spans are merged together before subtraction — two
  * overlapping meetings must contribute their UNION, or the overlap is
@@ -48,13 +99,13 @@ export function durationOf(estimateMin: number | undefined): number {
  */
 export function freeIntervals(
   date: string,
-  windows: AvailabilityWindow[],
+  span: Interval | null,
   blocks: BusyBlock[],
   placed: PlacedSpan[],
   now: Now,
   allDayBlocks: boolean,
 ): Interval[] {
-  const win = remainingWindow(date, windows, now);
+  const win = remainingSpan(date, span, now);
   if (!win) return [];
 
   const dayBlocks = blocks.filter((b) => b.date === date && (allDayBlocks || !b.allDay));
@@ -83,7 +134,8 @@ export interface ResolveSlotInput {
   date: string;
   aimMin: number;        // where the user pointed, or where a migration starts looking
   durationMin: number;
-  windows: AvailabilityWindow[];
+  /** The region to search. `WHOLE_DAY` unless something is PROPOSING an hour. */
+  span: Interval | null;
   blocks: BusyBlock[];
   placed: PlacedSpan[];
   now: Now;
@@ -92,6 +144,11 @@ export interface ResolveSlotInput {
 
 /**
  * The start minute a block should take on `date`, or null if it does not fit.
+ *
+ * "Does not fit" now means one thing only: every gap in `span` that is clear
+ * of existing work is shorter than `durationMin`. With `WHOLE_DAY` that is a
+ * day booked solid, which is rare and real — it is NOT "outside your working
+ * hours", which is what it used to mean and what Job 1 removed.
  *
  * The aim is snapped to SLOT_GRANULARITY_MIN BEFORE the search; the winning
  * candidate is then clamped inside its gap and returned as-is. A clamped result
@@ -106,11 +163,11 @@ export interface ResolveSlotInput {
  * keeps it and lets the later, equally-distant candidate fail to displace it.
  */
 export function resolveSlot(input: ResolveSlotInput): number | null {
-  const { date, durationMin, windows, blocks, placed, now, allDayBlocks } = input;
+  const { date, durationMin, span, blocks, placed, now, allDayBlocks } = input;
   if (!Number.isFinite(durationMin) || durationMin <= 0) return null;
 
   const aim = Math.round(input.aimMin / SLOT_GRANULARITY_MIN) * SLOT_GRANULARITY_MIN;
-  const gaps = freeIntervals(date, windows, blocks, placed, now, allDayBlocks);
+  const gaps = freeIntervals(date, span, blocks, placed, now, allDayBlocks);
 
   let best: number | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;

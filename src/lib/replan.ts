@@ -2,6 +2,7 @@ import type { AvailabilityWindow, BusyBlock, Goal, Task } from '../db/types';
 import { addDays } from './dates';
 import { isDone } from './status';
 import { resolveSlot, type PlacedSpan } from './slot';
+import { windowForDate } from './availability';
 import { blocksOf } from './blocks';
 import { scheduledOn } from './scheduled';
 import type { Now } from './capacity';
@@ -158,9 +159,21 @@ export function proposeReplan(input: ReplanInput): ReplanProposal {
       const date = addDays(today, i);
       const startMin = resolveSlot({
         date,
-        aimMin: 0, // the earliest gap that fits
+        aimMin: 0, // the earliest gap that fits, inside the window below
         durationMin: item.minutes,
-        windows,
+        /*
+         * The availability window, deliberately — this is the one placement
+         * path Job 1 does NOT open up. A replan PROPOSES hours on your behalf,
+         * and the same reasoning that keeps it out of the past ("proposing you
+         * do something yesterday is nonsense") keeps it out of 03:00: a
+         * proposal that ignores when you said you work is not a recovery, it is
+         * a shuffle. A person placing a block by hand is not proposing
+         * anything, which is why every manual route now searches `WHOLE_DAY`.
+         *
+         * A day with no window is skipped, exactly as before — `resolveSlot`
+         * returns null on a null span and the loop moves to the next day.
+         */
+        span: windowForDate(date, windows),
         blocks,
         placed: spansFor(date),
         now,

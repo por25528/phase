@@ -17,7 +17,7 @@ import {
 } from '../db/db';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
-import { DEFAULT_AVAILABILITY, parseAvailability } from '../lib/availability';
+import { DEFAULT_AVAILABILITY, parseAvailability, windowForDate } from '../lib/availability';
 import { todayStr, addDays, fmtD } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import { isValidLocalDate, projectDateError, confirmableDateGoalIds } from '../lib/schedule';
@@ -36,11 +36,11 @@ import { goalsInScope, resolveScope, type LifeScope } from '../lib/lifeScope';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
 import { formatEstimateValue } from '../lib/estimateInput';
-import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT } from '../lib/slot';
+import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, WHOLE_DAY } from '../lib/slot';
 import { spansOn } from '../lib/scheduled';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { addPlannedSlot, clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
-import { addBlock, blocksOf, clearBlocks, isPlaced, makeBlock, removeBlock, replaceBlock, setOnlyBlock } from '../lib/blocks';
+import { addBlock, blocksOf, clearBlocks, makeBlock, removeBlock, replaceBlock, setOnlyBlock } from '../lib/blocks';
 import type { ReplanMove } from '../lib/replan';
 import { MAX_IMAGE_EDGE, scaledDimensions } from '../lib/imageScale';
 import {
@@ -850,12 +850,22 @@ function formatDuration(minutes: number): string {
 // fits, and the longest stretch is the number that predicts whether a retry
 // will succeed. A day with no free stretch at all gets its own wording rather
 // than a misleading "longest free stretch is 0m".
+//
+// This is now a COLLISION refusal and only that. It used to fire mostly for
+// the availability fence — "no free time left that day" about a Saturday that
+// was simply switched off — and Job 1 removed that gate; every manual
+// placement searches `WHOLE_DAY`. So the gaps it describes are the day's real
+// gaps between real blocks, all 24 hours of them, and the second branch means
+// the day is booked end to end rather than closed for business. The function
+// keeps all three of its callers and fires far more rarely, which is the
+// point: a refusal that only happens when the minutes genuinely are not there
+// is a refusal worth reading.
 function describeNoRoom(durationMin: number, gaps: { startMin: number; endMin: number }[]): string {
   const longest = gaps.reduce((max, g) => Math.max(max, g.endMin - g.startMin), 0);
   const need = `No ${formatDuration(durationMin)} gap left that day`;
   return longest > 0
     ? `${need} — longest free stretch is ${formatDuration(longest)}`
-    : `${need} — no free time left that day`;
+    : `${need} — that day is booked solid`;
 }
 
 // Same voice as describeNoRoom: a refused resize (clampResize returned null)
@@ -2530,38 +2540,42 @@ export const actions = {
     // the estimate, which is the only thing there is to go on.
     const durationMin = moving?.minutes ?? durationOf(sourceNode.estimateMin);
     const placed = spansOn(state.goals, state.tasks, day, vacating(sourceNode, opts));
-    // Moving something already on the grid is an ADJUSTMENT, not a new
-    // commitment against "right now" — which is the case `NO_PAST_LIMIT`'s own
-    // note describes, and which `clampResize` already uses it for. With the
-    // real clock, dragging a 09:00 block down to 11:00 at 2pm found the day's
-    // only remaining gap at 14:00 and silently dropped the block there, and
-    // dragging one onto an earlier weekday of the same week refused with "no
-    // free time left that day" about a day that was nine hours empty. Both
-    // outcomes came from treating a rearrangement as a fresh booking.
     /*
-     * Already on the grid ⇒ this is an ADJUSTMENT, not a fresh booking.
+     * A manual placement lands where it is aimed, at any minute of any day.
      *
-     * True whether or not a specific sitting was named: dropping a placed task
-     * onto an earlier weekday is still a rearrangement. Requiring `blockId` for
-     * this re-introduced the bug `NO_PAST_LIMIT` exists for — at 2pm, dragging
-     * a 09:00 block found the day's only remaining gap at 14:00 and silently
-     * dropped it there.
+     * `WHOLE_DAY` is the fence coming off: the day's availability window used
+     * to bound this search, so a drop at 20:30 slid back to 17:00 and a drop
+     * on a day switched off was refused outright. `NO_PAST_LIMIT` is the same
+     * decision on the other axis — a person may drop a block on this morning
+     * because they are recording what actually happened, and that is exactly
+     * the case the automatic paths (`todayPlan`, `proposeReplan`) must keep
+     * refusing. The two are not the same question and are not flattened here.
+     *
+     * It also subsumes the ADJUSTMENT rule this used to spell out: dragging a
+     * 09:00 block at 2pm, or onto an earlier weekday, no longer needs a
+     * special case, because nothing distinguishes a rearrangement from a fresh
+     * booking any more — neither is clamped.
+     *
+     * What did NOT change is `placed`, and it is the whole of the collision
+     * behaviour: the day's existing sittings are still subtracted, so
+     * `resolveSlot` still slides this block to the nearest gap that fits it
+     * rather than letting two bars claim the same minutes.
      */
-    const now = moving !== undefined || isPlaced(sourceNode) ? NO_PAST_LIMIT : nowMoment();
+    const now = NO_PAST_LIMIT;
     const startMin = resolveSlot({
       date: day,
       aimMin,
       durationMin,
-      windows: state.availability,
+      span: WHOLE_DAY,
       blocks: [], // slice 2 supplies real busy blocks
       placed,
       now,
       allDayBlocks: state.allDayBlocks,
     });
     if (startMin === null) {
-      // Same `now` as the search above, or the refusal describes gaps the
-      // search was never allowed to use.
-      const gaps = freeIntervals(day, state.availability, [], placed, now, state.allDayBlocks);
+      // Same region and `now` as the search above, or the refusal describes
+      // gaps the search was never allowed to use.
+      const gaps = freeIntervals(day, WHOLE_DAY, [], placed, now, state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
       return false;
     }
@@ -2606,22 +2620,21 @@ export const actions = {
     const moving = opts.blockId ? blocksOf(task).find((b) => b.id === opts.blockId) : undefined;
     const durationMin = moving?.minutes ?? durationOf(task.estimateMin);
     const placed = spansOn(state.goals, state.tasks, date, vacating(task, opts));
-    // See scheduleNode: a task already on the grid is being rearranged, not
-    // booked, so the wall clock must not amputate the earlier part of its day.
-    // See `scheduleNode`: a placed task is being rearranged, not booked.
-    const now = moving !== undefined || isPlaced(task) ? NO_PAST_LIMIT : nowMoment();
+    // See `scheduleNode`: manual placement is unfenced on both axes, and
+    // `placed` is what still keeps two bars off the same minutes.
+    const now = NO_PAST_LIMIT;
     const startMin = resolveSlot({
       date,
       aimMin,
       durationMin,
-      windows: state.availability,
+      span: WHOLE_DAY,
       blocks: [],
       placed,
       now,
       allDayBlocks: state.allDayBlocks,
     });
     if (startMin === null) {
-      const gaps = freeIntervals(date, state.availability, [], placed, now, state.allDayBlocks);
+      const gaps = freeIntervals(date, WHOLE_DAY, [], placed, now, state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
       return false;
     }
@@ -2662,28 +2675,29 @@ export const actions = {
     if (minutes === undefined) return false;
 
     /*
-     * A brand-new block IS a new booking, so the wall clock applies — unlike
-     * `scheduleNode`/`scheduleTask`, which pass `NO_PAST_LIMIT` when moving
-     * something already on the grid because that is an adjustment. Drawing a
-     * block across a morning that has already happened should refuse, exactly
-     * as dragging a fresh item from the rail onto it does.
+     * Drawing a block across a morning that has already happened is now
+     * ALLOWED, and it is the clearest case for allowing it: a block drawn on
+     * the past is a person recording what they actually did. This used to
+     * refuse, on the reasoning that a brand-new block is a new booking — true,
+     * but the conclusion belonged to the automatic paths, which still hold it
+     * (`todayPlan` and `proposeReplan` will not propose yesterday).
      */
-    const now = nowMoment();
+    const now = NO_PAST_LIMIT;
     const placed = spansOn(state.goals, state.tasks, date);
     const resolved = resolveSlot({
       date,
       aimMin: startMin,
       durationMin: minutes,
-      windows: state.availability,
+      span: WHOLE_DAY,
       blocks: [],
       placed,
       now,
       allDayBlocks: state.allDayBlocks,
     });
     if (resolved === null) {
-      // Same `now` as the search above, or the refusal describes gaps the
-      // search was never allowed to use.
-      const gaps = freeIntervals(date, state.availability, [], placed, now, state.allDayBlocks);
+      // Same region and `now` as the search above, or the refusal describes
+      // gaps the search was never allowed to use.
+      const gaps = freeIntervals(date, WHOLE_DAY, [], placed, now, state.allDayBlocks);
       actions.showToast(describeNoRoom(minutes, gaps));
       return false;
     }
@@ -2706,7 +2720,7 @@ export const actions = {
    * can actually take it.
    *
    * It used to be `scheduleNode(goalId, nodeId, today, 0)`. Two things were
-   * wrong with that, and they compounded. Under the default Mon–Fri
+   * wrong with that, and they compounded. Under the then-default Mon–Fri
    * availability, `windowForDate` returns null for a weekend, so every Replan
    * button failed outright on a Saturday or Sunday — which is exactly when a
    * weekly review gets done. And on a weekday that succeeded, nothing changed
@@ -2728,9 +2742,17 @@ export const actions = {
       const date = addDays(from, i);
       const startMin = resolveSlot({
         date,
-        aimMin: 0, // earliest gap that fits
+        aimMin: 0, // earliest gap that fits, inside the window below
         durationMin,
-        windows: state.availability,
+        /*
+         * The availability window, and the real clock — the same pair
+         * `proposeReplan` keeps and for the same reason. "Next free slot" is
+         * the app PROPOSING an hour, not a person aiming at one, so it stays
+         * inside the days and hours the user said they work and never offers
+         * the past. Every manual route searches `WHOLE_DAY` instead; see
+         * `scheduleNode`.
+         */
+        span: windowForDate(date, state.availability),
         blocks: [],
         placed: spansOn(state.goals, state.tasks, date, nodeId),
         now: nowMoment(),
@@ -2877,7 +2899,6 @@ export const actions = {
       date: block.date,
       startMin: block.startMin,
       requestedMin: minutes,
-      windows: state.availability,
       blocks: [],
       placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,
@@ -2902,7 +2923,6 @@ export const actions = {
       date: block.date,
       startMin: block.startMin,
       requestedMin: minutes,
-      windows: state.availability,
       blocks: [],
       placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,

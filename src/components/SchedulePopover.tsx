@@ -2,6 +2,14 @@ import { useAppStore } from '../state/store';
 import { PopoverItem, PopoverSeparator } from './Popover';
 import { addDays, todayStr } from '../lib/dates';
 import { isPlaced } from '../lib/blocks';
+import { aimFor } from '../lib/slot';
+import type { Now } from '../lib/capacity';
+
+/** The wall clock, read at the moment the verb is pressed. */
+function liveNow(): Now {
+  const d = new Date();
+  return { date: todayStr(), minute: d.getHours() * 60 + d.getMinutes() };
+}
 import type { GoalNode } from '../db/types';
 
 /**
@@ -13,10 +21,17 @@ import type { GoalNode } from '../db/types';
  * another surface. The cell already states the answer; this makes it the
  * control that sets it.
  *
- * `aimMin: 0` means "the earliest gap that fits", the same rule `replanNode`
- * uses. The store resolves the slot and refuses with a toast when the day has
- * no room, so there is exactly one place that decides where a block lands and
- * exactly one sentence for "no room" — nothing here is optimistic and there is
+ * The aim is `aimFor` — the day's working start, clamped forward to the clock
+ * on today. It used to be a literal `0` meaning "the earliest gap that fits",
+ * which was only ever true because the availability window fenced
+ * `resolveSlot`'s search. Job 1 removed that fence, so `0` now means midnight
+ * and "Today" would book 00:00; the window has become the AIM instead of the
+ * gate, and `aimFor` is the one place that reading lives.
+ *
+ * The store still resolves the slot and still refuses with a toast when the
+ * day has no room for it — a day booked solid, now, rather than a day switched
+ * off — so there is exactly one place that decides where a block lands and
+ * exactly one sentence for "no room". Nothing here is optimistic and there is
  * nothing to roll back.
  */
 export function ScheduleMenu({
@@ -28,7 +43,8 @@ export function ScheduleMenu({
   node: GoalNode;
   close: () => void;
 }) {
-  const { actions } = useAppStore();
+  const { availability, actions } = useAppStore();
+  const aimOn = (date: string): number => aimFor(date, availability, liveNow());
   const placed = isPlaced(node);
   // A week commitment with no sitting yet (`plannedWeek` set, no `blocks`) is
   // still something to clear. Gating on `placed` alone left it unclearable from
@@ -40,12 +56,12 @@ export function ScheduleMenu({
 
   return (
     <>
-      <PopoverItem close={close} onSelect={() => actions.scheduleNode(goalId, node.id, todayStr(), 0)}>
+      <PopoverItem close={close} onSelect={() => actions.scheduleNode(goalId, node.id, todayStr(), aimOn(todayStr()))}>
         Today
       </PopoverItem>
       <PopoverItem
         close={close}
-        onSelect={() => actions.scheduleNode(goalId, node.id, addDays(todayStr(), 1), 0)}
+        onSelect={() => actions.scheduleNode(goalId, node.id, addDays(todayStr(), 1), aimOn(addDays(todayStr(), 1)))}
       >
         Tomorrow
       </PopoverItem>
@@ -55,7 +71,7 @@ export function ScheduleMenu({
       {placed && (
         <PopoverItem
           close={close}
-          onSelect={() => actions.scheduleNode(goalId, node.id, todayStr(), 0, { mode: 'add' })}
+          onSelect={() => actions.scheduleNode(goalId, node.id, todayStr(), aimOn(todayStr()), { mode: 'add' })}
         >
           Sit again today
         </PopoverItem>

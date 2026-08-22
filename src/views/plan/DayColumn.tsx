@@ -6,10 +6,17 @@ import { canvasSpan, type CanvasSpan } from '../../lib/canvasCreate';
 import { fmtD } from '../../lib/dates';
 
 /**
- * One day. Draws the availability shading, the now-line, and nothing else —
- * the blocks themselves arrive as `children` so this file stays about geometry.
+ * One day. Draws the hours outside the working window, the now-line, and
+ * nothing else — the blocks themselves arrive as `children` so this file stays
+ * about geometry.
  *
- * A day with no window is hatched and refuses drops.
+ * A day with no window is hatched end to end and ACCEPTS drops like any other.
+ * That is Job 1 on this surface: the window used to disable the droppable, so
+ * a Saturday you had switched off was a column you could not use. It is now a
+ * MARKING — `.hatch`, the same 45° stripe Today's frame uses for the margin of
+ * a sheet — which says "you don't usually work here" and refuses nothing. The
+ * heavy `bg-hover/60` wash it replaces read as disabled chrome, which is
+ * exactly what it no longer is.
  *
  * The availability window prop is named `availabilityWindow` rather than
  * `window` because the latter shadows the global `window` object — a
@@ -37,10 +44,12 @@ export function DayColumn({
   onCreate?: (span: CanvasSpan) => void;
   children: ReactNode;
 }) {
-  // A day with no availability window, OR a day in a read-only (past) week,
-  // refuses drops outright — the disabled droppable is what makes `over` null
-  // there, so nothing is ever scheduled onto a day off or into the past.
-  const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !availabilityWindow || !!readOnly });
+  // Only a read-only (past) WEEK refuses drops now. A day off is no longer a
+  // reason: `resolveSlot` searches the whole day, so a column that looked
+  // droppable and then refused would be the last place the fence still lived.
+  // Past-week read-only is a different rule and deliberately untouched — it is
+  // about rescheduling history, not about working hours.
+  const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !!readOnly });
 
   return (
     // `group` + a label, because the blocks inside carry no day of their own.
@@ -50,29 +59,32 @@ export function DayColumn({
       ref={setNodeRef}
       data-date={date}
       role="group"
-      aria-label={`${fmtD(date)}${isToday ? ' — today' : ''}${availabilityWindow ? '' : ' — no working hours'}`}
+      aria-label={`${fmtD(date)}${isToday ? ' — today' : ''}${availabilityWindow ? '' : ' — outside working hours'}`}
       className={`relative min-w-0 overflow-hidden border-l border-line-soft ${
-        availabilityWindow ? '' : 'bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgb(var(--c-hover))_4px,rgb(var(--c-hover))_8px)]'
-      } ${isToday ? 'bg-hover/40' : ''} ${isOver && availabilityWindow ? 'bg-accent/5' : ''}`}
+        availabilityWindow ? '' : 'hatch'
+      } ${isToday ? 'bg-hover/40' : ''} ${isOver ? 'bg-accent/5' : ''}`}
     >
-      {/* hours outside the working window, dimmed */}
+      {/* Hours outside the working window: hatched, not dimmed. See the note
+          above — this is a marking of the day's margin, and the two bands are
+          skipped entirely on a day with no window because the column itself
+          already carries the hatch. */}
       {availabilityWindow && (
         <>
           <div
-            className="absolute left-0 right-0 top-0 bg-hover/60 pointer-events-none"
+            className="hatch absolute left-0 right-0 top-0 pointer-events-none"
             style={{ height: `${minuteToPx(availabilityWindow.startMin)}px` }}
           />
           <div
-            className="absolute left-0 right-0 bottom-0 bg-hover/60 pointer-events-none"
+            className="hatch absolute left-0 right-0 bottom-0 pointer-events-none"
             style={{ height: `${DAY_HEIGHT_PX - minuteToPx(availabilityWindow.endMin)}px` }}
           />
         </>
       )}
 
-      {/* Gated on exactly what the droppable is gated on: a day with no
-          window, or a week already spent, refuses a drawn block for the same
-          reason it refuses a dropped one. */}
-      {onCreate && availabilityWindow && !readOnly && (
+      {/* Gated on exactly what the droppable is gated on, which is now only a
+          week already spent: a drawn block and a dropped one have to agree
+          about which days will take them. */}
+      {onCreate && !readOnly && (
         <DayCanvas date={date} onCreate={onCreate} />
       )}
 

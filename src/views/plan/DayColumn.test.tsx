@@ -121,12 +121,27 @@ describe('telling elapsed from available at a glance', () => {
 });
 
 describe('when the day refuses work', () => {
-  it('renders no canvas on a day with no working hours', () => {
+  /*
+   * Was "renders no canvas on a day with no working hours", and it asserted
+   * the fence: a day off had its droppable disabled and its canvas withheld,
+   * so it could not be used at all. Job 1 makes a day off a MARKING (the
+   * `.hatch`) rather than a lock, so the assertion inverts — the canvas is
+   * there, because the drop that would follow it now succeeds.
+   */
+  it('renders the canvas on a day with no working hours', () => {
     render(createElement(DayColumn, {
       date: '2026-07-19', isToday: false, availabilityWindow: null,
       nowMinute: null, onCreate: vi.fn(), children: null,
     }));
-    expect(screen.queryByTestId('day-canvas-2026-07-19')).toBeNull();
+    expect(screen.queryByTestId('day-canvas-2026-07-19')).toBeTruthy();
+  });
+
+  it('hatches a day with no working hours instead of disabling it', () => {
+    const { container } = render(createElement(DayColumn, {
+      date: '2026-07-19', isToday: false, availabilityWindow: null,
+      nowMinute: null, onCreate: vi.fn(), children: null,
+    }));
+    expect(container.querySelector('.hatch')).toBeTruthy();
   });
 
   it('renders no canvas on a past week', () => {

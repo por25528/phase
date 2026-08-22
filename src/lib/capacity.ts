@@ -54,19 +54,41 @@ export function mergeIntervals(intervals: Interval[]): Interval[] {
 export const NO_PAST_LIMIT: Now = { date: '1970-01-01', minute: 0 };
 
 /**
+ * The part of `span` on `date` that is still ahead of `now`.
+ *
+ * Split out of `remainingWindow` below when availability stopped being a
+ * fence. Two different regions get clamped against the clock now and only one
+ * of them is an availability window: capacity asks about the window, and
+ * `freeIntervals` asks about whatever region a placement is allowed to search
+ * — which for a manual placement is the WHOLE DAY. The clamp is the same
+ * arithmetic either way, so it is written once and the caller says which
+ * region it means.
+ *
+ * Returns null when there is no region, the date is already past, or the
+ * region has closed.
+ */
+export function remainingSpan(date: string, span: Interval | null, now: Now): Interval | null {
+  if (date < now.date) return null; // the past is not capacity
+  if (!span) return null;
+  const startMin = date === now.date ? Math.max(span.startMin, now.minute) : span.startMin;
+  return startMin < span.endMin ? { startMin, endMin: span.endMin } : null;
+}
+
+/**
  * The part of `date`'s availability window that is still ahead of `now`.
  * Returns null when the day is off, already past, or its window has closed.
+ *
+ * This is the DENOMINATOR's clamp and nothing else now. It used to be the
+ * fence's clamp too — `freeIntervals` called it, so every drop was gatekept by
+ * the same window that priced the week. The two jobs are separated: this one
+ * survives untouched, `freeIntervals` takes a region instead.
  */
 export function remainingWindow(
   date: string,
   windows: AvailabilityWindow[],
   now: Now,
 ): Interval | null {
-  if (date < now.date) return null; // the past is not capacity
-  const w = windowForDate(date, windows);
-  if (!w) return null;
-  const startMin = date === now.date ? Math.max(w.startMin, now.minute) : w.startMin;
-  return startMin < w.endMin ? { startMin, endMin: w.endMin } : null;
+  return remainingSpan(date, windowForDate(date, windows), now);
 }
 
 /**
