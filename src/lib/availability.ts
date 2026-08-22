@@ -3,26 +3,48 @@ import { parseD } from './dates';
 
 export const MINUTES_PER_DAY = 1440;
 
-// All seven days 09:00–18:00 (absent dow = off). The weekend is in the default
-// deliberately: a planner is installed on a Saturday as often as any other day,
-// and nothing on first run asks about working hours, so a Mon–Fri default met
-// a Saturday installer with "No time left today" and an empty Today — a product
-// that says it cannot help on the day it was chosen. Turning the weekend BACK
-// off is a discoverable edit in Settings; the reverse — a hidden weekday-only
-// default — is not something a new user can find.
-// Frozen (array and each window) because this same array/object identity is
-// both the store's initial `availability` value and the fallback every
-// `parseAvailability` call returns — nothing mutates it today, but an
-// in-place sort or edit of `state.availability` down the line would
-// otherwise corrupt this constant for the rest of the process.
+/**
+ * The default working week: all seven days, 08:00–20:00.
+ *
+ * Availability is no longer a FENCE. `resolveSlot` cannot see it — a manual
+ * placement lands where it is aimed, at any minute of any day — so what these
+ * windows still do is the other two jobs they always did: they are the
+ * DENOMINATOR behind every capacity figure in the app (`weekCapacity`'s
+ * `freeMin`, `9h left`, the gauge, `isOverCommitted`, `goalHealth`'s forecast)
+ * and they are the AIM a from-a-distance placement points at (`aimFor`).
+ *
+ * Widened from 09:00–18:00 because a gate and a denominator want opposite
+ * things from a default. As a gate, narrow was safe: it only ever refused, and
+ * a refusal is visible and fixable. As a denominator, narrow is a false
+ * statement — it prices a person's week at 63 hours and calls a perfectly
+ * ordinary evening's work over-committed. Nothing on first run asks about
+ * working hours, so whatever is here is what most weeks are measured against,
+ * and the honest default is the span a person MIGHT work in rather than the
+ * span an office keeps.
+ *
+ * The weekend is in the default for the reason it always was: a planner is
+ * installed on a Saturday as often as any other day, and a Mon–Fri default met
+ * a Saturday installer with "No time left today" and an empty Today. Turning
+ * the weekend back off is a discoverable edit in Settings; the reverse — a
+ * hidden weekday-only default — is not something a new user can find.
+ *
+ * Frozen (array and each window) because this same array/object identity is
+ * both the store's initial `availability` value and the fallback every
+ * `parseAvailability` call returns — nothing mutates it today, but an
+ * in-place sort or edit of `state.availability` down the line would
+ * otherwise corrupt this constant for the rest of the process.
+ */
+export const DEFAULT_START_MIN = 8 * 60;
+export const DEFAULT_END_MIN = 20 * 60;
+
 export const DEFAULT_AVAILABILITY: AvailabilityWindow[] = Object.freeze([
-  Object.freeze({ dow: 0, startMin: 540, endMin: 1080 }),
-  Object.freeze({ dow: 1, startMin: 540, endMin: 1080 }),
-  Object.freeze({ dow: 2, startMin: 540, endMin: 1080 }),
-  Object.freeze({ dow: 3, startMin: 540, endMin: 1080 }),
-  Object.freeze({ dow: 4, startMin: 540, endMin: 1080 }),
-  Object.freeze({ dow: 5, startMin: 540, endMin: 1080 }),
-  Object.freeze({ dow: 6, startMin: 540, endMin: 1080 }),
+  Object.freeze({ dow: 0, startMin: DEFAULT_START_MIN, endMin: DEFAULT_END_MIN }),
+  Object.freeze({ dow: 1, startMin: DEFAULT_START_MIN, endMin: DEFAULT_END_MIN }),
+  Object.freeze({ dow: 2, startMin: DEFAULT_START_MIN, endMin: DEFAULT_END_MIN }),
+  Object.freeze({ dow: 3, startMin: DEFAULT_START_MIN, endMin: DEFAULT_END_MIN }),
+  Object.freeze({ dow: 4, startMin: DEFAULT_START_MIN, endMin: DEFAULT_END_MIN }),
+  Object.freeze({ dow: 5, startMin: DEFAULT_START_MIN, endMin: DEFAULT_END_MIN }),
+  Object.freeze({ dow: 6, startMin: DEFAULT_START_MIN, endMin: DEFAULT_END_MIN }),
 ]) as AvailabilityWindow[];
 
 function isWindow(v: unknown): v is AvailabilityWindow {

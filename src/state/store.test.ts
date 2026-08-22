@@ -1088,19 +1088,81 @@ describe('store actions', () => {
       actions.scheduleNode('nope', 'nada', '2026-07-15', 600); // must not throw
     });
 
+    /*
+     * The refusal is a COLLISION refusal now.
+     *
+     * This test used to prove the availability fence: a 10h leaf was refused
+     * because the 09:00–18:00 window was nine hours long. Job 1 removed that
+     * gate — a manual placement searches the whole day — so the leaf now has to
+     * be refused by the only thing left that can refuse it, which is a day
+     * already full of other work. The wording moved with it: "no free time left
+     * that day" was about a day that was closed, "that day is booked solid" is
+     * about a day that is full.
+     */
     it('refuses with a toast naming the longest free stretch when nothing fits', async () => {
       vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
       actions.addGoal('G');
       const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'wall');
+      const wall = getState().goals[0].nodes[0].id;
+      actions.setNodeEstimate(wall, 1380); // 23h, from 00:00 — one hour left at the end
+      actions.scheduleNode(gid, wall, '2026-07-15', 0);
+
       actions.addRootNode(gid, 'leaf');
-      const nid = getState().goals[0].nodes[0].id;
-      actions.setNodeEstimate(nid, 600); // longer than the whole 09:00-18:00 window
+      const nid = getState().goals[0].nodes[1].id;
+      actions.setNodeEstimate(nid, 120); // does not fit the hour that is left
 
       actions.scheduleNode(gid, nid, '2026-07-15', 600);
 
-      expect(getState().goals[0].nodes[0].blocks?.[0].date).toBeUndefined();
-      expect(getState().toast).toBe('No 10h gap left that day — longest free stretch is 9h');
+      expect(getState().goals[0].nodes[1].blocks?.[0].date).toBeUndefined();
+      expect(getState().toast).toBe('No 2h gap left that day — longest free stretch is 1h');
+    });
+
+    /*
+     * The other half of the same change, and the one the user actually asked
+     * for: "remove working hours so I can place a block anywhere I want."
+     */
+    it('places a block outside the working window, at the minute it was aimed at', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'late');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.setNodeEstimate(nid, 60);
+
+      // 22:00, hours past the end of any working window.
+      expect(actions.scheduleNode(gid, nid, '2026-07-15', 1320)).toBe(true);
+      expect(getState().goals[0].nodes[0].blocks?.[0].startMin).toBe(1320);
+    });
+
+    it('places a block on a day with no working hours at all', async () => {
+      vi.setSystemTime(new Date(2026, 6, 15, 8));
+      const { actions, getState } = await freshStore();
+      actions.setAvailability([]); // every day switched off in Settings
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'anyway');
+      const nid = getState().goals[0].nodes[0].id;
+
+      expect(actions.scheduleNode(gid, nid, '2026-07-15', 600)).toBe(true);
+      expect(getState().goals[0].nodes[0].blocks?.[0].startMin).toBe(600);
+    });
+
+    it('places a block on a morning that has already happened', async () => {
+      // 14:00. The block is aimed at 09:00 — a person recording what they
+      // actually did. `todayPlan` and `proposeReplan` still refuse the past;
+      // this is the manual half of that split.
+      vi.setSystemTime(new Date(2026, 6, 15, 14));
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'this morning');
+      const nid = getState().goals[0].nodes[0].id;
+
+      expect(actions.scheduleNode(gid, nid, '2026-07-15', 540)).toBe(true);
+      expect(getState().goals[0].nodes[0].blocks?.[0].startMin).toBe(540);
     });
 
     it('arms an undo when a booking did not come from moving a bar', async () => {
@@ -1148,7 +1210,13 @@ describe('store actions', () => {
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'leaf');
       const nid = getState().goals[0].nodes[0].id;
-      actions.setNodeEstimate(nid, 600); // longer than the whole 09:00-18:00 window
+      // A day already booked end to end — see the refusal test above for why
+      // this can no longer be expressed as "longer than the working window".
+      actions.addRootNode(gid, 'wall');
+      const wall = getState().goals[0].nodes[1].id;
+      actions.setNodeEstimate(wall, 1440);
+      actions.scheduleNode(gid, wall, '2026-07-15', 0);
+      actions.setNodeEstimate(nid, 60);
       // setNodeEstimate arms an undo of its own. An ordinary write sweeps it, so
       // the assertion below is about scheduleNode and nothing else.
       actions.renameGoal(gid, 'G');
@@ -1369,12 +1437,23 @@ describe('store actions', () => {
       vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
 
-      // 600 minutes is longer than the whole 09:00-18:00 window.
-      expect(actions.createTaskAt('Too big', '2026-07-15', 600, 600)).toBe(false);
+      // Longer than the day itself. The 09:00–18:00 window used to supply the
+      // refusal; with the fence gone the only day that can turn work away is a
+      // day with no gap big enough anywhere in its 24 hours.
+      expect(actions.createTaskAt('Too big', '2026-07-15', 600, 1500)).toBe(false);
 
       expect(getState().tasks).toEqual([]);
-      expect(getState().toast).toBe('No 10h gap left that day — longest free stretch is 9h');
+      expect(getState().toast).toBe('No 25h gap left that day — longest free stretch is 24h');
       expect(getState().pendingUndo).toBeNull();
+    });
+
+    it('draws a block across a morning that has already gone', async () => {
+      // 14:00, drawing 09:00–10:00. Recording what happened is not scheduling.
+      vi.setSystemTime(new Date(2026, 6, 15, 14));
+      const { actions, getState } = await freshStore();
+
+      expect(actions.createTaskAt('Stand-up', '2026-07-15', 540, 60)).toBe(true);
+      expect(getState().tasks[0].blocks?.[0].startMin).toBe(540);
     });
 
     it('refuses a blank title without touching the day', async () => {

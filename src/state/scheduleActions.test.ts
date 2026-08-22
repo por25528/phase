@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import type { AvailabilityWindow, GoalNode } from '../db/types';
+import type { GoalNode } from '../db/types';
 import { weekOf } from '../lib/plan';
 import { addPlannedSlot, clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
 
+// `clampResize` no longer takes availability windows at all — Job 1 removed
+// the fence, so a resize is bounded by the next block and by midnight, and by
+// nothing else. There is no window constant here any more because there is
+// nowhere to pass one.
 const WED = '2026-07-15';
-const WINDOWS: AvailabilityWindow[] = [{ dow: 2, startMin: 540, endMin: 1080 }];
 
 describe('the plannedWeek invariant', () => {
   /*
@@ -67,36 +70,59 @@ describe('clampResize', () => {
   it('allows a resize that stays inside the free gap', () => {
     expect(clampResize({
       date: WED, startMin: 540, requestedMin: 120,
-      windows: WINDOWS, blocks: [], placed: [], allDayBlocks: true,
+      blocks: [], placed: [], allDayBlocks: true,
     })).toBe(120);
   });
 
   it('clamps a resize that would run into the next block', () => {
     expect(clampResize({
       date: WED, startMin: 540, requestedMin: 300,
-      windows: WINDOWS, blocks: [], placed: [{ startMin: 660, endMin: 720 }], allDayBlocks: true,
+      blocks: [], placed: [{ startMin: 660, endMin: 720 }], allDayBlocks: true,
     })).toBe(120); // 09:00 → 11:00
   });
 
-  it('clamps a resize that would run past the end of the window', () => {
+  // Was "clamps a resize that would run past the end of the WINDOW", and it
+  // asserted the fence: 17:00 + 5h was cut to 18:00 because that is when the
+  // availability window closed. Job 1 removed that — a resize now runs to
+  // whatever is actually in the way, and on an empty evening nothing is. The
+  // clamp that matters is the day's own end, which is still real.
+  it('grants a resize that runs past the end of the working window', () => {
     expect(clampResize({
       date: WED, startMin: 1020, requestedMin: 300,
-      windows: WINDOWS, blocks: [], placed: [], allDayBlocks: true,
-    })).toBe(60); // 17:00 → 18:00
+      blocks: [], placed: [], allDayBlocks: true,
+    })).toBe(300); // 17:00 → 22:00, and nothing is there
+  });
+
+  it('clamps a resize at the end of the day', () => {
+    expect(clampResize({
+      date: WED, startMin: 1380, requestedMin: 300,
+      blocks: [], placed: [], allDayBlocks: true,
+    })).toBe(60); // 23:00 → midnight
   });
 
   it('refuses a non-positive request', () => {
     expect(clampResize({
       date: WED, startMin: 540, requestedMin: 0,
-      windows: WINDOWS, blocks: [], placed: [], allDayBlocks: true,
+      blocks: [], placed: [], allDayBlocks: true,
     })).toBeNull();
   });
 
+  // Was "05:00 is outside the 09:00–18:00 window" — the fence again. A block
+  // at 05:00 is now in a perfectly ordinary free gap, so the refusal has to be
+  // caused by the thing that still causes refusals: the block sitting inside
+  // another block rather than inside a gap.
   it('refuses when the block no longer sits in any free gap', () => {
     expect(clampResize({
       date: WED, startMin: 300, requestedMin: 60,
-      windows: WINDOWS, blocks: [], placed: [], allDayBlocks: true,
-    })).toBeNull(); // 05:00 is outside the 09:00–18:00 window
+      blocks: [], placed: [{ startMin: 240, endMin: 360 }], allDayBlocks: true,
+    })).toBeNull(); // 05:00 is buried inside 04:00–06:00
+  });
+
+  it('allows a resize outside the working window', () => {
+    expect(clampResize({
+      date: WED, startMin: 300, requestedMin: 60,
+      blocks: [], placed: [], allDayBlocks: true,
+    })).toBe(60); // 05:00 is early, not forbidden
   });
 
   // Pins the end-EXCLUSIVE gap-containment check: `find`'s predicate is
@@ -110,7 +136,7 @@ describe('clampResize', () => {
   it('does not treat a block sitting at a gap\'s end as inside that (earlier) gap', () => {
     expect(clampResize({
       date: WED, startMin: 600, requestedMin: 60,
-      windows: WINDOWS, blocks: [], placed: [{ startMin: 600, endMin: 660 }], allDayBlocks: true,
+      blocks: [], placed: [{ startMin: 600, endMin: 660 }], allDayBlocks: true,
     })).toBeNull(); // 10:00 is exactly where the 09:00–10:00 gap ends — not inside it
   });
 
@@ -120,7 +146,7 @@ describe('clampResize', () => {
   it('caps below the 5-minute floor when fewer than 5 minutes remain in the gap', () => {
     expect(clampResize({
       date: WED, startMin: 540, requestedMin: 60,
-      windows: WINDOWS, blocks: [], placed: [{ startMin: 543, endMin: 1080 }], allDayBlocks: true,
+      blocks: [], placed: [{ startMin: 543, endMin: 1080 }], allDayBlocks: true,
     })).toBe(3); // only 09:00–09:03 is free before the next block
   });
 });

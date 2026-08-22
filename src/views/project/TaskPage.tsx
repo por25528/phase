@@ -36,6 +36,7 @@ import { fmtD, todayStr } from '../../lib/dates';
 import { demandIndex, DEMANDS, DEMAND_WORD } from '../../lib/demand';
 import { fmtMinutes } from '../../lib/effort';
 import { looksOversized } from '../../lib/proposal';
+import { aimFor } from '../../lib/slot';
 import { STATUS_WORD, stepStatus } from '../../lib/status';
 import { taskPageActionGroups, type RowActionId } from '../../lib/rowActions';
 import { dayLabel, nextSitting } from '../../lib/rowSchedule';
@@ -89,6 +90,17 @@ export function TaskPage({
   onBack: () => void;
 }): JSX.Element {
   const { goals, sessions, availability, allDayBlocks, actions } = useAppStore();
+  /*
+   * Where "Sit again today" points. It was a literal `0`, which only ever
+   * landed sensibly because the availability window fenced `resolveSlot`;
+   * with the fence gone (Job 1) a bare 0 is midnight, so the window becomes
+   * the aim. Recomputed per render rather than memoised — it reads the clock,
+   * and a render is the only moment it is spent.
+   */
+  const sitAgainAim = aimFor(todayStr(), availability, {
+    date: todayStr(),
+    minute: new Date().getHours() * 60 + new Date().getMinutes(),
+  });
   const [nowMinute, setNowMinute] = useState(() => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
@@ -494,7 +506,7 @@ export function TaskPage({
             <div className="flex flex-wrap items-center gap-[5px] mt-[2px]">
               <button
                 type="button"
-                onClick={() => actions.scheduleNode(goal.id, node.id, todayStr(), 0, { mode: 'add' })}
+                onClick={() => actions.scheduleNode(goal.id, node.id, todayStr(), sitAgainAim, { mode: 'add' })}
                 title="Another sitting for the same task, leaving the others where they are"
                 className="text-meta font-medium text-muted px-[8px] py-[4px] rounded-[6px] hover:bg-hover hover:text-ink"
               >

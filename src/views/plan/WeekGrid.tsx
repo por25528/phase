@@ -3,7 +3,7 @@ import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
 import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
 import { windowForDate } from '../../lib/availability';
-import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, GRID_VIEWPORT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER } from '../../lib/grid';
+import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, GRID_VIEWPORT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER, Z_NOW_LINE } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
 import type { CanvasSpan } from '../../lib/canvasCreate';
 import { DayColumn } from './DayColumn';
@@ -307,7 +307,19 @@ export function WeekGrid({
           ))}
 
           <div className="sticky left-0 bg-bg" style={{ zIndex: Z_AXIS }}>
-            {marks.map((m) => (
+            {/*
+              ON the hour line, not between two of them: `-translate-y-1/2`
+              centres each label on the rule it names, and the axis is opaque
+              and above `Z_RULES`, so the rule stops at the gutter instead of
+              striking through the text.
+
+              `slice(0, -1)` drops the closing midnight. `hourMarks()` includes
+              minute 1440 because the grid needs a rule at its own bottom edge,
+              but that mark is not an hour OF this day — `clockLabel` renders it
+              `12am+1`, a rollover marker, and a day that begins and ends with
+              `12am` in the same column reads as a mistake.
+            */}
+            {marks.slice(0, -1).map((m) => (
               <span
                 key={m}
                 className="absolute right-[6px] -translate-y-1/2 font-mono text-tiny text-muted tabular-nums"
@@ -316,6 +328,21 @@ export function WeekGrid({
                 {clockLabel(m)}
               </span>
             ))}
+
+            {/*
+              The clock's own mark in the gutter — the half of the current-time
+              indicator that survives scrolling today's column off screen
+              sideways. Drawn on the axis's inner edge so it reads as the head
+              of the hairline in `DayColumn` rather than as a second object.
+            */}
+            {nowMinute !== null && days.includes(today) && (
+              <span
+                data-testid="now-dot"
+                aria-hidden="true"
+                className="absolute right-0 translate-x-1/2 -translate-y-1/2 w-[7px] h-[7px] rounded-full bg-warn"
+                style={{ top: `${minuteToPx(nowMinute)}px`, zIndex: Z_NOW_LINE }}
+              />
+            )}
           </div>
 
           {days.map((iso) => (

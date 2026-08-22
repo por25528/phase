@@ -118,15 +118,44 @@ describe('telling elapsed from available at a glance', () => {
     }));
     expect(document.querySelector('[data-testid="now-line-2026-07-15"]')).toBeNull();
   });
+
+  // `accent` means ACTION here — it is the drop-target tint and the colour of
+  // every primary control — so a permanent accent rule across one column read
+  // as something to click. `warn` is the clock's colour, and the indicator
+  // stays a hairline precisely so it does not read as an error either.
+  it('draws the now-line in warn, not accent', () => {
+    render(createElement(DayColumn, {
+      date: '2026-07-15', isToday: true, availabilityWindow: WINDOW,
+      nowMinute: 600, onCreate: vi.fn(), children: null,
+    }));
+    const line = document.querySelector('[data-testid="now-line-2026-07-15"]');
+    expect(line?.className).toContain('border-warn');
+    expect(line?.className).not.toContain('border-accent');
+  });
 });
 
 describe('when the day refuses work', () => {
-  it('renders no canvas on a day with no working hours', () => {
+  /*
+   * Was "renders no canvas on a day with no working hours", and it asserted
+   * the fence: a day off had its droppable disabled and its canvas withheld,
+   * so it could not be used at all. Job 1 makes a day off a MARKING (the
+   * `.hatch`) rather than a lock, so the assertion inverts — the canvas is
+   * there, because the drop that would follow it now succeeds.
+   */
+  it('renders the canvas on a day with no working hours', () => {
     render(createElement(DayColumn, {
       date: '2026-07-19', isToday: false, availabilityWindow: null,
       nowMinute: null, onCreate: vi.fn(), children: null,
     }));
-    expect(screen.queryByTestId('day-canvas-2026-07-19')).toBeNull();
+    expect(screen.queryByTestId('day-canvas-2026-07-19')).toBeTruthy();
+  });
+
+  it('hatches a day with no working hours instead of disabling it', () => {
+    const { container } = render(createElement(DayColumn, {
+      date: '2026-07-19', isToday: false, availabilityWindow: null,
+      nowMinute: null, onCreate: vi.fn(), children: null,
+    }));
+    expect(container.querySelector('.hatch')).toBeTruthy();
   });
 
   it('renders no canvas on a past week', () => {

@@ -16,9 +16,9 @@ import { useAppStore, actions } from '../state/store';
 import { todayStr, addDays, weekDates, fmtD } from '../lib/dates';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { initialScrollWindow } from '../lib/grid';
-import { windowForDate } from '../lib/availability';
+
 import { scheduledByDate } from '../lib/scheduled';
-import { DEFAULT_SLOT_MIN } from '../lib/slot';
+import { aimFor, DEFAULT_SLOT_MIN } from '../lib/slot';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
@@ -86,6 +86,22 @@ let lastViewedWeek: string | null = null;
 /**
  * The week calendar. Owns which week is shown; everything else is derived.
  */
+/**
+ * The wall clock, read fresh.
+ *
+ * `nowMinute` below is the RENDER's copy of the same reading, and it is what
+ * the now-line and the capacity figures are drawn from. An aim resolved inside
+ * the long-lived keydown listener cannot use it: that effect re-subscribes on
+ * `focusedItem`/`weekStart`, not on the minute, so its closure would hold
+ * whatever the clock said when the row was last focused. `aimFor` only cares
+ * about the clock on TODAY, where a stale minute is exactly the case that
+ * matters.
+ */
+function liveNow(): Now {
+  const d = new Date();
+  return { date: todayStr(), minute: d.getHours() * 60 + d.getMinutes() };
+}
+
 export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { goals, tasks, habits, hydration, availability, allDayBlocks, revealItem, planMode } = useAppStore();
   const today = todayStr();
@@ -278,17 +294,16 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
    * does; `createTaskAt` resolves that against the day's real gaps, so this
    * lands at the first free slot rather than on top of existing work. A month
    * click and a month drop therefore mean the same thing.
+   *
+   * `aimFor` rather than `windowForDate`, and no refusal: a day with no window
+   * is no longer a day you cannot use, so there is nothing to refuse and the
+   * only open question is which hour to point at.
    */
   function commitMonthDraft(title: string): void {
     const date = monthDraft;
     setMonthDraft(null);
     if (!date) return;
-    const dayWindow = windowForDate(date, availability);
-    if (!dayWindow) {
-      actions.showToast('No working hours on that day.');
-      return;
-    }
-    actions.createTaskAt(title, date, dayWindow.startMin, DEFAULT_SLOT_MIN);
+    actions.createTaskAt(title, date, aimFor(date, availability, liveNow()), DEFAULT_SLOT_MIN);
   }
 
   /**
@@ -409,18 +424,17 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
        * This was `range.startMin`, which under the old stretching grid was
        * roughly 08:00. The grid now begins at 00:00, so the same expression
        * would aim every keyboard placement at midnight and let `resolveSlot`
-       * walk forward from there. A day with no window has nothing to aim at and
-       * refuses, matching the disabled droppable on that column.
+       * walk forward from there — which is exactly what it would do again now
+       * that nothing fences the search, so the aim is the only thing carrying
+       * the intent. A day with no window aims at a sensible hour instead of
+       * refusing: the column is droppable now, so a keypress that refused
+       * where a drag succeeded would be the two gestures disagreeing.
        */
-      const dayWindow = windowForDate(date, availability);
-      if (!dayWindow) {
-        actions.showToast('No working hours on that day.');
-        return;
-      }
+      const aim = aimFor(date, availability, liveNow());
       const placed = focusedItem.kind === 'task'
-        ? actions.scheduleTask(focusedItem.id, date, dayWindow.startMin)
+        ? actions.scheduleTask(focusedItem.id, date, aim)
         : focusedItem.goalId
-          ? actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, dayWindow.startMin)
+          ? actions.scheduleNode(focusedItem.goalId, focusedItem.id, date, aim)
           : false;
 
       /*
@@ -480,13 +494,9 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
      * still takes the drop at its first free gap.
      */
     if (planMode === 'month') {
-      const dayWindow = windowForDate(date, availability);
-      if (!dayWindow) {
-        actions.showToast('No working hours on that day.');
-        return;
-      }
-      if (data.kind === 'task') actions.scheduleTask(data.id, date, dayWindow.startMin, { blockId: data.blockId });
-      else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, dayWindow.startMin, { blockId: data.blockId });
+      const aim = aimFor(date, availability, liveNow());
+      if (data.kind === 'task') actions.scheduleTask(data.id, date, aim, { blockId: data.blockId });
+      else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim, { blockId: data.blockId });
       return;
     }
 

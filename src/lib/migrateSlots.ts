@@ -11,9 +11,10 @@ import type { AvailabilityWindow, Goal, GoalNode, Task } from '../db/types';
  */
 export type LegacyNode = GoalNode & { plannedDay?: string; plannedStartMin?: number };
 export type LegacyTask = Task & { startMin?: number };
-import { windowForDate } from './availability';
+
 import { walkLeaves, weekOf } from './plan';
 import { durationOf, resolveSlot, NO_PAST_LIMIT, type PlacedSpan } from './slot';
+import { windowForDate } from './availability';
 import { cloneGoals } from './tree';
 import { isDone } from './status';
 
@@ -83,7 +84,18 @@ export function migrateSlots(
       date,
       aimMin: window.startMin, // "earliest gap that fits" falls out of the normal search
       durationMin,
-      windows,
+      /*
+       * The availability window, not `WHOLE_DAY` — the same side of Job 1's
+       * split the two replan paths are on, and for the same reason. Nobody
+       * aimed at anything here: legacy data carries a DAY and an estimate, and
+       * the hour is being chosen for the user, which is the definition of the
+       * automatic case. Searching the whole day instead would stack a second
+       * leaf backwards into the small hours whenever that gap sat nearer the
+       * aim than the one after the first leaf, and would quietly retire the
+       * "did not fit — go and look at it" report this migration exists to
+       * produce.
+       */
+      span: window,
       blocks: [],
       placed: spansFrom(map, date),
       now: NO_PAST_LIMIT,

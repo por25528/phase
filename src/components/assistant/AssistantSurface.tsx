@@ -787,11 +787,16 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
   // band's inset anyway. The card's padding used to live on the root as one
   // `p-3`; when it moved onto the bands these two returns were left with
   // nothing, so the text sat at x=0, flush against the card's own rounded
-  // corner. `needs-hours` is what a new install shows on its FIRST summon.
+  // corner.
+  //
+  // `needs-hours` is no longer what a new install shows on its first summon —
+  // every install now starts on DEFAULT_AVAILABILITY — but it is still
+  // reachable by switching every day off in Settings, and it is still a
+  // different sentence from "nothing needs you". See PlanNotice.tsx.
   if (advice.kind === 'needs-hours') {
     return (
       <p className={`${bandCls(shelf)} text-body text-ink`}>
-        Phase doesn&apos;t know your working hours yet. Set them in Settings and it can say what fits.
+        Every day is switched off in Settings, so Phase can&apos;t say what fits. Give it some hours back.
       </p>
     );
   }

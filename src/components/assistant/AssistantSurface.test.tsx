@@ -526,11 +526,17 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('button', { name: 'Start session' })).toBeTruthy();
   });
 
-  it('says working hours are missing instead of inventing a zero-minute plan', () => {
+  // The verdict survives Job 1 and the copy does not. It can no longer say
+  // "Phase doesn't know your working hours yet" — every install starts on
+  // DEFAULT_AVAILABILITY, so the only way to reach this is to switch every day
+  // off in Settings — and it can no longer imply nothing may be scheduled,
+  // because everything may. What is genuinely lost is the denominator, which
+  // is what the sentence now names. See PlanNotice.tsx.
+  it('says the hours were switched off instead of inventing a zero-minute plan', () => {
     render(
       <AssistantSurface snapshot={ready({ advice: { kind: 'needs-hours' } })} onAction={() => {}} />,
     );
-    expect(screen.getByText(/working hours/i)).toBeTruthy();
+    expect(screen.getByText(/switched off in Settings/i)).toBeTruthy();
   });
 
   it('Escape emits exactly one close action', () => {
