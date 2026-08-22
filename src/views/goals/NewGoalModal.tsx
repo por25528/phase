@@ -6,7 +6,11 @@ import { uid } from '../../lib/tree';
 import { GOAL_TYPE_WORD, inferGoalType, type GoalType } from '../../lib/goalType';
 import { todayStr } from '../../lib/dates';
 import { SegmentedControl, type SegmentedOption } from '../../components/SegmentedControl';
-import { fieldCls, labelCls, primaryBtn, ghostBtn, dialogFooter } from '../../components/dialogStyles';
+import {
+  fieldCls, primaryBtn, ghostBtn,
+  dialogBar, dialogBody, dialogLine, dialogLineKey, dialogLineValue,
+} from '../../components/dialogStyles';
+import { captionLabel } from '../../components/sectionLabel';
 
 const TYPES: readonly SegmentedOption<GoalType>[] = (
   ['study', 'project', 'general'] as const
@@ -79,7 +83,11 @@ export function NewGoalModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New goal">
+    /*
+      The Instrument frame. `verb` puts `Create` in the rule at the top and
+      leaves the title free to be the NAME of the thing — see `Modal`.
+    */
+    <Modal open={open} onClose={onClose} title="New goal" verb="Create">
       {/*
         A real <form>, so Enter commits from anywhere in it. It used to be wired
         by hand to the title input alone, which meant the key that creates a goal
@@ -89,27 +97,45 @@ export function NewGoalModal({
         creating the goal — that is the correct precedence, not a gap.
       */}
       <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
-        <div className="flex flex-col gap-[14px]">
-          <div className="flex flex-col gap-[5px]">
-            <label className={labelCls} htmlFor="goal-title">What do you want to finish?</label>
-            <input
-              ref={titleRef}
-              id="goal-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Physics Final"
-              className={fieldCls}
-            />
+        {/*
+          Three labelled lines, not three stacked label-over-field groups.
+
+          The keys are `aria-hidden` and every control names itself, exactly as
+          `TaskPage`'s `PropertyLine` does it — a visible key repeated into the
+          accessible name is a label announced twice. Which is also why the
+          title input keeps `What do you want to finish?` as its accessible
+          name while the key reads `Finish`: a 104px mono column cannot hold a
+          sentence, but the sentence is still the better thing for a screen
+          reader to hear, and nothing forces the two to be the same string.
+        */}
+        <div className={dialogBody}>
+          <div className={dialogLine}>
+            <span className={`${dialogLineKey} ${captionLabel}`} aria-hidden="true">Finish</span>
+            <span className={dialogLineValue}>
+              <input
+                ref={titleRef}
+                id="goal-title"
+                aria-label="What do you want to finish?"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                /* `e.g.` earns its four characters: "Physics Final" alone is a
+                   plausible real answer, which is the worst kind of placeholder —
+                   faint ink makes it look unfilled, and the prefix makes it read
+                   as a specimen rather than as something already typed. */
+                placeholder="e.g. Physics Final"
+                className={fieldCls}
+              />
+            </span>
           </div>
 
-          {/* Two equal columns, not `flex-wrap`. The date was 86px and the
-              select was as wide as the word inside it, so the row under a
-              full-width title ended in a ragged 200px of nothing. */}
-          <div className="grid grid-cols-2 gap-[14px]">
-            <div className="flex flex-col gap-[5px]">
-              {/* A <span>: `DatePopover` names itself with `ariaLabel`, and a
-                  <label> pointing at no control is a label in markup only. */}
-              <span className={labelCls}>Deadline <span className="text-faint font-normal">(optional)</span></span>
+          <div className={dialogLine}>
+            {/* No `(optional)` on the key any more: the key column is a
+                register of what a goal HAS, and every line but the first is
+                optional by construction — a deadline nobody set reads
+                "No deadline", which says it without spending a second voice
+                on the label. */}
+            <span className={`${dialogLineKey} ${captionLabel}`} aria-hidden="true">Deadline</span>
+            <span className={dialogLineValue}>
               <DatePopover
                 value={deadline}
                 today={todayStr()}
@@ -118,13 +144,16 @@ export function NewGoalModal({
                 placeholder="No deadline"
                 size="field"
               />
-            </div>
-            <div className="flex flex-col gap-[5px]">
-              {/* The guess is visible and editable, never applied silently. A
-                  default only has to be reasonable; a hidden inference has to be
-                  right. Laid out rather than collapsed, it also shows what it
-                  chose OVER. */}
-              <span className={labelCls}>Type</span>
+            </span>
+          </div>
+
+          <div className={dialogLine}>
+            {/* The guess is visible and editable, never applied silently. A
+                default only has to be reasonable; a hidden inference has to be
+                right. Laid out rather than collapsed, it also shows what it
+                chose OVER. */}
+            <span className={`${dialogLineKey} ${captionLabel}`} aria-hidden="true">Type</span>
+            <span className={dialogLineValue}>
               <SegmentedControl
                 name="goal-type"
                 label="Type"
@@ -132,13 +161,13 @@ export function NewGoalModal({
                 options={TYPES}
                 onChange={setChosenType}
               />
-            </div>
+            </span>
           </div>
         </div>
 
-        <div className={dialogFooter}>
+        <div className={dialogBar}>
           <button type="button" className={ghostBtn} onClick={onClose}>Cancel</button>
-          {/* The verb the dialog's own title promised. */}
+          {/* The verb the rule at the top of the dialog promised. */}
           <button type="submit" className={primaryBtn} disabled={!title.trim()}>
             Create goal
           </button>

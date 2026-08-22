@@ -1,6 +1,10 @@
 import { useEffect, useId, useRef } from 'react';
 import { modalRegistry } from '../lib/modalRegistry';
 import { IconX } from './Icons';
+import { ruleTag } from './sectionLabel';
+import {
+  dialogHead, dialogRule, dialogRuleCell, dialogRuleHint, dialogTitle,
+} from './dialogStyles';
 
 /**
  * Centered modal dialog — mirrors the goal drawer's scrim/panel styling.
@@ -8,6 +12,19 @@ import { IconX } from './Icons';
  * `open` is false.
  * Focus is trapped inside while open and restored to the opener on close;
  * body scroll is locked. size='full' is the wide, content-sized planner variant.
+ *
+ * Two frames, chosen by whether a `verb` was given. The card frame is the
+ * original — panel padding, an `h2`, a ✕ in the corner — and is what
+ * `SettingsModal`, `AvailabilityModal` and the week planner still wear. The
+ * INSTRUMENT frame replaces that chrome with a ruled strip carrying the verb
+ * and a masthead carrying the name, and hands the padding to the content so a
+ * body and a footer bar can run edge to edge.
+ *
+ * Nothing about Escape, focus, the scrim or the registry differs between them.
+ * That is deliberate to the point of being the rule: `Modal.test.tsx` guards
+ * two Escape mechanisms — the capture-phase `stopPropagation` and the
+ * `data-popover-open` deferral that lets New goal's calendar own the key
+ * first — and a frame is a wrapper, never a second key handler.
  */
 export function Modal({
   open,
@@ -15,12 +32,20 @@ export function Modal({
   title,
   children,
   size = 'default',
+  verb,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   size?: 'default' | 'full';
+  /**
+   * The verb this dialog performs — `Create`, `Import`, `Replace`. Its
+   * presence selects the instrument frame, because the two are the same
+   * decision: a dialog whose rule states the verb is one whose title is free
+   * to be a name, and a card-framed dialog has nowhere to put a verb.
+   */
+  verb?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const modalId = useId();
@@ -100,6 +125,16 @@ export function Modal({
   // content — no forced min-height, which otherwise leaves a large empty panel.
   const width = size === 'full' ? 'max-w-[980px]' : 'max-w-[480px]';
 
+  /*
+   * No `overflow-hidden` on the panel, and this is the trap worth naming:
+   * New goal's calendar is a `Popover`, absolutely positioned INSIDE this
+   * panel, and it is taller than the dialog on purpose. Clipping the panel to
+   * round the strip's corners would cut the picker off at the dialog's own
+   * bottom edge. So the strip and the bar round their OWN corners instead —
+   * `rounded-t-card` on `dialogRule`, `rounded-b-card` on `dialogBar`.
+   */
+  const pad = verb ? '' : 'px-[24px] pt-[22px] pb-[24px]';
+
   return (
     <div
       className="scrim fixed inset-0 z-50 grid place-items-center px-[16px] py-[24px] overflow-y-auto"
@@ -111,20 +146,41 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`relative w-full ${width} bg-panel border border-line-2 rounded-card shadow-card px-[24px] pt-[22px] pb-[24px] my-auto outline-none`}
+        className={`relative w-full ${width} bg-panel border border-line-2 rounded-card shadow-card ${pad} my-auto outline-none`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-[12px] mb-[16px]">
-          <h2 className="text-h2 font-semibold tracking-[-0.01em]">{title}</h2>
-          <button
-            type="button"
-            aria-label="Close"
-            className="flex-none text-muted w-[24px] h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover hover:text-ink"
-            onClick={onClose}
-          >
-            <IconX size={15} />
-          </button>
-        </div>
+        {verb ? (
+          <>
+            <div className={dialogRule}>
+              <span className={dialogRuleCell}><span className={ruleTag}>{verb}</span></span>
+              <span className="flex-1" />
+              {/*
+                `Esc`, not `⎋`. The app already spells this key that way in
+                `ShortcutsOverlay` ("Esc — Close drawer or dialog"), and three
+                ASCII letters cannot fall out of the subsetted mono face the
+                way a lone technical glyph can — the exact failure
+                `designScale.test.ts` keeps a list of icon characters to
+                prevent.
+              */}
+              <span className={dialogRuleHint}>Esc to cancel</span>
+            </div>
+            <div className={dialogHead}>
+              <h2 className={dialogTitle}>{title}</h2>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-start justify-between gap-[12px] mb-[16px]">
+            <h2 className="text-h2 font-semibold tracking-[-0.01em]">{title}</h2>
+            <button
+              type="button"
+              aria-label="Close"
+              className="flex-none text-muted w-[24px] h-[24px] inline-flex items-center justify-center rounded-[6px] hover:bg-hover hover:text-ink"
+              onClick={onClose}
+            >
+              <IconX size={15} />
+            </button>
+          </div>
+        )}
         {children}
       </div>
     </div>

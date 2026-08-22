@@ -137,4 +137,69 @@ describe('creating a goal', () => {
     await user.type(title(), '   {Enter}');
     expect(onAdd).not.toHaveBeenCalled();
   });
+
+  /**
+   * The key column is chrome, and the input still says what it is for.
+   *
+   * `Finish` is what the 104px mono key can hold; "What do you want to finish?"
+   * is what a screen reader should hear, and nothing forces the two to be the
+   * same string — `PropertyLine` makes exactly this split on `TaskPage`, where
+   * the key is `aria-hidden` and the control names itself. Asserted because a
+   * later "consistency fix" pointing a <label htmlFor> at the input would
+   * silently replace the sentence with the word.
+   */
+  it('keeps the question as the field’s name while the key column reads Finish', () => {
+    mount();
+    expect(screen.getByRole('textbox', { name: 'What do you want to finish?' })).toBeTruthy();
+    expect(screen.getByText('Finish')).toBeTruthy();
+  });
+});
+
+/**
+ * The two keys the Instrument frame put a claim on, tested against the REAL
+ * calendar rather than against `Modal.test.tsx`'s stand-in `Popover`.
+ *
+ * That file guards the mechanism — a capture-phase `stopPropagation` plus the
+ * `data-popover-open` deferral — with a synthetic popover holding one button.
+ * This is the surface those mechanisms exist for, and the one that gained a
+ * rule tag reading "Esc to cancel": the dialog now PROMISES the key in its own
+ * chrome, so what it does is worth pinning where the promise is made.
+ */
+describe('the keys the frame promises', () => {
+  it('closes the calendar on the first Escape and the dialog on the second', async () => {
+    const { onClose, user } = mount();
+
+    await user.click(screen.getByRole('button', { name: /^Deadline:/ }));
+    expect(screen.getByRole('grid')).toBeTruthy();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('grid')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Enter commits from anywhere in the form — that is what makes it a real
+   * <form> rather than a keydown wired to the title input — but NOT from
+   * inside the open picker, where it belongs to the day under the cursor.
+   * Both halves in one test, because the second is only interesting given the
+   * first.
+   */
+  it('creates from the type control, and not from inside the open picker', async () => {
+    const { onAdd, user } = mount();
+    await user.type(title(), 'Physics Final');
+
+    await user.click(screen.getByRole('button', { name: /^Deadline:/ }));
+    await user.keyboard('{Enter}');
+    expect(onAdd).not.toHaveBeenCalled();
+    // It took the focused day instead — 22 Aug 2026, today in this suite's
+    // clock — and shut itself, which is the precedence the form documents.
+    expect(screen.queryByRole('grid')).toBeNull();
+
+    await user.click(screen.getByRole('radio', { name: 'Project' }));
+    await user.keyboard('{Enter}');
+    expect(onAdd).toHaveBeenCalledTimes(1);
+  });
 });

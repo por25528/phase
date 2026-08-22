@@ -99,8 +99,28 @@ export const ghostBtn = `${btnBase} ${btnPadY} text-muted hover:bg-hover hover:t
  */
 export const secondaryBtn = `${btnBase} py-[5px] border border-line-2 text-ink hover:bg-hover`;
 
+/**
+ * The shared dialog field — and `placeholder:text-faint` is not decoration.
+ *
+ * Five inputs in the app each hand-rolled that class (`CommandPalette`,
+ * `QuickAdd`, `BlockComposer`, `AssistantShortcutSettings`, and
+ * `.ghost-in::placeholder` in `index.css`); the one SHARED primitive was the
+ * only one without it, so a placeholder here inherited `text-ink` and read as
+ * typed text. New goal was the visible casualty: the field showed "Physics
+ * Final", `disabled={!title.trim()}` was correctly true, and a dialog whose
+ * two behaviours were both right read as broken because the FIELD was lying
+ * about being filled in. An empty form has to look empty, or the dimmed commit
+ * button takes the blame for it.
+ *
+ * `faint`, not `muted`, and `index.css` already named the tone: its own token
+ * comment reserves faint for "decorative marks, placeholders and disabled
+ * states" and muted for "anything a user must READ". An EXAMPLE is not read —
+ * it is a specimen of the answer, and it disappears the moment you type. That
+ * is the opposite of an unset VALUE like `DatePopover`'s "No deadline", which
+ * is read, is the only affordance for setting one, and stays `text-muted`.
+ */
 export const fieldCls =
-  `w-full ${CONTROL_H} ${CONTROL_LINE} rounded-field border border-line-2 bg-transparent px-[8px] py-[5px] text-ui text-ink outline-none focus-visible:border-accent`;
+  `w-full ${CONTROL_H} ${CONTROL_LINE} rounded-field border border-line-2 bg-transparent px-[8px] py-[5px] text-ui text-ink placeholder:text-faint outline-none focus-visible:border-accent`;
 
 export const labelCls = 'text-meta font-medium text-muted';
 
@@ -141,3 +161,134 @@ export const rowBtn =
 export const rowBtnPrimary =
   `${CONTROL_LINE} inline-flex items-center justify-center px-[10px] py-[5px] rounded-field `
   + 'bg-ink text-paper text-ui font-semibold hover:bg-ink-hover';
+
+/* ───────────────────────── The Instrument frame ─────────────────────────
+ *
+ * A dialog drawn as a measured object rather than as a card with a heading on
+ * it: a ruled strip carrying the VERB, a masthead carrying the NAME, fields as
+ * labelled lines with a mono key column, and the footer on its own ruled bar.
+ * Four surfaces already speak this way; a dialog was the last one that did not.
+ *
+ * These are all NEW exports and nothing above is redefined. `dialogStyles` is
+ * consumed by twelve files and three of them are open on other branches right
+ * now, laying out against `primaryBtn`/`secondaryBtn`/`ghostBtn`/`rowBtn`
+ * heights that are argued for in comments — so the frame is added beside them
+ * rather than folded into them. `dialogFooter` in particular survives
+ * untouched for every dialog that keeps the card chrome, and its reading-edge
+ * rule is the one thing `dialogBar` below inherits verbatim.
+ */
+
+/**
+ * The rule across the top of the panel, and the reason the ✕ is gone.
+ *
+ * `items-stretch`, so the two cells are the full height of the rule and read as
+ * cells rather than as text floating on a line. The far cell states the
+ * dialog's one fact — how to leave it — and that is what pays for dropping the
+ * close button: the affordance did not disappear, it stopped being an icon and
+ * became a sentence. Scrim click and the footer's Cancel are both still there.
+ */
+export const dialogRule = 'flex items-stretch border-b border-line rounded-t-card overflow-hidden';
+
+/**
+ * The tinted cell holding the verb. Pair it with `ruleTag` from
+ * `sectionLabel.ts`, which is the VOICE — that file is the only one
+ * `designScale.test.ts` lets set the label voice in caps, and this is the
+ * chrome. (Naming the class here would trip that same guard, which scans
+ * comments too.)
+ *
+ * `bg-chip`, not `bg-panel-bright`: bright IS panel in the light theme, so a
+ * cell painted with it would be invisible on exactly one of the two themes.
+ * `chip` is a bounded tinted surface in both, which is what this cell is.
+ */
+export const dialogRuleCell = 'bg-chip border-r border-line px-[10px] py-[4px] inline-flex items-center';
+
+/** The far cell: how to leave. Mono, because it is quoting a key. */
+export const dialogRuleHint =
+  'border-l border-line px-[10px] py-[4px] inline-flex items-center font-mono text-micro text-muted';
+
+/** The masthead band. The name of the thing, and nothing else on the line. */
+export const dialogHead = 'px-[18px] pt-[14px] pb-[13px]';
+
+/**
+ * `mast`, one step above `page`, and set in the UI face.
+ *
+ * `page` is a DOCUMENT's own title and has to outrank a heading typed inside
+ * that document; this is a masthead over an 11px rule tag, and the two ends of
+ * that range have to be far enough apart to read as composition. Fraunces is
+ * not an option and the fontSize key says why: the display serif is locked to
+ * three sites by `designScale.test.ts`, which is the whole reason the step is
+ * named for its ROLE rather than for a face.
+ */
+export const dialogTitle = 'text-mast font-semibold tracking-[-0.02em] leading-[1.05]';
+
+/** Where the lines live. */
+export const dialogBody = 'px-[18px] pt-[14px] pb-[16px]';
+
+/**
+ * One labelled line: a mono key, the control, a hairline under it.
+ *
+ * This is `TaskPage`'s `PropertyLine` idea, deliberately restated rather than
+ * imported. That component is 140px of key column with an icon in it, sized
+ * for a document's property list; a dialog is 480px wide, has three or four
+ * lines, and an icon per line would be four glyphs introducing four controls
+ * that already name themselves. What carries over is the GRAMMAR — a quiet key
+ * column, the value carrying the ink, one hairline per row — so a goal's fields
+ * read the same before the goal exists and after.
+ *
+ * `border-line-soft`, a step quieter than the rule above and the bar below:
+ * those two bound the dialog, these only separate its rows.
+ */
+export const dialogLine =
+  'flex items-center gap-[12px] py-[8px] border-b border-line-soft last:border-b-0';
+
+/**
+ * The same line, for a control taller than one row — Import goal's textarea.
+ * `items-start` and a matching top pad on the key, so the key sits on the
+ * control's FIRST line rather than halfway down 8 rows of it.
+ */
+export const dialogLineTall = 'flex items-start gap-[12px] py-[8px] border-b border-line-soft last:border-b-0';
+
+/**
+ * 104px. Wide enough for `DEADLINE`, narrow enough that the value column still
+ * holds a 33px control at a usable width inside a 480px panel — and a fixed
+ * column is the point: keys that shrink-wrap their own text are not a column,
+ * they are four different indents.
+ *
+ * `aria-hidden` at the call site, exactly as `PropertyLine` does it: every
+ * control on these lines names itself, and a visible key repeated into the
+ * accessible name is a label announced twice.
+ */
+export const dialogLineKey = 'w-[104px] flex-none';
+
+/** The key for a tall line, nudged onto the control's first line. */
+export const dialogLineKeyTall = 'w-[104px] flex-none pt-[7px]';
+
+/**
+ * `grid`, not a bare flex child — and the one column is the point.
+ *
+ * A grid item stretches to its track by default, so every control on a line
+ * ends on the SAME right edge whether it is an `<input class="w-full">`, a
+ * `Popover` trigger (`relative inline-flex`, which shrink-wraps) or a
+ * `SegmentedControl` (`inline-flex`, likewise). Left alone, those three
+ * measured 328, 126 and 182 pixels in one dialog, and a key column reading
+ * down a ragged right edge is a list, not an instrument.
+ *
+ * A line that genuinely holds two things side by side — Import goal's
+ * button-plus-caption — nests its own flex row INSIDE this cell rather than
+ * appending `flex` to it: `grid` and `flex` are the same property, and which
+ * one applied would be decided by the order Tailwind happened to emit them in.
+ * `DateField`'s `size` prop exists because that bug shipped once already.
+ */
+export const dialogLineValue = 'flex-1 min-w-0 grid';
+
+/**
+ * The footer on its own ruled bar, on `bg-bg` inside a `bg-panel` card.
+ *
+ * The same object the assistant shelf's dial strip is — `border-t border-line
+ * bg-bg` — because one idiom on three surfaces is worth more than three
+ * surfaces each solving a footer. `dialogFooter`'s reading-edge rule is
+ * unchanged and inherited: Cancel first, the filled commit button last, under
+ * where the eye already is.
+ */
+export const dialogBar =
+  'flex items-center justify-end gap-[8px] border-t border-line bg-bg px-[14px] py-[9px] rounded-b-card';

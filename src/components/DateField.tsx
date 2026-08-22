@@ -31,6 +31,23 @@ const SIZES = {
   field: 'w-full min-h-[30px] leading-[21px] px-[8px] py-[5px] rounded-field text-ui',
 } as const;
 
+/**
+ * `muted`, where `fieldCls` takes `faint` — and the split is the same one
+ * `DatePopover`'s trigger already makes in a comment two files over.
+ *
+ * This control had no placeholder colour at all, so "No dates", "Not set",
+ * "Start", "End" and "Due" all rendered in near-full ink and read as values
+ * somebody had entered. But the fix is not `fieldCls`'s: none of those strings
+ * is an EXAMPLE of what to type. Every one of them names an UNSET property, and
+ * `TaskPage`'s rule — written down in CLAUDE.md — is that an unset value is
+ * `text-muted` and never `text-faint`, because it is read and it is the only
+ * affordance for setting one. `PropertyLineField` says the same thing in the
+ * same words at `PropertyRow.tsx`.
+ *
+ * A hint that vanishes when you type is faint; a value that is absent is muted.
+ */
+const PLACEHOLDER = 'placeholder:text-muted';
+
 export function DateField({
   value,
   onCommit,
@@ -103,7 +120,7 @@ export function DateField({
           ref.current?.blur();
         }
       }}
-      className={`border border-line-2 text-ink bg-transparent outline-none focus-visible:border-accent ${SIZES[size]} ${className}`}
+      className={`border border-line-2 text-ink ${PLACEHOLDER} bg-transparent outline-none focus-visible:border-accent ${SIZES[size]} ${className}`}
     />
   );
 }
