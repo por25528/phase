@@ -47,8 +47,22 @@
  */
 export const COLUMN_FLOOR_PX = 200;
 
-/** The smallest track on which `Someday` sets on one line beside its count. */
-export const EMPTY_TRACK_PX = 88;
+/**
+ * The smallest track on which `Someday` sets on one line beside its count.
+ *
+ * 104, up from the 88 that was measured against the old header — a `text-ui`
+ * word and a `text-badge` number sharing a row with an `ml-auto` between them.
+ * The header is a `RuleHeader` now and the same two facts are two CELLS, each
+ * with its own 9px of padding either side of a hairline, so the longest
+ * horizon name plus its count measures 99px and an empty `Now` printing
+ * `0 / 3` measures 94. At 88 both overflowed their track and spilled across
+ * the divider into the bay beside them.
+ *
+ * The slack above 99 is for the count rather than the name: on `All` the Now
+ * limit is the SUM of the life tabs (`nowLimit`), so an empty Now can read
+ * `0 / 12` — one character more than the figure this was measured at.
+ */
+export const EMPTY_TRACK_PX = 104;
 
 /**
  * The board's column gap, in the arithmetic above and in `Goals.tsx`.

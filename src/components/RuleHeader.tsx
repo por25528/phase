@@ -59,16 +59,25 @@ export function RuleHeader({
   className?: string;
 }) {
   return (
-    <div className={`flex items-stretch ${RULE_H} border-b border-line ${className}`}>
+    /* `overflow-hidden` is the safety net, not the plan. The board sizes its
+       slim track to the longest horizon name plus its count (`EMPTY_TRACK_PX`),
+       so nothing here should ever need to give — but a cell that DID overflow
+       would spill across the hairline into the next bay, and a name clipped to
+       an ellipsis is a far smaller lie than one printed over its neighbour.
+       The name gives first and the fact never does: a count is the shorter
+       string and the one a truncation would destroy outright. */
+    <div className={`flex items-stretch ${RULE_H} border-b border-line overflow-hidden ${className}`}>
       {label !== undefined && (
-        <span className={`${CELL} ${ruleTag} bg-chip border-r border-line`}>{label}</span>
+        <span className={`${CELL} min-w-0 ${ruleTag} bg-chip border-r border-line`}>
+          <span className="truncate">{label}</span>
+        </span>
       )}
       {/* The span of rule between the two cells. It is what makes the header a
           DIVIDER that happens to hold labels, rather than two chips that
           happen to sit above one. */}
       <span className="flex-1 min-w-0" />
       {fact !== undefined && (
-        <span className={`${CELL} font-mono text-micro tabular-nums border-l border-line ${factClassName}`}>
+        <span className={`${CELL} flex-none font-mono text-micro tabular-nums border-l border-line ${factClassName}`}>
           {fact}
         </span>
       )}

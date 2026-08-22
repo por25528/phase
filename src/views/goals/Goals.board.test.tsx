@@ -147,7 +147,7 @@ describe('board geometry', () => {
     ]);
     const board = document.getElementById('goalsBoard') as HTMLElement;
     expect(board.style.gridTemplateColumns)
-      .toBe('88px 88px 88px minmax(200px, 491px) minmax(0, 1fr)');
+      .toBe('104px 104px 104px minmax(200px, 491px) minmax(0, 1fr)');
   });
 
   it('weights two loaded columns against each other', async () => {
@@ -158,7 +158,7 @@ describe('board geometry', () => {
     ]);
     const board = document.getElementById('goalsBoard') as HTMLElement;
     expect(board.style.gridTemplateColumns)
-      .toBe('minmax(200px, 240px) 88px 88px minmax(200px, 491px) minmax(0, 1fr)');
+      .toBe('minmax(200px, 240px) 104px 104px minmax(200px, 491px) minmax(0, 1fr)');
   });
 
   /*
@@ -216,12 +216,13 @@ describe('board geometry', () => {
    */
   it('sets each horizon name and its count in one rule', async () => {
     await mountBoard([{ id: 'a', title: 'A', nodes: [], column: 0 }]);
-    const tag = screen.getByText('Now');
-    const header = tag.parentElement!;
-    expect(header.className).toContain('border-b');
+    const header = screen.getByText('Now').closest('.border-b') as HTMLElement;
+    expect(header).toBeTruthy();
+    expect(header.firstElementChild!.textContent).toBe('Now');
     expect(header.lastElementChild!.textContent).toBe('1 / 3');
     // Only Now states a limit; a horizon with no cap would be inventing one.
-    expect(screen.getByText('Later').parentElement!.lastElementChild!.textContent).toBe('0');
+    const later = screen.getByText('Later').closest('.border-b') as HTMLElement;
+    expect(later.lastElementChild!.textContent).toBe('0');
   });
 });
 

@@ -9,12 +9,12 @@ const still = { dragging: false };
 describe('columnTracks', () => {
   it('gives an empty column a fixed slim track', () => {
     expect(columnTracks([0, 0, 0, 5], still))
-      .toBe('88px 88px 88px minmax(200px, 742px) minmax(0, 1fr)');
+      .toBe('104px 104px 104px minmax(200px, 742px) minmax(0, 1fr)');
   });
 
   it('weights populated columns by their card count', () => {
     expect(columnTracks([2, 1, 0, 2], still))
-      .toBe('minmax(200px, 491px) minmax(200px, 240px) 88px minmax(200px, 491px) minmax(0, 1fr)');
+      .toBe('minmax(200px, 491px) minmax(200px, 240px) 104px minmax(200px, 491px) minmax(0, 1fr)');
   });
 
   /*
@@ -28,7 +28,7 @@ describe('columnTracks', () => {
    */
   it('caps a populated track at what its cards can actually draw', () => {
     expect(columnTracks([1, 0, 0, 0], still))
-      .toBe('minmax(200px, 240px) 88px 88px 88px minmax(0, 1fr)');
+      .toBe('minmax(200px, 240px) 104px 104px 104px minmax(0, 1fr)');
   });
 
   it('stops widening the cap past three cards abreast', () => {
@@ -60,7 +60,7 @@ describe('columnTracks', () => {
   });
 
   it('handles an all-empty board without collapsing it', () => {
-    expect(columnTracks([0, 0, 0, 0], still)).toBe('88px 88px 88px 88px minmax(0, 1fr)');
+    expect(columnTracks([0, 0, 0, 0], still)).toBe('104px 104px 104px 104px minmax(0, 1fr)');
   });
 
   /*
@@ -86,8 +86,10 @@ describe('columnTracks', () => {
     expect(4 * COLUMN_FLOOR_PX + 3 * COLUMN_GAP_PX).toBeLessThanOrEqual(920);
   });
 
-  it('keeps the slim track wide enough for the longest horizon label', () => {
-    // 'Someday' at text-ui plus its count and the column's own padding.
-    expect(EMPTY_TRACK_PX).toBeGreaterThanOrEqual(88);
+  it('keeps the slim track wide enough for the longest rule tag and its count', () => {
+    // Measured, not guessed: `SOMEDAY` beside `0` comes to 99px in a
+    // `RuleHeader`'s two cells, and an empty `Now` printing `0 / 3` to 94.
+    // Below this the header spills across the divider into the next bay.
+    expect(EMPTY_TRACK_PX).toBeGreaterThanOrEqual(99);
   });
 });

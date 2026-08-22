@@ -25,14 +25,17 @@ describe('RuleHeader', () => {
    */
   it('wears the shared rule-tag voice rather than a local one', () => {
     render(<RuleHeader label="Later" fact="0" />);
-    expect(screen.getByText('Later').className).toContain('font-mono');
+    // The voice is on the CELL; the inner span exists only so a name that
+    // cannot fit its track truncates instead of spilling across the hairline.
+    expect(screen.getByText('Later').parentElement!.className).toContain('font-mono');
+    expect(screen.getByText('Later').className).toContain('truncate');
     expect(screen.getByText('0').className).toContain('tabular-nums');
   });
 
   it('takes a tone for the fact and leaves the name alone', () => {
     render(<RuleHeader label="Now" fact="4 / 3" factClassName="text-warn font-semibold" />);
     expect(screen.getByText('4 / 3').className).toContain('text-warn');
-    expect(screen.getByText('Now').className).not.toContain('text-warn');
+    expect(screen.getByText('Now').parentElement!.className).not.toContain('text-warn');
   });
 
   /**
