@@ -2,10 +2,29 @@ import type { WeekCapacity } from '../../lib/capacity';
 import type { PlanMode } from '../../db/db';
 import { SegmentedSwitch } from '../../components/SegmentedControl';
 import { IconChevronLeft, IconChevronRight } from '../../components/Icons';
-import { fmtD, addDays } from '../../lib/dates';
+import { fmtD, addDays, isoWeekNumber, MO, parseD } from '../../lib/dates';
 import { ymOf, ymLabel } from '../../lib/calendar';
-import { weekLoadParts, capacityNote } from './capacityLabel';
+import { dayGaugeCells, weekLoadCells, capacityNote } from './capacityLabel';
 import { CapacityMeter } from './CapacityMeter';
+import { stampLabel } from '../../components/sectionLabel';
+
+/**
+ * The stamp's second cell: `17 – 23 Aug 2026`.
+ *
+ * Deliberately NOT `fmtD(a) – fmtD(b)`, which is what the heading below it
+ * already says. A stamp exists to carry what the heading cannot: the week
+ * NUMBER on one side, and the YEAR on the other. Repeating the month twice in
+ * one seven-day range would spend the stamp's width on nothing.
+ */
+function weekStampRange(weekStart: string): string {
+  const end = addDays(weekStart, 6);
+  const a = parseD(weekStart);
+  const b = parseD(end);
+  const head = a.getMonth() === b.getMonth()
+    ? `${a.getDate()} – ${b.getDate()} ${MO[b.getMonth()]}`
+    : `${a.getDate()} ${MO[a.getMonth()]} – ${b.getDate()} ${MO[b.getMonth()]}`;
+  return `${head} ${b.getFullYear()}`;
+}
 
 /** Capitalised here rather than by `capitalize`: a label is written, not cased. */
 const PLAN_RANGES = [
@@ -89,36 +108,73 @@ export function WeekHeader({
   // so a past month (or the elapsed part of the current one) reports "spent"
   // rather than being folded into "free". See CLAUDE.md: "'Free' is
   // tense-sensitive."
-  const parts = isMonth
-    ? (monthCapacity ? weekLoadParts(monthCapacity, today) : [])
-    : weekLoadParts(capacity, today);
+  const cells = isMonth
+    ? (monthCapacity ? weekLoadCells(monthCapacity, today) : [])
+    : weekLoadCells(capacity, today);
+  /*
+   * One cell per day, straight off `weekCapacity.days` — the figure the header
+   * already summed away. It is `dayGaugeCells` and not a second pass over the
+   * week: the gauge and the text below it are read as one statement, so they
+   * have to be one derivation, and the same reasoning that makes
+   * `capacityMeter.over` a delegation makes this one too.
+   */
+  const gauge = dayGaugeCells(capacity.days);
 
   return (
-    <div className="flex items-baseline gap-[14px] mb-[12px] flex-wrap">
-      <h2 className="text-h1 font-semibold tracking-[-.012em] leading-[1.15] whitespace-nowrap">
-        {isMonth ? ymLabel(ymOf(weekStart)) : `${fmtD(weekStart)} – ${fmtD(addDays(weekStart, 6))}`}
-      </h2>
+    /*
+     * A stacked instrument rather than one baseline row.
+     *
+     * The old header put the range, a 420px meter and the controls on one
+     * `items-baseline` line, which made the meter's bar float detached above
+     * everything and gave four figures of equal weight nowhere to sit. It is
+     * now four bands — stamp, range, gauge, figures rule — with the mode and
+     * navigation controls held to the top band, where they belong to the range
+     * they change and not to the numbers they do not.
+     */
+    <div className="mb-[12px]">
+      <div className="flex items-start gap-[14px] flex-wrap">
+        <div className="min-w-0 flex-1">
+          {/*
+            The stamp. Two mono cells, the first inverted against the second —
+            a week number is an INDEX and reads as one when it is stamped
+            rather than written. Week mode only: `Week 34` is a fact about a
+            week, and a month's own stamp would have nothing to carry that
+            `ymLabel` below does not already say.
+          */}
+          {!isMonth && (
+            <span className="inline-flex rounded-[4px] border border-line-2 overflow-hidden mb-[5px]">
+              <span className={`${stampLabel} bg-ink text-paper font-semibold px-[7px] py-[2px]`}>
+                Week {isoWeekNumber(weekStart)}
+              </span>
+              <span className={`${stampLabel} text-muted px-[7px] py-[2px]`}>
+                {weekStampRange(weekStart)}
+              </span>
+            </span>
+          )}
 
-      {figures && (
-        <CapacityMeter
-          figures={figures}
-          parts={parts}
-          spanLabel={isMonth ? monthSpanLabel : undefined}
-          unestimatedOpen={unestimatedOpen}
-          onToggleUnestimated={onToggleUnestimated}
-        />
-      )}
+          {/*
+            `text-mast`, in the UI face. Plan's grid is the most instrument-like
+            surface in the app and this is the header learning to speak its
+            language. The display serif is locked to three places and this is
+            not one of them, which is exactly why the step is named for the
+            ROLE rather than for a face — see the note on `mast` in
+            tailwind.config.js.
+          */}
+          <h2 className="text-mast font-semibold tracking-[-.022em] leading-[1.05] whitespace-nowrap">
+            {isMonth ? ymLabel(ymOf(weekStart)) : `${fmtD(weekStart)} – ${fmtD(addDays(weekStart, 6))}`}
+          </h2>
 
-      {note && (
-        <span className="text-eyebrow text-muted truncate max-w-[240px]" title={note}>{note}</span>
-      )}
-      {isPast && (
-        <span className="text-meta text-muted italic">past week — read only</span>
-      )}
+          <div className="flex items-baseline gap-[10px] flex-wrap mt-[2px]">
+            {note && (
+              <span className="text-eyebrow text-muted truncate max-w-[240px]" title={note}>{note}</span>
+            )}
+            {isPast && (
+              <span className="text-meta text-muted italic">past week — read only</span>
+            )}
+          </div>
+        </div>
 
-      <span className="flex-1" />
-
-      <div className="flex items-center gap-[8px] self-center">
+        <div className="flex items-center gap-[8px]">
         {onModeChange && (
           // `aria-pressed`, not `role="tab"`: these are two states of one
           // control, and a tablist would promise arrow-key navigation between
@@ -162,7 +218,28 @@ export function WeekHeader({
             <IconChevronRight size={13} />
           </button>
         </div>
+        </div>
       </div>
+
+      {figures && (
+        <div className="mt-[11px]">
+          <CapacityMeter
+            figures={figures}
+            cells={cells}
+            /*
+             * The gauge is a WEEK instrument. Month mode hands none, and
+             * `CapacityMeter` then draws the single bar it always drew — see
+             * its `gauge` note for why that is the answer rather than a
+             * fallback.
+             */
+            gauge={isMonth ? undefined : gauge}
+            today={today}
+            spanLabel={isMonth ? monthSpanLabel : undefined}
+            unestimatedOpen={unestimatedOpen}
+            onToggleUnestimated={onToggleUnestimated}
+          />
+        </div>
+      )}
     </div>
   );
 }

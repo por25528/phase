@@ -83,24 +83,68 @@ export function weekFreeSplit(
 }
 
 /**
- * The week header's priced parts, with the free figure split by tense.
+ * One labelled figure on the header's rule: a key, a value, and how loudly it
+ * speaks.
+ *
+ * The Instrument header states its figures as `Left / 9h` rather than as the
+ * phrase `9h left`, because four phrases of equal weight are four facts of
+ * equal weight — and "9h left" is a budget you plan against while "45h spent"
+ * is a retrospective and "1 unestimated" is an exception. The hierarchy is
+ * structural (a key row over a value row, one of them `head`) rather than a
+ * font-weight choice made at each call site.
+ *
+ * `head` is spent EXACTLY ONCE per readout, on the figure the week is planned
+ * against. Everything else is `quiet`. Two headlines is no headline.
+ */
+export interface LoadCell {
+  key: string;
+  value: string;
+  tone: 'head' | 'quiet';
+}
+
+/**
+ * The week header's priced figures, with the free figure split by tense.
  *
  * A fully-future week has nothing spent, so the split collapses back to a bare
- * `45h free` and the week reads exactly as it does today — a future week is
- * never made uglier to fix a current one. The planned / to-place tail is the
- * same as `loadParts`.
+ * `Free` cell and the week reads exactly as it did — a future week is never
+ * made uglier to fix a current one. The planned / to-place tail is the same as
+ * `loadParts`.
+ *
+ * This is the ONE derivation behind both the header's cells and the strings
+ * `weekLoadParts` returns; the day-heading tooltip and the Plan header cannot
+ * disagree about a week because there is only one place either could come
+ * from. It is also what the seven-cell gauge is drawn beside — see
+ * `dayGaugeCells`, which is likewise derived rather than recomputed.
+ */
+export function weekLoadCells(
+  c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'> & { days: readonly { date: string; freeMin: number }[] },
+  today: string,
+): LoadCell[] {
+  const { leftMin, spentMin } = weekFreeSplit(c, today);
+  const cells: LoadCell[] = spentMin === 0
+    ? [{ key: 'Free', value: formatMinutes(leftMin), tone: 'head' }]
+    : [
+      { key: 'Left', value: formatMinutes(leftMin), tone: 'head' },
+      { key: 'Spent', value: formatMinutes(spentMin), tone: 'quiet' },
+    ];
+  if (c.plannedMin > 0) cells.push({ key: 'Planned', value: formatMinutes(c.plannedMin), tone: 'quiet' });
+  if (c.backlogMin > 0) cells.push({ key: 'To place', value: formatMinutes(c.backlogMin), tone: 'quiet' });
+  return cells;
+}
+
+/**
+ * The same figures as sentences, for anywhere that has no room for a rule.
+ *
+ * Derived from `weekLoadCells` rather than written twice: `9h left` and the
+ * `Left / 9h` cell are the same claim, and the moment they are two expressions
+ * one of them starts drifting. Lower-casing the key is what makes `To place`
+ * read as `3h to place` without a second table of words.
  */
 export function weekLoadParts(
   c: Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'> & { days: readonly { date: string; freeMin: number }[] },
   today: string,
 ): string[] {
-  const { leftMin, spentMin } = weekFreeSplit(c, today);
-  const parts = spentMin === 0
-    ? [`${formatMinutes(leftMin)} free`]
-    : [`${formatMinutes(leftMin)} left`, `${formatMinutes(spentMin)} spent`];
-  if (c.plannedMin > 0) parts.push(`${formatMinutes(c.plannedMin)} planned`);
-  if (c.backlogMin > 0) parts.push(`${formatMinutes(c.backlogMin)} to place`);
-  return parts;
+  return weekLoadCells(c, today).map((cell) => `${cell.value} ${cell.key.toLowerCase()}`);
 }
 
 /** `null` when everything is priced — there is then nothing to act on. */
@@ -234,4 +278,45 @@ export function capacityMeter(
     capacityMarkFrac: Math.min(1, c.freeMin / span),
     over: isOverCommitted(c),
   };
+}
+
+/**
+ * One cell of the week gauge: how full a day is drawn, and nothing else.
+ *
+ * A single week bar can only say "you are over". This says WHERE — you move
+ * work off Thursday, not off "the week" — and the whole risk of saying that is
+ * disagreeing with the grid underneath it, so the geometry is `capacityMeter`
+ * applied per day rather than a second piece of arithmetic. `weekCapacity`
+ * has always produced `days`; the header merely stopped summing it away.
+ *
+ * **There is no per-day `over`, and one must not be added here.**
+ * `isOverCommitted` is a WEEK verdict: it compares the week's committed
+ * minutes against the week's free minutes, and it is the ONLY judgement the
+ * meter renders — the gauge takes its colour from `capacityMeter(week).over`
+ * exactly as the bar it replaces did. Per-day cells invite a per-day verdict
+ * that function does not make, so `over` is DROPPED at this boundary, the same
+ * move `PlannedLeaf` makes with `status`: what a caller cannot see, it cannot
+ * accidentally render. A day may be drawn fuller than its neighbours — a day
+ * whose committed minutes exceed its free ones draws full, because
+ * `capacityMeter` spans `max(free, committed)` — but full is a DRAWING, not a
+ * judgement, and it wears the same colour every other cell does.
+ *
+ * Adding a real per-day verdict is a separate change: it belongs in
+ * `capacity.ts` with its own tests, not inferred here from a fraction.
+ */
+export interface DayGaugeCell {
+  date: string;
+  /** 0–1 of the cell: sittings actually on the calendar. */
+  plannedFrac: number;
+  /** 0–1 of the cell: committed to the day but not placed. */
+  backlogFrac: number;
+}
+
+export function dayGaugeCells(
+  days: readonly (Pick<CapacityFigures, 'freeMin' | 'plannedMin' | 'backlogMin'> & { date: string })[],
+): DayGaugeCell[] {
+  return days.map((d) => {
+    const m = capacityMeter(d);
+    return { date: d.date, plannedFrac: m.plannedFrac, backlogFrac: m.backlogFrac };
+  });
 }

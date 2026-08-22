@@ -123,7 +123,9 @@ describe('the goal calendar', () => {
     ]);
 
     // 60 + 120 minutes planned across the week — both goals, one figure.
-    expect(screen.getByText(/3h planned/)).toBeTruthy();
+    // The header states it as a labelled cell now (`Planned` over `3h`), so
+    // the assertion reads the cell rather than a joined phrase.
+    expect(document.querySelector('[data-fig="planned"]')?.textContent).toContain('3h');
   });
 
   it('lists this goal’s unplaced work, and only this goal’s', async () => {
