@@ -140,10 +140,10 @@ function aboveBandCls(shelf: boolean): string {
  * primary was cut at the one moment it has to be read, which is the single
  * defect this whole surface exists to avoid.
  *
- * The budget answer is to pay the budget, not to shorten the sentence: two
- * lines cost about 20px on the tallest state, `HEIGHT` was 308 against a
- * tallest state of ~278, and the invariant already says what to do when a
- * state grows — measure it again. It was.
+ * The budget answer is to pay the budget, not to shorten the sentence, and the
+ * invariant already says what to do when a state grows — measure it again. It
+ * was: `HEIGHT` moved from 308 to 343, re-measured by
+ * `scripts/measure-shelf.cjs` at 620px, tallest state `confirming`.
  *
  * The full string stays on `title` either way, because two lines is a bigger
  * window, not an unbounded one.
