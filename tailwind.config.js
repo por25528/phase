@@ -89,6 +89,22 @@ export default {
         // set to `h2`, a heading in the body came out larger than the name of
         // the thing it was in.
         page: '1.85rem',    // 25.9px
+        // The Today masthead, and the top of the scale.
+        //
+        // `page` is a DOCUMENT's own title — it has to outrank a heading typed
+        // inside that document and nothing more. This is a VIEW's masthead on a
+        // page that is a measured object: the stamp above it is the app's
+        // smallest role (11px) and the greeting is the thing you read from
+        // across the desk, so the two ends have to be far enough apart for the
+        // range itself to read as composition rather than as drift.
+        //
+        // Named `mast`, not `display`: the display FACE is Fraunces and is
+        // locked to three places, while this step is deliberately set in the UI
+        // face. A `text-display` step would read as "use the display face here"
+        // to the next person, which is exactly the mistake the font-disp guard
+        // exists to catch. `mast` is also free of the colour scale — no
+        // fontSize key may collide with one; designScale.test.ts asserts it.
+        mast: '2.125rem',   // 34px
       },
       // Corner radii: 4 and 6 inline, plus `field` (8) and `card` (12).
       // Controls rounding LESS than surfaces is deliberate — round 2 rejected

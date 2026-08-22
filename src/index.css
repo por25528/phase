@@ -93,6 +93,19 @@
        sitting on its own background with only a hairline to separate them —
        the dark panel is warm charcoal (#1E1D1B) now, not OLED. */
     --scrim: rgba(20, 19, 17, 0.30);
+
+    /* The hatch that fills Today's gutters and the tail below the last row.
+       A whole value rather than an `R G B` triple, for the same reason
+       `--scrim` is one: dark needs a different HUE as well as a different
+       alpha — a warm-ink stripe over #141311 is invisible, and a warm-paper
+       stripe over #F7F7F5 is too.
+
+       It is deliberately near the floor of visibility. The hatch has to read
+       as material at a glance and NOT as texture you can count at arm's
+       length; if it ever starts reading as noise the fix is to halve the
+       alpha, never to widen the stripe, because a wider stripe is a pattern
+       and a fainter one is a surface. */
+    --hatch: rgba(26, 26, 24, 0.055);
   }
 
   /* Warm charcoal dark theme — warm near-black base, faintly elevated surfaces,
@@ -144,6 +157,11 @@
     /* Lighter than the old .66: the panel is now 8% above the page rather than
        5%, so the surface itself carries more of the separation. */
     --scrim: rgba(10, 9, 8, 0.62);
+
+    /* Warm paper, not white: a neutral stripe over warm charcoal reads blue.
+       Lower alpha than light because the page it sits on is darker, so the
+       same alpha would carry more contrast than the light theme's does. */
+    --hatch: rgba(235, 231, 222, 0.045);
   }
 
 @layer base {
@@ -198,6 +216,25 @@
      two cannot drift apart, and a themed var, so it follows dark. */
   .scrim {
     background: var(--scrim);
+  }
+
+  /* Ruled paper. Today's frame bounds the reading column with a hairline and
+     fills what is left — the two gutters, and the tail below the last row —
+     with a 45° hatch, so the margin is MATERIAL rather than absence. A short
+     day then reads as a sheet with room on it instead of as a page that ran
+     out, which was the whole complaint: ~60% of the frame was unclaimed and
+     the content looked like it had not finished loading.
+
+     A gradient, not `border-dashed`. Dashed is this app's DROP-TARGET signal
+     (see designScale.test.ts) and spending it on a background is how that
+     signal stops meaning anything.
+
+     1px on a 7px period: any denser and the stripes fuse into a flat tint
+     that would have been cheaper as a colour; any sparser and you start
+     reading individual lines. */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      45deg, var(--hatch) 0 1px, transparent 1px 7px);
   }
 
   /* Timeline bar fill + label — used by Timeline (round-2) */
