@@ -6,7 +6,6 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-  closestCorners,
   type DragStartEvent,
   type DragOverEvent,
   type DragEndEvent,
@@ -19,6 +18,8 @@ import { sectionLabel, stampLabel } from '../components/sectionLabel';
 import { RuleHeader } from '../components/RuleHeader';
 import { groupByColumn } from '../lib/board';
 import { columnTracks } from '../lib/boardTracks';
+import { boardCollision } from '../lib/boardCollision';
+import { bayFace } from '../lib/boardBay';
 import { focusSummary } from '../lib/plan';
 import { fmtDY } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
@@ -520,7 +521,7 @@ export function Goals() {
       {!isEmpty && !scopeEmpty && (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={boardCollision}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
@@ -543,6 +544,14 @@ export function Goals() {
           >
             {COLUMNS.map((col, i) => {
               if (!wide && i !== activeHorizon) return null;
+              /* What this horizon's cards have already said to each other. Per
+                 BAY, because a bay is what a person reads down — and computed
+                 from the ids actually drawn, so it follows a life-tab filter
+                 and a live drag without a second rule. */
+              const face = bayFace(
+                (columns[i] ?? []).map((id) => goalById.get(id)).filter((g): g is Goal => g != null),
+                lives,
+              );
               return (
               <Column key={col.id} col={col} index={i} ids={columns[i] ?? []} solo={!wide} slim={wide && (columns[i] ?? []).length === 0} nowLimit={summary.slots.limit}>
                 {(columns[i] ?? []).map((id) => {
@@ -558,6 +567,7 @@ export function Goals() {
                       onRank={moveRank}
                       onDelete={actions.removeGoal}
                       onRename={actions.renameGoal}
+                      bay={face}
                       onSetDeadline={(id, deadline) => {
                         const g = goalById.get(id);
                         // `start` passed through: `setGoalDates` deletes any
