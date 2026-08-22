@@ -1,4 +1,4 @@
-import { parseD, addDays } from './dates';
+import { parseD, addDays, isoWeekNumber } from './dates';
 import type { Goal, Habit } from '../db/types';
 import { hasTrustedSchedule, needsDateConfirmation } from './schedule';
 
@@ -13,6 +13,31 @@ export function dateKicker(s: string): string {
   const wd = d.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
   const mo = d.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
   return `${wd} · ${d.getDate()} ${mo} ${d.getFullYear()}`;
+}
+
+/**
+ * The date, as a two-cell stamp: the weekday, then the day it belongs to.
+ *
+ * Not a replacement for `dateKicker` and not a shortening of it. The kicker is
+ * one continuous phrase in the eyebrow slot above a heading; this is a STAMP —
+ * two cells with a rule between them, the first inverted — so it needs the
+ * split to be a fact about the string rather than something the renderer
+ * guesses with a `split('·')`.
+ *
+ * The week number is the second half's whole reason for existing at a terse
+ * `SAT` / `22 AUG 2026` width: a planner whose other surfaces are addressed by
+ * week (`weekOf`, `plannedWeek`, the Plan grid) should say which week you are
+ * standing in, and Today never did. It is `isoWeekNumber` — the same
+ * Thursday-anchored count `dates.ts` already publishes, never a second one.
+ */
+export function dayStamp(s: string): { dow: string; span: string } {
+  const d = parseD(s);
+  const dow = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+  const mo = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+  return {
+    dow,
+    span: `${d.getDate()} ${mo} ${d.getFullYear()} · WEEK ${isoWeekNumber(s)}`,
+  };
 }
 
 export function daysLeftInYear(s: string): number {

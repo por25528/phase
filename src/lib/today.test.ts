@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { greeting, dateKicker, daysLeftInYear, lastNDays, habitHitPct, deadlineChip, railDeadlineChip } from './today';
+import { greeting, dateKicker, dayStamp, daysLeftInYear, lastNDays, habitHitPct, deadlineChip, railDeadlineChip } from './today';
 import type { Goal, Habit } from '../db/types';
 
 describe('greeting', () => {
@@ -12,6 +12,18 @@ describe('greeting', () => {
 describe('dateKicker', () => {
   it('formats WEEKDAY · D MONTH YYYY', () => {
     expect(dateKicker('2026-07-02')).toBe('THURSDAY · 2 JULY 2026');
+  });
+});
+
+describe('dayStamp', () => {
+  it('splits the date into the weekday and the day it belongs to', () => {
+    expect(dayStamp('2026-08-22')).toEqual({ dow: 'SAT', span: '22 AUG 2026 · WEEK 34' });
+  });
+
+  it('numbers the week the way the rest of the app does', () => {
+    // 1 January 2027 is a Friday, so ISO puts it in week 53 of 2026 — the
+    // Thursday-anchored count `dates.ts` already publishes, not a second one.
+    expect(dayStamp('2027-01-01').span).toBe('1 JAN 2027 · WEEK 53');
   });
 });
 

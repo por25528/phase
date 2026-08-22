@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
-import { sectionLabel } from '../components/sectionLabel';
-import { SectionHeader } from '../components/SectionHeader';
+import { stampLabel } from '../components/sectionLabel';
+import { RuleHeader } from './today/RuleHeader';
 import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
+import { DayGauge } from './today/DayGauge';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
 import { attentionItems, carriedFrom, carryOverRows, surfaceReason } from '../lib/todaySurface';
@@ -16,7 +17,9 @@ import { ReplanPreview } from './today/ReplanPreview';
 import { clockLabel } from '../lib/clock';
 import { fmtMinutes } from '../lib/effort';
 import { loggedForItemOn } from '../lib/actuals';
-import { dateKicker, greeting } from '../lib/today';
+import { dayStamp, greeting } from '../lib/today';
+import { dayGauge } from '../lib/dayGauge';
+import { scheduledOn } from '../lib/scheduled';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
 import { dueChip } from '../lib/backlog';
@@ -243,32 +246,88 @@ export function Today({
     ? offerInfo.rows.filter((row) => row.key !== primary?.key)
     : [];
 
-  return (
-    <div className="max-w-[720px] mx-auto">
-      {/* ── The day ──
-          The kicker moved ABOVE the greeting and into the mono label voice.
-          Below it, `text-meta` in the UI face, it was a subtitle that happened
-          to be shouting: `dateKicker` upper-cases at runtime, so the app's rule
-          that all-caps travels with `font-mono` was broken in the one place its
-          build guard cannot see. As an eyebrow it reads as the instrument stamp
-          it always was, and the greeting below becomes the page's title — at
-          `text-h1`, which is what every other view's title is set at.
+  /**
+   * The day, drawn.
+   *
+   * `scheduledOn` is the sittings, whole and already resolved — it walks the
+   * tree through `blocksOn`, which is the one module allowed to speak about a
+   * `WorkBlock`, so nothing here re-derives a placement. `dayGauge` returns
+   * null when no window covers today, and the page then keeps saying "no
+   * working hours set" in words: a flat empty bar would answer "you are out of
+   * time" to someone who was never asked when they work.
+   */
+  const gauge = useMemo(
+    () => dayGauge({
+      date: today,
+      windows: availability,
+      sittings: scheduledOn(goals, tasks, today),
+      now: { date: today, minute: nowMinute },
+    }),
+    [today, availability, goals, tasks, nowMinute],
+  );
 
-          The one figure on the reading edge is the day's WEIGHT: everything
-          committed to today plus everything that slipped into it. No section
-          states that total (each states its own bucket), and it is the answer
-          to the question you open this page already asking. */}
-      <div className="mb-[18px] px-[8px]">
-        <p className={sectionLabel}>{dateKicker(today)}</p>
-        <div className="flex items-baseline justify-between gap-[16px] mt-[3px]">
-          <h1 className="text-h1 font-semibold tracking-[-0.015em]">
-            {greeting(new Date().getHours())}
-          </h1>
-          {leftCount > 0 && (
-            <span className="flex-none text-ui text-muted tabular-nums">{leftCount} left</span>
-          )}
+  const stamp = dayStamp(today);
+
+  return (
+    /* ── The frame ──
+       Today is a MEASURED OBJECT, not text on a field.
+
+       The page used to be a 720px column pinned to the top-left of an
+       unbounded background, with roughly 60% of the frame unclaimed and
+       nothing anywhere to say where the page ended and the void began — a
+       surface that reads as still loading. The grid below bounds the reading
+       column with a hairline on each side and fills everything outside it,
+       plus the tail under the last row, with `.hatch`. The margin becomes
+       MATERIAL: a short day reads as ruled paper with room left on it rather
+       than as a page that ran out, which is exactly the state a new database
+       opens in.
+
+       `flex-1` on the tail is what makes the frame reach the bottom of the
+       viewport on a sparse day and stop at the content on a full one. It
+       needs the height to travel: `App.tsx` gives Today's wrapper the main
+       region's remaining height for this one view and nothing else. */
+    <div className="flex-1 min-h-0 grid grid-cols-[1fr_minmax(0,720px)_1fr]">
+      <div className="hatch border-r border-line" aria-hidden="true" />
+
+      <div className="flex flex-col min-w-0">
+        {/* ── The day ──
+            A stamp and a headline, and the two are as far apart as this app's
+            type scale goes: 11px mono against 34px semibold. The range IS the
+            composition — the old header ran 11px to 19.6px and read as drift.
+
+            The stamp is `dayStamp`, split into two cells so the weekday can
+            invert against the date it names, the way a date stamp is inked.
+            It also finally says which WEEK you are standing in — every other
+            surface in this app is addressed by week and Today never was.
+
+            The one figure on the reading edge is still the day's WEIGHT:
+            everything committed to today plus everything that slipped into it.
+            No section states that total, and it is the answer to the question
+            you open this page already asking. */}
+        <div className="px-[18px] pt-[22px] pb-[20px] border-b border-line">
+          <span className="inline-flex items-stretch mb-[15px] rounded-[4px] border border-line-2 overflow-hidden">
+            <span className={`px-[8px] py-[3px] bg-fill text-paper font-semibold ${stampLabel}`}>
+              {stamp.dow}
+            </span>
+            <span className={`px-[8px] py-[3px] border-l border-line-2 text-muted ${stampLabel}`}>
+              {stamp.span}
+            </span>
+          </span>
+
+          <div className="flex items-baseline justify-between gap-[16px]">
+            <h1 className="text-mast font-semibold tracking-[-0.028em] leading-[1.05]">
+              {greeting(new Date().getHours())}
+            </h1>
+            {leftCount > 0 && (
+              <span className="flex-none text-ui text-muted tabular-nums">{leftCount} left</span>
+            )}
+          </div>
+
+          {/* The signature, and a SECOND reading of facts the page already
+              states in words — never the only one. Absent entirely when no
+              window covers today; see `dayGauge`. */}
+          {gauge && <DayGauge gauge={gauge} />}
         </div>
-      </div>
 
       {/* ── What slipped ──
           Above Now, because a day planned on top of yesterday's unfinished work
@@ -282,7 +341,7 @@ export function Today({
           chrome, ordinary ink. Nothing about how urgent this is has changed;
           what changed is that it no longer outranks the work. */}
       {slipped.length > 0 && (
-        <div className="mb-[20px] px-[8px] flex flex-wrap items-center gap-x-[9px] gap-y-[4px]">
+        <div className="px-[18px] py-[10px] border-b border-line flex flex-wrap items-center gap-x-[9px] gap-y-[4px]">
           <span className="flex-none inline-flex text-warn" aria-hidden="true">
             <IconWarning size={14} />
           </span>
@@ -308,14 +367,16 @@ export function Today({
           renders with its own checkbox and clock; a free-time primary is the
           offer's first row promoted, so its click still books it. */}
       {(primaryItem || primaryOffer || !offerInfo) && (
-      <section aria-label="Now" className="mb-[20px]">
+      <section aria-label="Now" className="pb-[10px]">
         {primary && primaryItem ? (
           <>
             {/* The label is the emphasis now. The row below carries the clock,
                 the estimate and the title exactly as every other row does, so
                 the one thing worth doing sits on the same axis as the rest. */}
-            <SectionHeader label={primary.reason === 'scheduled-now' ? 'Now' : 'Next'} />
+            <RuleHeader label={primary.reason === 'scheduled-now' ? 'Now' : 'Next'} />
+            <div className="px-[10px] pt-[6px]">
             <TaskRow
+              index={1}
               title={primaryItem.title}
               subtitle={primaryItem.goalTitle}
               emphasis
@@ -339,6 +400,7 @@ export function Today({
                 </>
               }
             />
+            </div>
           </>
         ) : primary && primaryOffer && offerInfo ? (
           <>
@@ -349,8 +411,14 @@ export function Today({
                 "no time left today, but Monday has 9h" is why the offer exists
                 — a fact about the section, which is exactly what that slot is
                 for, and one line saved above the row it explains. */}
-            <SectionHeader label="Free time" right={offerHeading(offerInfo, today)} />
+            <RuleHeader label="Free time" right={offerHeading(offerInfo, today)} />
+            <div className="px-[10px] pt-[6px]">
+            {/* The column is reserved and the NUMBER withheld: a free-time row
+                is work you have not agreed to, and numbering it would enrol it
+                in the committed queue. Dropping the column too would just
+                misalign it. */}
             <TaskRow
+              index={null}
               title={primaryOffer.title}
               subtitle={primaryOffer.goalTitle}
               emphasis
@@ -368,13 +436,14 @@ export function Today({
                 </>
               }
             />
+            </div>
           </>
         ) : doneCount > 0 ? (
           /* A finished day. No verb here: `Done today` is rendering the record
              directly below, so the page is not empty and does not need filling
              — and offering to add work is a strange thing to say to someone who
              has just cleared the board. */
-          <p className="px-[8px] text-ui text-muted">Nothing left today — {doneCount} done.</p>
+          <p className="px-[18px] pt-[14px] text-ui text-muted">Nothing left today — {doneCount} done.</p>
         ) : (
           /* The genuinely empty day, and the first screen a new database shows.
              It used to be one grey sentence naming a shortcut in prose, on a
@@ -384,7 +453,7 @@ export function Today({
              a key rather than inside a paragraph as a word. Same verb as the
              header's `+ Add` on this view (`addAction.ts`: Today makes a task),
              so the two cannot advertise different things. */
-          <div className="px-[8px]">
+          <div className="px-[18px] pt-[14px]">
             <p className="text-ui text-muted">Nothing committed to today.</p>
             {onCapture && (
               <button type="button" onClick={onCapture} className={`mt-[10px] ${primaryBtn}`}>
@@ -405,14 +474,20 @@ export function Today({
           is behind us, so the remaining list still shows a single unticked
           10:00 standup at six in the evening. */}
       {rest.length > 0 && (
-        <section aria-label="Today’s plan" className="mb-[20px]">
-          <SectionHeader label="Rest of today" />
-          <ul>
+        <section aria-label="Today’s plan" className="pb-[10px]">
+          <RuleHeader label="Rest of today" />
+          {/* Numbered CONTINUOUSLY from the row above, not restarted: `rest` is
+              literally the committed list with the primary removed, so the two
+              sections are one queue split by a rendering rule, and printing
+              `01` twice for it would be the split leaking into the numbering.
+              It starts at 1 when the row above is an offer or absent. */}
+          <ul className="px-[10px] pt-[6px]">
             {rest.map((item, i) => (
               <li key={item.key}>
                 {/* Where the day turns from behind you to ahead, and says when. */}
                 {i === divider && i > 0 && <NowDivider nowMinute={nowMinute} />}
                 <TaskRow
+                  index={i + (primaryItem ? 2 : 1)}
                   title={item.title}
                   subtitle={item.goalTitle}
                   time={
@@ -451,7 +526,7 @@ export function Today({
           between commitments, and the moment it lists everything open it is a
           second backlog rail on a page that is not the backlog. */}
       {offer.kind === 'no-hours' && (
-        <section aria-label="Free time" className="mb-[20px]">
+        <section aria-label="Free time" className="px-[18px] py-[14px]">
           <div className="px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
             {/* "Nobody told me when you work" and "you are out of time" are
                 different sentences, and only one of them is true here. */}
@@ -468,21 +543,28 @@ export function Today({
       )}
 
       {offerInfo && restOffers.length > 0 && (
-        <section aria-label="Free time" className="mb-[20px]">
+        <section aria-label="Free time" className="pb-[10px]">
           {/* When the primary above already carries the free-time heading,
               repeating the sentence would say it twice about the same time —
               so the capacity line belongs to whichever of the two is showing
               it, and never to both. */}
-          <SectionHeader
+          <RuleHeader
             label={primaryOffer ? 'Also possible' : 'Free time'}
             right={primaryOffer ? undefined : offerHeading(offerInfo, today)}
           />
-          <ul>
+          {/* Deliberately UNNUMBERED, and this is the one place the mockup was
+              wrong: it ran `01`, `02` straight down the page across both
+              sections. `Next` is work you committed to and `Free time` is work
+              `todayPlan` is OFFERING — a single sequence spanning the two
+              asserts they are one queue, which is the exact distinction the
+              offer exists to draw. */}
+          <ul className="px-[10px] pt-[6px]">
             {restOffers.map((row) => {
               const chip = dueChip(row.due, today);
               return (
                 <li key={row.key}>
                   <TaskRow
+                    index={null}
                     title={row.title}
                     subtitle={row.goalTitle}
                     reserveLead
@@ -514,16 +596,21 @@ export function Today({
           exactly one thing on this page — and `scheduleTask`/`scheduleNode`
           vacate the stale sitting and arm the undo without help. */}
       {carried.rows.length > 0 && (
-        <section aria-label="Carried over" className="mb-[20px]">
+        <section aria-label="Carried over" className="pb-[10px]">
           {/* The only section whose rows are CAPPED, so the only one whose total
               says something the rows cannot. `+N more` below states the same
               arithmetic from the other end and stays: it sits with the rows it
               is withholding, where a reader counting them will look. */}
-          <SectionHeader label="Carried over" right={carried.rows.length + carried.overflow} />
-          <ul>
-            {carried.rows.map((item) => (
+          <RuleHeader label="Carried over" right={carried.rows.length + carried.overflow} />
+          {/* Its own sequence, restarted. These are slipped commitments — a
+              different population from today's, which is why the section
+              exists at all — so continuing today's count would merge two
+              lists that `buildDailyWork` keeps disjoint on purpose. */}
+          <ul className="px-[10px] pt-[6px]">
+            {carried.rows.map((item, i) => (
               <li key={item.key}>
                 <TaskRow
+                  index={i + 1}
                   title={item.title}
                   subtitle={item.goalTitle}
                   onOpen={() => openItem(item)}
@@ -566,7 +653,7 @@ export function Today({
           {carried.overflow > 0 && (
             /* Static text. A link here would be the dead end this section
                retires — five rows have already been shown. */
-            <p className="px-[8px] mt-[4px] text-meta text-muted">
+            <p className="px-[18px] mt-[4px] text-meta text-muted">
               +{carried.overflow} more
             </p>
           )}
@@ -575,9 +662,9 @@ export function Today({
 
       {/* ── Attention ── */}
       {attention.length > 0 && (
-        <section aria-label="Attention">
-          <SectionHeader label="Attention" />
-          <ul>
+        <section aria-label="Attention" className="pb-[10px]">
+          <RuleHeader label="Attention" />
+          <ul className="px-[10px] pt-[6px]">
             {attention.map((a) => (
               <li key={a.id}>
                 <button
@@ -614,14 +701,17 @@ export function Today({
           things were finished needs a completion timestamp, which the spec
           refuses; read that refusal before reaching for one. */}
       {sections.completedToday.length > 0 && (
-        <section aria-label="Done today" className="mt-[20px]">
-          <SectionHeader label="Done today" />
-          <ul>
+        <section aria-label="Done today" className="pb-[10px]">
+          <RuleHeader label="Done today" />
+          {/* Unnumbered. A rank is a claim about ORDER, and this list makes no
+              chronological claim — `doneAt` is a date with no time in it. */}
+          <ul className="px-[10px] pt-[6px]">
             {sections.completedToday.map((item) => {
               const logged = loggedForItemOn(sessions, item, today);
               return (
                 <li key={item.key}>
                   <TaskRow
+                    index={null}
                     title={item.title}
                     subtitle={item.goalTitle}
                     completed
@@ -646,18 +736,29 @@ export function Today({
         </section>
       )}
 
-      <ReplanPreview
-        open={replanOpen}
-        proposal={proposal}
-        onCancel={() => setReplanOpen(false)}
-        onApply={() => {
-          const moved = actions.applyReplan(proposal.moves);
-          setReplanOpen(false);
-          if (moved) {
-            actions.showToast(`Moved ${proposal.moves.length} task${proposal.moves.length === 1 ? '' : 's'} · ${fmtMinutes(proposalMinutes(proposal))}`);
-          }
-        }}
-      />
+        {/* Ruled paper under the last row. It is what stops a short day — and
+            a brand-new database, which is the first screen anyone sees —
+            reading as a page that ran out. */}
+        <div className="hatch flex-1 min-h-[60px]" aria-hidden="true" />
+
+        {/* Inside the column rather than beside it: the grid has exactly three
+            tracks, and a dialog is not a fourth. It is fixed-position either
+            way, so where it sits in the tree costs nothing. */}
+        <ReplanPreview
+          open={replanOpen}
+          proposal={proposal}
+          onCancel={() => setReplanOpen(false)}
+          onApply={() => {
+            const moved = actions.applyReplan(proposal.moves);
+            setReplanOpen(false);
+            if (moved) {
+              actions.showToast(`Moved ${proposal.moves.length} task${proposal.moves.length === 1 ? '' : 's'} · ${fmtMinutes(proposalMinutes(proposal))}`);
+            }
+          }}
+        />
+      </div>
+
+      <div className="hatch border-l border-line" aria-hidden="true" />
     </div>
   );
 }
