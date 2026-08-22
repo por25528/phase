@@ -6,7 +6,6 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-  closestCorners,
   type DragStartEvent,
   type DragOverEvent,
   type DragEndEvent,
@@ -19,6 +18,7 @@ import { sectionLabel, stampLabel } from '../components/sectionLabel';
 import { RuleHeader } from '../components/RuleHeader';
 import { groupByColumn } from '../lib/board';
 import { columnTracks } from '../lib/boardTracks';
+import { boardCollision } from '../lib/boardCollision';
 import { focusSummary } from '../lib/plan';
 import { fmtDY } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
@@ -520,7 +520,7 @@ export function Goals() {
       {!isEmpty && !scopeEmpty && (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={boardCollision}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
