@@ -4,7 +4,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, Habit, Task } from '../db/types';
 import { blocksOf } from '../lib/blocks';
-import { sectionLabel } from '../components/sectionLabel';
+import { ruleTag } from '../components/sectionLabel';
 
 /**
  * Today's zones were each conditional on something carrying today's date, so a
@@ -316,8 +316,12 @@ describe('the shared primary', () => {
     expect(filled).toEqual([btn]);
   });
 
-  /** Three labels, three left edges, two colours. One of each now. */
-  it('sits every section label on its rows’ axis, in the one label style', async () => {
+  /**
+   * Three labels, three left edges, two colours once. Then one voice floating
+   * over a rule. Now the label IS the rule: a tinted cell at its left end,
+   * flush with the frame's own border, with the rows inset past it.
+   */
+  it('sets every section label into the rule rather than over it', async () => {
     await mountToday({
       goals: [{
         id: 'g1', title: 'Thesis', column: 0,
@@ -329,8 +333,10 @@ describe('the shared primary', () => {
     });
 
     const label = screen.getByText('Rest of today');
-    expect(label.className).toContain('px-[8px]');
-    expect(label.className).toContain(sectionLabel);
+    expect(label.className).toContain(ruleTag);
+    // The cell's own edge is the separation — that is what buys the tag its ink.
+    expect(label.className).toContain('border-r');
+    expect(label.parentElement!.className).toContain('border-b');
   });
 });
 
@@ -400,5 +406,80 @@ describe('an offer row opens; a verb books', () => {
     });
 
     expect(blockCount(store)).toBe(1);
+  });
+});
+
+/**
+ * The row numbers, and the one place the approved mockup had to be overruled.
+ *
+ * It ran `01`, `02` continuously down the page, across `Next` and `Free time`
+ * both. A structural device has to encode something true, and a shared sequence
+ * across those two says they are one queue — when `Next` is work you committed
+ * to and `Free time` is work `todayPlan` is OFFERING you, which is the entire
+ * reason the offer is a separate projection with its own membership rules.
+ *
+ * So: numbers on the committed work only. `Next` and `Rest of today` share one
+ * sequence, because `rest` is literally the committed list with the primary
+ * removed and restarting it would print `01` twice for one queue. `Carried
+ * over` restarts, because slipped commitments are a different population —
+ * `buildDailyWork` keeps the two disjoint on purpose. The offer and `Done
+ * today` carry none: an offer is not a commitment, and a record of a finished
+ * day makes no claim about order at all.
+ */
+describe('the row numbers', () => {
+  /** The two-digit cell TaskRow draws, or null when the row has no column. */
+  function indexOf(title: string): string | null {
+    const label = [...document.querySelectorAll('span')].find((s) => s.textContent === title);
+    const row = label?.closest('div.group');
+    const cell = row?.querySelector('[data-row-index]');
+    return cell ? cell.textContent! : null;
+  }
+
+  it('runs one sequence across Next and Rest of today', async () => {
+    await mountToday({
+      goals: [{
+        id: 'g1', title: 'Thesis', column: 0,
+        nodes: [
+          { id: 'n1', title: 'Draft the intro', plannedWeek: '2026-07-13' },
+          { id: 'n2', title: 'Revise the intro', plannedWeek: '2026-07-13' },
+        ],
+      }],
+    });
+
+    expect(indexOf('Draft the intro')).toBe('01');
+    expect(indexOf('Revise the intro')).toBe('02');
+  });
+
+  it('gives the free-time offer a column but never a number', async () => {
+    await mountToday({
+      goals: [
+        { id: 'g1', title: 'Thesis', column: 0, nodes: [
+          { id: 'n1', title: 'Draft the intro', plannedWeek: '2026-07-13' },
+        ] },
+        { id: 'g2', title: 'Startup', column: 0, nodes: [
+          { id: 'n2', title: 'Pitch deck', estimateMin: 30 },
+        ] },
+      ],
+    });
+
+    expect(indexOf('Draft the intro')).toBe('01');
+    // The column is reserved so the left edge holds; the NUMBER is withheld,
+    // which is the claim. Dropping the column too would just misalign it.
+    expect(indexOf('Pitch deck')).toBe('');
+  });
+
+  it('restarts the count for carried-over work', async () => {
+    await mountToday({
+      goals: [{
+        id: 'g1', title: 'Thesis', column: 0,
+        nodes: [
+          { id: 'n1', title: 'Draft the intro', plannedWeek: '2026-07-13' },
+          { id: 'n2', title: 'Chase the citation', plannedWeek: '2026-07-06' },
+        ],
+      }],
+    });
+
+    expect(indexOf('Draft the intro')).toBe('01');
+    expect(indexOf('Chase the citation')).toBe('01');
   });
 });

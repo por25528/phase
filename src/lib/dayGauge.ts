@@ -63,6 +63,14 @@ export interface DayGauge {
    */
   nowFrac: number | null;
   /**
+   * The clock itself, when it is on the scale — always `null` exactly when
+   * `nowFrac` is. It is carried rather than left to the renderer because
+   * inverting a fraction back into a minute is float arithmetic that reads
+   * `12:59` for one o'clock, and the legend beside the marker has to agree
+   * with the marker.
+   */
+  nowMinute: number | null;
+  /**
    * How much of the window is behind you: 0 before it opens, 1 after it
    * closes, and `null` on any day but today.
    *
@@ -164,6 +172,7 @@ export function dayGauge(input: {
     blocks,
     ticks,
     nowFrac: inWindow ? frac(now.minute) : null,
+    nowMinute: inWindow ? now.minute : null,
     spentFrac: isToday ? Math.min(1, Math.max(0, frac(now.minute))) : null,
   };
 }

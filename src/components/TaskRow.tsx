@@ -22,6 +22,28 @@ export interface TaskRowProps {
   reserveLead?: boolean;
   /** The one row on the page that is the answer. Sets the title one step up. */
   emphasis?: boolean;
+  /**
+   * This row's place in a queue you have COMMITTED to, drawn as a two-digit
+   * mono index at the far left.
+   *
+   * A structural device has to encode something true, and a rank is the
+   * strongest claim a list can make: it says these rows are one ordered
+   * sequence. So it is per-caller and never automatic — Today numbers the
+   * committed work and deliberately leaves the free-time offer unnumbered,
+   * because an offer is work nobody has agreed to and a shared sequence across
+   * the two would assert they are one queue.
+   *
+   * `null` RESERVES the column and prints nothing — the same move `reserveLead`
+   * makes, for the same reason. An unnumbered section sitting between two
+   * numbered ones would otherwise pull its titles 20px left of the rows above
+   * and below it, and a ragged left edge is exactly what a page arguing that it
+   * is a measured object cannot have. Withholding the NUMBER is the claim;
+   * withholding the COLUMN is a layout accident.
+   *
+   * `aria-hidden`: the index is a POSITION, and a list already conveys position
+   * to a screen reader. Reading "zero one" before every title is noise.
+   */
+  index?: number | null;
 }
 
 /**
@@ -57,6 +79,7 @@ export function TaskRow({
   completed = false,
   reserveLead,
   emphasis,
+  index,
 }: TaskRowProps) {
   const titleCls = `block truncate ${emphasis ? 'text-lead' : 'text-ui'} ${
     completed ? 'line-through text-muted' : emphasis ? 'text-ink' : 'text-ink-soft'
@@ -68,6 +91,16 @@ export function TaskRow({
         onOpen ? 'hover:bg-hover' : ''
       }`}
     >
+      {index !== undefined && (
+        <span
+          data-row-index
+          aria-hidden="true"
+          className="w-[20px] flex-none font-mono text-micro text-faint tabular-nums"
+        >
+          {index === null ? '' : String(index).padStart(2, '0')}
+        </span>
+      )}
+
       {lead && <span data-row-lead className="relative z-10 flex-none">{lead}</span>}
       {!lead && reserveLead && (
         /* The reserved column stays below the overlay: it has no control to raise, and raising an empty span would carve a dead patch out of the row's own click target. */

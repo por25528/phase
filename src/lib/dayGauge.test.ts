@@ -146,6 +146,7 @@ describe('dayGauge', () => {
     })!;
 
     expect(g.spentFrac).toBe(0);
+    expect(g.nowMinute).toBeNull();
     // 06:40 is not a position on a 09:00–18:00 scale, and pinning the marker to
     // the left edge would say the day had begun.
     expect(g.nowFrac).toBeNull();
@@ -167,6 +168,8 @@ describe('dayGauge', () => {
 
     near(g.nowFrac, 460 / 540);
     near(g.spentFrac, 460 / 540);
+    // The legend beside the marker reads the minute, not the fraction back.
+    expect(g.nowMinute).toBe(1000);
   });
 
   it('dims nothing and marks nothing on a day that is not today', () => {

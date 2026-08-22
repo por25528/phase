@@ -570,7 +570,7 @@ export function App() {
 
       {/* Main */}
       {/* Bottom padding clears the mobile tab bar; it is absent from md up. */}
-      <main className="flex-1 min-w-0 pb-[60px] md:pb-0">
+      <main className="flex-1 min-w-0 pb-[60px] md:pb-0 flex flex-col">
         {hydration === 'error' ? (
           <div className="max-w-[520px] mx-auto mt-[80px] px-[24px] text-center">
             <div className="text-h1 font-semibold mb-[10px]">
@@ -595,7 +595,12 @@ export function App() {
             <div className="text-lead text-muted">Opening your local database…</div>
           </div>
         ) : view === 'today' ? (
-          <div className="w-full px-[16px] sm:px-[36px] py-[22px]">
+          /* Full-bleed, and the ONLY view that gets the region's leftover
+             height. Today's frame draws its own margins — hatched gutters
+             bounded by a hairline — so the page padding every other view wants
+             would sit outside the frame as a band of nothing, and the hatched
+             tail under the last row needs a height to grow into. */
+          <div className="w-full flex-1 min-h-0 flex flex-col">
             <Today onOpenSettings={actions.openSettings} onCapture={openTaskCapture} />
           </div>
         ) : view === 'plan' ? (
