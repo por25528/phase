@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { minuteToPx, PX_PER_MINUTE, Z_BLOCK, Z_BLOCK_REVEALED } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
-import { projectBlockClass } from '../../lib/projectColour';
+import { projectAccentClass, projectTintClass } from '../../lib/projectColour';
 import type { PlanDragData } from './dropTarget';
 import { containerDragAttributes } from '../../lib/dragAttributes';
 import { IconCheck, IconX } from '../../components/Icons';
@@ -106,10 +106,24 @@ export function EventBlock({
       // The block's own name. Without it the accessible name fell back to the
       // concatenation of its children — "pset Complete pset Unschedule pset".
       aria-label={`${block.title}, ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}`}
+      /*
+       * `bg-panel` is an OPAQUE ground, and the tint is a layer over it.
+       *
+       * A block's colour has always been an alpha (12% light, 22% dark), which
+       * was fine over a plain column. The hours outside the working window are
+       * `.hatch` now, so an alpha there composited over a 45° stripe and the
+       * block read as texture rather than as an object sitting on the sheet.
+       * Painting the ground first also puts the hue on exactly the background
+       * `projectColour.test.ts` measures its contrast against.
+       *
+       * `border-line-soft` on the three remaining sides for the same reason: a
+       * block whose only edge was its left accent had no visible end, so a
+       * 30-minute sitting and the gap under it were one shape.
+       */
       className={`group absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] border ${
         isBusy
           ? 'bg-hover border-line-2 text-muted italic'
-          : `border-transparent border-l-[3px] ${projectBlockClass(block.goalId ?? null)} text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? 'border-solid' : 'border-dashed border-line-2'} cursor-grab`
+          : `bg-panel border-line-soft border-l-[3px] ${projectAccentClass(block.goalId ?? null)} text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? 'border-solid' : 'border-dashed border-line-2'} cursor-grab`
       } ${isDragging ? 'opacity-40' : ''} ${revealed ? 'ring-2 ring-inset ring-accent' : ''}`}
       style={{
         top: `${top}px`,
@@ -120,15 +134,25 @@ export function EventBlock({
       }}
       title={`${block.title} · ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}${block.estimated ? '' : ' · no estimate'}`}
     >
+      {/* The project tint, over the opaque ground and under everything else.
+          Clipped by the root's own `overflow-hidden`, so it takes the corners
+          without restating the radius. */}
+      {!isBusy && (
+        <div
+          aria-hidden="true"
+          className={`absolute inset-0 pointer-events-none ${projectTintClass(block.goalId ?? null)}`}
+        />
+      )}
+
       {/* Below two lines' worth of height, collapse to `9am Title` on one row
           rather than rendering a title with its time cut off. */}
       {compact ? (
-        <div className="truncate">
+        <div className="relative truncate">
           <span className="text-muted text-tiny tabular-nums mr-[4px]">{clockLabel(block.startMin)}</span>
           <span title={block.title} className="font-medium">{block.title}</span>
         </div>
       ) : (
-        <>
+        <div className="relative">
           {/* A tall block has room to wrap; `truncate` clipped a long title to
               one line and left the space below it empty. */}
           <div className="font-medium line-clamp-3">{block.title}</div>
@@ -138,7 +162,7 @@ export function EventBlock({
           <div className="truncate text-ink-soft text-tiny tabular-nums">
             {clockLabel(block.startMin)} – {clockLabel(block.endMin)}
           </div>
-        </>
+        </div>
       )}
       {onComplete && !isBusy && (
         <button
@@ -220,6 +244,7 @@ function ResizeHandle({
 
   return (
     <div
+      data-testid="resize-handle"
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
@@ -242,8 +267,20 @@ function ResizeHandle({
         setStartY(null);
         onPreview(null);
       }}
-      className="absolute left-0 right-0 bottom-0 h-[6px] cursor-ns-resize touch-none"
+      className="group/grip absolute left-0 right-0 bottom-0 h-[8px] cursor-ns-resize touch-none"
       aria-hidden="true"
-    />
+    >
+      {/*
+        The grip is a DECORATION, not the control — the 8px strip around it is
+        always live, on touch as much as on a mouse, so this is the one case
+        the `.quiet-control` rule explicitly exempts: `pointer-events-none`,
+        nothing to click, and a 24px interactive floor imposed on something
+        that is not interactive would be taller than the shortest block.
+        `designScale.test.ts` carries that exemption in words.
+      */}
+      <span
+        className="absolute left-1/2 -translate-x-1/2 bottom-[2px] h-[3px] w-[20px] rounded-full bg-ink-soft opacity-0 transition-opacity duration-150 group-hover:opacity-70 pointer-events-none"
+      />
+    </div>
   );
 }

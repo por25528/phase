@@ -18,14 +18,25 @@ export const PROJECT_COLOURS = 6;
  * 12–22% wash clears AA comfortably, whereas colouring the text to match would
  * land around 4.2:1 and fail it.
  */
-const BLOCK_CLASSES = [
-  'bg-proj-0/12 dark:bg-proj-0/22 border-l-proj-0',
-  'bg-proj-1/12 dark:bg-proj-1/22 border-l-proj-1',
-  'bg-proj-2/12 dark:bg-proj-2/22 border-l-proj-2',
-  'bg-proj-3/12 dark:bg-proj-3/22 border-l-proj-3',
-  'bg-proj-4/12 dark:bg-proj-4/22 border-l-proj-4',
-  'bg-proj-5/12 dark:bg-proj-5/22 border-l-proj-5',
+const TINT_CLASSES = [
+  'bg-proj-0/12 dark:bg-proj-0/22',
+  'bg-proj-1/12 dark:bg-proj-1/22',
+  'bg-proj-2/12 dark:bg-proj-2/22',
+  'bg-proj-3/12 dark:bg-proj-3/22',
+  'bg-proj-4/12 dark:bg-proj-4/22',
+  'bg-proj-5/12 dark:bg-proj-5/22',
 ] as const;
+
+const ACCENT_CLASSES = [
+  'border-l-proj-0',
+  'border-l-proj-1',
+  'border-l-proj-2',
+  'border-l-proj-3',
+  'border-l-proj-4',
+  'border-l-proj-5',
+] as const;
+
+const BLOCK_CLASSES = TINT_CLASSES.map((tint, i) => `${tint} ${ACCENT_CLASSES[i]}`);
 
 /**
  * A loose task belongs to no project. Inventing a colour for it would assert a
@@ -51,6 +62,29 @@ export function projectColourIndex(goalId: string): number {
 /** Fill plus left rail for a block belonging to `goalId` (null ⇒ loose task). */
 export function projectBlockClass(goalId: string | null): string {
   return goalId === null ? NEUTRAL : BLOCK_CLASSES[projectColourIndex(goalId)];
+}
+
+/**
+ * The same two facts, separately, for a caller that has to paint them on
+ * DIFFERENT elements.
+ *
+ * `EventBlock` is the one: a block's tint is an alpha over whatever is behind
+ * it, and what is behind it on the week grid is now the `.hatch` marking the
+ * hours outside the working window. A 12% wash over a stripe reads as texture
+ * rather than as an object, so the block paints an opaque ground first and
+ * lays the tint over it — which is also the condition `projectColour.test.ts`
+ * measures these hues against, since it checks their contrast on the PANEL.
+ *
+ * Both are derived from the same array `projectBlockClass` joins, so a hue can
+ * never disagree with itself about which element it is on. Anywhere the two
+ * belong together (`MonthCell`) keeps spending the joined form.
+ */
+export function projectTintClass(goalId: string | null): string {
+  return goalId === null ? 'bg-panel' : TINT_CLASSES[projectColourIndex(goalId)];
+}
+
+export function projectAccentClass(goalId: string | null): string {
+  return goalId === null ? 'border-l-line-2' : ACCENT_CLASSES[projectColourIndex(goalId)];
 }
 
 /**

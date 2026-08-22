@@ -369,15 +369,21 @@ describe('type roles', () => {
  * way. Class order is arbitrary, so the guard watches the revealing variant
  * anywhere on the line and covers opacity, visibility and display respellings.
  *
- * The survivor is a decorative drag hint: `pointer-events-none`, nothing to
- * click, and giving it `.quiet-control` would impose a 24px interactive
- * target on something that is not interactive.
+ * The survivors are decorative hints: `pointer-events-none`, nothing to click,
+ * and giving either `.quiet-control` would impose a 24px interactive target on
+ * something that is not interactive — which in `EventBlock`'s case is taller
+ * than the shortest block the grid draws. The block's resize CONTROL is the
+ * 8px strip the grip sits inside, and that strip is always live, on touch as
+ * much as on a mouse; only the pill drawn on it appears on hover.
  */
 describe('hover-revealed controls', () => {
   it('use .quiet-control rather than a hand-rolled reveal', () => {
-    const hits = offenders(/group-(?:hover|focus-within)[^\s"'`]*:(?:opacity-100|visible|block|flex)/g)
+    const hits = offenders(/group-(?:hover|focus-within)[^\s"'`]*:(?:opacity-100|opacity-70|visible|block|flex)/g)
       .map((h) => h.split(':')[0]);
-    expect([...new Set(hits)].sort()).toEqual(['views/plan/sidebar/Habits.tsx']);
+    expect([...new Set(hits)].sort()).toEqual([
+      'views/plan/EventBlock.tsx',
+      'views/plan/sidebar/Habits.tsx',
+    ]);
   });
 });
 

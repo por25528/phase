@@ -118,6 +118,20 @@ describe('telling elapsed from available at a glance', () => {
     }));
     expect(document.querySelector('[data-testid="now-line-2026-07-15"]')).toBeNull();
   });
+
+  // `accent` means ACTION here — it is the drop-target tint and the colour of
+  // every primary control — so a permanent accent rule across one column read
+  // as something to click. `warn` is the clock's colour, and the indicator
+  // stays a hairline precisely so it does not read as an error either.
+  it('draws the now-line in warn, not accent', () => {
+    render(createElement(DayColumn, {
+      date: '2026-07-15', isToday: true, availabilityWindow: WINDOW,
+      nowMinute: 600, onCreate: vi.fn(), children: null,
+    }));
+    const line = document.querySelector('[data-testid="now-line-2026-07-15"]');
+    expect(line?.className).toContain('border-warn');
+    expect(line?.className).not.toContain('border-accent');
+  });
 });
 
 describe('when the day refuses work', () => {

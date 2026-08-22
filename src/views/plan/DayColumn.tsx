@@ -105,10 +105,21 @@ export function DayColumn({
         />
       )}
 
+      {/*
+        The current minute, as a hairline across today and nothing else.
+        `warn`, not `accent`: accent means ACTION in this app and it is already
+        the colour of a drop target and of every primary control, so a
+        permanent accent rule across one column read as something to click. The
+        clock is not an error either, which is why it is a HAIRLINE and a dot
+        rather than a filled band — the same restraint every calendar shows it
+        with. Its other half is the dot in the time gutter (`WeekGrid`), which
+        is what makes the line readable when today's column is scrolled out of
+        view sideways.
+      */}
       {isToday && nowMinute !== null && (
         <div
           data-testid={`now-line-${date}`}
-          className="absolute left-0 right-0 h-0 border-t border-accent pointer-events-none"
+          className="absolute left-0 right-0 h-0 border-t border-warn pointer-events-none"
           style={{ top: `${minuteToPx(nowMinute)}px`, zIndex: Z_NOW_LINE }}
           aria-hidden="true"
         />
