@@ -35,8 +35,8 @@ commit, and a body that silently destroys your typing if you click it.
 ### The spine
 
 The `border-l-[3px]` project accent becomes a drawn element: a 3px column at `left-0`,
-full height, in the project hue, **capped** with an 8px hairline tick in the same hue at
-the top and bottom edge. That is the whole aesthetic move. A coloured border says "this
+full height, in the project hue, **capped** with a 9×2px tick in the same hue at the top
+and bottom edge (1px was invisible at 1x — see the addendum). That is the whole aesthetic move. A coloured border says "this
 belongs to project X"; a capped spine says "this span runs from here to here, and it
 belongs to project X" — the second fact is the one a calendar exists to state, and it is
 the reading a dimension line on a technical drawing gives.
@@ -60,17 +60,49 @@ title must stay the loudest thing in the block.
 
 | Height | Layout |
 | --- | --- |
-| `≥ FOOTER_BLOCK_PX` (56) | Title (`line-clamp-3`), then a `border-t border-line-soft` **footer rule** with two cells: `09:00 – 10:30` mono on the left, `1h 30m` (`fmtMinutes`) `text-muted` on the reading edge |
-| 40–56 | Title + mono span. No rule, no duration |
-| `< COMPACT_BLOCK_PX` (40) | One line: `09:00 · Title`, mono time |
-
-The footer is the `RuleHeader` grammar restated inside a block — a hairline with a fact
-at each end — and it is what makes room for the duration, which is stated nowhere on a
-block today. It renders only where there is height for it: a cell that has to sit on the
-title is worse than no cell.
+| `≥ FOOTER_BLOCK_PX` (56) | Title (`line-clamp-3`), then a `border-t border-line-soft` **footer rule** carrying the start, `9am`, in mono |
+| 40–56 | Title + the same mono start. No rule |
+| `< COMPACT_BLOCK_PX` (40) | One line: `9am · Title` |
 
 The footer's negative margins pull the rule out to the block's own edges, so it reads as
 a division of the block rather than a line drawn inside its padding.
+
+#### What the footer states, and what the width budget allowed
+
+**This section was rewritten after measuring, and it overturns the two-cell design above
+it.** The original called for the `RuleHeader` grammar restated inside a block — the span
+on the left, `1h 30m` on the reading edge. A real week column cannot hold it.
+
+The grid is `min-w-[780px]`, less the 46px axis, over seven days: **~105px a column**, and
+after the 2px lane insets, the borders and the padding, **84px inside a block**. Measured
+in Electron against the real stylesheet:
+
+| Content | Needs | Verdict |
+| --- | --- | --- |
+| `9am – 10:30am` alone | 86px | clips by 2 |
+| `10:15am – 11:45am` alone | 113px | clips badly — and this is what SHIPS today |
+| span + `1h 30m` | span gets 39px | clips on every block |
+| `9am` alone | 20px | fits |
+| `12:45pm` alone | 46px | fits |
+
+So both richer forms lost, and the two facts they carried are both **drawn rather than
+written**: the end is where the bar's bottom edge meets the hour axis, and the length is
+the bar's height, at one pixel per minute. Spending the narrowest cell on the screen to
+restate the geometry badly is the trade this surface must not make. The start is the one
+fact the drawing states imprecisely — you can see roughly where a bar begins, but `9:15`
+versus `9:20` needs the number.
+
+The end and the length went to the **tooltip and the accessible name**, where there is
+room and they cost nothing.
+
+This also made the block uniform: the compact layout has always printed the start alone,
+so the taller layouts moved *to* that vocabulary rather than away from it, and the block
+now reads one way at every height instead of switching at 56px.
+
+The left padding is **8px, measured**: at 10px the start still fit but nothing else did,
+and 8 clears the 3px spine by five. `blockPadCls` and `blockFootCls` in `blockChrome.tsx`
+hold both, because the bar, the ghost and the composer all draw them and a rule that
+reached the edge on two of three is the drift that file exists to prevent.
 
 ### What does not change
 
@@ -87,8 +119,9 @@ their `.quiet-control` rules, the `revealed` ring, `assignLanes` geometry, every
 
 `DragOverlay` renders `BlockGhost` (new, `src/views/plan/BlockGhost.tsx`) — the block's
 own chrome at its true height (`durationMin * PX_PER_MINUTE`), with `shadow-today`,
-`border-accent`, and no tilt. Its time line is **live**: it reads the resolved start,
-not the title alone.
+`border-accent`, and no tilt. Its time line is **live**: it reads the resolved start, and
+falls back to the LENGTH when there is no resolution — the ghost is never blank, and
+"1h 30m, nowhere yet" is truer than a time it may not get.
 
 A row dragged from the backlog rail has no block to replicate, so it gets the same ghost
 built from its `PlanDragData` — `title` and `durationMin` are both already on the drag
@@ -98,8 +131,8 @@ payload for exactly this kind of use.
 
 `LandingOutline` (new, `src/views/plan/LandingOutline.tsx`) draws in the hovered column
 at the resolved slot: `border border-dashed border-accent bg-accent/10`, the same
-vocabulary `DayCanvas`'s draw-preview already uses, with the span in mono accent at its
-top-left.
+vocabulary `DayCanvas`'s draw-preview already uses, with the resolved START in mono accent
+at its top-left — the same fact, and the same width reason, as the bar's own footer.
 
 It shows the **resolved** slot, not the raw aim. A preview that showed the aim would
 disagree with the write the moment the day has anything on it, and "the preview and the
@@ -164,9 +197,20 @@ no project yet and the spine is where the project hue will land), the same paddi
 same 12px title, and the span moved down onto a **footer rule** — where the block will
 keep it.
 
-The footer's reading edge carries `↵ add · esc`, in mono `text-micro text-muted`. This is
-the move `dialogRuleHint` already makes: the affordance becomes a sentence. Today the
-composer documents neither of its two exits.
+`↵ add · esc` states the two exits, which the composer documented neither of. It is the
+move `dialogRuleHint` already makes: the affordance becomes a sentence.
+
+It sits at the **foot of the body**, not on the rule's reading edge where every other
+convention in this app would put it — for the width reason above. The rule has room for
+exactly one mono cell, and the span wins it, because the composer's job is to prefigure
+the bar it becomes. So the hint takes the dead space instead, which is the space this
+whole change is about. `text-faint`, because it is an instruction and not a value.
+
+The composer takes **no spine**, and keeps the padding that would hold one. It already
+wears `border-accent` on all four sides — that is what says "you are editing this" — and
+an accent spine inside an accent border stacked two marks of one colour into a heavy
+black edge that read as a rendering fault. The gap stays, so the title sits at exactly
+the x the bar's title will, and committing draws the spine into a space already reserved.
 
 Below `FOOTER_BLOCK_PX` the composer collapses to one row — field and span side by side,
 no rule, no hint — the same threshold the block uses.
@@ -255,3 +299,40 @@ instrument voice. It stays `pointer-events-none` under a live 8px strip — the 
 - **No landing outline in month mode.** A month cell has no time axis, so there is no slot
   to outline — the drop aims at `aimFor(date, ...)` and `resolveSlot` chooses the hour.
   The column tint is the whole feedback there, as now.
+
+
+---
+
+## Addendum — what building it changed
+
+Everything here was found by measuring or screenshotting, not by review, and each one
+overturned something argued for above.
+
+1. **The duration cell, and then the end time, came off the footer.** See the width
+   budget above. The spec asked for two cells; the column has room for one, and the
+   honest occupant is the start.
+2. **The composer's spine came off**, and its hint moved off the rule. Both for the same
+   two reasons: colour stacking, and the one-cell budget.
+3. **The spine's caps went from 1px to 2px, and 8px to 9px wide.** At a hairline they
+   were invisible at 1x — and the caps are the entire difference between a dimension line
+   and a coloured edge. Losing them loses the idea.
+4. **`flex-1 min-h-0` and `line-clamp-3` cannot share an element.** The clamp needs
+   `display:-webkit-box` and the fill needs a flex item; with both, a four-line title
+   rendered four lines with an ellipsis on the third. `mt-auto` on the footer was not the
+   fix either — it needs free space to distribute and the container was hugging content.
+   The answer is two elements, each doing one job.
+5. **A busy block now takes the same left padding as a work block**, though it carries no
+   spine: the footer rule's negative margin is written against that inset, and a calendar
+   event's title belongs at the same x as every bar beside it.
+6. **Two bugs in the new code, caught before they shipped.** A bare `onPointerDown` on the
+   block sits *after* the `{...listeners}` spread, and later JSX props win — it silently
+   overwrote dnd-kit's activator and killed dragging outright, with no error and no test
+   failure from any assertion about drawing. And the press state was cleared by handlers
+   on the element itself, which never fire once the drag arms and the pointer is
+   elsewhere, so the bar latched 0.6% small forever. Both are pinned by
+   `EventBlock.test.tsx`; the first was mutation-checked.
+7. **`DragOverlay` takes `dropAnimation={null}`.** dnd-kit's default flies the overlay
+   back to the *active node's* rect — where the bar came from — so every successful drop
+   played an animation of the block returning to its old slot, immediately contradicted
+   by the re-render. With the landing outline already at the destination, ending there is
+   the honest thing.

@@ -112,3 +112,33 @@ const SPINE_CLASSES = [
 export function projectSpineClass(goalId: string | null): string {
   return goalId === null ? 'border-line-2' : SPINE_CLASSES[projectColourIndex(goalId)];
 }
+
+/**
+ * The block's dimension-line spine — the project hue as a FILL.
+ *
+ * `projectAccentClass` above is a `border-l-*`, and a border cannot carry the
+ * end caps: a capped spine needs a real element with a `::before`/`::after`
+ * pair, and that element is painted rather than stroked. The two are the same
+ * hue by construction (both index the same palette), so a block cannot show
+ * one colour on its edge and another on its caps.
+ *
+ * Written out in full, as every array in this file is: Tailwind's scanner
+ * reads source TEXT and cannot evaluate `bg-proj-${i}`.
+ *
+ * No alpha. The spine is the one part of a block that states identity rather
+ * than surface — the tint is the wash, and a washed spine at 12% over a washed
+ * body at 12% would be invisible against its own block.
+ */
+const FILL_CLASSES = [
+  'bg-proj-0',
+  'bg-proj-1',
+  'bg-proj-2',
+  'bg-proj-3',
+  'bg-proj-4',
+  'bg-proj-5',
+] as const;
+
+/** Solid fill in `goalId`'s hue (null ⇒ loose task, the neutral line). */
+export function projectFillClass(goalId: string | null): string {
+  return goalId === null ? 'bg-line-2' : FILL_CLASSES[projectColourIndex(goalId)];
+}

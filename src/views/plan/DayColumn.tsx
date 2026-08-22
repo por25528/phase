@@ -60,9 +60,17 @@ export function DayColumn({
       data-date={date}
       role="group"
       aria-label={`${fmtD(date)}${isToday ? ' — today' : ''}${availabilityWindow ? '' : ' — outside working hours'}`}
-      className={`relative min-w-0 overflow-hidden border-l border-line-soft ${
+      /*
+       * The drop target. `bg-accent/5` alone is a wash a person has to look
+       * for; the inset hairline on the leading edge is what makes the column
+       * read as CHOSEN — the same move `RuleHeader`'s tag cell makes, a tinted
+       * field terminated by a real edge rather than a tint fading into the
+       * sheet. The transition is 120ms so the choice registers as a change
+       * rather than as a state the column was always in.
+       */
+      className={`relative min-w-0 overflow-hidden border-l border-line-soft motion-safe:transition-[background-color,box-shadow] motion-safe:duration-[120ms] motion-safe:ease-out ${
         availabilityWindow ? '' : 'hatch'
-      } ${isToday ? 'bg-hover/40' : ''} ${isOver ? 'bg-accent/5' : ''}`}
+      } ${isToday ? 'bg-hover/40' : ''} ${isOver ? 'bg-accent/5 shadow-[inset_2px_0_0_theme(colors.accent/0.55)]' : ''}`}
     >
       {/* Hours outside the working window: hatched, not dimmed. See the note
           above — this is a marking of the day's margin, and the two bands are

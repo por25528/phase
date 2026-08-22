@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { minuteToPx, PX_PER_MINUTE, Z_BLOCK, Z_BLOCK_REVEALED } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
-import { projectAccentClass, projectTintClass } from '../../lib/projectColour';
+import { fmtMinutes } from '../../lib/effort';
+import { SLOT_GRANULARITY_MIN } from '../../lib/slot';
+import { projectFillClass, projectTintClass } from '../../lib/projectColour';
 import type { PlanDragData } from './dropTarget';
 import { containerDragAttributes } from '../../lib/dragAttributes';
 import { IconCheck, IconX } from '../../components/Icons';
+import {
+  BlockSpine, blockFootCls, blockPadCls, blockTimeCls,
+  MIN_BLOCK_PX, COMPACT_BLOCK_PX, FOOTER_BLOCK_PX,
+} from './blockChrome';
 
 /**
  * A block on the grid — either committed work or a calendar event.
@@ -25,14 +31,6 @@ export interface GridBlock {
   /** Owning project, or null for a loose task. Drives the identity colour. */
   goalId?: string | null;
 }
-
-/**
- * Two lines of 13px text plus padding. Google Calendar enforces a comparable
- * floor and switches to an inline `time — title` for sub-30-minute events.
- */
-const MIN_BLOCK_PX = 34;
-/** Below this, there is no room for a second line, so use the inline layout. */
-const COMPACT_BLOCK_PX = 40;
 
 export function EventBlock({
   block, lane, laneCount, onRemove, onComplete, drag, onResize,
@@ -83,6 +81,32 @@ export function EventBlock({
   // same idea as SpanBar's onPreview, just held locally since only this
   // block's geometry needs to react to it.
   const [previewMinutes, setPreviewMinutes] = useState<number | null>(null);
+  /*
+   * The press. dnd-kit's activation constraint is 5px, so a bar does nothing
+   * at all for the first five pixels of a drag — and a surface that answers
+   * late reads as slow even when the drag itself is instant. This is the
+   * cheapest honest answer: the bar acknowledges the pointer on `pointerdown`,
+   * before the sensor has decided anything. It is suppressed once the drag
+   * actually arms (`!isDragging` below), where the ghost's own lift takes over.
+   */
+  const [pressed, setPressed] = useState(false);
+  /*
+   * Released from ANYWHERE. Once dnd-kit arms the drag the pointer is over the
+   * grid rather than over this bar, so a `pointerup` handler on the element
+   * itself never fires and the press would latch — leaving the bar drawn 0.6%
+   * small for the rest of the session. `window`, both events, and only while
+   * something is actually pressed.
+   */
+  useEffect(() => {
+    if (!pressed) return;
+    const clear = () => setPressed(false);
+    window.addEventListener('pointerup', clear);
+    window.addEventListener('pointercancel', clear);
+    return () => {
+      window.removeEventListener('pointerup', clear);
+      window.removeEventListener('pointercancel', clear);
+    };
+  }, [pressed]);
 
   const top = minuteToPx(block.startMin);
   const committedMinutes = block.endMin - block.startMin;
@@ -96,6 +120,42 @@ export function EventBlock({
   // The old form compared a percentage of a variable grid height, so the same
   // 30-minute block was compact on a busy week and not on a quiet one.
   const compact = heightPx < COMPACT_BLOCK_PX;
+  /*
+   * Tall enough for the footer rule — a hairline with the span at one end and
+   * the LENGTH at the other, which is the `RuleHeader` grammar restated inside
+   * a block.
+   *
+   * Gated on height rather than offered always, because a cell that has to sit
+   * on the title is worse than no cell. Below this the span keeps its own
+   * line; below `COMPACT_BLOCK_PX` it shares one with the title.
+   */
+  const hasFooter = heightPx >= FOOTER_BLOCK_PX;
+  /*
+   * What the footer prints: the START, and nothing else.
+   *
+   * Measured against a real week column, twice, and both richer forms lost.
+   * The grid is `min-w-[780px]`, less the 46px axis, over seven days — ~105px a
+   * column, 84px inside a block after the insets, borders and padding. A span
+   * (`9am – 10:30am`) needs 86 and an afternoon one (`10:15am – 11:45am`) needs
+   * 113, so the shipped design already clipped every pm block to `12:45pm – 2:…`
+   * and a duration cell beside it would have clipped every block at all.
+   *
+   * A start alone needs 46 at its widest and therefore never clips — and the
+   * two facts it drops are both DRAWN rather than written. The end is where the
+   * bar's bottom edge meets the hour axis; the length is the bar's height, at
+   * one pixel per minute. Writing either one into the narrowest cell on the
+   * screen, badly, to restate what the geometry already states exactly, is the
+   * trade this surface should never make.
+   *
+   * It is also what the compact layout below has always done — so the block now
+   * reads the same way at every height, rather than switching vocabularies at
+   * 40 pixels. Both dropped facts are in the tooltip and the accessible name.
+   *
+   * While resizing it states the PREVIEW's start (unchanged) and the badge on
+   * the grip states the new end and length — the two readouts of one gesture,
+   * neither of them guessing.
+   */
+  const startLabel = clockLabel(block.startMin);
 
   return (
     <div
@@ -103,9 +163,21 @@ export function EventBlock({
       id={domId}
       {...(drag ? containerDragAttributes(attributes, { keyboardDraggable: true }) : {})}
       {...(drag ? listeners : {})}
+      /*
+       * COMPOSED with dnd-kit's own handler, never replacing it. A bare
+       * `onPointerDown` here sits after the `{...listeners}` spread, and later
+       * JSX props win — so it would silently overwrite the sensor's activator
+       * and dragging would stop working entirely, with no error anywhere.
+       */
+      onPointerDown={drag ? (e) => {
+        setPressed(true);
+        listeners?.onPointerDown?.(e);
+      } : undefined}
       // The block's own name. Without it the accessible name fell back to the
       // concatenation of its children — "pset Complete pset Unschedule pset".
-      aria-label={`${block.title}, ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}`}
+      // The LENGTH lives here and in the tooltip, because the footer rule has
+      // no room for it in a ~105px column — see the note on the rule below.
+      aria-label={`${block.title}, ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}, ${fmtMinutes(committedMinutes)}`}
       /*
        * `bg-panel` is an OPAQUE ground, and the tint is a layer over it.
        *
@@ -116,15 +188,36 @@ export function EventBlock({
        * Painting the ground first also puts the hue on exactly the background
        * `projectColour.test.ts` measures its contrast against.
        *
-       * `border-line-soft` on the three remaining sides for the same reason: a
-       * block whose only edge was its left accent had no visible end, so a
-       * 30-minute sitting and the gap under it were one shape.
+       * `border-line-soft` on ALL FOUR sides now. The left edge used to carry
+       * the project hue as a 3px border; it is a drawn SPINE below, because a
+       * border cannot carry the end caps that make a block read as a measured
+       * span rather than as a card with a coloured edge.
        */
-      className={`group absolute rounded-[6px] px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] border ${
+      className={`group absolute rounded-[6px] overflow-hidden text-badge leading-[1.2] border ${
         isBusy
-          ? 'bg-hover border-line-2 text-muted italic'
-          : `bg-panel border-line-soft border-l-[3px] ${projectAccentClass(block.goalId ?? null)} text-ink touch-none ${block.done ? 'opacity-55 line-through' : ''} ${block.estimated ? 'border-solid' : 'border-dashed border-line-2'} cursor-grab`
-      } ${isDragging ? 'opacity-40' : ''} ${revealed ? 'ring-2 ring-inset ring-accent' : ''}`}
+          // The same left inset as a work block, though it carries no spine:
+          // the footer rule's negative margin is written against that inset,
+          // and a calendar event's title belongs at the same x as every bar
+          // beside it rather than 5px to their left.
+          ? `bg-hover border-line-2 text-muted italic ${blockPadCls}`
+          : `bg-panel border-line-soft text-ink touch-none ${blockPadCls} ${
+            block.done ? 'opacity-55 line-through' : ''
+          } ${block.estimated ? 'border-solid' : 'border-dashed border-line-2'} cursor-grab ${
+            // The press and the lift. `motion-safe` rather than a hand-rolled
+            // media query: the whole app's reduced-motion escape hatch is the
+            // block in index.css, and this is one more thing it must reach.
+            'motion-safe:transition-[transform,box-shadow] motion-safe:duration-[110ms] motion-safe:ease-out'
+          } ${pressed && !isDragging ? 'scale-[.994] shadow-card' : ''}`
+      } ${
+        /*
+         * The hole. A bar in the air is not a bar that vanished, so the space
+         * it came from keeps its outline until the drop spends it — and a
+         * dashed outline is exactly what this app already spells a pending
+         * placement with. `opacity-40` (what this replaces) left a ghost of the
+         * bar behind the ghost of the bar.
+         */
+        isDragging ? 'bg-transparent border-dashed border-line-2 [&>*]:opacity-0' : ''
+      } ${revealed ? 'ring-2 ring-inset ring-accent' : ''}`}
       style={{
         top: `${top}px`,
         height: `${heightPx}px`,
@@ -132,7 +225,7 @@ export function EventBlock({
         width: `calc(${width}% - 4px)`,
         zIndex: revealed ? Z_BLOCK_REVEALED : Z_BLOCK,
       }}
-      title={`${block.title} · ${clockLabel(block.startMin)}–${clockLabel(block.endMin)}${block.estimated ? '' : ' · no estimate'}`}
+      title={`${block.title} · ${clockLabel(block.startMin)}–${clockLabel(block.endMin)} · ${fmtMinutes(committedMinutes)}${block.estimated ? '' : ' · no estimate'}`}
     >
       {/* The project tint, over the opaque ground and under everything else.
           Clipped by the root's own `overflow-hidden`, so it takes the corners
@@ -144,24 +237,70 @@ export function EventBlock({
         />
       )}
 
+      {/* The dimension line. A busy block is not yours and states no identity,
+          so it keeps the plain box. */}
+      {!isBusy && <BlockSpine className={projectFillClass(block.goalId ?? null)} />}
+
       {/* Below two lines' worth of height, collapse to `9am Title` on one row
           rather than rendering a title with its time cut off. */}
       {compact ? (
         <div className="relative truncate">
-          <span className="text-muted text-tiny tabular-nums mr-[4px]">{clockLabel(block.startMin)}</span>
+          <span className={`${blockTimeCls} text-muted mr-[4px]`}>{clockLabel(block.startMin)}</span>
           <span title={block.title} className="font-medium">{block.title}</span>
         </div>
       ) : (
-        <div className="relative">
-          {/* A tall block has room to wrap; `truncate` clipped a long title to
-              one line and left the space below it empty. */}
-          <div className="font-medium line-clamp-3">{block.title}</div>
-          {/* The full span, not just the start. A calendar's job is to say how
-              long something takes; the end time was already in the aria-label
-              and the tooltip, so it was known and simply not shown. */}
-          <div className="truncate text-ink-soft text-tiny tabular-nums">
-            {clockLabel(block.startMin)} – {clockLabel(block.endMin)}
+        <div className="relative h-full flex flex-col">
+          {/*
+            TWO elements, and the nesting is the point.
+            A tall block has room to wrap, so the title clamps at three lines
+            rather than truncating to one — but `flex-1 min-h-0` and
+            `line-clamp-3` cannot live on the SAME element: the clamp needs
+            `display:-webkit-box` and the flex sizing needs a flex item, and
+            with both the clamp stopped cutting (a four-line title rendered
+            four lines with an ellipsis on the third).
+            Moving the fill to the footer via `mt-auto` does not work either —
+            it needs free space to distribute, and the container was hugging
+            its content. So the outer div is the flex item that takes the slack
+            and the inner one is the clamp, each doing one job.
+          */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="font-medium line-clamp-3">{block.title}</div>
           </div>
+          {hasFooter ? (
+            /*
+             * The footer rule: a hairline, and the span PINNED to the bottom of
+             * the block rather than floating under the title with the rest of
+             * the height empty beneath it. That is the whole of what this buys,
+             * and it is what turns a bar into a bounded object.
+             *
+             * The negative margins pull it out to the block's own edges, so it
+             * divides the BLOCK rather than drawing a line inside the padding —
+             * a rule that stops short of both edges reads as an underline.
+             *
+             * ONE cell, and that was measured rather than chosen. The design
+             * called for a second cell stating `1h 30m` on the reading edge,
+             * the `RuleHeader` grammar restated inside a block — and a real
+             * week column cannot hold it. A column is ~105px, which leaves 85px
+             * inside the block, and a duration cell takes 46 of them: the span
+             * then had 39px and clipped at `9am – 10:…`, on every block, to
+             * state a figure the block's own HEIGHT already states. The grid is
+             * one pixel per minute, so a 90-minute bar is 90 pixels tall; the
+             * length is the one fact here that is drawn rather than written.
+             * It went to the tooltip and the accessible name instead, where
+             * there is room for it and it costs nothing.
+             */
+            <div className={blockFootCls}>
+              <span className={`${blockTimeCls} text-ink-soft truncate`}>{startLabel}</span>
+            </div>
+          ) : (
+            /* The full span, not just the start. A calendar's job is to say how
+               long something takes; the end time was already in the aria-label
+               and the tooltip, so it was known and simply not shown. */
+            /* The same start, for the same reason — so the block reads one
+               way at every height instead of switching vocabularies at 56px.
+               This layout has no rule, only the height for a second line. */
+            <div className={`${blockTimeCls} text-ink-soft truncate flex-none`}>{startLabel}</div>
+          )}
         </div>
       )}
       {onComplete && !isBusy && (
@@ -206,6 +345,7 @@ export function EventBlock({
       )}
       {onResize && !isBusy && (
         <ResizeHandle
+          startMin={block.startMin}
           startDuration={committedMinutes}
           pxPerMinute={PX_PER_MINUTE}
           onPreview={setPreviewMinutes}
@@ -226,20 +366,45 @@ export function EventBlock({
  * resize against stale closed-over state.
  */
 function ResizeHandle({
+  startMin,
   startDuration,
   pxPerMinute,
   onPreview,
   onResize,
 }: {
+  /** The block's start, so the badge can name the END the drag is aiming at. */
+  startMin: number;
   startDuration: number;
   pxPerMinute: number;
   onPreview: (minutes: number | null) => void;
   onResize: (minutes: number) => void;
 }) {
   const [startY, setStartY] = useState<number | null>(null);
+  /** The live figure, for the badge. Null while the grip is not held. */
+  const [held, setHeld] = useState<number | null>(null);
 
+  /**
+   * Snapped to `SLOT_GRANULARITY_MIN`, which is the grain `resolveSlot`
+   * already rounds every START to.
+   *
+   * Unsnapped this rounded to the minute, so the preview moved a pixel at a
+   * time and the block jittered under the cursor — and it produced lengths
+   * (`47m`) on a grid whose every other figure is a multiple of five. The
+   * store's `clampResize` still has the last word about the next bar; this
+   * only decides which figures the drag can propose.
+   */
   function minutesFor(clientY: number): number {
-    return Math.round(startDuration + (clientY - startY!) / pxPerMinute);
+    const raw = startDuration + (clientY - startY!) / pxPerMinute;
+    return Math.max(
+      SLOT_GRANULARITY_MIN,
+      Math.round(raw / SLOT_GRANULARITY_MIN) * SLOT_GRANULARITY_MIN,
+    );
+  }
+
+  function end(): void {
+    setStartY(null);
+    setHeld(null);
+    onPreview(null);
   }
 
   return (
@@ -254,21 +419,20 @@ function ResizeHandle({
       }}
       onPointerMove={(e) => {
         if (startY == null) return;
-        onPreview(minutesFor(e.clientY));
+        const next = minutesFor(e.clientY);
+        setHeld(next);
+        onPreview(next);
       }}
       onPointerUp={(e) => {
         if (startY == null) return;
         onResize(minutesFor(e.clientY));
-        setStartY(null);
-        onPreview(null);
+        end();
       }}
       onPointerCancel={() => {
         if (startY == null) return;
-        setStartY(null);
-        onPreview(null);
+        end();
       }}
       className="group/grip absolute left-0 right-0 bottom-0 h-[8px] cursor-ns-resize touch-none"
-      aria-hidden="true"
     >
       {/*
         The grip is a DECORATION, not the control — the 8px strip around it is
@@ -277,10 +441,31 @@ function ResizeHandle({
         nothing to click, and a 24px interactive floor imposed on something
         that is not interactive would be taller than the shortest block.
         `designScale.test.ts` carries that exemption in words.
+
+        A flat 22×2 rule rather than the 20×3 pill it was: the block it sits on
+        is a measured object now, and a rounded pill is the one shape on it
+        that states nothing.
       */}
       <span
-        className="absolute left-1/2 -translate-x-1/2 bottom-[2px] h-[3px] w-[20px] rounded-full bg-ink-soft opacity-0 transition-opacity duration-150 group-hover:opacity-70 pointer-events-none"
+        aria-hidden="true"
+        className="absolute left-1/2 -translate-x-1/2 bottom-[2px] h-[2px] w-[22px] bg-ink-soft opacity-0 transition-opacity duration-150 group-hover:opacity-70 pointer-events-none"
       />
+      {/*
+        What the release will commit, stated BEFORE the release.
+        `role="status"` so it is announced rather than merely drawn — the
+        figure is the whole point of holding the grip, and a sighted user reads
+        it off the badge while everyone else was previously told nothing until
+        the toast that follows a refusal.
+      */}
+      {held !== null && (
+        <span
+          role="status"
+          data-testid="resize-badge"
+          className="absolute right-0 bottom-[-2px] translate-y-full rounded-[4px] bg-ink text-paper px-[6px] py-[2px] font-mono text-micro tabular-nums whitespace-nowrap shadow-today pointer-events-none"
+        >
+          → {clockLabel(startMin + held)} · {fmtMinutes(held)}
+        </span>
+      )}
     </div>
   );
 }

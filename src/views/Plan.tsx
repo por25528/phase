@@ -10,9 +10,10 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { useAppStore, actions } from '../state/store';
+import { useAppStore, actions, previewPlacement } from '../state/store';
 import { todayStr, addDays, weekDates, fmtD } from '../lib/dates';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { initialScrollWindow } from '../lib/grid';
@@ -29,6 +30,8 @@ import { useReducedMotion } from '../components/useReducedMotion';
 import { WeekGrid } from './plan/WeekGrid';
 import { DayBlocks } from './plan/DayBlocks';
 import { BlockComposer } from './plan/BlockComposer';
+import { BlockGhost } from './plan/BlockGhost';
+import { LandingOutline } from './plan/LandingOutline';
 import { MonthGrid } from './plan/MonthGrid';
 import { monthCapacity } from './plan/monthCapacity';
 import { ymOfWeek, weekShowingMonth, shiftYm, monthGrid } from '../lib/calendar';
@@ -41,7 +44,7 @@ import { PlanNotice } from './plan/PlanNotice';
 import { PlanSkeleton } from './plan/PlanSkeleton';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
-import { aimMinuteFor, type PlanDragData } from './plan/dropTarget';
+import { aimFromDrag, type PlanDragData } from './plan/dropTarget';
 import type { BacklogItem } from '../lib/backlog';
 
 /**
@@ -263,11 +266,24 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one shot per reveal; see above
   }, [revealNonce]);
 
-  const [dragTitle, setDragTitle] = useState<string | null>(null);
+  /*
+   * What is currently in the air, and where it would land.
+   *
+   * `data` is live for the length of the drag so the day headings can answer
+   * "does this fit" while the block is still moving rather than refusing it
+   * after the drop. `landing` is the resolved slot `previewPlacement` returns
+   * — the minute the WRITE will choose, not the minute the pointer is over —
+   * and it feeds three things at once: the outline drawn in the target column,
+   * the ghost's own time line, and nothing else. One record rather than three
+   * `useState`s because they are one fact and must change together; a ghost
+   * showing a time the outline had already moved off would be the same
+   * disagreement this whole path exists to close.
+   */
+  const [drag, setDrag] = useState<{
+    data: PlanDragData;
+    landing: { date: string; startMin: number; durationMin: number } | null;
+  } | null>(null);
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
-  // Live for the length of a drag, so the day headings can answer "does this fit"
-  // while the block is still in the air rather than refusing it after the drop.
-  const [dragDuration, setDragDuration] = useState<number | null>(null);
   const [showUnestimated, setShowUnestimated] = useState(false);
   /*
    * The block being drawn: a gesture that has landed but not yet been named.
@@ -465,18 +481,64 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   function handleDragStart(e: DragStartEvent) {
     const data = e.active.data.current as PlanDragData | undefined;
-    setDragTitle(data?.title ?? null);
-    setDragDuration(data?.durationMin ?? null);
+    setDrag(data ? { data, landing: null } : null);
+  }
+
+  /*
+   * The landing outline, resolved while the block is still in the air.
+   *
+   * This is the whole of "say where it will land before the release". It runs
+   * the SAME search the drop will (`previewPlacement` → `resolvePlacement` →
+   * `resolveSlot`), so the outline names the minute the write chooses even
+   * when that is not the minute under the pointer — which is every drag over
+   * a day with anything on it.
+   *
+   * Month mode is skipped deliberately: a month cell has no time axis, so
+   * there is no slot to outline. `handleDragEnd` aims those drops at
+   * `aimFor(date, ...)` and lets `resolveSlot` pick the hour, and the column
+   * tint is the whole feedback there — as it was.
+   */
+  function handleDragMove(e: DragMoveEvent) {
+    const data = e.active.data.current as PlanDragData | undefined;
+    if (!data) return;
+    const overId = typeof e.over?.id === 'string' ? e.over.id : null;
+    if (!overId?.startsWith('day:') || planMode === 'month') {
+      setDrag((was) => (was && was.landing ? { ...was, landing: null } : was));
+      return;
+    }
+    const date = overId.slice('day:'.length);
+    const aim = aimFromDrag({
+      rect: e.active.rect.current.translated,
+      scroller: scrollerRef.current,
+      grid: gridRef.current,
+    });
+    const slot = aim === null
+      ? null
+      : previewPlacement(
+        { kind: data.kind, id: data.id, goalId: data.goalId },
+        date,
+        aim,
+        { blockId: data.blockId },
+      );
+    setDrag((was) => {
+      if (!was) return was;
+      const next = slot === null ? null : { date, ...slot };
+      // Same slot, same object identity — a `setState` per pointermove that
+      // changes nothing still re-renders the whole grid, and the grid is
+      // seven columns of blocks.
+      if (was.landing?.date === next?.date
+        && was.landing?.startMin === next?.startMin
+        && was.landing?.durationMin === next?.durationMin) return was;
+      return { ...was, landing: next };
+    });
   }
 
   function handleDragCancel() {
-    setDragTitle(null);
-    setDragDuration(null);
+    setDrag(null);
   }
 
   function handleDragEnd(e: DragEndEvent) {
-    setDragTitle(null);
-    setDragDuration(null);
+    setDrag(null);
     const data = e.active.data.current as PlanDragData | undefined;
     const overId = typeof e.over?.id === 'string' ? e.over.id : null;
     if (!data || !e.over || !overId?.startsWith('day:')) return;
@@ -501,53 +563,24 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
 
     /*
-     * `active.rect.current.translated` is the dragged element's LIVE viewport
-     * rect. dnd-kit sets it to the very `collisionRect` its collision
-     * detection just used to pick this day column, and with a `DragOverlay` —
-     * which this view uses — that is exactly where the ghost is drawn.
-     * Pairing it with a live scroller rect and a live `scrollTop` is
-     * consistent because all three describe the same instant.
+     * The aim, from the same helper `handleDragMove` spends — which is the
+     * point. The outline the user was watching and the write they just
+     * committed have to be resolved from one reading of where the pointer is;
+     * two copies of this arithmetic would drift by a few minutes and look like
+     * rounding rather than a bug.
      *
-     * NOT `initial.top + delta.y`. `delta` is dnd-kit's
-     * `scrollAdjustedTranslate`: `modifiedTranslate` PLUS the scroll delta of
-     * the over-node's scrollable ancestors. The overlay is drawn at the
-     * unadjusted `modifiedTranslate`, so that sum is the ghost's position with
-     * the scroll counted once already — and adding the live `scrollTop` counts
-     * it twice. Two consequences, both silent: dragging from the rail onto a
-     * grid sitting at its 08:00 mount scroll aimed eight hours late, and every
-     * auto-scrolled pixel drifted the aim by a further minute.
-     *
-     * `gridOffsetPx` is `offsetTop`, which is measured against the nearest
-     * positioned ancestor. That is the scroller only because `WeekGrid` gives
-     * it `relative` — see the note there. It is scroll-independent, which is
-     * why it can be read at drop time.
+     * `aimFromDrag` returns null for a release that is not actually over the
+     * calendar. A day column is a grid item of a 1440px-tall grid inside a
+     * 720px scroller and `getBoundingClientRect` is not clipped by an
+     * ancestor's overflow, so `over` is set well above and below the visible
+     * grid; the guard lives in that helper now, with the note explaining why.
      */
-    const scroller = scrollerRef.current;
-    const translated = e.active.rect.current.translated;
-    if (!scroller || !translated) return;
-
-    /*
-     * Refuse a release that is not actually over the calendar.
-     *
-     * A day column is a grid item of a 1440px-tall grid inside a 720px
-     * scroller, and `getBoundingClientRect` — how dnd-kit measures droppables
-     * — is NOT clipped by an ancestor's overflow. Each column's rect therefore
-     * reaches hundreds of pixels above and below the visible grid, across the
-     * week header, the availability banner and the panels beneath it, so
-     * `over` is set for releases that are plainly not on the calendar.
-     *
-     * Not reachable before the grid scrolled: at a fixed height with no
-     * overflow, the column's rect WAS the visible column.
-     */
-    const scrollerRect = scroller.getBoundingClientRect();
-    if (translated.top < scrollerRect.top || translated.top > scrollerRect.bottom) return;
-
-    const aim = aimMinuteFor({
-      draggedTopViewport: translated.top,
-      scrollerTopViewport: scrollerRect.top,
-      scrollTop: scroller.scrollTop,
-      gridOffsetPx: gridRef.current?.offsetTop ?? 0,
+    const aim = aimFromDrag({
+      rect: e.active.rect.current.translated,
+      scroller: scrollerRef.current,
+      grid: gridRef.current,
     });
+    if (aim === null) return;
 
     /*
      * `blockId` is set only when an existing bar is being dragged, so the drop
@@ -573,6 +606,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
       autoScroll
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
@@ -649,13 +683,21 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             scrollWindow={scrollWindow}
             readOnly={isPast}
             dayCapacity={capacity.days}
-            dragDurationMin={dragDuration}
+            dragDurationMin={drag?.data.durationMin ?? null}
             onCreate={(date, span) => setDraft({ date, span })}
             scrollerRef={scrollerRef}
             gridRef={gridRef}
           >
             {(date) => (
               <>
+              {/* Drawn BEFORE the blocks so it sits behind their controls, and
+                  only in the column the drop is currently aimed at. */}
+              {drag?.landing?.date === date && (
+                <LandingOutline
+                  startMin={drag.landing.startMin}
+                  durationMin={drag.landing.durationMin}
+                />
+              )}
               <DayBlocks
                 date={date}
                 items={scheduledByDay.get(date) ?? []}
@@ -706,11 +748,24 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
         </div>
       </div>
 
-      <DragOverlay>
-        {dragTitle != null ? (
-          <div className="px-[9px] py-[6px] rounded-field bg-panel border border-accent shadow-today text-ui text-ink cursor-grabbing max-w-[220px] truncate">
-            {dragTitle}
-          </div>
+      {/*
+        The ghost is the BAR, not a label of it.
+        `dropAnimation={null}`: dnd-kit's default flies the overlay back to the
+        ACTIVE node's rect, which is where the bar CAME FROM — so every
+        successful drop played a 250ms animation of the block returning to its
+        old slot, immediately contradicted by the re-render putting it in the
+        new one. With the landing outline already sitting at the destination
+        under the cursor, the eye has accepted where it is going before the
+        release; the honest thing is to end there rather than to animate a lie.
+      */}
+      <DragOverlay dropAnimation={null}>
+        {drag ? (
+          <BlockGhost
+            title={drag.data.title}
+            durationMin={drag.data.durationMin}
+            goalId={drag.data.goalId}
+            startMin={drag.landing?.startMin ?? null}
+          />
         ) : null}
       </DragOverlay>
     </DndContext>

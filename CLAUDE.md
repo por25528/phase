@@ -118,6 +118,65 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - `spansOn`'s exclude argument is BLOCK ids, never a task id: moving one bar excludes just that bar (its siblings are real occupancy it must work around), while REPLACING a task's placement excludes all of them (they are about to be vacated, and leaving them in makes the drop slide past its own aim). `vacating()` in `store.ts` is the one place that choice is made.
 - **`migrateSlots` runs before `migrateWorkBlocks`.** The first repairs pre-slot data by WRITING the legacy `plannedDay`/`plannedStartMin` pair the second consumes; the other order leaves it nothing to read. `migrateWorkBlocks` is read-time only, with no done-flag and no snapshot — it is idempotent by construction and computes nothing, exactly like `migrateNodeStatus`. It degrades a day-with-no-time to a week commitment rather than inventing an hour.
 - **The week grid is a calendar, and the four things that make one are the clock, the ground, the grip and the gutter.** The CURRENT MINUTE is drawn twice: a hairline across today's column (`DayColumn`) and a dot in the time gutter (`WeekGrid`), both `warn` and never `accent` — accent means ACTION here, it is already the drop-target tint and every primary control, so a permanent accent rule across one column read as something to click; and both stay a hairline and a dot because the clock is not an error either. Two marks rather than one because the grid is `min-w-[780px]` and scrolls sideways, so today's column leaves the screen on any narrow window while the gutter is `sticky`. A BLOCK paints an opaque `bg-panel` ground and lays its project tint over it (`projectTintClass`/`projectAccentClass`, both derived from the arrays `projectBlockClass` joins): the tint is an alpha, the hours outside the working window are `.hatch` now, and an alpha over a 45° stripe reads as texture rather than as an object — the ground also puts the hue on exactly the background `projectColour.test.ts` measures its contrast against. The RESIZE GRIP is a decoration and the 8px strip under it is the control, which is why it may spell `group-hover:opacity-70` where `.quiet-control` is otherwise the rule: a 24px interactive floor on something `pointer-events-none` would be taller than the shortest block the grid draws, and `designScale.test.ts` carries that exemption in words. The GUTTER labels are centred ON their hour rule (`-translate-y-1/2`, over an opaque axis above `Z_RULES`) and stop one short of `hourMarks()` — minute 1440 is the grid's own bottom edge, not an hour of this day, and `clockLabel` renders it `12am+1`. There is NO all-day row: `state.allDayBlocks` is a preference boolean, not a list, and `blocks` is `[]` until a calendar integration lands, so the row would be permanently empty. There is no weekend tint either, so there is nothing for today's tint to be "distinct from" — the hatch already marks whatever the user calls non-working, and a second category of column shading would fight it.
+- **A calendar block is a dimension line, and 84px is the whole budget.** The
+  project hue is a drawn SPINE (`BlockSpine`, `projectFillClass`) rather than a
+  `border-l-[3px]`, capped with a 9×2px tick at each end — a border says "this
+  belongs to project X", a capped spine says "this span runs from HERE to HERE",
+  and the second is the fact a calendar exists to state. 2px, not 1: a hairline
+  cap is invisible at 1x, and the caps are the entire difference between the two
+  readings. Every time on the grid is `blockTimeCls` (mono, `text-micro`,
+  tabular) because a start is a MEASURED FIGURE and mono is already this app's
+  voice for those. **What a block prints is the START, and that was measured
+  rather than chosen**: the grid is `min-w-[780px]` less the 46px axis over
+  seven days, so a column is ~105px and a block has 84px inside it — against 86
+  for `9am – 10:30am` and 113 for `10:15am – 11:45am`, which is why the shipped
+  design already clipped every afternoon bar. A duration cell beside the span
+  left it 39px. Both dropped facts are DRAWN: the end is where the bar's bottom
+  edge meets the hour axis and the length is its height at one pixel per minute,
+  so they went to the tooltip and the accessible name, where there is room. The
+  compact layout had always printed the start alone, so the taller ones moved TO
+  that vocabulary and the block now reads one way at every height. `blockChrome.tsx`
+  holds `blockPadCls` (8px left — clears the 3px spine by five; 10px clipped)
+  and `blockFootCls` (the rule's negative margins mirror that padding, or it
+  reads as an underline), because `EventBlock`, `BlockGhost` and `BlockComposer`
+  all draw them and a rule that reached the edge on two of three is the drift
+  that file exists to prevent. `flex-1 min-h-0` and `line-clamp-3` may never
+  share an element — the clamp needs `display:-webkit-box`, the fill needs a
+  flex item, and with both the clamp stops cutting.
+- **The drag says where it will land, and it says it by asking the store.**
+  `DragOverlay` renders `BlockGhost` — the bar at its true height, not a 220px
+  text pill — and `LandingOutline` draws the RESOLVED slot in the hovered
+  column. Resolved, never the raw aim: `previewPlacement` (`store.ts`) is a dry
+  run that shares one `resolvePlacement` helper with `scheduleNode` and
+  `scheduleTask`, so the outline names the minute the write will choose even
+  when `resolveSlot` slides the bar past occupied work. Views still never call
+  `resolveSlot`. `null` covers item-gone, project-frozen and day-booked-solid
+  identically — all three mean "draw no outline", and the day heading's `full`
+  chip already says the last one in words. `aimFromDrag` (`dropTarget.ts`) is
+  the one reading of where the pointer is, spent by `onDragMove` and
+  `onDragEnd` alike; two copies would drift by minutes and look like rounding.
+  **`dropAnimation={null}` is load-bearing**: dnd-kit's default flies the
+  overlay back to the ACTIVE node's rect — where the bar came FROM — so every
+  drop animated the block returning to its old slot, contradicted a frame later
+  by the re-render. A bar in the air leaves a dashed HOLE rather than a 40%
+  copy of itself, which is `border-dashed`'s third licensed use and is the same
+  sentence as the outline said from the other end.
+- **A composer is the bar it is about to become.** `text-badge` goes on the
+  INPUT and not the wrapper: `index.css` sets `input, select { font-size: 14px }`
+  in `@layer base`, inheritance loses to any rule that matches the element, and
+  the title being typed rendered 14px while the bar it became rendered 12px —
+  the one field on the calendar that did not measure like the calendar. Its
+  `onPointerDown` calls `preventDefault` as well as `stopPropagation`, or a
+  press on the composer's own body moves focus off the field, `onBlur` fires
+  and everything typed is discarded; blur still cancels, which is what makes
+  this a one-click gesture, and what was fixed is that the composer counted as
+  "somewhere else". It takes NO spine and keeps the padding that would hold one
+  — an accent spine inside an accent border stacks two marks of one colour into
+  a black edge — so committing draws the spine into a space already reserved.
+  `↵ add · esc` sits at the foot of the BODY rather than on the rule's reading
+  edge, because the rule has room for exactly one mono cell and the span wins
+  it; the hint takes the dead space instead, which is the space the whole change
+  is about.
 - Layout that depends on the Plan sidebar must measure the RAIL, not the viewport: it is 249px at every viewport ≥768px. Use `@container` on `.hb-rail`.
 - **One filled control per screen, and it lives in the app header.** `App.tsx` says of its `+ New task`: "The one filled control in the header, and the only one that writes anything." That was false on Plan for as long as `Habits.tsx` rendered three `bg-ink text-paper` buttons inside the sidebar — and the loudest button on the whole page was `+ Habit`, the least important action on it. All three are outlined now (`border-line-2 bg-panel text-ink-soft`). A SELECTED SEGMENT is not a commit button and keeps its fill: the habit cadence toggle stays `bg-ink text-paper` for the active option, because that is how a segmented control says which one is chosen.
 - Visual identity is locked — don't restyle unless explicitly asked. Colours come from the theme tokens: `designScale.test.ts` fails the build on a literal hex, on an arbitrary `text-[Nrem]`, and on a `fontSize` key that collides with a `colors` key (Tailwind emits both as `text-<key>`, and the colour silently wins). Corner radii are the same kind of build-failing rule: the permitted set is `[4px]`, `[6px]`, `rounded-field` (8px), `rounded-card` (12px) and `rounded-full` — `[11px]` was a fourth near-duplicate and is retired. It also pins the type roles. **`font-disp` (Fraunces) is display-only** and reaches exactly three places: the wordmark, `TaskPage`'s own title, and headings typed inside a note (`.note-prose > div > h1/h2/h3`). The guard sees only the first two — it scans `.tsx`/`.ts`, and the third lives in `index.css` — so a reader taking its allowlist as the whole story will undercount by one. **All-caps travels with `font-mono`**, or is one of the three weekday strips; uppercase in the UI face is a build failure. **A section label is `sectionLabel`** from `components/sectionLabel.ts` — mono, uppercase, `text-micro`, `tracking-[.11em]` — and it is a constant precisely because that string was hand-copied at 36 sites before it was one. That file now holds three voices and holds them for a MECHANICAL reason as well as a stylistic one: it is the only file the guard lets spell `uppercase`, so a new all-caps voice is declared there and imported, never hand-rolled. `ruleTag` is the label set INTO a rule (`text-ink` semibold — louder than `sectionLabel`, which is the trade the cell's own edges buy), and `stampLabel` is Today's date stamp, deliberately carrying NO colour because its two cells invert against each other. The type scale's top step is `mast` (34px), Today's masthead, and the name is the point: `display` would read as "use the display face here" to the next person, which is the exact mistake the `font-disp` guard exists to catch — this headline is deliberately Public Sans. `page` (25.9px) stays what it is, a DOCUMENT's own title. Five sites that share the old class string are NOT labels (two buttons, two Timeline row labels, `AssistantSurface`'s "Focus" caption) and keep it written out. And `border-dashed` is reserved for the drop preview and for a calendar block whose height is a guessed hour — spending it on ordinary empty states is how the drop signal stops meaning anything.

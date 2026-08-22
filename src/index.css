@@ -472,6 +472,23 @@
   animation: assistant-sendoff-enter 160ms ease-out both;
 }
 
+/* The bar leaving the sheet.
+   ---------------------------------------------------------------------------
+   A ghost that appears already lifted has no lift, so the scale animates FROM
+   rest — 1.8% and 130ms, which is the smallest move that reads as "picked up"
+   without the ghost measuring visibly wider than the column it will land in.
+   Paired with the `.pressed` scale in EventBlock, which fires on pointerdown
+   and answers BEFORE dnd-kit's 5px activation threshold: a surface that does
+   nothing for the first five pixels reads as slow even when it is not.
+
+   Declared here rather than in tailwind.config.js's `keyframes` because it is
+   spent once, by BlockGhost, through an arbitrary `animate-[...]` — and the
+   reduced-motion block below is what has to reach it. */
+@keyframes block-lift {
+  from { transform: scale(1); }
+  to { transform: scale(1.018); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

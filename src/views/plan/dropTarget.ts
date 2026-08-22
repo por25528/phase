@@ -68,3 +68,47 @@ export function aimMinuteFor(input: AimInput): number {
   const minute = pxToMinute(contentY);
   return Math.round(Math.min(Math.max(minute, DAY_START_MIN), DAY_END_MIN));
 }
+
+/**
+ * The minute a live drag is aiming at, or null when the release is not
+ * actually over the calendar.
+ *
+ * ONE function, spent by `onDragMove` (which draws the landing outline) and by
+ * `onDragEnd` (which writes). They must not be able to disagree about where
+ * the pointer is: an outline resolved from one basis and a drop resolved from
+ * another is the same class of defect as a preview that recomputes its slots
+ * at apply time, and it would show up as the bar landing a few minutes off
+ * where the outline promised — small enough to look like rounding and never be
+ * reported.
+ *
+ * `rect` is `active.rect.current.translated`, dnd-kit's live `collisionRect`
+ * and, with a `DragOverlay`, exactly where the ghost is drawn.
+ *
+ * The null case is the scroller-bounds guard, and it is not a nicety: a day
+ * column is a grid item of a 1440px-tall grid inside a 720px scroller, and
+ * `getBoundingClientRect` — how dnd-kit measures droppables — is NOT clipped by
+ * an ancestor's overflow. Each column's rect therefore reaches hundreds of
+ * pixels above and below the visible grid, across the week header and the
+ * panels beneath it, so `over` is set for releases plainly not on the calendar.
+ */
+export function aimFromDrag(input: {
+  /** `active.rect.current.translated` — null before the first move. */
+  rect: { top: number } | null;
+  /** The grid's scroller, live. */
+  scroller: HTMLElement | null;
+  /** The hour grid inside it. `offsetTop` is scroll-independent. */
+  grid: HTMLElement | null;
+}): number | null {
+  const { rect, scroller, grid } = input;
+  if (!rect || !scroller) return null;
+
+  const scrollerRect = scroller.getBoundingClientRect();
+  if (rect.top < scrollerRect.top || rect.top > scrollerRect.bottom) return null;
+
+  return aimMinuteFor({
+    draggedTopViewport: rect.top,
+    scrollerTopViewport: scrollerRect.top,
+    scrollTop: scroller.scrollTop,
+    gridOffsetPx: grid?.offsetTop ?? 0,
+  });
+}

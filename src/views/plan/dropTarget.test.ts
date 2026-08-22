@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { aimMinuteFor } from './dropTarget';
+import { aimFromDrag, aimMinuteFor } from './dropTarget';
 import { minuteToPx } from '../../lib/grid';
 
 /**
@@ -90,5 +90,65 @@ describe('aimMinuteFor', () => {
 
   it('agrees with minuteToPx — pixels and minutes are the same number only because PX_PER_MINUTE is 1', () => {
     expect(aim(SCROLLER_TOP + HEADER + minuteToPx(540))).toBe(540);
+  });
+});
+
+/**
+ * `aimFromDrag` is the extraction that stops `onDragMove` and `onDragEnd`
+ * disagreeing about where the pointer is.
+ *
+ * The landing outline the user watches and the write they commit have to be
+ * resolved from ONE reading. Two copies of this arithmetic would drift by a
+ * few minutes — small enough to look like rounding, and therefore never
+ * reported.
+ */
+describe('aimFromDrag', () => {
+  function scroller(over: Partial<{ top: number; bottom: number; scrollTop: number }> = {}) {
+    const { top = 100, bottom = 820, scrollTop = 0 } = over;
+    return {
+      getBoundingClientRect: () => ({ top, bottom }),
+      scrollTop,
+    } as unknown as HTMLElement;
+  }
+  const grid = { offsetTop: 0 } as HTMLElement;
+
+  it('agrees with aimMinuteFor for the same geometry', () => {
+    // The extraction must be behaviour-preserving: this is the same call the
+    // old inline drop handler made, spelled once.
+    const direct = aimMinuteFor({
+      draggedTopViewport: 400,
+      scrollerTopViewport: 100,
+      scrollTop: 240,
+      gridOffsetPx: 0,
+    });
+    expect(aimFromDrag({
+      rect: { top: 400 },
+      scroller: scroller({ top: 100, scrollTop: 240 }),
+      grid,
+    })).toBe(direct);
+  });
+
+  it('refuses a release above or below the visible calendar', () => {
+    // A day column is a grid item of a 1440px-tall grid inside a 720px
+    // scroller, and getBoundingClientRect is NOT clipped by an ancestor's
+    // overflow — so `over` is set well outside the grid a person can see.
+    expect(aimFromDrag({ rect: { top: 40 }, scroller: scroller(), grid })).toBeNull();
+    expect(aimFromDrag({ rect: { top: 900 }, scroller: scroller(), grid })).toBeNull();
+    expect(aimFromDrag({ rect: { top: 400 }, scroller: scroller(), grid })).not.toBeNull();
+  });
+
+  it('answers null before the first move, and with no scroller (month mode)', () => {
+    expect(aimFromDrag({ rect: null, scroller: scroller(), grid })).toBeNull();
+    expect(aimFromDrag({ rect: { top: 400 }, scroller: null, grid })).toBeNull();
+  });
+
+  it('subtracts the hour grid\'s own offset inside the scroller', () => {
+    // `gridOffsetPx` is the sticky day headings. Without it every drag aimed
+    // by the height of that row.
+    const withHeadings = aimFromDrag({
+      rect: { top: 400 }, scroller: scroller(), grid: { offsetTop: 60 } as HTMLElement,
+    });
+    const without = aimFromDrag({ rect: { top: 400 }, scroller: scroller(), grid });
+    expect(without! - withHeadings!).toBe(60);
   });
 });
