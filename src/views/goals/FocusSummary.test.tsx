@@ -66,6 +66,53 @@ describe('the board’s attention signals', () => {
     expect(onToggle).toHaveBeenCalledWith('behind');
   });
 
+  /**
+   * The one signal in the row with a ceiling to draw against, so the one that
+   * gets a gauge. The other four are open-ended counts, and a bar with no
+   * maximum is a decoration.
+   */
+  describe('the focus-slot gauge', () => {
+    const cells = () =>
+      [...document.querySelectorAll('[aria-hidden="true"] > span')];
+
+    it('draws one cell per slot and fills them to the count', () => {
+      mount(model({ slots: { used: 2, limit: 5, goalIds: ['a', 'b'] } } as Partial<Model>));
+      const drawn = cells();
+      expect(drawn).toHaveLength(5);
+      expect(drawn.filter((c) => c.className.includes('bg-fill'))).toHaveLength(2);
+    });
+
+    /**
+     * Over the limit the gauge PEGS rather than growing a sixth cell: the cell
+     * count IS the limit, and a gauge that ran past its own scale would stop
+     * being a limit you can see. The exact overage is what the figure says.
+     */
+    it('pegs rather than growing when the limit is passed', () => {
+      mount(model({ slots: { used: 5, limit: 3, goalIds: ['a'] } } as Partial<Model>));
+      const drawn = cells();
+      expect(drawn).toHaveLength(3);
+      expect(drawn.every((c) => c.className.includes('bg-warn'))).toBe(true);
+      expect(screen.getByRole('button', { name: /Focus: 5 of 3/ })).toBeTruthy();
+    });
+
+    /**
+     * The button's own name already says `2 of 5 focus slots used`. A row of
+     * five divs saying it again is worse than silence.
+     */
+    it('says nothing a screen reader has to hear twice', () => {
+      mount(model({ slots: { used: 2, limit: 5, goalIds: ['a'] } } as Partial<Model>));
+      expect(cells()[0].closest('[aria-hidden="true"]')).toBeTruthy();
+    });
+
+    it('gives the open-ended counts no gauge at all', () => {
+      mount(model({
+        slots: { used: 0, limit: 3, goalIds: [] },
+        behind: { count: 2, goalIds: ['a', 'b'] },
+      } as Partial<Model>));
+      expect(cells()).toHaveLength(0);
+    });
+  });
+
   it('offers a way out once a filter is on', () => {
     const { onClear } = mount(model({ behind: { count: 2, goalIds: ['a', 'b'] } } as Partial<Model>), 'behind');
     fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));

@@ -28,10 +28,51 @@ interface Signal {
   matchCount: number; // clickable only when > 0
   warn?: boolean;
   sub?: string;
+  /** Drawn before the figure. Only `slots` has one — see `WipGauge`. */
+  gauge?: React.ReactNode;
 }
 
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
+}
+
+/**
+ * The Now limit, drawn rather than described.
+ *
+ * `2 of 3 focus slots used` is a sentence you have to read and then do
+ * arithmetic on. The same fact as a row of cells — one per slot, filled to the
+ * count — is a quantity you take in at a glance, and it is the only signal in
+ * this row that HAS a ceiling to draw against. The other four are open-ended
+ * counts and get no gauge, because a bar with no maximum is a decoration.
+ *
+ * `limit` is `nowLimit(scope, tabs)`, so it is `NOW_WIP_LIMIT` on one life and
+ * the SUM of the tabs beside it on `All` — the cells stay countable against the
+ * strip either way, which is the reason that figure is a sum in the first place.
+ *
+ * **Over the limit, the gauge PEGS.** Every cell goes warn rather than growing
+ * an extra one: the cell count is the limit, and a gauge that grew past its own
+ * scale would stop being a limit you can see. The exact overage is what the
+ * figure beside it is for. `aria-hidden` throughout — the button's label
+ * already says `2 of 3 focus slots used`, and a row of nine divs would say it
+ * again, worse.
+ */
+function WipGauge({ used, limit, over }: { used: number; limit: number; over: boolean }) {
+  return (
+    <span aria-hidden="true" className="flex items-center gap-[3px] mr-[2px]">
+      {Array.from({ length: limit }, (_, i) => (
+        <span
+          key={i}
+          className={`w-[16px] h-[8px] rounded-[4px] border ${
+            over
+              ? 'bg-warn border-warn'
+              : i < used
+                ? 'bg-fill border-fill'
+                : 'border-line-2'
+          }`}
+        />
+      ))}
+    </span>
+  );
 }
 
 export function FocusSummary({
@@ -57,6 +98,7 @@ export function FocusSummary({
       matchCount: slots.goalIds.length,
       warn: over,
       sub: over ? `Focus is spread across ${slots.used} goals` : undefined,
+      gauge: <WipGauge used={slots.used} limit={slots.limit} over={over} />,
     },
     {
       key: 'needs-step',
@@ -111,7 +153,11 @@ export function FocusSummary({
             title={s.sub ?? s.txt}
             onClick={() => onToggle(s.key)}
             className={[
-              'flex items-baseline gap-[5px] text-meta px-[9px] py-[4px] rounded-field border transition-colors',
+              // `items-center` on the slots chip so its cells sit on the
+              // figure's centre line rather than its baseline, which would hang
+              // them below the text; the other four keep the baseline they
+              // always had.
+              `flex ${s.gauge ? 'items-center' : 'items-baseline'} gap-[5px] text-meta px-[9px] py-[4px] rounded-field border transition-colors`,
               isActive
                 ? 'bg-accent-tint border-accent text-ink'
                 : s.warn
@@ -119,6 +165,7 @@ export function FocusSummary({
                   : 'border-line-2 text-ink-soft hover:bg-hover',
             ].join(' ')}
           >
+            {s.gauge}
             <span className="font-semibold tabular-nums">{s.num}</span>
             <span className={isActive ? 'text-ink-soft' : 'text-muted'}>{s.txt}</span>
           </button>

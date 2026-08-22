@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "rev": 439,
+  "savedAt": "2026-08-17T09:19:43.305Z",
+  "id": "project-msvd7wbb-1",
+  "name": "Phase",
+  "color": "#32d74b",
+  "viewport": {
+    "x": -598.1673722552619,
+    "y": 200.92937134415473,
+    "zoom": 0.8219139035791647
+  },
+  "nodes": [
+    {
+      "id": "term-msve1n1g-5",
+      "kind": "terminal",
+      "position": {
+        "x": 1034.4160738809828,
+        "y": -176.8766141694759
+      },
+      "size": {
+        "width": 633,
+        "height": 675
+      },
+      "title": "Navbar Design Polish",
+      "titleAuto": false,
+      "color": "#d97757",
+      "group": null,
+      "tags": [],
+      "collapsed": false,
+      "cwd": ".",
+      "agentId": "claude",
+      "agentSessionId": "f8b02b0a-da05-4777-baf5-8c944659a416"
+    },
+    {
+      "id": "term-msvgg9rp-7",
+      "kind": "terminal",
+      "position": {
+        "x": -1021.4295397315072,
+        "y": -164.25683659579047
+      },
+      "size": {
+        "width": 640,
+        "height": 440
+      },
+      "title": "Terminal 4",
+      "titleAuto": true,
+      "color": "#ff453a",
+      "group": null,
+      "tags": [],
+      "collapsed": false,
+      "cwd": "."
+    },
+    {
+      "id": "term-msvxg40n-8",
+      "kind": "terminal",
+      "position": {
+        "x": 1809.4272456331169,
+        "y": -441.537897614681
+      },
+      "size": {
+        "width": 640,
+        "height": 440
+      },
+      "title": "Evaluate todo list integration for personal goal management",
+      "titleAuto": true,
+      "color": "#d97757",
+      "group": null,
+      "tags": [],
+      "collapsed": false,
+      "cwd": ".",
+      "agentId": "claude",
+      "agentSessionId": "dfc05936-336a-4511-a2d8-ba35e30e119c"
+    }
+  ],
+  "bridges": [],
+  "ropes": []
+}

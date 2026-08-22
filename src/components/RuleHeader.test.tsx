@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RuleHeader } from './RuleHeader';
+import { RULE_H, RuleHeader } from './RuleHeader';
 import { ruleTag } from './sectionLabel';
 
 afterEach(cleanup);
@@ -78,5 +78,27 @@ describe('RuleHeader', () => {
 
     // `right &&` would swallow this — 0 is falsy and "0" is a thing to say.
     expect(screen.getByText('0')).toBeTruthy();
+  });
+
+  /* ── inherited from the board's own RuleHeader, which this absorbed ── */
+
+  it('takes a tone for the fact and leaves the name alone', () => {
+    render(<RuleHeader label="Now" right="4 / 3" rightClassName="text-warn font-semibold" />);
+    expect(screen.getByText('4 / 3').className).toContain('text-warn');
+    expect(screen.getByText('Now').parentElement!.className).not.toContain('text-warn');
+  });
+
+  /**
+   * The board's trailing margin draws one of these so its hairline continues
+   * the four bays' — flush, which only holds because the board pins the height
+   * rather than letting it derive from a label that is not there.
+   */
+  it('draws a bare rule at a pinned height when it carries nothing', () => {
+    const { container } = render(<RuleHeader className={RULE_H} />);
+    const row = container.firstElementChild as HTMLElement;
+    expect(row.className).toContain(RULE_H);
+    expect(row.textContent).toBe('');
+    // The spacer span survives — it IS the rule between the two absent cells.
+    expect(row.children).toHaveLength(1);
   });
 });

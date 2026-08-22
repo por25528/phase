@@ -52,16 +52,28 @@ import { ruleTag } from './sectionLabel';
  * not be able to reinvent per surface, which is the whole reason this is a
  * component and not a class string.
  */
+export const RULE_H = 'h-[26px]';
+
 export function RuleHeader({
   label,
   right,
+  rightClassName = 'text-meta text-muted',
   lead,
   as = 'h2',
+  className = '',
 }: {
-  /** The region's name, in the tinted cell at the left end. */
-  label: ReactNode;
+  /** The region's name, in the tinted cell at the left end. Absent draws a bare rule. */
+  label?: ReactNode;
   /** The one FACT the region reports, on the far end of the same hairline. */
   right?: ReactNode;
+  /**
+   * The fact's tone. Overridable ONLY because two surfaces arrived at different
+   * ones on parallel branches — Today and the tree set it in `text-meta`, the
+   * board in `font-mono text-micro`, and the board additionally turns it warn
+   * when Now is over its limit. Reconciling those two into one tone is a
+   * deliberate follow-up, not something to settle inside a merge: see CLAUDE.md.
+   */
+  rightClassName?: string;
   /**
    * Controls that belong to the region itself, inside the tag cell before the
    * name — the tree's drag handle and twirl. Absent on a static heading.
@@ -72,26 +84,38 @@ export function RuleHeader({
    * else's row and a heading would be announced on top of it.
    */
   as?: 'h2' | 'span';
+  /**
+   * The board passes `RULE_H` here: its four bays must draw their rules at one
+   * fixed height so the hairlines line up across columns of different content.
+   * Today and the tree let the rule take its content's height instead.
+   */
+  className?: string;
 }) {
   const Tag = as;
   return (
-    <div className="flex items-stretch border-b border-line">
-      {/* `flex-initial`, not `flex-none`: on Today the label is a constant and
-          the spacer beside it absorbs every spare pixel, so the cell never
-          shrinks — but a container's name in the tree is a user string, and a
-          cell that could not give would push the fact off the far end of its
-          own rule rather than truncating. */}
-      <Tag className={`flex-initial min-w-0 flex items-center gap-[6px] px-[9px] py-[4px] bg-chip border-r border-line ${ruleTag}`}>
-        {lead}
-        {/* `min-w-0` above and `truncate` here: a region NAME on Today is a
-            constant, but a container's is a user string with no bound, and a
-            cell that overflowed would spill across the hairline into the rule
-            it is supposed to terminate against. */}
-        <span className="min-w-0 truncate">{label}</span>
-      </Tag>
-      <span className="flex-1" />
+    /* `overflow-hidden` is the safety net, not the plan. The board sizes its
+       slim track to the longest horizon name plus its count (`EMPTY_TRACK_PX`),
+       so nothing here should ever need to give — but a cell that DID overflow
+       would spill across the hairline into the next bay, and a name clipped to
+       an ellipsis is a far smaller lie than one printed over its neighbour. */
+    <div className={`flex items-stretch border-b border-line overflow-hidden ${className}`}>
+      {label !== undefined && (
+        /* `flex-initial`, not `flex-none`: on Today the label is a constant and
+           the spacer beside it absorbs every spare pixel, so the cell never
+           shrinks — but a container's name in the tree is a user string, and a
+           cell that could not give would push the fact off the far end of its
+           own rule rather than truncating. */
+        <Tag className={`flex-initial min-w-0 flex items-center gap-[6px] px-[9px] py-[4px] bg-chip border-r border-line ${ruleTag}`}>
+          {lead}
+          <span className="min-w-0 truncate">{label}</span>
+        </Tag>
+      )}
+      {/* The span of rule between the two cells. It is what makes the header a
+          DIVIDER that happens to hold labels, rather than two chips that
+          happen to sit above one. */}
+      <span className="flex-1 min-w-0" />
       {right !== undefined && right !== null && (
-        <span className="flex-none flex items-center px-[12px] py-[4px] border-l border-line text-meta text-muted tabular-nums">
+        <span className={`flex-none flex items-center px-[12px] py-[4px] border-l border-line tabular-nums ${rightClassName}`}>
           {right}
         </span>
       )}

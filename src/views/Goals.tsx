@@ -15,7 +15,8 @@ import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { useAppStore } from '../state/store';
 import { IconCheck, IconChevronRight, IconColumns, IconDots, IconTimeline, IconX } from '../components/Icons';
 import { Popover, PopoverItem } from '../components/Popover';
-import { sectionLabel } from '../components/sectionLabel';
+import { sectionLabel, stampLabel } from '../components/sectionLabel';
+import { RuleHeader } from '../components/RuleHeader';
 import { groupByColumn } from '../lib/board';
 import { columnTracks } from '../lib/boardTracks';
 import { focusSummary } from '../lib/plan';
@@ -333,12 +334,35 @@ export function Goals() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-[10px] sm:gap-[16px] mb-[6px]">
         <div className="min-w-0">
-          <h1 className="text-h1 font-semibold tracking-[-0.015em]">Goals</h1>
-          {/* First use only. Explaining the horizons on EVERY visit is a
-              paragraph of chrome above the object people came for, and after
-              the second goal it is a sentence nobody reads — the column hints
-              on Later and Someday carry the same rule where it applies. */}
-          {(timeline || goals.length <= 1) && (
+          {/* The sheet's own stamp: what this drawing is, then its one
+              dimension. Two mono cells with the first inverted — `stampLabel`
+              carries the voice and deliberately no colour, because the cells
+              take opposite sides of it. It states the shape of the board (four
+              horizons) against the amount in it, which is the one fact the four
+              column counts cannot state as a single number; it is drawn only
+              when the board itself is, so it never announces a goal count of
+              zero above an onboarding block. */}
+          {!timeline && !isEmpty && !scopeEmpty && (
+            <span className="inline-flex items-stretch rounded-[4px] overflow-hidden border border-line-2 mb-[10px]">
+              <span className={`${stampLabel} font-semibold bg-fill text-paper px-[8px] py-[3px]`}>Board</span>
+              <span className={`${stampLabel} text-muted px-[8px] py-[3px] border-l border-line-2 tabular-nums`}>
+                {COL_COUNT} horizons · {active.length} {active.length === 1 ? 'goal' : 'goals'}
+              </span>
+            </span>
+          )}
+          {/* One step up from `text-h1`. The page below it is a measured object
+              now — a stamp at the app's smallest role above, a ruled board
+              beneath — and the masthead has to sit far enough from both for the
+              range to read as composition. `mast` is Today's step and stays
+              Today's; this is a `page`-sized title on a page. */}
+          <h1 className="text-page font-semibold tracking-[-0.015em] leading-[1.06]">Goals</h1>
+          {/* Onboarding, and it leaves. Explaining the horizons on EVERY visit
+              is a paragraph of chrome above the object people came for, and at
+              74 characters it was the longest text on a page whose content was
+              four words and a card. It now appears on an EMPTY board only —
+              beside the first-goal invitation, which is the one moment it is
+              answering a question somebody has. Timeline keeps its own. */}
+          {(timeline || goals.length === 0) && (
             <p className="text-ui text-muted mt-[3px]">
               {timeline
                 ? 'Every goal with a start and a deadline, laid out against the calendar.'
@@ -504,8 +528,16 @@ export function Goals() {
         >
           <div
             id="goalsBoard"
-            className={`mt-[20px] items-start pb-[8px] ${
-              wide ? 'grid gap-[14px] xl:gap-[18px]' : 'flex gap-[18px]'
+            /* `items-stretch`, not `items-start`: an empty bay's hatch has to
+               reach the height of the tallest column beside it, and a column
+               sized to its own content cannot. `gap-0` is `COLUMN_GAP_PX` —
+               the bays share hairlines now, so a gap would break the one rule
+               across the sheet into four. `border-y` closes the sheet at both
+               ends — the top rule is what the tag cells hang from, and the
+               bottom one is what stops the hatched tails from bleeding into
+               the page under them. */
+            className={`mt-[18px] items-stretch pb-[8px] ${
+              wide ? 'grid gap-0 border-y border-line' : 'flex gap-[18px]'
             } ${wide && !reducedMotion ? 'transition-[grid-template-columns] duration-150' : ''}`}
             style={wide ? { gridTemplateColumns } : undefined}
           >
@@ -545,6 +577,32 @@ export function Goals() {
               </Column>
               );
             })}
+            {/* The remainder, in one place.
+                Every populated track is capped at what it can actually draw
+                (`columnCap`), so the leftover width has to be claimed by
+                something — and a column that would leave it empty is exactly
+                what the cap exists to stop. It goes here instead, at the end of
+                the row, as an inert div.
+                Rendered only at rest: `columnTracks`'s dragging branch emits
+                four equal tracks and no spacer, so a fifth child mid-drag would
+                fall into an implicit second row. */}
+            {wide && activeId === null && (
+              <div aria-hidden="true" className="flex flex-col">
+                {/* The margin of the sheet, and it is ruled like the rest of
+                    it. An unlabelled `RuleHeader` continues the hairline the
+                    four bays draw — flush, because `RULE_H` is fixed rather
+                    than derived from a label — and the hatch below it says the
+                    same thing an empty bay says: this is material with room on
+                    it, not a region that failed to draw.
+                    It carries no tag, and that is the whole difference between
+                    a bay and a margin. It is also not a drop target, which
+                    cannot mislead: the moment a card leaves the ground the
+                    dragging branch equalises the four columns and this element
+                    stops being rendered at all. */}
+                <RuleHeader />
+                <div className="flex-1 hatch" />
+              </div>
+            )}
           </div>
 
           <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
