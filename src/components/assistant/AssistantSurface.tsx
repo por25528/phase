@@ -60,14 +60,41 @@ const REASON_WORD: Record<AdviceReason, string> = {
 };
 
 /**
- * The dial on the home row of the number keys, and it drives the TIME one —
- * that is the dial which changes what you are offered. Two dials would want
- * six keys, and the shelf is not a keyboard surface. There is no text field to
- * steal them.
+ * The number row, and it drives BOTH dials: `1`-`3` set the time, `4`-`6` the
+ * focus.
+ *
+ * OVERTURNS "two dials would want six keys, and the shelf is not a keyboard
+ * surface". What falsified it is the bar itself. That argument was written when
+ * the time dial was the one that changed what you are offered and the focus
+ * dial was the junior of the two; the dials then shipped side by side, same
+ * size, same voice, captioned as parallel nouns — and at that point "only one
+ * of them has keys" stopped reading as restraint and started reading as an
+ * omission. Two controls presented as peers, one of them mouse-only, is a
+ * worse answer than six keys on a surface summoned by a keyboard shortcut.
+ *
+ * The rest of the old comment survives intact and still matters: the shelf has
+ * no text field, so there is nothing for the number row to steal them from.
  */
 const KEY_TO_TIME_LEVEL: Record<string, TimeLevel | undefined> = {
   '1': 'low', '2': 'medium', '3': 'high',
 };
+
+const KEY_TO_FOCUS_LEVEL: Record<string, FocusLevel | undefined> = {
+  '4': 'low', '5': 'medium', '6': 'high',
+};
+
+/**
+ * The printed legend for the two maps above, derived from them rather than
+ * written out — a hint that names a key nothing binds is worse than no hint.
+ *
+ * Shelf only. The BINDING is live in both presentations and always has been;
+ * what the 380px embedded panel does not get is the engraving, because that
+ * panel is one anchored surface among many in a window already full of
+ * shortcuts, and its dials are stacked into a column with no room to spare.
+ */
+function keyFor(map: Record<string, string | undefined>, level: string): string | undefined {
+  return Object.keys(map).find((key) => map[key] === level);
+}
 
 function SectionLabel({ children }: { children: string }) {
   return <p className={sectionLabel}>{children}</p>;
@@ -96,13 +123,25 @@ function aboveBandCls(shelf: boolean): string {
  * The primary title, in both panels, so the running state and the idle state
  * cannot disagree about how a name overflows.
  *
- * `truncate`, not `line-clamp-2`. The clamp was correct at 165px; at the band
- * layout's 433px one line carries the name, and a single line makes the card's
- * height independent of its content — which is what `HEIGHT` in
- * `electron/assistantWindow.cjs` is budgeting against, since that window clips
- * rather than scrolls. The full string stays on `title`.
+ * `line-clamp-2`, and this OVERTURNS `truncate`. The one-line rule had a real
+ * argument behind it — a single line makes the card's height independent of its
+ * content, which is what `HEIGHT` in `electron/assistantWindow.cjs` budgets
+ * against, since that window CLIPS rather than scrolls. What falsified it is
+ * not the reasoning but its premise: "at the band layout's 433px one line
+ * carries the name" was measured against short test titles. Against real ones
+ * — `Pull slides and labs 1–5, get past papers (scope check)` — the shelf's own
+ * primary was cut at the one moment it has to be read, which is the single
+ * defect this whole surface exists to avoid.
+ *
+ * The budget answer is to pay the budget, not to shorten the sentence: two
+ * lines cost about 20px on the tallest state, `HEIGHT` was 308 against a
+ * tallest state of ~278, and the invariant already says what to do when a
+ * state grows — measure it again. It was.
+ *
+ * The full string stays on `title` either way, because two lines is a bigger
+ * window, not an unbounded one.
  */
-const workTitle = 'truncate text-h2 font-semibold text-ink leading-[1.25]';
+const workTitle = 'line-clamp-2 text-h2 font-semibold text-ink leading-[1.25]';
 
 /**
  * The shelf's two dials, and the only always-present controls on it.
@@ -136,7 +175,11 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
           label="How long you have"
           size="sm"
           value={timeLevel}
-          options={TIME_LEVELS.map((value) => ({ value, label: TIME_WORD[value] }))}
+          options={TIME_LEVELS.map((value) => ({
+            value,
+            label: TIME_WORD[value],
+            ...(shelf ? { hint: keyFor(KEY_TO_TIME_LEVEL, value) } : {}),
+          }))}
           onChange={(next) => onAction({ type: 'set-time-level', level: next })}
         />
       </div>
@@ -146,7 +189,11 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
           label="How much focus you have"
           size="sm"
           value={focusLevel}
-          options={FOCUS_LEVELS.map((value) => ({ value, label: FOCUS_WORD[value] }))}
+          options={FOCUS_LEVELS.map((value) => ({
+            value,
+            label: FOCUS_WORD[value],
+            ...(shelf ? { hint: keyFor(KEY_TO_FOCUS_LEVEL, value) } : {}),
+          }))}
           onChange={(next) => onAction({ type: 'set-focus-level', level: next })}
         />
       </div>
@@ -202,22 +249,55 @@ const altRow =
  * A row's own arrangement, and the second place the 620px shape had to stop
  * being imposed on the 380px one.
  *
- * On the shelf the title and its metadata sit on one line, the metadata
- * `shrink-0` so it states itself in full and the title takes the rest. That is
- * right at 620px and wrong at 380: `Comparative Literature · Usually 45–60m`
- * claims about 227px there, leaving the NAME OF THE WORK 114px — less than half
- * the room its own quiet metadata gets, which inverts the hierarchy this whole
- * band exists to correct. `Sidecar`, which this replaced, stacked them as two
- * `block` spans for exactly that reason; flattening it into one row was a
- * regression, not a simplification.
+ * The 380px half of the original argument STANDS and is unchanged:
+ * `Comparative Literature · Usually 45–60m` claims about 227px there, leaving
+ * the NAME OF THE WORK 114px — less than half the room its own quiet metadata
+ * gets, which inverts the hierarchy this whole band exists to correct.
+ * `Sidecar`, which this replaced, stacked them as two `block` spans for exactly
+ * that reason; flattening it into one row was a regression, not a
+ * simplification. So embedded still stacks, and both spans still truncate — a
+ * long goal title must not widen the panel, it must be cut.
  *
- * So embedded stacks: the title takes its own line at full width, the metadata
- * sits beneath it. Both still truncate — a long goal title must not widen the
- * panel, it must be cut.
+ * What is CORRECTED is the other half: "that is right at 620px". It was not.
+ * The metadata was `shrink-0`, so it claimed its full width first and the title
+ * took the remainder — and with real course titles that remainder cut BOTH
+ * alternative titles while the metadata beside them stated itself in full. The
+ * arrangement was not right at 620 and wrong at 380; it was wrong at both, and
+ * only visibly catastrophic at 380.
+ *
+ * The row now gives its width to the work. See `altTitleCls`/`altMetaCls`.
  */
 function altRowCls(shelf: boolean): string {
   return shelf ? `${altRow} flex items-baseline gap-3` : altRow;
 }
+
+/**
+ * The two spans of a shelf row, and the one rule between them: **the work's
+ * name is never the first thing to lose room.**
+ *
+ * `min-w-[50%]` on the title is what states that. A `flex-1` title against a
+ * `shrink-0` meta reads as "the title takes the rest", and it is — but "the
+ * rest" is whatever the metadata did not want, and metadata that names a
+ * project and a duration wants about 40% of the row before anyone asks. The
+ * floor inverts who yields: the title cannot be pushed below half the row, so
+ * a greedy meta hits the floor and gives its own width back instead.
+ *
+ * It is a floor and not a width. While the metadata is short — which, in the
+ * rule-tag treatment, is most of the time — nothing binds and the title takes
+ * everything it can use, exactly as before. The floor is what happens on the
+ * bad day.
+ *
+ * `truncate` on the meta is the other half: a span that yields has to CUT.
+ * Without it the meta wraps, and a two-line meta under a one-line title is the
+ * embedded stack drawn by accident at the wrong width.
+ */
+const altTitleCls = (shelf: boolean): string => shelf
+  ? 'min-w-[50%] flex-1 truncate text-body text-ink-soft'
+  : 'block truncate text-body text-ink-soft';
+
+const altMetaCls = (shelf: boolean): string => shelf
+  ? 'min-w-0 shrink truncate text-meta text-muted'
+  : 'block truncate text-meta text-muted';
 
 /**
  * The alternatives band's own inset, shared with `Skeleton` so the loading
@@ -247,18 +327,8 @@ function AlternativesBand({ label, items, disabled, onPick, shelf }: {
             className={`${altRowCls(shelf)} ${i ? 'border-t border-line-soft' : ''}`}
             onClick={() => onPick(item.ref)}
           >
-            <span
-              className={shelf
-                ? 'min-w-0 flex-1 truncate text-body text-ink-soft'
-                : 'block truncate text-body text-ink-soft'}
-            >
-              {item.title}
-            </span>
-            <span
-              className={shelf
-                ? 'shrink-0 text-meta text-muted'
-                : 'block truncate text-meta text-muted'}
-            >
+            <span className={altTitleCls(shelf)}>{item.title}</span>
+            <span className={altMetaCls(shelf)}>
               {item.goalTitle ? `${item.goalTitle} · ` : ''}{expectedTimeLabel(item.expected)}
             </span>
           </button>
@@ -620,8 +690,13 @@ export function AssistantSurface({
         onAction({ type: 'close' });
         return;
       }
-      const level = KEY_TO_TIME_LEVEL[event.key];
-      if (level) onAction({ type: 'set-time-level', level });
+      const time = KEY_TO_TIME_LEVEL[event.key];
+      if (time) {
+        onAction({ type: 'set-time-level', level: time });
+        return;
+      }
+      const focus = KEY_TO_FOCUS_LEVEL[event.key];
+      if (focus) onAction({ type: 'set-focus-level', level: focus });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

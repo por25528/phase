@@ -542,15 +542,20 @@ describe('AssistantSurface', () => {
   });
 
   /*
-   * OVERTURNS the previous pin, which required `line-clamp-2`.
+   * OVERTURNS the one-line pin, and restores the clamp it overturned.
    *
-   * That was right when the title had 165px of a 620px window and needed two
-   * lines to say anything. The band layout gives it 433px, and one line makes
-   * the card's height independent of its content — which is what a window that
-   * is fixed-height and CLIPS rather than scrolls actually wants. The full
-   * string stays reachable on `title`.
+   * The one-line rule's argument was sound — a single line makes the card's
+   * height independent of its content, and this window CLIPS rather than
+   * scrolls — but its premise was measured against short test titles. Against
+   * a real one the shelf's primary was cut at the one moment it has to be
+   * read. Two lines cost ~20px on the tallest state and `HEIGHT` was
+   * re-measured to pay for it, which is exactly what "if a state grows,
+   * measure it again" instructs.
+   *
+   * The full string stays reachable on `title` regardless: two lines is a
+   * bigger window, not an unbounded one.
    */
-  it('truncates a long primary title to one line and keeps it in the tooltip', () => {
+  it('clamps a long primary title to two lines and keeps it in the tooltip', () => {
     const long = 'Write the extremely long literature review section that keeps growing '
       + 'until it no longer fits on one line at any sane width';
     render(
@@ -563,17 +568,16 @@ describe('AssistantSurface', () => {
       />,
     );
     const title = screen.getByRole('heading', { name: long });
-    expect(title.className).toContain('truncate');
-    expect(title.className).not.toContain('line-clamp-2');
+    expect(title.className).toContain('line-clamp-2');
+    expect(title.className).not.toContain('truncate');
     expect(title.getAttribute('title')).toBe(long);
-    expect(screen.getByText('Algorithms').className).toContain('truncate');
   });
 
   /*
    * The same rule during a session: `FocusPanel` and `AdvicePanel` must not
    * disagree about how a title overflows, which is why both spend `workTitle`.
    */
-  it('truncates the running session title the same way', () => {
+  it('clamps the running session title the same way', () => {
     const long = 'Write the extremely long literature review section that keeps growing '
       + 'until it no longer fits on one line at any sane width';
     render(
@@ -584,7 +588,7 @@ describe('AssistantSurface', () => {
       />,
     );
     const title = screen.getByRole('heading', { name: long });
-    expect(title.className).toContain('truncate');
+    expect(title.className).toContain('line-clamp-2');
     expect(title.getAttribute('title')).toBe(long);
   });
 
@@ -704,15 +708,58 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
   });
 
-  // The focus dial deliberately has no number keys — only the time dial can own them,
-  // and the time dial is the one you reach for mid-session.
-  it('keeps the number keys on the dial that changes what you are offered', () => {
+  /*
+   * OVERTURNS "the focus dial deliberately has no number keys".
+   *
+   * That was written while the focus dial was the junior of the two. The dials
+   * then shipped as peers — same size, same voice, captioned as parallel nouns
+   * — and at that point one of them being mouse-only stopped reading as
+   * restraint and started reading as an omission.
+   */
+  it('gives the number row to both dials — 1-3 time, 4-6 focus', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
     fireEvent.keyDown(window, { key: '1' });
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
     fireEvent.keyDown(window, { key: '3' });
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'high' });
+    fireEvent.keyDown(window, { key: '4' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+    fireEvent.keyDown(window, { key: '6' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'high' });
+    // Six keys, and no seventh: the number row past 6 belongs to nobody.
+    onAction.mockClear();
+    fireEvent.keyDown(window, { key: '7' });
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  /*
+   * A binding nobody can see is half a control, which is what made the focus
+   * dial mouse-only in practice long after it gained keys. The engraving is
+   * `aria-hidden`, so the segment's accessible name stays the value it sets —
+   * "30m", never "30m 1".
+   */
+  it('prints the key on each segment of both dials, without renaming them', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    for (const [name, key] of [['30m', '1'], ['Any', '3'], ['Low', '4'], ['High', '6']] as const) {
+      const segment = screen.getByRole('button', { name });
+      const hint = segment.querySelector('[aria-hidden]');
+      expect(hint?.textContent, name).toBe(key);
+      expect(hint?.className, name).toContain('font-mono');
+    }
+  });
+
+  /*
+   * The engraving is shelf-only. The BINDING is live in both presentations and
+   * always was; what the 380px panel does not get is the printed legend, so
+   * "the embedded presentation does not change" survives this.
+   */
+  it('leaves the embedded dials unengraved', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    expect(screen.getByRole('button', { name: '30m' }).querySelector('[aria-hidden]')).toBeNull();
+    fireEvent.keyDown(window, { key: '4' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
   });
 
   it('offers both dials, named for what each one does', () => {
@@ -769,6 +816,34 @@ describe('AssistantSurface', () => {
     const shelf = screen.getByRole('button', { name: /Read chapter 5/ });
     expect(shelf.className).toContain('flex');
     expect(shelf.querySelector('span')!.className).toContain('flex-1');
+  });
+
+  /*
+   * The row gives its width to the WORK.
+   *
+   * The metadata was `shrink-0`: it claimed its full width first and the title
+   * took whatever was left, which with real course titles cut both alternative
+   * titles while the metadata beside them stated itself in full. The floor on
+   * the title inverts who yields — a greedy meta hits it and gives its own
+   * width back — and the meta truncates rather than wrapping when it does,
+   * because a span that yields has to CUT.
+   *
+   * jsdom has no layout, so this pins the mechanism rather than the pixels,
+   * the same move the two branch tests above make.
+   */
+  it('never lets an alternative\'s metadata take room from its title', () => {
+    const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
+    render(
+      <AssistantSurface
+        snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives } })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const [title, meta] = [...screen.getByRole('button', { name: /Read chapter 5/ }).children];
+    expect(title.className).toContain('min-w-[50%]');
+    expect(meta.className).not.toContain('shrink-0');
+    expect(meta.className).toContain('truncate');
   });
 
   /*
