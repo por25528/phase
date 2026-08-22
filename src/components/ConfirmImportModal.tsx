@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
-import { dangerBtn, ghostBtn, dialogFooter, fieldCls } from './dialogStyles';
+import {
+  dangerBtn, ghostBtn, fieldCls,
+  dialogBar, dialogBody, dialogLine, dialogLineKey, dialogLineValue,
+} from './dialogStyles';
+import { captionLabel } from './sectionLabel';
 
 /**
  * The one destructive action in Phase that cannot be undone.
@@ -43,24 +47,47 @@ export function ConfirmImportModal({
   }, [open]);
 
   return (
-    <Modal open={open} onClose={onCancel} title="Import backup">
-      <p className="text-body text-ink-soft leading-[1.6]">
-        This replaces every goal, habit and task currently in Phase with the contents of{' '}
-        <span className="text-ink font-semibold">{fileName}</span>. It cannot be undone.
-      </p>
-      <label className="mt-[16px] block text-body text-ink-soft">
-        Type <span className="font-mono text-ui text-ink">{PHRASE}</span> to continue.
-        <input
-          autoFocus
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && armed) onConfirm();
-          }}
-          className={`mt-[6px] ${fieldCls}`}
-        />
-      </label>
-      <div className={dialogFooter}>
+    /*
+      `Replace`, where the other two instrument dialogs take the verb straight
+      off their own title. This one cannot: its title is "Import backup",
+      which is the words on the menu item that opened it and on the button that
+      commits it — a rule this file already argues for once below — so a tag
+      reading IMPORT would only stutter the title back at it. `Replace` names
+      the half that has no undo, which is the same argument `dangerBtn` makes
+      about colour, and it is the exact word the field asks you to type.
+    */
+    <Modal open={open} onClose={onCancel} title="Import backup" verb="Replace">
+      <div className={dialogBody}>
+        <p className="text-body text-ink-soft leading-[1.6]">
+          This replaces every goal, habit and task currently in Phase with the contents of{' '}
+          <span className="text-ink font-semibold">{fileName}</span>. It cannot be undone.
+        </p>
+        {/*
+          The instruction stays PROSE, above the line rather than inside it.
+          It is the only place the phrase appears, and the one thing it must
+          never be is the field's own placeholder — a gate whose answer is
+          printed inside the box it guards has stopped being a gate.
+        */}
+        <p className="mt-[10px] pb-[6px] text-body text-ink-soft">
+          Type <span className="font-mono text-ui text-ink">{PHRASE}</span> to continue.
+        </p>
+        <div className={dialogLine}>
+          <span className={`${dialogLineKey} ${captionLabel}`} aria-hidden="true">Confirm</span>
+          <span className={dialogLineValue}>
+            <input
+              autoFocus
+              aria-label={`Type ${PHRASE} to continue`}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && armed) onConfirm();
+              }}
+              className={fieldCls}
+            />
+          </span>
+        </div>
+      </div>
+      <div className={dialogBar}>
         <button type="button" onClick={onCancel} className={ghostBtn}>
           Cancel
         </button>
