@@ -7,27 +7,64 @@
  * the budget line, recorded in `ideas/vision.md` open question 3: *each life
  * got 93px of a 307px cell while three empty horizons kept 307px each.*
  *
- * The rule is **a column claims width in proportion to what it holds, capped
- * at what it can actually draw** — and until now only the first half was true.
- * A `{n}fr` track takes every leftover pixel, so the single populated column of
- * a sparse board grew to ~714px of 1100 and then drew one 188px card in it,
- * stranded beside two dead tracks its own inner `auto-fill` grid had created.
- * The cap below is the second half, and `Column.tsx`'s `auto-fit` is what
- * stops the card from refusing the room the cap does leave it.
+ * The rule is **a column claims no more width than its cards can fill**, and
+ * whatever is left over is the sheet's margin rather than another column's
+ * padding. `{n}fr` promised proportion and delivered greed: the single
+ * populated column of a sparse board took every leftover pixel — ~714px of
+ * 1100 — and then drew one 188px card in it, stranded beside two dead tracks
+ * its own inner `auto-fill` grid had created. `columnCap` below is the ceiling
+ * that ends that, and `Column.tsx`'s `auto-fit` is what stops a card from
+ * refusing the room the ceiling does leave it.
+ *
+ * **It is a ceiling and not a ratio, and the difference is worth knowing.**
+ * Under the ceiling, CSS grid hands out free space EQUALLY from a common floor
+ * rather than in proportion to card count — a three-card Now and a two-card
+ * Next on a 1228px board both land at 374px, because neither is near its cap.
+ * The sizes still track content wherever it matters: a column freezes the
+ * moment it reaches what it can draw (a one-card Someday stops at 240 and
+ * hands the rest back), so the columns that differ VISIBLY in what they hold
+ * are exactly the ones the caps separate. Proportionality below the ceiling
+ * would need pixel arithmetic against a container width this module cannot
+ * see, to widen a column that is already drawing every card it has at full
+ * size. This file promised that ratio once and delivered the greed instead;
+ * it now promises the ceiling, which is the part that was ever worth having.
  */
 
 /**
- * The largest floor at which four populated columns still fit the 920px
- * breakpoint where the wide board begins: 4 × 200 + 3 × 14 = 842, leaving the
- * page gutter. Pinned by a test, because the relationship is the point.
+ * The floor below which a column is not squeezed, however little it holds.
+ *
+ * It was chosen as the largest floor at which four populated columns still fit
+ * the 920px breakpoint where the wide board begins — 4 × 200 + 3 × 14 = 842
+ * under the 14px gaps the board used to carry. The Instrument closed those
+ * gaps (`COLUMN_GAP_PX` below), so the same four now come to 4 × 200 + 3 × 0 =
+ * 800 and the relationship holds with 120px of slack rather than 78.
+ *
+ * Deliberately NOT widened to spend that slack. The floor exists so a one-card
+ * column is not crushed beside a five-card one, and 200 already clears the
+ * 188px minimum `Column.tsx`'s inner grid sets for a card; raising it would
+ * only take room from whichever column has the work in it. Pinned by a test,
+ * because the relationship is the point.
  */
 export const COLUMN_FLOOR_PX = 200;
 
 /** The smallest track on which `Someday` sets on one line beside its count. */
 export const EMPTY_TRACK_PX = 88;
 
-/** The board's column gap, in the arithmetic above and in `Goals.tsx`. */
-export const COLUMN_GAP_PX = 14;
+/**
+ * The board's column gap, in the arithmetic above and in `Goals.tsx`.
+ *
+ * Zero, and that is the Instrument's doing rather than an oversight. The bays
+ * share their hairlines now — each column draws a `border-r` and its rule
+ * header runs full-bleed — so a gap between tracks would break the one line
+ * across the sheet into four, and separate two cards by a void instead of by a
+ * rule. The separation moved INTO the bay as its own 12px padding, which is
+ * more space between neighbouring cards than the 14px gap ever gave.
+ *
+ * Kept as a named constant at 0 rather than deleted: the breakpoint arithmetic
+ * above spends it, and a literal 0 there would hide the fact that a gap is a
+ * thing this layout has an opinion about.
+ */
+export const COLUMN_GAP_PX = 0;
 
 /**
  * The widest a board card wants to be, and the gap between two of them.

@@ -119,10 +119,53 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   other life's ranks, and why it is named for the general case rather than for
   completion. `rankMoveTarget` is the keyboard half: `moveGoalRank` steps by
   VISIBLE neighbours, so `Alt+↑` never swaps a card with one that is off screen.
-- **A column claims width in proportion to what it holds** (`lib/boardTracks.ts`),
+- **A column claims no more width than its cards can fill** (`lib/boardTracks.ts`),
   and **every column equalises while something is in the air** — `handleDragOver`
   moves ids live, so widths that tracked card count would reflow under the
   cursor and an empty Now would be narrowest exactly when you need to hit it.
+  This bullet used to promise PROPORTION, and `minmax(FLOOR, {n}fr)` delivered
+  greed instead: the one populated column of a sparse board took every leftover
+  pixel — ~714px of 1100 — and `Column.tsx` then drew a single 188px card in it,
+  stranded beside two dead tracks its own `auto-fill` grid had created (the
+  identical grid in `views/project/BoardTab.tsx` had always used `auto-fit`).
+  `columnCap` is the ceiling that ends it: `CARDS_ABREAST_MAX` cards at
+  `CARD_MAX_PX` plus the gaps between them, and the remainder goes to ONE
+  trailing spacer rather than to a column that would leave it empty. It is a
+  ceiling and NOT a ratio — under it, grid hands out free space equally from a
+  common floor — and that is the honest promise, because the columns that
+  differ visibly in what they hold are exactly the ones whose caps bind.
+  `Goals.tsx` renders the spacer only at rest, since the dragging branch emits
+  no track for it and a fifth child against four tracks would fall into an
+  implicit second row. `COLUMN_GAP_PX` is 0 for the reason below.
+- **The board is a ruled sheet, and everything it does not fill is hatched.**
+  A horizon's header IS its divider — `components/RuleHeader.tsx`, a fixed-height
+  rule with the name in a tinted cell at one end and the count in a cell at the
+  other, in the shared `ruleTag` voice, which is why the count no longer drifts
+  to `ml-auto` 700px from its label. The bays share hairlines (`COLUMN_GAP_PX`
+  is 0, each column draws a `border-r`, the board draws `border-y`) so the four
+  rules join into one line. Below them the `.hatch` gradient runs from the last
+  card to the bottom edge of EVERY bay, not only the empty ones — a bay holding
+  one card beside a bay holding three has more unclaimed area than an empty one
+  does — and it is a gradient precisely so it can fill four bays at once
+  without being mistaken for `border-dashed`, which is this app's drop-target
+  signal and nothing else. `Nothing here` survives only in the narrow solo
+  switcher, where one bay fills the screen and a hatch with no words in it
+  would read as a rendering fault. The trailing spacer draws an unlabelled
+  `RuleHeader` plus hatch, so the margin is ruled like the rest of the sheet;
+  it carries no tag, which is the whole difference between a bay and a margin,
+  and it cannot mislead as a drop target because it is not rendered mid-drag.
+  There is a near-duplicate `RuleHeader` under `views/today/`; consolidating
+  the two is a follow-up, not an invitation to import across views.
+- **The Now limit is drawn, not described.** `WipGauge` (`views/goals/FocusSummary.tsx`)
+  is one cell per slot, filled to the count, and it replaces the FIRST focus
+  chip only — `1 planned action left` is a different fact and keeps its own
+  words. It is the one signal in that row with a ceiling to draw against; the
+  other four are open-ended counts, and a bar with no maximum is a decoration.
+  Over the limit the gauge PEGS to warn rather than growing an extra cell: the
+  cell count is the limit, and a gauge that ran past its own scale would stop
+  being a limit you can see — the overage is what the figure beside it says.
+  The chip stays a filter button with its old accessible name, so the drawing
+  is added to the signal and does not replace it.
 - **The assistant shelf speaks `dialogStyles`, and its primary is whatever moves the session forward.** `AssistantSurface` renders in two places — the in-app panel and the Electron overlay — and it used to hand-roll a `quietButton` whose "primary" was a one-shade border difference, which is how two equal-weight buttons came to offer "end this session" and "resume it" with no hierarchy between them. It now spends `primaryBtn`/`secondaryBtn`/`ghostBtn`, one filled button per state, placed LAST per `dialogFooter`'s reading-edge rule. Which button is filled depends on the phase — `break` fills Continue, `active` fills Complete session — so "Complete session" changes side between the two. That is deliberate: the states are mutually exclusive and the filled button is always the reason you summoned the shelf. The dismissive answers ("Didn't happen", "Cancel") are `ghostBtn`, never outlined, so they cannot be mistaken for a secondary action. `altRow`, the alternatives band's row, is NOT a fourth variant — it is a row in a list of choices, and a list is not a commit. Copy splits the same way: `expectedTimeLabel` states an EXPECTATION and belongs to work that has not started, `elapsedAgainstExpected` is the progress readout and belongs to a session under way. Using the first on a running session is what made a paused shelf read `0m worked · on a break · Start with 30m` — the starter's wording at the time, since renamed. All three of `expectedTimeLabel`'s cases now name their provenance and then the figure — **Usually / Planned / Suggested** — because the starter's old `Start with 30m` opened with a verb, and on Today it sits immediately left of a `Start session` button, so one row said the same word twice and the readout read as a second control. The prefix is what the function is FOR: a bare `30m` would throw away where the number came from, and the history case is a RANGE no single number can state.
 - **The shelf's `HEIGHT` is a measurement, and the zero state is why.** The window is unresizable, so that one constant in `electron/assistantWindow.cjs` is the only thing between a state and its own bottom edge. The number itself, and the state it is measured against, live beside it in that file and in the card-hugging rule below — the states this bullet used to enumerate (a capture proposal, a `choose-subject` list) no longer exist, and a stale height here is worse than a pointer. What stays is the discipline: it is MEASURED at 620px wide, never derived, because arithmetic against the type scale put the tallest state 20px low once already and would have shipped a shelf that came up short in the state you are in most. If a state grows, measure it again.
 - **The shelf starts work; it does not parse sentences.** The typed vocabulary

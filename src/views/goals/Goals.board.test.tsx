@@ -183,6 +183,46 @@ describe('board geometry', () => {
     // Now holds the card; the other three are slim and must not each repeat it.
     expect(screen.queryAllByText('Nothing here')).toHaveLength(0);
   });
+
+  /*
+   * The hatch is what replaced "Nothing here", and it is a GRADIENT — the one
+   * thing that lets it fill four bays at once without being mistaken for the
+   * dashed drop-target signal the test above guards.
+   *
+   * One per bay plus one for the trailing margin: the tail runs from the last
+   * card to the bottom edge in EVERY column, not only the empty ones, because
+   * a bay holding one card beside a bay holding three has more unclaimed area
+   * than an empty one does.
+   */
+  it('hatches the tail of every bay and the margin beside them', async () => {
+    await mountBoard([{ id: 'a', title: 'A', nodes: [], column: 0 }]);
+    expect(document.querySelectorAll('.hatch')).toHaveLength(5);
+  });
+
+  it('drops the margin — and its hatch — while something is in the air', async () => {
+    await mountBoard([{ id: 'a', title: 'A', nodes: [], column: 0 }]);
+    // The four bays keep theirs; only the spacer is gated on the drag, because
+    // `columnTracks`'s dragging branch emits no track for it.
+    const board = document.getElementById('goalsBoard') as HTMLElement;
+    expect(board.children).toHaveLength(5);
+    expect(board.lastElementChild!.querySelector('.hatch')).toBeTruthy();
+  });
+
+  /*
+   * The count used to sit at `ml-auto`, which in a 714px column put it 700px
+   * from the label it belongs to. It is a cell on the same rule now — so the
+   * two are children of one header rather than two objects that happen to
+   * share a row.
+   */
+  it('sets each horizon name and its count in one rule', async () => {
+    await mountBoard([{ id: 'a', title: 'A', nodes: [], column: 0 }]);
+    const tag = screen.getByText('Now');
+    const header = tag.parentElement!;
+    expect(header.className).toContain('border-b');
+    expect(header.lastElementChild!.textContent).toBe('1 / 3');
+    // Only Now states a limit; a horizon with no cap would be inventing one.
+    expect(screen.getByText('Later').parentElement!.lastElementChild!.textContent).toBe('0');
+  });
 });
 
 describe('Goals header', () => {
