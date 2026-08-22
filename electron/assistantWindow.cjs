@@ -17,24 +17,33 @@ const path = require('node:path')
 // `npm run build` first; the tallest state it prints IS this number.
 // Arithmetic against the type scale put it 20px low once already.
 //
-// The three-band layout (2026-08-16-shelf-bands-design.md) changed what the
-// worst case IS, which is why this was re-measured rather than carried
-// forward. The primary title is `truncate` now, not `line-clamp-2`, so the
-// two-wrapped-line title that set the previous 264 cannot occur — a title is
-// still free text with no length cap, but its height no longer depends on its
-// length. Against that, the running states gained a row: the alternatives
-// moved out of the `Other options` disclosure and into band 2, so `active`,
-// `break` and `confirming` now render them in the open.
+// The instrument treatment grew two states at once, and BOTH growths were
+// deliberate, so this was re-measured rather than argued down:
+//
+//   - The primary title clamps to two lines again. The one-line rule that set
+//     the previous 308 was adopted precisely to make the card's height
+//     independent of its content, and its arithmetic was right — but its
+//     premise ("one line carries the name at 433px") was measured against
+//     short test titles, and against real ones the shelf's own primary was cut
+//     at the moment it has to be read. A title is free text with no length cap
+//     and its height depends on its length again; two lines is the ceiling.
+//   - The eyebrow became a rule tag, which is a full-bleed row of its own
+//     rather than a line inside the text column, and the alternatives band
+//     gained a second one.
 //
 // Measured, with the same worst-case title as every pass before this one
 // ("Draft the comparative literature review for the graduate seminar on
 // nineteenth-century industrialization"):
 //
-//   confirming   307.99px
-//   active       283.99px
-//   sidecar      262.99px
-//   beyondWindow 192.49px
-//   beyondFocus  192.49px
+//   confirming   342.48px
+//   active       318.48px
+//   sidecar      297.48px
+//   beyondWindow 239.98px
+//   beyondFocus  239.98px
+//
+// `confirming` is still the tallest, and still for the reason it always was:
+// it is the only state whose body is a QUESTION under the title rather than a
+// readout beside it, and the question wraps.
 //
 // The send-off is not in the list because it cannot be the tallest: it pins
 // itself to the height of the card it is replacing (`onSendoffChange` in
@@ -42,14 +51,14 @@ const path = require('node:path')
 // construction.
 //
 // HEIGHT is the tallest of those figures rounded UP to the next whole pixel
-// (308, from confirming's 307.99) — never a margin. A window sized to the
+// (343, from confirming's 342.48) — never a margin. A window sized to the
 // fraction would clip a pane whose measured height sits between two
 // integers, so the round trip is always ceil(), the same rule every prior
 // pass in this file has followed (263.2 became 264).
 //
 // If a state grows, measure it again.
 const WIDTH = 620
-const HEIGHT = 308
+const HEIGHT = 343
 const TOP_GAP = 18
 
 /**

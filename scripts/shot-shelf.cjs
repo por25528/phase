@@ -154,7 +154,14 @@ app.whenReady().then(async () => {
     const heights = []
     for (const [name, snapshot] of Object.entries(STATES)) {
       const label = `${presentation.name}/${theme}/${name}`
-      process.env.PHASE_SHELF_SNAPSHOT = JSON.stringify(snapshot)
+      // The palette rides on the snapshot now, and `AssistantOverlay` applies
+      // it the moment one lands. Stamping the run's theme onto the payload is
+      // what keeps that from fighting the toggle below: the overlay paints the
+      // theme this run is capturing, and the toggle then agrees with it rather
+      // than being reverted by the next snapshot. `loading` carries no theme
+      // by design and is left alone.
+      process.env.PHASE_SHELF_SNAPSHOT = JSON.stringify(
+        snapshot.status === 'ready' ? { ...snapshot, theme } : snapshot)
       const win = new BrowserWindow({
         show: false,
         width: presentation.width,
@@ -179,6 +186,10 @@ app.whenReady().then(async () => {
         win.destroy()
         continue
       }
+      // Still needed, and not redundant: `assistant-embedded.html` mounts the
+      // harness rather than `AssistantOverlay`, so nothing there reads the
+      // snapshot's theme — and `loading` deliberately repaints nothing on
+      // either page.
       await win.webContents.executeJavaScript(
         `document.documentElement.classList.toggle('dark', ${theme === 'dark'})`)
       await new Promise((r) => setTimeout(r, 1000))

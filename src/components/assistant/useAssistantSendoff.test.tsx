@@ -14,6 +14,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     activeFocus: null,
     timeLevel: 'medium',
     focusLevel: 'medium',
+    theme: 'light',
     ...over,
   };
 }

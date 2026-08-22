@@ -52,6 +52,10 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     activeFocus: null,
     timeLevel: 'medium',
     focusLevel: 'medium',
+    // The surface itself never reads this — it renders in tokens, and the
+    // `.dark` class that flips them is the OVERLAY's job (AssistantOverlay).
+    // It is here because the snapshot type requires it.
+    theme: 'light',
     ...over,
   };
 }
@@ -538,15 +542,20 @@ describe('AssistantSurface', () => {
   });
 
   /*
-   * OVERTURNS the previous pin, which required `line-clamp-2`.
+   * OVERTURNS the one-line pin, and restores the clamp it overturned.
    *
-   * That was right when the title had 165px of a 620px window and needed two
-   * lines to say anything. The band layout gives it 433px, and one line makes
-   * the card's height independent of its content — which is what a window that
-   * is fixed-height and CLIPS rather than scrolls actually wants. The full
-   * string stays reachable on `title`.
+   * The one-line rule's argument was sound — a single line makes the card's
+   * height independent of its content, and this window CLIPS rather than
+   * scrolls — but its premise was measured against short test titles. Against
+   * a real one the shelf's primary was cut at the one moment it has to be
+   * read. Two lines cost ~20px on the tallest state and `HEIGHT` was
+   * re-measured to pay for it, which is exactly what "if a state grows,
+   * measure it again" instructs.
+   *
+   * The full string stays reachable on `title` regardless: two lines is a
+   * bigger window, not an unbounded one.
    */
-  it('truncates a long primary title to one line and keeps it in the tooltip', () => {
+  it('clamps a long primary title to two lines and keeps it in the tooltip', () => {
     const long = 'Write the extremely long literature review section that keeps growing '
       + 'until it no longer fits on one line at any sane width';
     render(
@@ -559,17 +568,16 @@ describe('AssistantSurface', () => {
       />,
     );
     const title = screen.getByRole('heading', { name: long });
-    expect(title.className).toContain('truncate');
-    expect(title.className).not.toContain('line-clamp-2');
+    expect(title.className).toContain('line-clamp-2');
+    expect(title.className).not.toContain('truncate');
     expect(title.getAttribute('title')).toBe(long);
-    expect(screen.getByText('Algorithms').className).toContain('truncate');
   });
 
   /*
    * The same rule during a session: `FocusPanel` and `AdvicePanel` must not
    * disagree about how a title overflows, which is why both spend `workTitle`.
    */
-  it('truncates the running session title the same way', () => {
+  it('clamps the running session title the same way', () => {
     const long = 'Write the extremely long literature review section that keeps growing '
       + 'until it no longer fits on one line at any sane width';
     render(
@@ -580,7 +588,7 @@ describe('AssistantSurface', () => {
       />,
     );
     const title = screen.getByRole('heading', { name: long });
-    expect(title.className).toContain('truncate');
+    expect(title.className).toContain('line-clamp-2');
     expect(title.getAttribute('title')).toBe(long);
   });
 
@@ -700,15 +708,58 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
   });
 
-  // The focus dial deliberately has no number keys — only the time dial can own them,
-  // and the time dial is the one you reach for mid-session.
-  it('keeps the number keys on the dial that changes what you are offered', () => {
+  /*
+   * OVERTURNS "the focus dial deliberately has no number keys".
+   *
+   * That was written while the focus dial was the junior of the two. The dials
+   * then shipped as peers — same size, same voice, captioned as parallel nouns
+   * — and at that point one of them being mouse-only stopped reading as
+   * restraint and started reading as an omission.
+   */
+  it('gives the number row to both dials — 1-3 time, 4-6 focus', () => {
     const onAction = vi.fn();
     render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
     fireEvent.keyDown(window, { key: '1' });
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'low' });
     fireEvent.keyDown(window, { key: '3' });
     expect(onAction).toHaveBeenCalledWith({ type: 'set-time-level', level: 'high' });
+    fireEvent.keyDown(window, { key: '4' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
+    fireEvent.keyDown(window, { key: '6' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'high' });
+    // Six keys, and no seventh: the number row past 6 belongs to nobody.
+    onAction.mockClear();
+    fireEvent.keyDown(window, { key: '7' });
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  /*
+   * A binding nobody can see is half a control, which is what made the focus
+   * dial mouse-only in practice long after it gained keys. The engraving is
+   * `aria-hidden`, so the segment's accessible name stays the value it sets —
+   * "30m", never "30m 1".
+   */
+  it('prints the key on each segment of both dials, without renaming them', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    for (const [name, key] of [['30m', '1'], ['Any', '3'], ['Low', '4'], ['High', '6']] as const) {
+      const segment = screen.getByRole('button', { name });
+      const hint = segment.querySelector('[aria-hidden]');
+      expect(hint?.textContent, name).toBe(key);
+      expect(hint?.className, name).toContain('font-mono');
+    }
+  });
+
+  /*
+   * The engraving is shelf-only. The BINDING is live in both presentations and
+   * always was; what the 380px panel does not get is the printed legend, so
+   * "the embedded presentation does not change" survives this.
+   */
+  it('leaves the embedded dials unengraved', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    expect(screen.getByRole('button', { name: '30m' }).querySelector('[aria-hidden]')).toBeNull();
+    fireEvent.keyDown(window, { key: '4' });
+    expect(onAction).toHaveBeenCalledWith({ type: 'set-focus-level', level: 'low' });
   });
 
   it('offers both dials, named for what each one does', () => {
@@ -765,6 +816,34 @@ describe('AssistantSurface', () => {
     const shelf = screen.getByRole('button', { name: /Read chapter 5/ });
     expect(shelf.className).toContain('flex');
     expect(shelf.querySelector('span')!.className).toContain('flex-1');
+  });
+
+  /*
+   * The row gives its width to the WORK.
+   *
+   * The metadata was `shrink-0`: it claimed its full width first and the title
+   * took whatever was left, which with real course titles cut both alternative
+   * titles while the metadata beside them stated itself in full. The floor on
+   * the title inverts who yields — a greedy meta hits it and gives its own
+   * width back — and the meta truncates rather than wrapping when it does,
+   * because a span that yields has to CUT.
+   *
+   * jsdom has no layout, so this pins the mechanism rather than the pixels,
+   * the same move the two branch tests above make.
+   */
+  it('never lets an alternative\'s metadata take room from its title', () => {
+    const alternatives = [work({ key: 'step:n2', title: 'Read chapter 5' })];
+    render(
+      <AssistantSurface
+        snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives } })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const [title, meta] = [...screen.getByRole('button', { name: /Read chapter 5/ }).children];
+    expect(title.className).toContain('min-w-[50%]');
+    expect(meta.className).not.toContain('shrink-0');
+    expect(meta.className).toContain('truncate');
   });
 
   /*
@@ -939,6 +1018,182 @@ describe('AssistantSurface', () => {
   it('draws no ring on the idle card, where nothing is running', () => {
     const { container } = render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
     expect(container.querySelector('svg[aria-hidden]')).toBeNull();
+  });
+});
+
+/*
+ * The instrument grammar, and every one of these is a SHELF fact. Each pins
+ * the embedded half too, because "the 380px panel does not change" is a claim
+ * that only stays true if something checks it.
+ */
+describe('the rule tags', () => {
+  const withAlternatives = (over: Partial<RecommendedWork>[] = []) => ready({
+    advice: {
+      kind: 'work',
+      primary: work(),
+      alternatives: over.map((o, i) => work({ key: `step:n${i + 2}`, ...o })),
+    },
+  });
+
+  /*
+   * The eyebrow moved OUT of the text column and became the rule above it,
+   * which is what buys the title back the width it used to sit over. The
+   * figure moved with it, to the reading edge — stated once, on the rule that
+   * introduces the work, rather than trailing the project in the subtitle.
+   */
+  it('states the reason and the expectation on one rule above the work', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    const tag = screen.getByText('Happening now');
+    expect(tag.className).toContain('font-mono');
+    expect(tag.className).toContain('uppercase');
+    expect(tag.className).toContain('bg-chip');
+
+    const figure = screen.getByText('Planned 45m');
+    expect(figure.className).toContain('tabular-nums');
+    // One rule, two cells: the tag and the figure are siblings.
+    expect(figure.parentElement).toBe(tag.parentElement);
+    // And the heading is NOT inside it — the rule is chrome above the work.
+    expect(tag.parentElement!.contains(screen.getByRole('heading', { name: 'Problem set 4' })))
+      .toBe(false);
+  });
+
+  it('leaves the embedded panel its section label and its subtitle figure', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    const label = screen.getByText('Happening now');
+    expect(label.className).not.toContain('bg-chip');
+    // Embedded has no rule to hang a figure on, so it stays where it was.
+    expect(screen.getByText('Planned 45m').className).not.toContain('tabular-nums');
+  });
+
+  /*
+   * Honest chrome: `MAX_ALTERNATIVES` really does cap the band, so the number
+   * describes the ROWS — the one figure that is true whether or not the cap
+   * bit.
+   */
+  it('counts the alternatives on their own rule', () => {
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([{ title: 'Read chapter 5' }, { title: 'Pitch deck' }])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const tag = screen.getByText('Or');
+    expect(screen.getByText('2 more').parentElement).toBe(tag.parentElement);
+    cleanup();
+
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([{ title: 'Read chapter 5' }])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.getByText('1 more')).toBeTruthy();
+  });
+
+  /*
+   * A running session has no expectation left to state — it has PROGRESS,
+   * which changes, and a readout that changes belongs beside the work rather
+   * than on the label introducing it. That is `expectedTimeLabel` versus
+   * `elapsedAgainstExpected`, restated as a position.
+   */
+  it('puts no figure on a running session\'s rule', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView() })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const rule = screen.getByText('Focus session').parentElement!;
+    expect(rule.textContent).toBe('Focus session');
+    expect(screen.getByText('12m of 45m')).toBeTruthy();
+  });
+
+  /*
+   * `Midterm — ` was stated four times on one 620px card. The primary names
+   * the project in FULL; the alternatives only say what makes them different.
+   */
+  it('drops from the alternatives the project prefix the primary already stated', () => {
+    const snapshot = ready({
+      advice: {
+        kind: 'work',
+        primary: work({ goalTitle: 'Midterm — 2301265 DATA STRUC ALGOR' }),
+        alternatives: [
+          work({ key: 'step:n2', title: 'Basic counting', goalTitle: 'Midterm — 2301230 DISCRETE CS' }),
+          work({ key: 'step:n3', title: 'Download slides', goalTitle: 'Midterm — 2301274 COMP SYS' }),
+        ],
+      },
+    });
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} presentation="shelf" />);
+    expect(screen.getByText('Midterm — 2301265 DATA STRUC ALGOR')).toBeTruthy();
+    expect(screen.getByText('2301230 DISCRETE CS · Planned 45m')).toBeTruthy();
+    expect(screen.getByText('2301274 COMP SYS · Planned 45m')).toBeTruthy();
+    cleanup();
+
+    // Embedded gives the metadata its own line, so there is no row of repeated
+    // words to collapse and nothing is dropped.
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
+    expect(screen.getByText('Midterm — 2301230 DISCRETE CS · Planned 45m')).toBeTruthy();
+  });
+
+  it('keeps a project name that is not shared by every row', () => {
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([
+          { title: 'Read chapter 5', goalTitle: 'Algorithms' },
+          { title: 'Pitch deck', goalTitle: 'Website' },
+        ])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.getByText('Algorithms · Planned 45m')).toBeTruthy();
+    expect(screen.getByText('Website · Planned 45m')).toBeTruthy();
+  });
+
+  /*
+   * The metadata is an identifier and a duration, which is what the mono face
+   * is for — and `expectedTimeLabel` stays WHOLE. A bare `45m` throws away
+   * where the number came from, and the history case is a range no single
+   * figure can state.
+   */
+  it('sets an alternative\'s metadata in mono, provenance and all', () => {
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([{
+          title: 'Read chapter 5',
+          expected: { kind: 'history', lowMin: 45, highMin: 60, confidence: 'high', sampleCount: 6 },
+        }])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const meta = screen.getByText('Algorithms · Usually 45–60m');
+    expect(meta.className).toContain('font-mono');
+    expect(meta.className).toContain('tabular-nums');
+  });
+
+  /*
+   * A skeleton that promises the wrong layout is worse than no skeleton: it
+   * reflows twice. The rule is CHROME, so the loading state draws the real
+   * thing rather than a grey bar standing in for it — which is the only way
+   * two hand-tuned heights stay in step.
+   */
+  it('promises the rules it is about to be replaced by', () => {
+    const { container } = render(
+      <AssistantSurface snapshot={{ status: 'loading' }} onAction={() => {}} presentation="shelf" />,
+    );
+    const cells = container.querySelectorAll('.bg-chip');
+    expect(cells.length).toBe(2);
+    cleanup();
+
+    // Embedded has no rules, so its skeleton promises none.
+    const embedded = render(
+      <AssistantSurface snapshot={{ status: 'loading' }} onAction={() => {}} />,
+    );
+    expect(embedded.container.querySelectorAll('.bg-chip').length).toBe(0);
   });
 });
 

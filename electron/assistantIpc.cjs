@@ -102,6 +102,14 @@ function validLevel(level) {
   return level === 'low' || level === 'medium' || level === 'high';
 }
 
+// The RESOLVED palette, never the stored preference: `'system'` is the owner's
+// word and means nothing on the far side of this relay. Required, because an
+// absent theme is indistinguishable from light and that is the bug it exists
+// to close.
+function validTheme(theme) {
+  return theme === 'light' || theme === 'dark';
+}
+
 function validSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return false;
   if (snapshot.status === 'loading') return true;
@@ -110,6 +118,7 @@ function validSnapshot(snapshot) {
     && validFocus(snapshot.activeFocus)
     && validLevel(snapshot.timeLevel)
     && validLevel(snapshot.focusLevel)
+    && validTheme(snapshot.theme)
     && validNotice(snapshot.notice);
 }
 

@@ -66,8 +66,32 @@ export type SegmentedOption<T extends string> = {
   label: string;
   /** Tooltip, for a segment whose label cannot carry the whole explanation. */
   title?: string;
+  /**
+   * The key that picks this segment, printed beside the label as a legend.
+   *
+   * `aria-hidden`, always: the segment's accessible name is its LABEL, and a
+   * screen reader announcing "30m 1" would be reading the instrument's
+   * engraving out as part of the value. It is a hint for the eye, and the
+   * binding it advertises lives at the call site — this component never
+   * listens for a key, because a control that both draws a hint and claims a
+   * global key would be two features sharing one prop.
+   */
+  hint?: string;
   disabled?: boolean;
 };
+
+/**
+ * The key legend. `font-mono` because it names a physical key — the same reason
+ * `ShortcutsOverlay` sets `⌘` in mono.
+ *
+ * `text-micro` and not something smaller: 11px is the app's smallest role and
+ * it sets the floor, so an engraving does not get to open a twelfth step below
+ * it. `text-muted` and not `text-faint`: this is READ, and faint clears no
+ * contrast floor worth defending — muted is exactly the ink an UNSELECTED
+ * segment's own label carries, which is the honest weight for a mark that
+ * annotates a label rather than competing with one.
+ */
+const HINT = 'ml-[5px] font-mono text-micro text-muted';
 
 type Size = keyof typeof SIZES;
 
@@ -116,6 +140,7 @@ export function SegmentedControl<T extends string>({
             className={`${SEGMENT} ${s.segment} ${SEGMENT_OFF} peer-checked:bg-raised peer-checked:text-ink peer-checked:shadow-card peer-disabled:opacity-40 peer-disabled:cursor-default peer-focus-visible:ring-2 peer-focus-visible:ring-accent`}
           >
             {o.label}
+            {o.hint && <span aria-hidden className={HINT}>{o.hint}</span>}
           </span>
         </label>
       ))}
@@ -158,6 +183,7 @@ export function SegmentedSwitch<T extends string>({
           }`}
         >
           {o.label}
+          {o.hint && <span aria-hidden className={HINT}>{o.hint}</span>}
         </button>
       ))}
     </div>

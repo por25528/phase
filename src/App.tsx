@@ -666,7 +666,15 @@ export function App() {
         }}
       />
       <SettingsModal open={settingsOpen} onClose={actions.closeSettings} />
-      <AssistantHost open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      {/* `effectiveTheme` and not `theme`: the overlay is a second renderer
+          with no `.dark` class of its own, and `'system'` means nothing to it.
+          This is the one place that resolves the preference against the OS —
+          re-resolving it over there is how two windows come to disagree. */}
+      <AssistantHost
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        theme={effectiveTheme}
+      />
       <ShortcutsOverlay open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       <CommandPalette
         open={paletteOpen}

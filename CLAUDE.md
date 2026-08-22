@@ -129,6 +129,72 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   cursor and an empty Now would be narrowest exactly when you need to hit it.
 - **The assistant shelf speaks `dialogStyles`, and its primary is whatever moves the session forward.** `AssistantSurface` renders in two places — the in-app panel and the Electron overlay — and it used to hand-roll a `quietButton` whose "primary" was a one-shade border difference, which is how two equal-weight buttons came to offer "end this session" and "resume it" with no hierarchy between them. It now spends `primaryBtn`/`secondaryBtn`/`ghostBtn`, one filled button per state, placed LAST per `dialogFooter`'s reading-edge rule. Which button is filled depends on the phase — `break` fills Continue, `active` fills Complete session — so "Complete session" changes side between the two. That is deliberate: the states are mutually exclusive and the filled button is always the reason you summoned the shelf. The dismissive answers ("Didn't happen", "Cancel") are `ghostBtn`, never outlined, so they cannot be mistaken for a secondary action. `altRow`, the alternatives band's row, is NOT a fourth variant — it is a row in a list of choices, and a list is not a commit. Copy splits the same way: `expectedTimeLabel` states an EXPECTATION and belongs to work that has not started, `elapsedAgainstExpected` is the progress readout and belongs to a session under way. Using the first on a running session is what made a paused shelf read `0m worked · on a break · Start with 30m` — the starter's wording at the time, since renamed. All three of `expectedTimeLabel`'s cases now name their provenance and then the figure — **Usually / Planned / Suggested** — because the starter's old `Start with 30m` opened with a verb, and on Today it sits immediately left of a `Start session` button, so one row said the same word twice and the readout read as a second control. The prefix is what the function is FOR: a bare `30m` would throw away where the number came from, and the history case is a RANGE no single number can state.
 - **The shelf's `HEIGHT` is a measurement, and the zero state is why.** The window is unresizable, so that one constant in `electron/assistantWindow.cjs` is the only thing between a state and its own bottom edge. The number itself, and the state it is measured against, live beside it in that file and in the card-hugging rule below — the states this bullet used to enumerate (a capture proposal, a `choose-subject` list) no longer exist, and a stale height here is worse than a pointer. What stays is the discipline: it is MEASURED at 620px wide, never derived, because arithmetic against the type scale put the tallest state 20px low once already and would have shipped a shelf that came up short in the state you are in most. If a state grows, measure it again.
+- **The overlay's palette arrives on the snapshot, and `loading` carries none.**
+  `AssistantSnapshot.theme` is the RESOLVED `'light' | 'dark'`, published by the
+  owner (`App` computes `effectiveTheme`; it is the only place `'system'` meets
+  the OS) and applied by `AssistantOverlay` with `applyTheme`. It is REQUIRED
+  and the relay validates it, because an absent theme is indistinguishable from
+  light — which is the bug this closed, wearing a default. The bug is subtler
+  than "nothing applies `.dark`": `assistant.html` has always carried a no-FOUC
+  script that applies it itself, but that script GUESSES (a raw preference read
+  in a second renderer, falling back to the OS) and runs once per page LOAD,
+  while the overlay window is created once and thereafter hidden and shown
+  rather than reloaded. So a `dark` preference on a light OS, or any theme
+  changed after the shelf first existed, left a light card beside a dark app.
+  The inline script keeps its job — the first frame — and that is exactly why
+  `loading` repaints nothing: re-deciding on the way to the owner's answer
+  introduces a flash rather than removing one. `lib/theme.ts` is reachable from
+  the overlay without widening `entryBoundary.test.ts`'s proof, because it is a
+  leaf; what must NEVER cross is `resolveTheme`/`readStoredTheme`, or two
+  windows can disagree about one media query read at two moments. The embedded
+  `AssistantHost` panel ignores the field entirely: it renders in the main
+  window, which already has the class.
+- **On the shelf a label sits INSIDE its rule; embedded it sits above one.**
+  `RuleTag` in `AssistantSurface.tsx` is the shelf's `ruleTag` cell plus the
+  hairline plus an optional figure at the reading edge, and it replaces
+  `SectionLabel` over the work band and the alternatives band — behind
+  `shelf === true`, like every other 620-vs-380 branch in that file. The figure
+  is `expectedTimeLabel` and belongs ONLY to work that has not started: a
+  running session has no expectation left to state, it has progress, and a
+  readout that changes belongs beside the work rather than on the label
+  introducing it — `expectedTimeLabel` vs `elapsedAgainstExpected`, restated as
+  a position. The alternatives rule carries `N more`, which describes the ROWS
+  and is therefore true whether or not `MAX_ALTERNATIVES` bit. The dial bar is
+  two ruled cells for the same reason: two axes crowded onto one row read as
+  one wide control with six segments. `Skeleton` draws the REAL rule chrome
+  rather than a grey bar standing in for it, so the promised height is right by
+  construction — which took loading-to-idle reflow from 57px to 11px.
+- **The primary title clamps to two lines, and the alternatives yield their
+  width to the work.** Both overturn rules that were argued well and measured
+  badly. `truncate` was adopted to make the card's height independent of its
+  content — sound, because the window CLIPS rather than scrolls — but its
+  premise was measured against short test titles, and against real ones the
+  shelf's own primary was cut at the moment it has to be read; the answer is to
+  pay the budget (`HEIGHT` 308 → 343) rather than shorten the sentence. An
+  alternative's metadata was `shrink-0` under a comment saying that was "right
+  at 620px and wrong at 380" — it was wrong at both, and only visibly
+  catastrophic at 380. The title now carries `min-w-[50%]`, a FLOOR and not a
+  width: while the metadata is short nothing binds, and a greedy meta hits the
+  floor and gives its own width back instead. Metadata that repeats a project
+  the primary already named in full is dropped, via `lib/sharedPrefix.ts` —
+  only when EVERY label carries the prefix, cut back to a token boundary so
+  `Midterm — 2301265` and `Midterm — 2301230` can never yield `1265` and
+  `1230`, and refused outright if any row has no project at all.
+  `expectedTimeLabel` stays WHOLE in that metadata: a bare `45m` throws away
+  where the number came from, exactly as the bullet above says.
+- **Both dials own number keys, and only the shelf prints them.** `1`-`3` set
+  time, `4`-`6` set focus. This overturns "two dials would want six keys, and
+  the shelf is not a keyboard surface" — an argument written while the focus
+  dial was the junior of the two, and falsified by the dials themselves the day
+  they shipped side by side, same size, captioned as parallel nouns: two
+  controls presented as peers, one of them mouse-only, is worse than six keys
+  on a surface you summon with a keyboard shortcut. The rest of that argument
+  survives — the shelf has no text field for the number row to be stolen from.
+  The legend is `SegmentedOption.hint`, always `aria-hidden` so a segment's
+  accessible name stays `30m` and never `30m 1`, and always `text-micro`
+  because 11px is the app's smallest role and an engraving does not get to open
+  a step below it. The BINDING is live in both presentations; the engraving is
+  shelf-only, so the 380px panel's appearance is unchanged.
 - **The shelf starts work; it does not parse sentences.** The typed vocabulary
   (`assistantCommands.ts`, the input, the proposal panels, `rankedWork` and
   `workThatFits`) is RETIRED — `⌘K` is the one place a sentence becomes a task,

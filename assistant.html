@@ -8,9 +8,14 @@
     <!-- The overlay window's page. It boots src/assistant/main.tsx — never the
          app entry — so the module graph reachable from here can be proven
          store-free (src/assistant/entryBoundary.test.ts is that proof).
-         The no-FOUC script mirrors index.html so the overlay follows the same
-         theme with no light flash. The overlay's own localStorage is a separate
-         Electron partition, so the OS preference is the realistic source. -->
+         The no-FOUC script mirrors index.html and paints the FIRST FRAME only.
+         It is a guess and it is allowed to be: it reads the raw preference from
+         a second renderer, falls back to the OS, and runs once per page load —
+         while this window is created once and thereafter hidden and shown, not
+         reloaded. The authority is `AssistantSnapshot.theme`, resolved by the
+         owner and applied in AssistantOverlay.tsx the moment a snapshot lands.
+         Deleting this script would not break the theme, only the first
+         frame — which is precisely the flash it is here to prevent. -->
     <script>
       (function () {
         try {
