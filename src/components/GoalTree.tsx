@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useId } from 'react';
+import { Fragment, useState, useRef, useEffect, useId } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
 import { nodePct } from '../lib/pct';
-import { IconChevronRight, IconDiamond, IconGrip } from './Icons';
+import { IconCheck, IconChevronRight, IconDiamond, IconGrip } from './Icons';
 import {
   DndContext,
   PointerSensor,
@@ -26,6 +26,8 @@ import { Popover } from './Popover';
 import { RowActions } from './RowActions';
 import { ScheduleMenu } from './SchedulePopover';
 import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
+import { foldDone, foldSummary, type DoneRun } from '../lib/doneFold';
+import { RuleHeader } from './RuleHeader';
 import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
 import { scheduleCell } from '../lib/rowSchedule';
 import { metaPlacement, type MetaPlacement } from '../lib/rowMeta';
@@ -165,6 +167,17 @@ interface SharedProps {
    * about the tree, not something a row can derive from its own node.
    */
   goalId: string;
+  /**
+   * Which folded runs of finished work the user has opened, by `DoneRun.key`.
+   *
+   * View state, never persisted and never in the store: it says what is on
+   * screen right now, the same kind of fact `expanded` is — except that
+   * `expanded` is a decision about a project you come back to, and this is a
+   * glance at what you already finished. Reopening the goal should show the
+   * open work, not wherever you last left the record.
+   */
+  revealed: ReadonlySet<string>;
+  onReveal: (key: string) => void;
 }
 
 /**
@@ -300,6 +313,18 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
   const reducedMotion = usePrefersReducedMotion();
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Folded runs the user has opened. Keyed by first-node id — see `DoneRun`.
+  const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
+
+  function toggleRevealed(key: string): void {
+    setRevealed((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   // Where a shift-range measures from. Held separately from the set because the
   // set has no order and a range needs a fixed end to grow away from.
   const anchor = useRef<string | null>(null);
@@ -314,7 +339,11 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
     setSelected((current) => pruneSelection(nodes, current));
   }, [nodes]);
 
-  const visible = visibleRowIds(nodes, expanded);
+  // `revealed` is passed because a folded run is off screen exactly as a
+  // collapsed subtree is, and a shift-range that reached into one would select
+  // rows nobody can see. `visibleRowIds` spends the same `foldDone` this tree
+  // renders from, so the two cannot disagree about where the runs are.
+  const visible = visibleRowIds(nodes, expanded, revealed);
 
   function clearSelection(): void {
     anchor.current = null;
@@ -422,6 +451,8 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
           onSelect={onSelect}
           onBulk={onBulk}
           goalId={openGoalId ?? ''}
+          revealed={revealed}
+          onReveal={toggleRevealed}
         />
       </div>
     </DndContext>
@@ -431,15 +462,114 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
 // ── GoalSiblingList — one level with its own SortableContext ──────────────────
 
 function GoalSiblingList({ nodes, ...shared }: { nodes: GoalNode[] } & SharedProps) {
+  const items = foldDone(nodes);
+  // `isFirstSibling` only answers "is there a sibling above to nest under" —
+  // the one thing `indentNode` refuses on, and the one reason the ⋯ menu would
+  // otherwise offer a verb that does nothing. It reads the ORIGINAL list, not
+  // the folded one: whether a row can be indented is a fact about the data,
+  // and a fold that changed the answer would make the menu lie about the tree.
+  const firstId = nodes[0]?.id;
+
+  // Only the ids actually rendered. dnd-kit measures a sortable list by the
+  // index of each id in this array, so listing a folded row here would leave a
+  // phantom slot in the drop maths that nothing on screen accounts for.
+  const sortableIds = items.flatMap((item) =>
+    item.kind === 'node'
+      ? [item.node.id]
+      : shared.revealed.has(item.run.key)
+        ? item.run.nodes.map((n) => n.id)
+        : [],
+  );
+
   return (
-    <SortableContext items={nodes.map((n) => n.id)} strategy={verticalListSortingStrategy}>
-      {nodes.map((n, i) => (
-        // `isFirstSibling` only answers "is there a sibling above to nest
-        // under" — the one thing `indentNode` refuses on, and the one reason
-        // the ⋯ menu would otherwise offer a verb that does nothing.
-        <GoalTreeNode key={n.id} n={n} isFirstSibling={i === 0} {...shared} />
-      ))}
+    <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+      {items.map((item) =>
+        item.kind === 'node' ? (
+          <GoalTreeNode
+            key={item.node.id}
+            n={item.node}
+            isFirstSibling={item.node.id === firstId}
+            {...shared}
+          />
+        ) : (
+          <Fragment key={`done:${item.run.key}`}>
+            <DoneFold
+              run={item.run}
+              indent={shared.depth * 22}
+              open={shared.revealed.has(item.run.key)}
+              onToggle={() => shared.onReveal(item.run.key)}
+            />
+            {shared.revealed.has(item.run.key) &&
+              item.run.nodes.map((n) => (
+                <GoalTreeNode key={n.id} n={n} isFirstSibling={n.id === firstId} {...shared} />
+              ))}
+          </Fragment>
+        ),
+      )}
     </SortableContext>
+  );
+}
+
+// ── DoneFold — a run of finished siblings, on one line ────────────────────────
+
+/**
+ * What a finished run of work says for itself once it is no longer the point.
+ *
+ * The rule is Today's: work that is done cannot outrank work that is not. In
+ * the user's screenshot two of five top-level rows were done, struck through,
+ * in the most prominent position on the page — and the reward for finishing
+ * them was a page that said less about what is left.
+ *
+ * It is a RECORD, so it is never removed and never reordered: the run stays
+ * exactly where it sits in its sibling list, `Show` brings every row back with
+ * its checkbox, and un-ticking one needs no undo because `toggleLeaf` already
+ * takes a plain write when it un-completes. `foldDone` decides what a run is
+ * (see `MIN_FOLD_RUN`, and why a container with open children can never be in
+ * one).
+ *
+ * The `role="group"` wrapper is the same accommodation `AddChildInput` takes,
+ * and for the same reason: a `tree` may own only `treeitem`s and `group`s, and
+ * a bare `<button>` sitting directly under one satisfies neither. A `group`
+ * has no required children, so it is at home holding this line — and the rows
+ * it reveals stay OUTSIDE it, as ordinary siblings at their own `aria-level`,
+ * because putting them inside would claim a nesting level the data does not
+ * have.
+ */
+function DoneFold({
+  run,
+  indent,
+  open,
+  onToggle,
+}: {
+  run: DoneRun;
+  indent: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div role="group" style={{ marginLeft: indent }} className="px-[6px] py-[2px]">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        // `text-muted`, not `text-faint`. Finished text is muted in this app,
+        // and this line is the ONLY route back to the rows it stands for — an
+        // affordance that has to clear AA even while the work it names does
+        // not need reading.
+        className="w-full flex items-center gap-[7px] min-h-[24px] px-[4px] rounded-[4px] text-meta text-muted hover:bg-hover hover:text-ink-soft"
+      >
+        <IconCheck size={11} />
+        <span className="flex-none tabular-nums">{run.nodes.length} done</span>
+        <span className="min-w-0 truncate text-left">{foldSummary(run)}</span>
+        {/* Beside the names, not pinned to the far edge on an `ml-auto`. The
+            verb is the second half of the sentence the line is saying, and a
+            `Show` stranded 900px from the work it would show is the same
+            defect as a `0%` stranded from its container. The slack goes after
+            it — the same shape the rows below use. */}
+        <span className="flex-none text-ink-soft">{open ? 'Hide' : 'Show'}</span>
+        <span className="flex-1" aria-hidden="true" />
+      </button>
+    </div>
   );
 }
 
@@ -457,6 +587,8 @@ function GoalTreeNode({
   onSelect,
   onBulk,
   goalId,
+  revealed,
+  onReveal,
 }: { n: GoalNode; isFirstSibling: boolean } & SharedProps) {
   // A row created by Enter mounts straight into its editor, so the sequence is
   // "Enter, type, Enter" rather than "Enter, hunt for the row, double-click,
@@ -736,16 +868,92 @@ function GoalTreeNode({
     }
   }
 
-  // The row is a two-column grid now, not one flex line. Column 1 holds the
-  // leading controls; column 2 stacks the title over its metadata, which is what
-  // deletes the ~700px gutter the pinned right-edge cells used to leave.
+  // A LEAF's row is a three-column grid. Column 1 holds the leading controls,
+  // column 2 stacks the title over its metadata, and column 3 is the estimate
+  // on the reading edge.
   //
-  // `items-start`, so the leading controls stay aligned to line 1 rather than
-  // centring themselves across a two-line row.
+  // The two-column form deleted the ~700px gutter for a leaf, whose metadata
+  // moved to line 2. It did NOT delete it for a CONTAINER, and the comment
+  // that lived here used to claim otherwise: a container has no line 2 — it
+  // carries no estimate and no schedule of its own — so its `%`, its derived
+  // `blocked` flag and its WHEN readout stayed on line 1, `flex-shrink-0`,
+  // after a `flex-1` title that absorbed every pixel of slack and pushed all
+  // three to the far edge. On a wide window `0%` sat ~1,300px from the words
+  // it describes.
+  //
+  // A container no longer renders as a row at all — it renders as a RULE (see
+  // `RuleHeader` below), which is what makes that defect unfixable-again by
+  // construction rather than fixed by an arrangement the next change can undo:
+  // a rule has exactly two cells, so the name and the figure land on one line
+  // because there is nowhere else for either of them to be.
+  //
+  // Column 3 is the other half of the same idea. The estimate used to live
+  // inside `LeafMeta`, which put it on line 1 for a bare row and line 2 for a
+  // populated one — so it was never a COLUMN, and a goal card saying "4
+  // unestimated" could not be checked against the tree without hovering every
+  // row. A fixed grid track states it at the same x on every row, at rest, and
+  // an unpriced row reads `—` there rather than nothing.
+  //
+  // `items-start`, so the leading controls and the estimate stay aligned to
+  // line 1 rather than centring across a two-line row.
   // `group` stays LITERAL: `.quiet-control` matches `.group`, not `group/name`.
   const ROW_CLS =
-    'grid grid-cols-[auto_1fr] gap-x-[9px] items-start px-[6px] py-[4px] rounded-[6px] hover:bg-hover group cursor-pointer ' +
+    'grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-[9px] items-start px-[6px] py-[4px] rounded-[6px] hover:bg-hover group cursor-pointer ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-0';
+
+  // A container's rule is the same object with none of the grid: `RuleHeader`
+  // draws its own cells and its own hairline, so all this carries is the row's
+  // interaction skin. The top margin is what separates one bay from the next;
+  // there is no rounding, because a rule that curled at its ends would stop
+  // reading as a rule.
+  const RULE_CLS =
+    'mt-[9px] mb-[2px] group cursor-pointer ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-0';
+
+  // Everything the row's leading column holds for a container: the drag handle
+  // and the twirl, inside the tag cell so the rule's left edge stays flush.
+  const dragHandle = (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      tabIndex={-1}
+      aria-label="Drag to reorder"
+      onClick={(e) => e.stopPropagation()}
+      className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-faint cursor-grab active:cursor-grabbing"
+    >
+      <IconGrip size={13} />
+    </button>
+  );
+
+  const twirl = hasKids ? (
+    <button
+      type="button"
+      aria-expanded={isOpen}
+      aria-label={isOpen ? 'Collapse' : 'Expand'}
+      tabIndex={-1}
+      className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint transition-transform duration-150 rounded-[4px] hover:bg-hover"
+      style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+      onClick={(e) => {
+        e.stopPropagation();
+        actions.toggleExpand(n.id);
+      }}
+    >
+      <IconChevronRight size={13} />
+    </button>
+  ) : (
+    <span className="w-[14px] h-[14px] flex-shrink-0" aria-hidden="true" />
+  );
+
+  const milestoneMark = n.checkpoint ? (
+    <span className="text-accent flex-shrink-0 inline-flex" aria-hidden="true">
+      <IconDiamond size={9} />
+    </span>
+  ) : null;
+
+  const titleEditor = (className: string) => (
+    <InlineEdit value={n.title} className={className} onCommit={commitRename} onCancel={() => setEditing(false)} />
+  );
 
   return (
     <div ref={setNodeRef} style={sortableStyle}>
@@ -759,7 +967,9 @@ function GoalTreeNode({
         // it: `hover:bg-hover` is a later utility than `bg-accent-tint`, so a
         // selected row under the cursor went neutral grey and read as
         // deselected exactly while you were pointing at it.
-        className={`${ROW_CLS} ${selected.has(n.id) ? 'bg-accent-tint hover:bg-accent-tint' : ''}`}
+        className={`${hasKids ? RULE_CLS : ROW_CLS} ${
+          selected.has(n.id) ? 'bg-accent-tint hover:bg-accent-tint' : ''
+        }`}
         style={{ marginLeft: ind }}
         data-row=""
         data-node-id={n.id}
@@ -779,184 +989,198 @@ function GoalTreeNode({
         // title never reaches this.
         onDoubleClick={hasKids ? () => actions.openArea(n.id) : undefined}
       >
-        {/* ── column 1: leading controls, pinned to line 1 ── */}
-        <div className="flex items-center gap-[9px] min-h-[26px]">
-          {/* Drag handle — {listeners} here, NOT on the whole row, to avoid
-              colliding with row-level Space/Arrow handlers. */}
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            tabIndex={-1}
-            aria-label="Drag to reorder"
-            onClick={(e) => e.stopPropagation()}
-            className="quiet-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 text-faint cursor-grab active:cursor-grabbing"
-          >
-            <IconGrip size={13} />
-          </button>
+        {hasKids ? (
+          /*
+           * ── a container is a RULE ──
+           *
+           * Still the `treeitem` above — the drag handle, the twirl, the
+           * keyboard grammar, `aria-level` and `aria-owns` are all unchanged.
+           * What changed is that it is DRAWN as a ruled bay rather than as a
+           * bigger row: its name in the tinted cell at the left end, its
+           * progress on the far end of the same hairline.
+           *
+           * That is what makes the gutter unfixable-again. A rule has exactly
+           * two cells, so there is no arrangement in which the name and the
+           * figure end up on separate lines or a thousand pixels apart — the
+           * hairline between them is what connects them, which is the whole
+           * difference between a legend on a drawing and a number stranded in
+           * whitespace.
+           */
+          <RuleHeader
+            as="span"
+            lead={
+              <>
+                {/* {listeners} on the handle, NOT the whole row, to avoid
+                    colliding with row-level Space/Arrow handlers. */}
+                {dragHandle}
+                {twirl}
+                {milestoneMark}
+              </>
+            }
+            label={
+              editing ? (
+                /* The width is an inline style because `InlineEdit` appends its
+                   own `w-full min-w-0` after whatever class it is handed, and
+                   `w-full` inside a content-sized cell resolves to nothing.
+                   `normal-case` opts the typed text out of the cell's
+                   capitalised voice: the stored title is mixed case, and an
+                   editor that shouts back what you typed is lying about the
+                   value it is holding. */
+                <span className="block" style={{ width: 220 }}>
+                  {titleEditor('text-ui font-medium text-ink normal-case')}
+                </span>
+              ) : (
+                <span title={n.title} onDoubleClick={() => setEditing(true)}>
+                  {n.title}
+                </span>
+              )
+            }
+            right={
+              <span className="flex items-center gap-[8px]">
+                {n.demand !== undefined && <span className="flex-none">{DEMAND_WORD[n.demand]}</span>}
 
-          {hasKids ? (
-            <button
-              type="button"
-              aria-expanded={isOpen}
-              aria-label={isOpen ? 'Collapse' : 'Expand'}
-              tabIndex={-1}
-              className="w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center text-faint transition-transform duration-150 rounded-[4px] hover:bg-hover"
-              style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                actions.toggleExpand(n.id);
-              }}
-            >
-              <IconChevronRight size={13} />
-            </button>
-          ) : (
-            <span className="w-[14px] h-[14px] flex-shrink-0" aria-hidden="true" />
-          )}
+                {/* A container's status is DERIVED, never stored — see
+                    containerStatus. It stays a WORD: `blocked` is not a
+                    quantity and has no honest place on a progress bar. */}
+                {containerStatus(n) === 'blocked' && <span className="flex-none text-warn">blocked</span>}
 
-          {!hasKids && (
-            <LeafStatusBox
-              status={stepStatus(n)}
-              onToggle={() => actions.toggleLeaf(n.id)}
-              label={`Mark "${n.title}" as done`}
-            />
-          )}
+                {when?.text && (
+                  <span
+                    className={`flex-none truncate ${when.tone === 'warn' ? 'text-warn' : ''}`}
+                    title={when.hint}
+                  >
+                    {when.text}
+                  </span>
+                )}
 
-          {n.checkpoint && (
-            <span className="text-accent flex-shrink-0 inline-flex" aria-hidden="true">
-              <IconDiamond size={9} />
-            </span>
-          )}
-        </div>
+                <ProgressBar pct={nodePct(n)} />
+                <span className="flex-none">{Math.round(nodePct(n))}%</span>
 
-        {/* ── column 2: the title, and under it what the task says about itself ── */}
-        <div className="min-w-0">
-          <div className="flex items-center flex-wrap gap-x-[9px] gap-y-[1px] min-h-[26px]">
-            {/* A container's demand chip has no line 2 to go to. */}
-            {hasKids && n.demand !== undefined && (
-              <span className="text-meta text-muted flex-none truncate">{DEMAND_WORD[n.demand]}</span>
-            )}
-
-            {editing ? (
-              <InlineEdit
-                value={n.title}
-                className={`flex-1 text-lead ${
-                  hasKids ? 'font-semibold text-ink' : isDone(n) ? 'line-through text-muted' : 'text-ink-soft'
-                }`}
-                onCommit={commitRename}
-                onCancel={() => setEditing(false)}
-              />
-            ) : (
-              /* The title lets its clicks through: under a row click that merely
-                 opens the inspector there is nothing to defend against, and
-                 swallowing it would make the largest part of the row the one
-                 part that does not open it. `truncate` because the title is the
-                 one user string here with no bound. */
-              <span
-                className={`flex-1 min-w-0 truncate text-lead select-none ${
-                  hasKids
-                    ? 'font-semibold text-ink'
-                    : isDone(n)
-                      ? 'line-through text-muted'
-                      : 'text-ink-soft'
-                }`}
-                title={n.title}
-                onDoubleClick={() => setEditing(true)}
-              >
-                {n.title}
+                <span onClick={(e) => e.stopPropagation()} className="flex-none -mr-[4px]">
+                  <RowActions
+                    node={n}
+                    isFirstSibling={isFirstSibling}
+                    depth={depth}
+                    onRename={() => setEditing(true)}
+                    onEstimate={() => setEstimateOpen((c) => c + 1)}
+                    onSchedule={() => scheduleRef.current?.click()}
+                  />
+                </span>
               </span>
-            )}
-
-            {hasKids && (
-              <span className="text-compact text-muted tabular-nums flex-shrink-0">
-                {Math.round(nodePct(n))}%
-              </span>
-            )}
-
-            {/* A container's status is DERIVED, never stored — see containerStatus. */}
-            {hasKids && containerStatus(n) === 'blocked' && (
-              <span className="text-meta text-warn flex-shrink-0">blocked</span>
-            )}
-
-            {/* A container's read-only WHEN readout keeps its place: it has no
-                second line, and it is narrow enough not to leave a gutter. */}
-            {hasKids && when?.text && (
-              <span
-                className={`text-meta tabular-nums truncate flex-none px-[5px] py-[3px] ${
-                  when.tone === 'warn' ? 'text-warn' : 'text-muted'
-                }`}
-                title={when.hint}
-              >
-                {when.text}
-              </span>
-            )}
-
-            {/* Cycle status — leaves only. The one control that stayed on the
-                row while rename, add-subtask and delete moved into `⋯`, because
-                it is the only one of the four that is also a READOUT. */}
-            {!hasKids && (
-              <button
-                type="button"
-                tabIndex={-1}
-                className="quiet-control flex-none"
-                aria-label={`Change status of "${n.title}"`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
-                }}
-              >
-                ◐
-              </button>
-            )}
-
-            <span onClick={(e) => e.stopPropagation()} className="flex-none">
-              <RowActions
-                node={n}
-                isFirstSibling={isFirstSibling}
-                depth={depth}
-                onRename={() => setEditing(true)}
-                onEstimate={() => setEstimateOpen((c) => c + 1)}
-                onSchedule={() => scheduleRef.current?.click()}
+            }
+          />
+        ) : (
+          <>
+            {/* ── column 1: leading controls, pinned to line 1 ── */}
+            <div className="flex items-center gap-[9px] min-h-[26px]">
+              {dragHandle}
+              {twirl}
+              <LeafStatusBox
+                status={stepStatus(n)}
+                onToggle={() => actions.toggleLeaf(n.id)}
+                label={`Mark "${n.title}" as done`}
               />
-            </span>
+              {milestoneMark}
+            </div>
 
-            {/* A leaf's metadata renders at this ONE position always, LAST in
-                DOM order — after `◐` and after `⋯` — never at a second
-                position depending on `placement`. `LeafMeta` used to render in
-                two different JSX spots (inline here, or in a sibling `<div>`
-                below), and the moment a bare leaf's `placement` flipped from
-                `inline` to `below`, React saw the element move to a
-                different PARENT and tore the whole subtree down — focus, any
-                open popover, draft text, all of it — rather than merely
-                reflowing it. A stable `key` cannot fix that: keys only
-                disambiguate siblings under one parent.
+            {/* ── column 2: the title, and under it what the task says about itself ── */}
+            <div className="min-w-0">
+              <div className="flex items-center flex-wrap gap-x-[9px] gap-y-[1px] min-h-[26px]">
+                {editing ? (
+                  titleEditor(
+                    `flex-1 text-lead ${isDone(n) ? 'line-through text-muted' : 'text-ink-soft'}`,
+                  )
+                ) : (
+                  /* The title lets its clicks through: under a row click that
+                     merely opens the inspector there is nothing to defend
+                     against, and swallowing it would make the largest part of
+                     the row the one part that does not open it. `truncate`
+                     because the title is the one user string with no bound. */
+                  <span
+                    className={`flex-1 min-w-0 truncate text-lead select-none ${
+                      isDone(n) ? 'line-through text-muted' : 'text-ink-soft'
+                    }`}
+                    title={n.title}
+                    onDoubleClick={() => setEditing(true)}
+                  >
+                    {n.title}
+                  </span>
+                )}
 
-                It is last, and NOT reordered with `order-last`, because a
-                keyboard user Tabs through this row in DOM order: `order-*`
-                would move it visually without moving the Popover triggers it
-                contains (schedule, estimate) out of tab-order lockstep with
-                what a sighted user sees. Placement is a CSS-only concern
-                otherwise: `below` adds `basis-full`, which — being last in
-                DOM order already — wraps it onto its own second line inside
-                the `flex-wrap` container above, and `inline` adds neither, so
-                it simply renders after `◐ ⋯` on line 1. That inline case is a
-                deliberate visual change from the single-line row this
-                replaced: hovering a bare row now reveals `plan`/`+ est` to the
-                RIGHT of `◐ ⋯` rather than to the left, traded for DOM order
-                matching visual order in both placements. */}
-            {!hasKids && (
-              <LeafMeta
-                node={n}
-                goalId={goalId}
-                when={when}
-                placement={placement}
-                scheduleRef={scheduleRef}
-                estimateOpen={estimateOpen}
-                onEstimate={(minutes) => actions.setNodeEstimate(n.id, minutes)}
+                {/* Cycle status. The one control that stayed on the row while
+                    rename, add-subtask and delete moved into `⋯`, because it is
+                    the only one of the four that is also a READOUT. */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="quiet-control flex-none"
+                  aria-label={`Change status of "${n.title}"`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
+                  }}
+                >
+                  ◐
+                </button>
+
+                <span onClick={(e) => e.stopPropagation()} className="flex-none">
+                  <RowActions
+                    node={n}
+                    isFirstSibling={isFirstSibling}
+                    depth={depth}
+                    onRename={() => setEditing(true)}
+                    onEstimate={() => setEstimateOpen((c) => c + 1)}
+                    onSchedule={() => scheduleRef.current?.click()}
+                  />
+                </span>
+
+                {/* A leaf's metadata renders at this ONE position always, LAST
+                    in DOM order — after `◐` and after `⋯` — never at a second
+                    position depending on `placement`. `LeafMeta` used to render
+                    in two different JSX spots (inline here, or in a sibling
+                    `<div>` below), and the moment a bare leaf's `placement`
+                    flipped from `inline` to `below`, React saw the element move
+                    to a different PARENT and tore the whole subtree down —
+                    focus, any open popover, draft text, all of it — rather than
+                    merely reflowing it. A stable `key` cannot fix that: keys
+                    only disambiguate siblings under one parent.
+
+                    It is last, and NOT reordered with `order-last`, because a
+                    keyboard user Tabs through this row in DOM order: `order-*`
+                    would move it visually without moving the Popover trigger it
+                    contains out of tab-order lockstep with what a sighted user
+                    sees. Placement is a CSS-only concern otherwise: `below`
+                    adds `basis-full`, which — being last in DOM order already —
+                    wraps it onto its own second line inside the `flex-wrap`
+                    container above, and `inline` adds neither. */}
+                <LeafMeta
+                  node={n}
+                  goalId={goalId}
+                  when={when}
+                  placement={placement}
+                  scheduleRef={scheduleRef}
+                />
+              </div>
+            </div>
+
+            {/* ── column 3: what the task costs, on the reading edge ──
+                Its own grid track rather than a member of the flex line above,
+                because that is the only arrangement in which every row states
+                its estimate at the same x whether or not it has a line 2. It
+                is a readout at rest — `—` where nobody has priced the work —
+                which is what lets "4 unestimated" on the goal card be checked
+                against the tree by eye. */}
+            <div className="min-h-[26px] flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+              <EstimateControl
+                minutes={n.estimateMin}
+                label={n.title}
+                openRequest={estimateOpen}
+                emptyLabel="—"
+                onChange={(minutes) => actions.setNodeEstimate(n.id, minutes)}
               />
-            )}
-          </div>
-        </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── children (fade in on expand; unmount on collapse for clean DOM) ── */}
@@ -990,6 +1214,8 @@ function GoalTreeNode({
               onSelect={onSelect}
               onBulk={onBulk}
               goalId={goalId}
+              revealed={revealed}
+              onReveal={onReveal}
             />
             <AddChildInput
               indent={(depth + 1) * 22}
@@ -1005,13 +1231,46 @@ function GoalTreeNode({
 }
 
 /**
- * A leaf's metadata — demand, WHEN, estimate, blocked reason — in ONE component
- * rendered in either of two positions.
+ * The progress a container has actually made, as a figure's companion.
+ *
+ * ONE segment, and that is the whole design. `pct.ts` counts `'done'` and
+ * nothing else — `CLAUDE.md`: *"a step's `status` never moves the roll-up; it
+ * moves attention"*, and *"ticking the checkbox remains the only thing that
+ * moves a number"* — so a second, lighter segment for work that is `'doing'`
+ * would put a number on screen that the app does not compute and cannot
+ * defend. A bar is read as a proportion of the whole, and a proportion that
+ * counts half-credit for started work is the one lie this surface must not
+ * tell. In-progress work says so on its own row, in its own checkbox, where it
+ * is a STATE and not a quantity.
+ *
+ * `aria-hidden`, because the figure beside it says the same thing in words and
+ * a screen reader should hear it once.
+ */
+function ProgressBar({ pct }: { pct: number }) {
+  return (
+    <span
+      data-testid="pct-bar"
+      className="flex-none w-[44px] h-[5px] rounded-full bg-track overflow-hidden"
+      aria-hidden="true"
+    >
+      <span className="block h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+    </span>
+  );
+}
+
+/**
+ * A leaf's metadata — demand, WHEN, blocked reason — in ONE component rendered
+ * in either of two positions.
  *
  * One component and not two so the placements cannot drift in what they hold.
  * The point of the inline case is that hovering a bare row reveals exactly the
- * controls a populated row already shows; two components would let that
- * quietly stop being true.
+ * control a populated row already shows; two components would let that quietly
+ * stop being true.
+ *
+ * The ESTIMATE used to live here and no longer does. It is a readout at rest
+ * now, in the row's own third grid track, because a figure that appears on
+ * line 1 for a bare row and line 2 for a populated one is not a column — and a
+ * column is exactly what makes the unpriced rows countable at a glance.
  */
 function LeafMeta({
   node: n,
@@ -1019,16 +1278,12 @@ function LeafMeta({
   when,
   placement,
   scheduleRef,
-  estimateOpen,
-  onEstimate,
 }: {
   node: GoalNode;
   goalId: string;
   when: ReturnType<typeof scheduleCell>;
   placement: MetaPlacement;
   scheduleRef: React.RefObject<HTMLButtonElement | null>;
-  estimateOpen: number;
-  onEstimate: (minutes: number | null) => void;
 }) {
   const inline = placement === 'inline';
   return (
@@ -1070,13 +1325,6 @@ function LeafMeta({
       >
         {(close) => <ScheduleMenu goalId={goalId} node={n} close={close} />}
       </Popover>
-
-      <EstimateControl
-        minutes={n.estimateMin}
-        label={n.title}
-        openRequest={estimateOpen}
-        onChange={onEstimate}
-      />
 
       {/* Why a blocked leaf is stuck. It stays OUT of the status control:
           hiding it behind the thing that set the status would let the row say

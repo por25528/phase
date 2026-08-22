@@ -417,6 +417,11 @@ describe('a refused bulk action', () => {
     await user.click(screen.getByRole('button', { name: 'Complete' }));
     expect(selectedIds()).toEqual([]);
 
+    // The two finished rows are now an adjacent run, so they fold to one line.
+    // `Show` is how you get back to them — the record is never removed, and
+    // this is what proves a folded row is still reachable and still selectable.
+    await user.click(screen.getByRole('button', { name: /2 done/ }));
+
     // Select the same two again — now both are done, so there is nothing to do.
     row('Pset 6').focus();
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');

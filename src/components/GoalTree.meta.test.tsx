@@ -81,10 +81,40 @@ describe('a leaf with metadata', () => {
     expect(within(meta).getByRole('button', { name: /Schedule|Scheduled/ })).toBeTruthy();
   });
 
-  it('puts the estimate on that same second line', async () => {
-    await renderTree([{ id: 'a', title: 'Ship it', estimateMin: 45 }]);
-    const meta = within(row('Ship it')).getByTestId('row-meta-below');
-    expect(within(meta).getByText(/45m/)).toBeTruthy();
+  /*
+   * The estimate is the exception, and it is deliberate.
+   *
+   * It used to sit inside `LeafMeta` — line 1 for a bare row, line 2 for a
+   * populated one — so it was never a COLUMN, and the goal card's "4
+   * unestimated" could not be checked against the tree without hovering every
+   * row. It has its own grid track now, so every row states it at the same x
+   * whether or not it has a second line.
+   */
+  it('states the estimate on the reading edge rather than in the metadata line', async () => {
+    await renderTree([{ id: 'a', title: 'Ship it', plannedWeek: '2026-08-10', estimateMin: 45 }]);
+    const r = row('Ship it');
+    const badge = within(r).getByRole('button', { name: /^Estimate for ".*": 45m/ });
+
+    expect(badge.textContent).toBe('45m');
+    expect(within(r).getByTestId('row-meta-below').contains(badge)).toBe(false);
+  });
+
+  it('says `—` where nobody has priced the work, at rest', async () => {
+    await renderTree([{ id: 'a', title: 'Ship it', plannedWeek: '2026-08-10' }]);
+    const badge = within(row('Ship it')).getByRole('button', { name: /^Set estimate for "/ });
+
+    expect(badge.textContent).toBe('—');
+    // A `—` that only appeared under the cursor would state the fact to nobody.
+    expect(badge.className).not.toContain('quiet-control');
+  });
+
+  it('states it in the same place on a row that has no second line', async () => {
+    await renderTree([{ id: 'a', title: 'Bare task' }]);
+    const r = row('Bare task');
+    const badge = within(r).getByRole('button', { name: /^Set estimate for "/ });
+
+    expect(badge.textContent).toBe('—');
+    expect(within(r).getByTestId('row-meta-inline').contains(badge)).toBe(false);
   });
 });
 
@@ -112,28 +142,31 @@ describe('a leaf with nothing to say', () => {
   // `Scheduled This week. Change it` / `Estimate for "X": 45m. Change it`,
   // because each names its own state. A test demanding they match would be
   // asserting a bug.
-  it('offers the same two controls in both placements', async () => {
-    await renderTree([{ id: 'a', title: 'Bare task' }, { id: 'b', title: 'Full task', estimateMin: 45 }]);
+  it('offers the same controls in both placements', async () => {
+    await renderTree([{ id: 'a', title: 'Bare task' }, { id: 'b', title: 'Full task', demand: 'deep' }]);
     const bare = within(row('Bare task')).getByTestId('row-meta-inline');
     const full = within(row('Full task')).getByTestId('row-meta-below');
 
     expect(within(bare).getByRole('button', { name: /^Schedule "/ })).toBeTruthy();
-    expect(within(bare).getByRole('button', { name: /^Set estimate for "/ })).toBeTruthy();
-
     expect(within(full).getByRole('button', { name: /^Schedule "/ })).toBeTruthy();
-    expect(within(full).getByRole('button', { name: /^Estimate for ".*": 45m/ })).toBeTruthy();
 
-    // Neither placement holds a control the other lacks.
+    // Neither placement holds a control the other lacks. The estimate is no
+    // longer one of them — it is stated on the reading edge on every row, at
+    // rest, which is a STRONGER version of the same guarantee than "hovering a
+    // bare row reveals what a populated row shows".
     expect(within(bare).getAllByRole('button')).toHaveLength(within(full).getAllByRole('button').length);
+    expect(within(row('Bare task')).getByRole('button', { name: /^Set estimate for "/ })).toBeTruthy();
+    expect(within(row('Full task')).getByRole('button', { name: /^Set estimate for "/ })).toBeTruthy();
   });
 });
 
 describe('a container', () => {
-  it('keeps its percentage on line 1 and has no second line', async () => {
+  it('states its percentage on its own rule and has no metadata line', async () => {
     await renderTree([{ id: 'p', title: 'Parent', children: [{ id: 'c', title: 'Child' }] }]);
     const parent = row('Parent');
     expect(within(parent).getByText('0%')).toBeTruthy();
     expect(within(parent).queryByTestId('row-meta-below')).toBeNull();
+    expect(within(parent).queryByTestId('row-meta-inline')).toBeNull();
   });
 });
 
@@ -150,8 +183,7 @@ describe('a container', () => {
 describe('a bare leaf gaining metadata', () => {
   it('keeps focus on the estimate control after setting an estimate', async () => {
     await renderTree([{ id: 'a', title: 'Bare task' }]);
-    const inline = within(row('Bare task')).getByTestId('row-meta-inline');
-    const badge = within(inline).getByRole('button', { name: /^Set estimate for "/ });
+    const badge = within(row('Bare task')).getByRole('button', { name: /^Set estimate for "/ });
     fireEvent.click(badge);
     const preset = screen.getByRole('button', { name: /^Set estimate for ".*" to 30m$/ });
     fireEvent.click(preset);

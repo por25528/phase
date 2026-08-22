@@ -332,7 +332,11 @@ describe('the shared primary', () => {
       }],
     });
 
-    const label = screen.getByText('Rest of today');
+    // The heading element, not the span inside it: `RuleHeader` wraps the
+    // label in its own truncation box now, because the goal tree feeds it a
+    // user string with no bound. The VOICE and the cell edge stay on the
+    // heading, which is what this is about.
+    const label = screen.getByText('Rest of today').closest('h2')!;
     expect(label.className).toContain(ruleTag);
     // The cell's own edge is the separation — that is what buys the tag its ink.
     expect(label.className).toContain('border-r');

@@ -54,6 +54,7 @@ export function EstimateControl({
   className = '',
   openRequest = 0,
   alwaysShow = false,
+  emptyLabel,
 }: {
   minutes: number | undefined;
   /** The item's title, for the accessible name. */
@@ -79,6 +80,24 @@ export function EstimateControl({
    * reads as a broken row rather than as an empty property.
    */
   alwaysShow?: boolean;
+  /**
+   * What an unset estimate reads as at rest — and, by being passed at all, the
+   * statement that it HAS a resting state.
+   *
+   * `+ est` is an affordance: it says "you could price this", so it hides
+   * until hover like everything else that is purely an offer. `—` is a
+   * READOUT: it says "nobody has priced this", which is a fact about the task
+   * and the answer to a question the goal card asks out loud ("4 unestimated")
+   * and the tree could not answer without hovering every row. So passing one
+   * also drops `.quiet-control` — a `—` that appears only under the cursor
+   * would state the fact to nobody.
+   *
+   * Distinct from `alwaysShow`, which is the INSPECTOR's presentation and
+   * changes the face as well as the visibility. This one keeps the mono badge,
+   * because a column of figures on a dense tree row is exactly what mono and
+   * tabular numerals are for.
+   */
+  emptyLabel?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const badgeRef = useRef<HTMLButtonElement>(null);
@@ -164,9 +183,9 @@ export function EstimateControl({
         // than the mono badge that suits a dense tree row.
         className={`flex-none tabular-nums min-w-[24px] min-h-[24px] inline-flex items-center rounded-[4px] text-muted hover:text-ink-soft hover:bg-hover ${
           alwaysShow ? 'text-ui' : 'font-mono text-eyebrow justify-center'
-        } ${set || alwaysShow ? '' : 'quiet-control'} ${className}`}
+        } ${set || alwaysShow || emptyLabel !== undefined ? '' : 'quiet-control'} ${className}`}
       >
-        {set ? formatEstimateValue(shown) : alwaysShow ? 'No estimate' : '+ est'}
+        {set ? formatEstimateValue(shown) : alwaysShow ? 'No estimate' : (emptyLabel ?? '+ est')}
       </button>
     );
   }

@@ -207,10 +207,26 @@ describe('reaching the estimate from the step tree', () => {
   it('treats an unusable imported estimate as unset rather than blank', async () => {
     // `estimateMin: 0` is not an estimate anywhere else in the app, but the
     // badge used `minutes !== undefined` and `formatEstimateValue(0)` is '' —
-    // so the row carried a blank, non-quiet button labelled
+    // so the row carried a blank button labelled
     // `Estimate for "X": . Change it`.
+    //
+    // The tree states an unset estimate as `—` at rest now, because it is a
+    // READOUT there — the answer to "which four are unestimated" — rather than
+    // the bare affordance `+ est` is. What this pins is unchanged: an unusable
+    // 0 reads as UNSET, and never as an empty badge.
     await mountTree();
     const badge = screen.getByRole('button', { name: 'Set estimate for "Junk import"' });
+    expect(badge.textContent).toBe('—');
+    expect(badge.className).not.toContain('quiet-control');
+  });
+
+  it('keeps `+ est` a hover-only affordance where nothing asked for a readout', async () => {
+    // The default, with no `emptyLabel`: an offer, not a fact, so it hides
+    // until hover exactly as every other pure affordance in the app does.
+    vi.resetModules();
+    const { EstimateControl } = await import('./EstimateControl');
+    render(createElement(EstimateControl, { minutes: undefined, label: 'Bare', onChange: () => {} }));
+    const badge = screen.getByRole('button', { name: 'Set estimate for "Bare"' });
     expect(badge.textContent).toBe('+ est');
     expect(badge.className).toContain('quiet-control');
   });
