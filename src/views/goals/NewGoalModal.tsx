@@ -97,7 +97,11 @@ export function NewGoalModal({
               id="goal-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Physics Final"
+              /* `e.g.` earns its four characters: "Physics Final" alone is a
+                 plausible real answer, which is the worst kind of placeholder —
+                 faint ink makes it look unfilled, and the prefix makes it read
+                 as a specimen rather than as something already typed. */
+              placeholder="e.g. Physics Final"
               className={fieldCls}
             />
           </div>

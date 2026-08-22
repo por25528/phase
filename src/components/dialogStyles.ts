@@ -99,8 +99,28 @@ export const ghostBtn = `${btnBase} ${btnPadY} text-muted hover:bg-hover hover:t
  */
 export const secondaryBtn = `${btnBase} py-[5px] border border-line-2 text-ink hover:bg-hover`;
 
+/**
+ * The shared dialog field — and `placeholder:text-faint` is not decoration.
+ *
+ * Five inputs in the app each hand-rolled that class (`CommandPalette`,
+ * `QuickAdd`, `BlockComposer`, `AssistantShortcutSettings`, and
+ * `.ghost-in::placeholder` in `index.css`); the one SHARED primitive was the
+ * only one without it, so a placeholder here inherited `text-ink` and read as
+ * typed text. New goal was the visible casualty: the field showed "Physics
+ * Final", `disabled={!title.trim()}` was correctly true, and a dialog whose
+ * two behaviours were both right read as broken because the FIELD was lying
+ * about being filled in. An empty form has to look empty, or the dimmed commit
+ * button takes the blame for it.
+ *
+ * `faint`, not `muted`, and `index.css` already named the tone: its own token
+ * comment reserves faint for "decorative marks, placeholders and disabled
+ * states" and muted for "anything a user must READ". An EXAMPLE is not read —
+ * it is a specimen of the answer, and it disappears the moment you type. That
+ * is the opposite of an unset VALUE like `DatePopover`'s "No deadline", which
+ * is read, is the only affordance for setting one, and stays `text-muted`.
+ */
 export const fieldCls =
-  `w-full ${CONTROL_H} ${CONTROL_LINE} rounded-field border border-line-2 bg-transparent px-[8px] py-[5px] text-ui text-ink outline-none focus-visible:border-accent`;
+  `w-full ${CONTROL_H} ${CONTROL_LINE} rounded-field border border-line-2 bg-transparent px-[8px] py-[5px] text-ui text-ink placeholder:text-faint outline-none focus-visible:border-accent`;
 
 export const labelCls = 'text-meta font-medium text-muted';
 
