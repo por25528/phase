@@ -52,6 +52,10 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     activeFocus: null,
     timeLevel: 'medium',
     focusLevel: 'medium',
+    // The surface itself never reads this — it renders in tokens, and the
+    // `.dark` class that flips them is the OVERLAY's job (AssistantOverlay).
+    // It is here because the snapshot type requires it.
+    theme: 'light',
     ...over,
   };
 }

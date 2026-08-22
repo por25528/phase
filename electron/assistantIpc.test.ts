@@ -67,6 +67,7 @@ const SNAPSHOT = {
   activeFocus: null,
   timeLevel: 'medium',
   focusLevel: 'medium',
+  theme: 'dark',
 };
 
 const FOCUSED_SNAPSHOT = {
@@ -152,6 +153,32 @@ describe('publish', () => {
     };
     ipcMain.emit('phase-assistant:publish', MAIN_ID, malformed);
     expect(ipc.latest()).toEqual(FOCUSED_SNAPSHOT);
+  });
+
+  /*
+   * The overlay is a second renderer and cannot see the app's `.dark` class, so
+   * the palette has to cross this relay like everything else it knows. It must
+   * be the RESOLVED one: `'system'` is a preference, and a preference resolved
+   * on the far side is how two windows come to disagree.
+   *
+   * Required rather than optional, because the failure is silent — an absent
+   * theme renders as light, which is exactly the bug this closed.
+   */
+  it('requires the resolved palette, and refuses the unresolved preference', () => {
+    const { ipcMain, ipc } = relay();
+    const bad = [
+      { ...SNAPSHOT, theme: undefined },
+      { ...SNAPSHOT, theme: 'system' },
+      { ...SNAPSHOT, theme: 'Dark' },
+      { ...SNAPSHOT, theme: true },
+    ];
+    for (const snapshot of bad) {
+      ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
+      expect(ipc.latest(), JSON.stringify(snapshot)?.slice(0, 60)).toBeNull();
+    }
+
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, { ...SNAPSHOT, theme: 'light' });
+    expect(ipc.latest()).toEqual({ ...SNAPSHOT, theme: 'light' });
   });
 
   it('rejects a snapshot missing or malformed in either level', () => {

@@ -41,6 +41,29 @@ export type AssistantSnapshot =
       timeLevel: TimeLevel;
       /** How much focus is available. Decides what the work has to be light enough for. */
       focusLevel: FocusLevel;
+      /**
+       * The RESOLVED palette — never the stored `'system'` preference.
+       *
+       * The floating shelf rendered light while the app beside it rendered
+       * dark, and the cause is subtler than "nothing sets the class":
+       * `assistant.html` carries a no-FOUC script that adds `.dark` itself. But
+       * that script GUESSES, and it guesses exactly once. It reads the raw
+       * `phase-theme` preference from a second renderer and falls back to the
+       * OS, so a user whose preference is `dark` on a light OS gets a light
+       * shelf — and it runs at page load, while the overlay window is created
+       * once and thereafter hidden and shown rather than reloaded, so a theme
+       * changed at any point after that never reaches it at all.
+       *
+       * Both halves are fixed the way this surface fixes everything: over the
+       * snapshot. The OWNER resolves `'system'` against the OS — it is already
+       * the only place that does — and the overlay applies what it is told. The
+       * inline script keeps its job of painting the first frame; this is what
+       * makes every frame after it true.
+       *
+       * REQUIRED, not optional. An absent theme is indistinguishable from
+       * light, which is the bug wearing a default.
+       */
+      theme: 'light' | 'dark';
       notice?: { tone: 'neutral' | 'warning'; text: string };
     };
 

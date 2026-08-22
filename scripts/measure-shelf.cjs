@@ -44,6 +44,11 @@ const base = {
   status: 'ready',
   timeLevel: 'medium',
   focusLevel: 'medium',
+  // The palette rides on the snapshot (AssistantOverlay applies it). Height is
+  // theme-independent, so which one is arbitrary — what is not arbitrary is
+  // that a `ready` snapshot always carries it, or the overlay would repaint to
+  // light mid-measure.
+  theme: 'light',
   activeFocus: null,
   notice: NOTICE,
   advice: { kind: 'work', primary: work(), alternatives: ALTERNATIVES },

@@ -34,7 +34,18 @@ function nowMinute(): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
-export function AssistantHost({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AssistantHost({ open, onClose, theme }: {
+  open: boolean;
+  onClose: () => void;
+  /**
+   * The RESOLVED palette, from `App` — the one place that maps the stored
+   * `'system'` preference onto the OS's answer. It goes into the snapshot
+   * because the floating overlay is a separate renderer with no `.dark` class
+   * of its own; the embedded panel below renders inside the main window, which
+   * already has one, and ignores this entirely.
+   */
+  theme: 'light' | 'dark';
+}) {
   const {
     goals, tasks, sessions, availability, allDayBlocks, activeFocusSession,
     assistantAccelerator, timeLevel, focusLevel, hydration, actions,
@@ -81,9 +92,10 @@ export function AssistantHost({ open, onClose }: { open: boolean; onClose: () =>
       activeFocus,
       timeLevel,
       focusLevel,
+      theme,
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, timeLevel, focusLevel, notice]);
+  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, notice]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AssistantSurface } from '../components/assistant/AssistantSurface';
 import { assistantOverlayBridge } from '../lib/assistantBridge';
 import { shelfSizing } from '../lib/assistantShell';
+import { applyTheme } from '../lib/theme';
 import type { AssistantAction, AssistantSnapshot } from '../lib/assistantProtocol';
 import { useReducedMotion } from '../components/useReducedMotion';
 
@@ -17,6 +18,15 @@ import { useReducedMotion } from '../components/useReducedMotion';
  * Each window focus replays the entry animation by bumping `openCycle`, which
  * also keys the container and resets the send-off state machine via
  * `resetKey`, so a returned-to shelf can never still be inside a farewell.
+ *
+ * The theme arrives the same way everything else does — on the snapshot — and
+ * is APPLIED here rather than read here. `lib/theme.ts` is a leaf: it imports
+ * nothing, touches localStorage only inside functions this never calls, and is
+ * outside every path `entryBoundary.test.ts` forbids, so `applyTheme` costs the
+ * overlay no store, no Dexie and no tab lock. What it must NOT do is resolve
+ * the preference: `resolveTheme` and `readStoredTheme` stay on the owner's
+ * side, or two windows reading the same media query at two different moments
+ * can disagree about the palette.
  */
 export function AssistantOverlay() {
   const bridge = useMemo(() => assistantOverlayBridge(), []);
@@ -40,6 +50,19 @@ export function AssistantOverlay() {
     document.body.style.backgroundColor = 'transparent';
     return () => { document.body.style.backgroundColor = previous; };
   }, [sizing]);
+
+  // `assistant.html`'s inline script paints the FIRST frame from a guess; this
+  // is what makes every frame after it true. The guess reads a raw preference
+  // out of a second renderer and falls back to the OS, and it runs once per
+  // page load — while this window is created once and then hidden and shown,
+  // never reloaded. So a `dark` preference on a light OS, or a theme changed
+  // after the shelf first existed, left the floating card light beside a dark
+  // app. `loading` carries no theme and deliberately changes nothing: the guess
+  // is the best answer available until the owner's arrives, and re-deciding on
+  // the way there is how a flash gets introduced rather than removed.
+  useEffect(() => {
+    if (snapshot.status === 'ready') applyTheme(snapshot.theme);
+  }, [snapshot]);
 
   useEffect(() => {
     const off = bridge.onSnapshot(setSnapshot);

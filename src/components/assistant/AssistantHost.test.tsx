@@ -67,7 +67,11 @@ async function mountHost(over: {
   const store = await import('../../state/store');
   await store.initStore();
   const { AssistantHost } = await import('./AssistantHost');
-  render(createElement(AssistantHost, { open: true, onClose: over.onClose ?? (() => {}) }));
+  render(createElement(AssistantHost, {
+    open: true,
+    onClose: over.onClose ?? (() => {}),
+    theme: 'light' as const,
+  }));
   return store;
 }
 

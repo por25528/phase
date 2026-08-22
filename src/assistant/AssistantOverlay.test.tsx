@@ -32,6 +32,7 @@ const WORK: Ready = {
   activeFocus: null,
   timeLevel: 'medium',
   focusLevel: 'medium',
+  theme: 'light',
 };
 
 const RUNNING: Ready = {
@@ -132,6 +133,36 @@ describe('AssistantOverlay', () => {
     // Back to a shelf — the session it just started, not a farewell.
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getByRole('button', { name: 'Complete session' })).toBeTruthy();
+  });
+
+  /*
+   * The floating shelf rendered light beside a dark app, and `assistant.html`'s
+   * no-FOUC script is why the cause was easy to misread: something DOES add
+   * `.dark` here. But it guesses — a raw preference read in a second renderer,
+   * falling back to the OS — and it guesses once per page load, while this
+   * window is created once and thereafter hidden and shown rather than
+   * reloaded. So the palette has to arrive with the data, and it has to keep
+   * arriving.
+   *
+   * The class is asserted on `documentElement`, not a React-rendered
+   * attribute, because that is where `index.css` hangs every dark token and
+   * therefore the only place being wrong is visible.
+   */
+  it('follows the theme on the snapshot, and keeps following it', async () => {
+    await mount();
+    // `loading` carries no theme and must not repaint: the inline script's
+    // first frame is the best answer available until the owner's arrives.
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+
+    deliver({ ...WORK, theme: 'dark' });
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(document.documentElement.style.colorScheme).toBe('dark');
+
+    // The theme changed in Settings while the shelf window was alive — the
+    // case the load-time guess can never see, because it never runs again.
+    deliver({ ...WORK, theme: 'light' });
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(document.documentElement.style.colorScheme).toBe('light');
   });
 
   it('pins nothing while the shelf is still the shelf', async () => {
