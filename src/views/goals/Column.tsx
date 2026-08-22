@@ -46,7 +46,16 @@ export function Column({
           className={`grid gap-[11px] min-h-[140px] rounded-card p-[6px] -m-[6px] transition-colors ${
             isOver ? 'bg-hover' : ''
           }`}
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(188px, 1fr))' }}
+          /* auto-FIT, not auto-fill. `auto-fill` keeps the tracks it creates
+             even when nothing lands in them, so a lone card drew at its 188px
+             floor beside two dead tracks and wrapped its title to three lines
+             fighting the due chip. `auto-fit` collapses the empties and gives
+             the row back to the cards that exist — which is what
+             `BoardTab.tsx`'s identical grid has always done. The 11px gap is
+             `CARD_GAP_PX` in `lib/boardTracks.ts`, where the track cap spends
+             it; it stays a literal here because Tailwind cannot read a
+             constant. */
+          style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(188px, 1fr))' }}
         >
           {children}
           {/* No dashed box. A dashed border is the app's DROP-TARGET signal —

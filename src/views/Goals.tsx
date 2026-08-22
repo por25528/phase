@@ -545,6 +545,16 @@ export function Goals() {
               </Column>
               );
             })}
+            {/* The remainder, in one place.
+                Every populated track is capped at what it can actually draw
+                (`columnCap`), so the leftover width has to be claimed by
+                something — and a column that would leave it empty is exactly
+                what the cap exists to stop. It goes here instead, at the end of
+                the row, as an inert div.
+                Rendered only at rest: `columnTracks`'s dragging branch emits
+                four equal tracks and no spacer, so a fifth child mid-drag would
+                fall into an implicit second row. */}
+            {wide && activeId === null && <div aria-hidden="true" />}
           </div>
 
           <DragOverlay dropAnimation={reducedMotion ? null : undefined}>

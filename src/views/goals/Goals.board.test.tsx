@@ -146,7 +146,8 @@ describe('board geometry', () => {
       { id: 'b', title: 'B', nodes: [], column: 3 },
     ]);
     const board = document.getElementById('goalsBoard') as HTMLElement;
-    expect(board.style.gridTemplateColumns).toBe('88px 88px 88px minmax(200px, 2fr)');
+    expect(board.style.gridTemplateColumns)
+      .toBe('88px 88px 88px minmax(200px, 491px) minmax(0, 1fr)');
   });
 
   it('weights two loaded columns against each other', async () => {
@@ -157,7 +158,19 @@ describe('board geometry', () => {
     ]);
     const board = document.getElementById('goalsBoard') as HTMLElement;
     expect(board.style.gridTemplateColumns)
-      .toBe('minmax(200px, 1fr) 88px 88px minmax(200px, 2fr)');
+      .toBe('minmax(200px, 240px) 88px 88px minmax(200px, 491px) minmax(0, 1fr)');
+  });
+
+  /*
+   * The cap leaves a remainder, and it goes to ONE inert trailing div rather
+   * than to a column that would leave it empty — so the board has one more
+   * child than it has horizons whenever nothing is in the air.
+   */
+  it('hands the leftover width to a single trailing spacer', async () => {
+    await mountBoard([{ id: 'a', title: 'A', nodes: [], column: 0 }]);
+    const board = document.getElementById('goalsBoard') as HTMLElement;
+    expect(board.children).toHaveLength(5);
+    expect(board.lastElementChild!.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('draws no dashed border on an empty column', async () => {
