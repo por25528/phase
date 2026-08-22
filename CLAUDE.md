@@ -98,7 +98,7 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - **`migrateSlots` runs before `migrateWorkBlocks`.** The first repairs pre-slot data by WRITING the legacy `plannedDay`/`plannedStartMin` pair the second consumes; the other order leaves it nothing to read. `migrateWorkBlocks` is read-time only, with no done-flag and no snapshot — it is idempotent by construction and computes nothing, exactly like `migrateNodeStatus`. It degrades a day-with-no-time to a week commitment rather than inventing an hour.
 - Layout that depends on the Plan sidebar must measure the RAIL, not the viewport: it is 249px at every viewport ≥768px. Use `@container` on `.hb-rail`.
 - **One filled control per screen, and it lives in the app header.** `App.tsx` says of its `+ New task`: "The one filled control in the header, and the only one that writes anything." That was false on Plan for as long as `Habits.tsx` rendered three `bg-ink text-paper` buttons inside the sidebar — and the loudest button on the whole page was `+ Habit`, the least important action on it. All three are outlined now (`border-line-2 bg-panel text-ink-soft`). A SELECTED SEGMENT is not a commit button and keeps its fill: the habit cadence toggle stays `bg-ink text-paper` for the active option, because that is how a segmented control says which one is chosen.
-- Visual identity is locked — don't restyle unless explicitly asked. Colours come from the theme tokens: `designScale.test.ts` fails the build on a literal hex, on an arbitrary `text-[Nrem]`, and on a `fontSize` key that collides with a `colors` key (Tailwind emits both as `text-<key>`, and the colour silently wins). Corner radii are the same kind of build-failing rule: the permitted set is `[4px]`, `[6px]`, `rounded-field` (8px), `rounded-card` (12px) and `rounded-full` — `[11px]` was a fourth near-duplicate and is retired. It also pins the type roles. **`font-disp` (Fraunces) is display-only** and reaches exactly three places: the wordmark, `TaskPage`'s own title, and headings typed inside a note (`.note-prose > div > h1/h2/h3`). The guard sees only the first two — it scans `.tsx`/`.ts`, and the third lives in `index.css` — so a reader taking its allowlist as the whole story will undercount by one. **All-caps travels with `font-mono`**, or is one of the three weekday strips; uppercase in the UI face is a build failure. **A section label is `sectionLabel`** from `components/sectionLabel.ts` — mono, uppercase, `text-micro`, `tracking-[.11em]` — and it is a constant precisely because that string was hand-copied at 36 sites before it was one. Five sites that share the old class string are NOT labels (two buttons, two Timeline row labels, `AssistantSurface`'s "Focus" caption) and keep it written out. And `border-dashed` is reserved for the drop preview and for a calendar block whose height is a guessed hour — spending it on ordinary empty states is how the drop signal stops meaning anything.
+- Visual identity is locked — don't restyle unless explicitly asked. Colours come from the theme tokens: `designScale.test.ts` fails the build on a literal hex, on an arbitrary `text-[Nrem]`, and on a `fontSize` key that collides with a `colors` key (Tailwind emits both as `text-<key>`, and the colour silently wins). Corner radii are the same kind of build-failing rule: the permitted set is `[4px]`, `[6px]`, `rounded-field` (8px), `rounded-card` (12px) and `rounded-full` — `[11px]` was a fourth near-duplicate and is retired. It also pins the type roles. **`font-disp` (Fraunces) is display-only** and reaches exactly three places: the wordmark, `TaskPage`'s own title, and headings typed inside a note (`.note-prose > div > h1/h2/h3`). The guard sees only the first two — it scans `.tsx`/`.ts`, and the third lives in `index.css` — so a reader taking its allowlist as the whole story will undercount by one. **All-caps travels with `font-mono`**, or is one of the three weekday strips; uppercase in the UI face is a build failure. **A section label is `sectionLabel`** from `components/sectionLabel.ts` — mono, uppercase, `text-micro`, `tracking-[.11em]` — and it is a constant precisely because that string was hand-copied at 36 sites before it was one. Five sites that share the old class string are NOT labels (two buttons, two Timeline row labels, `AssistantSurface`'s "Focus" caption) and keep it written out. That file now exports a THIRD voice, `ruleTag`: the same mono/uppercase/`text-micro`/`tracking-[.11em]` label, moved INSIDE a full-bleed hairline in a tinted `bg-chip` cell instead of sitting above one, and louder on the two axes it can be (`text-ink`, semibold) because the cell has already separated it from the content a section label has to recede behind. It carries the TYPE only — the cell, the hairline and the figure at the rule's far end are geometry, and geometry belongs to the surface that knows its own width. It lives in that file for the same reason the other two do: `designScale.test.ts` permits `uppercase` nowhere else. And `border-dashed` is reserved for the drop preview and for a calendar block whose height is a guessed hour — spending it on ordinary empty states is how the drop signal stops meaning anything.
 - **Dark is warm charcoal (`#141311` page, `#1E1D1B` panel), not OLED black — and the panel's luminance is what sets the floor of the band the six project hues may occupy.** `#1E1D1B` is brighter than the `#0D0D0E` it replaced, which raised that floor and is why the six hues now sit around `L ∈ [0.160, 0.196]` and read more pastel than they used to. That pastel quality is a CONSEQUENCE of the contrast floor, not a taste decision — re-saturating them is the change most likely to look like an improvement and drop them under 3:1 on the panel. `projectColour.test.ts` asserts each hue's ratio against both panels, reading the dark one out of the stylesheet, so the `L` comments in `index.css` are build-enforced claims rather than notes; it is LIGHTENING the panel further, never darkening it, that would raise the floor again and force the hues to move.
 - Hover-revealed row controls use the `.quiet-control` class, never a hand-rolled `opacity-0 group-hover:opacity-100`: it carries the `@media (hover: hover)` gate that keeps them reachable on touch, plus the 24px target floor. It needs a literal `group` ancestor (`group/name` does not match).
 - dnd-kit's `attributes` go on a dedicated drag handle, or through `containerDragAttributes` when the draggable is a container holding real buttons — `role="button"` around buttons is invalid and swallows their labels.
@@ -125,6 +125,72 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   cursor and an empty Now would be narrowest exactly when you need to hit it.
 - **The assistant shelf speaks `dialogStyles`, and its primary is whatever moves the session forward.** `AssistantSurface` renders in two places — the in-app panel and the Electron overlay — and it used to hand-roll a `quietButton` whose "primary" was a one-shade border difference, which is how two equal-weight buttons came to offer "end this session" and "resume it" with no hierarchy between them. It now spends `primaryBtn`/`secondaryBtn`/`ghostBtn`, one filled button per state, placed LAST per `dialogFooter`'s reading-edge rule. Which button is filled depends on the phase — `break` fills Continue, `active` fills Complete session — so "Complete session" changes side between the two. That is deliberate: the states are mutually exclusive and the filled button is always the reason you summoned the shelf. The dismissive answers ("Didn't happen", "Cancel") are `ghostBtn`, never outlined, so they cannot be mistaken for a secondary action. `altRow`, the alternatives band's row, is NOT a fourth variant — it is a row in a list of choices, and a list is not a commit. Copy splits the same way: `expectedTimeLabel` states an EXPECTATION and belongs to work that has not started, `elapsedAgainstExpected` is the progress readout and belongs to a session under way. Using the first on a running session is what made a paused shelf read `0m worked · on a break · Start with 30m` — the starter's wording at the time, since renamed. All three of `expectedTimeLabel`'s cases now name their provenance and then the figure — **Usually / Planned / Suggested** — because the starter's old `Start with 30m` opened with a verb, and on Today it sits immediately left of a `Start session` button, so one row said the same word twice and the readout read as a second control. The prefix is what the function is FOR: a bare `30m` would throw away where the number came from, and the history case is a RANGE no single number can state.
 - **The shelf's `HEIGHT` is a measurement, and the zero state is why.** The window is unresizable, so that one constant in `electron/assistantWindow.cjs` is the only thing between a state and its own bottom edge. The number itself, and the state it is measured against, live beside it in that file and in the card-hugging rule below — the states this bullet used to enumerate (a capture proposal, a `choose-subject` list) no longer exist, and a stale height here is worse than a pointer. What stays is the discipline: it is MEASURED at 620px wide, never derived, because arithmetic against the type scale put the tallest state 20px low once already and would have shipped a shelf that came up short in the state you are in most. If a state grows, measure it again.
+- **The overlay's palette arrives on the snapshot, and `loading` carries none.**
+  `AssistantSnapshot.theme` is the RESOLVED `'light' | 'dark'`, published by the
+  owner (`App` computes `effectiveTheme`; it is the only place `'system'` meets
+  the OS) and applied by `AssistantOverlay` with `applyTheme`. It is REQUIRED
+  and the relay validates it, because an absent theme is indistinguishable from
+  light — which is the bug this closed, wearing a default. The bug is subtler
+  than "nothing applies `.dark`": `assistant.html` has always carried a no-FOUC
+  script that applies it itself, but that script GUESSES (a raw preference read
+  in a second renderer, falling back to the OS) and runs once per page LOAD,
+  while the overlay window is created once and thereafter hidden and shown
+  rather than reloaded. So a `dark` preference on a light OS, or any theme
+  changed after the shelf first existed, left a light card beside a dark app.
+  The inline script keeps its job — the first frame — and that is exactly why
+  `loading` repaints nothing: re-deciding on the way to the owner's answer
+  introduces a flash rather than removing one. `lib/theme.ts` is reachable from
+  the overlay without widening `entryBoundary.test.ts`'s proof, because it is a
+  leaf; what must NEVER cross is `resolveTheme`/`readStoredTheme`, or two
+  windows can disagree about one media query read at two moments. The embedded
+  `AssistantHost` panel ignores the field entirely: it renders in the main
+  window, which already has the class.
+- **On the shelf a label sits INSIDE its rule; embedded it sits above one.**
+  `RuleTag` in `AssistantSurface.tsx` is the shelf's `ruleTag` cell plus the
+  hairline plus an optional figure at the reading edge, and it replaces
+  `SectionLabel` over the work band and the alternatives band — behind
+  `shelf === true`, like every other 620-vs-380 branch in that file. The figure
+  is `expectedTimeLabel` and belongs ONLY to work that has not started: a
+  running session has no expectation left to state, it has progress, and a
+  readout that changes belongs beside the work rather than on the label
+  introducing it — `expectedTimeLabel` vs `elapsedAgainstExpected`, restated as
+  a position. The alternatives rule carries `N more`, which describes the ROWS
+  and is therefore true whether or not `MAX_ALTERNATIVES` bit. The dial bar is
+  two ruled cells for the same reason: two axes crowded onto one row read as
+  one wide control with six segments. `Skeleton` draws the REAL rule chrome
+  rather than a grey bar standing in for it, so the promised height is right by
+  construction — which took loading-to-idle reflow from 57px to 11px.
+- **The primary title clamps to two lines, and the alternatives yield their
+  width to the work.** Both overturn rules that were argued well and measured
+  badly. `truncate` was adopted to make the card's height independent of its
+  content — sound, because the window CLIPS rather than scrolls — but its
+  premise was measured against short test titles, and against real ones the
+  shelf's own primary was cut at the moment it has to be read; the answer is to
+  pay the budget (`HEIGHT` 308 → 343) rather than shorten the sentence. An
+  alternative's metadata was `shrink-0` under a comment saying that was "right
+  at 620px and wrong at 380" — it was wrong at both, and only visibly
+  catastrophic at 380. The title now carries `min-w-[50%]`, a FLOOR and not a
+  width: while the metadata is short nothing binds, and a greedy meta hits the
+  floor and gives its own width back instead. Metadata that repeats a project
+  the primary already named in full is dropped, via `lib/sharedPrefix.ts` —
+  only when EVERY label carries the prefix, cut back to a token boundary so
+  `Midterm — 2301265` and `Midterm — 2301230` can never yield `1265` and
+  `1230`, and refused outright if any row has no project at all.
+  `expectedTimeLabel` stays WHOLE in that metadata: a bare `45m` throws away
+  where the number came from, exactly as the bullet above says.
+- **Both dials own number keys, and only the shelf prints them.** `1`-`3` set
+  time, `4`-`6` set focus. This overturns "two dials would want six keys, and
+  the shelf is not a keyboard surface" — an argument written while the focus
+  dial was the junior of the two, and falsified by the dials themselves the day
+  they shipped side by side, same size, captioned as parallel nouns: two
+  controls presented as peers, one of them mouse-only, is worse than six keys
+  on a surface you summon with a keyboard shortcut. The rest of that argument
+  survives — the shelf has no text field for the number row to be stolen from.
+  The legend is `SegmentedOption.hint`, always `aria-hidden` so a segment's
+  accessible name stays `30m` and never `30m 1`, and always `text-micro`
+  because 11px is the app's smallest role and an engraving does not get to open
+  a step below it. The BINDING is live in both presentations; the engraving is
+  shelf-only, so the 380px panel's appearance is unchanged.
 - **The shelf starts work; it does not parse sentences.** The typed vocabulary
   (`assistantCommands.ts`, the input, the proposal panels, `rankedWork` and
   `workThatFits`) is RETIRED — `⌘K` is the one place a sentence becomes a task,
