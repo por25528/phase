@@ -18,6 +18,9 @@ import {
 } from '../../lib/plan';
 import { isValidLocalDate, needsDateConfirmation } from '../../lib/schedule';
 import { HORIZON_LABELS } from './styles';
+import { isPlanningHorizon } from '../../lib/horizons';
+import { dropSharedPrefix } from '../../lib/sharedPrefix';
+import { FULL_FACE, type BayFace } from '../../lib/boardBay';
 import { containerDragAttributes } from '../../lib/dragAttributes';
 import { lifeOf, sortedLives } from '../../lib/lives';
 
@@ -57,6 +60,7 @@ function CardFace({
   today,
   suppressDateBadge = false,
   life,
+  bay = FULL_FACE,
   titleSlot,
   deadlineControl,
 }: {
@@ -70,6 +74,12 @@ function CardFace({
   suppressDateBadge?: boolean;
   /** The life the goal belongs to, or null/unassigned — printed as nothing. */
   life?: Life | null;
+  /**
+   * What the rest of this horizon has already said. Defaulted rather than
+   * required, so the drag overlay states the card in FULL by simply not
+   * passing one — see `lib/boardBay.ts`.
+   */
+  bay?: BayFace;
   /**
    * Replaces the title when the card is being renamed. A slot rather than a
    * `renaming` flag plus two callbacks: `CardFace` does not need to know what
@@ -86,8 +96,24 @@ function CardFace({
   deadlineControl?: React.ReactNode;
 }) {
   const effort = goalEffort(goal);
-  const caption = effortCaption(effort);
-  const next = nextOpenAction(goal, today);
+  /*
+   * Past `Now` and `Next` a card states what it IS, not what it would take.
+   *
+   * `12h 10m left` and `Next Confirm the exam format` are plan figures, and
+   * `PLANNING_HORIZONS` is the app already saying this project is not one it
+   * plans from: `backlogGroups` drops its untouched work from the rail and
+   * `cardPrimaryAction` withholds "Plan next task" at exactly this line. The
+   * card was the one surface still talking — a Someday column of six projects
+   * spent two of its six rows per card offering work the rail refuses to list,
+   * which is the board being loud about the thing the horizons exist to quiet.
+   *
+   * The badge is untouched, because `projectAttention` already gates itself
+   * the same way; so are the title, the deadline and the progress meter, which
+   * are what the project IS at any horizon.
+   */
+  const planning = isPlanningHorizon(goal.column);
+  const caption = planning ? effortCaption(effort) : null;
+  const next = planning ? nextOpenAction(goal, today) : { nodeId: undefined, title: '' };
   const dateInfo = nearestMeaningfulDate(goal, today);
   const badge = suppressDateBadge && needsDateConfirmation(goal)
     ? null
@@ -100,13 +126,15 @@ function CardFace({
       <div className="flex items-start gap-[8px]">
         {titleSlot ?? (
           <h3
+            // The FULL name, always: the lens is about what a bay repeats, and
+            // hover must still answer "which Midterm is this one?".
             title={goal.title}
             // Three lines, not two: course goals are "<course> — <assignment>"
             // and two lines clipped at "…— Pse…", losing the only thing that
             // distinguishes Pset 6 from Pset 7.
             className="text-title font-semibold tracking-[-0.01em] leading-[1.24] flex-1 min-w-0 line-clamp-3"
           >
-            {goal.title}
+            {dropSharedPrefix(goal.title, bay.titlePrefix)}
           </h3>
         )}
         {dateInfo?.kind === 'checkpoint' && (
@@ -232,6 +260,7 @@ export function BoardCard({
   highlighted = false,
   lives,
   onSetLife,
+  bay = FULL_FACE,
 }: {
   goal: Goal;
   today: string;
@@ -255,6 +284,8 @@ export function BoardCard({
   highlighted?: boolean;
   lives: Life[];
   onSetLife: (goalId: string, lifeId: string | null) => void;
+  /** What this card's horizon has already said — see `lib/boardBay.ts`. */
+  bay?: BayFace;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: goal.id });
   const [renaming, setRenaming] = useState(false);
@@ -267,6 +298,8 @@ export function BoardCard({
   };
 
   const currentCol = goal.column ?? 0;
+  // Resolved either way — the ⋯ menu still marks which life is set, and the
+  // bay lens only decides whether the card SAYS it.
   const life = lifeOf(goal, lives);
 
   // Action buttons live inside the drag activator, so each swallows the pointer
@@ -321,7 +354,8 @@ export function BoardCard({
         goal={goal}
         today={today}
         suppressDateBadge
-        life={life}
+        life={bay.hideLife ? null : life}
+        bay={bay}
         titleSlot={renaming ? (
           // Both handlers, for two different escapes: the pointer must not
           // reach dnd-kit's listeners on the root, and the click must not
