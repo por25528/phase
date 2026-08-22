@@ -37,3 +37,28 @@ export const sectionLabel = 'text-micro font-medium text-muted font-mono upperca
  * reads as the legend on an instrument.
  */
 export const captionLabel = sectionLabel;
+
+/**
+ * The same voice, moved INSIDE the rule instead of sitting above it.
+ *
+ * A section label and its divider are two objects: a hairline, then a heading
+ * under it, and the eye has to assemble them. A rule tag is one — a full-bleed
+ * hairline with the label in a tinted cell at its left end, so the label IS the
+ * rule's beginning and the line is the label's continuation. It is the
+ * instrument grammar the Today page and the assistant shelf now share, which is
+ * why it is exported from here rather than spelled at either call site: this
+ * file is the only one `designScale.test.ts` permits to write `uppercase`, and
+ * a voice is declared once and imported.
+ *
+ * It carries the TYPE ONLY, exactly as `sectionLabel` does. The cell around it
+ * — the tint, the inset, the hairline that separates it from the rest of the
+ * rule — is geometry, and geometry belongs to the surface that knows its own
+ * width.
+ *
+ * Louder than `sectionLabel` on both axes it can be: `text-ink` rather than
+ * `text-muted`, and semibold rather than medium. A section label recedes
+ * BEHIND the content under it; a rule tag sits in a tinted cell that has
+ * already separated it from that content, so receding further would just make
+ * it hard to read on the one surface that gave it a box of its own.
+ */
+export const ruleTag = 'text-micro font-semibold text-ink font-mono uppercase tracking-[.11em]';

@@ -8,13 +8,14 @@ import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
 import { FOCUS_LEVELS, FOCUS_WORD, type FocusLevel } from '../../lib/focusLens';
 import { MAX_ALTERNATIVES } from '../../lib/executionAdvisor';
+import { dropSharedPrefix, sharedProjectPrefix } from '../../lib/sharedPrefix';
 import { ringState } from '../../lib/sessionRing';
 import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
 import { SegmentedSwitch } from '../SegmentedControl';
 import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
-import { captionLabel, sectionLabel } from '../sectionLabel';
+import { captionLabel, ruleTag, sectionLabel } from '../sectionLabel';
 import { SessionRing } from './SessionRing';
 import { TodayCheckbox } from '../TodayCheckbox';
 
@@ -101,9 +102,15 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 /**
- * The notice line, and the two advisory lines, sit ABOVE band 1 with no bottom
- * inset — a line above the body is not a band and does not get one's bottom
- * padding.
+ * The notice line, and the two advisory lines, sit ABOVE band 1.
+ *
+ * The shelf branch grew a bottom inset with the rule tags, and that is not a
+ * change of mind. The old rule — "a line above the body is not a band and does
+ * not get one's bottom padding" — worked because the band UNDER it opened with
+ * `pt-3.5`, so the gap existed and belonged to the band. A rule tag opens with
+ * a hairline at y=0 and has no top inset to lend, so without this the notice
+ * would sit directly on the rule. Embedded has no rule tags and keeps the
+ * original rule exactly.
  *
  * The card's padding used to live on the root as a single `p-3`, which is why
  * every band had to share one inset and no band could carry a full-width
@@ -116,7 +123,7 @@ function SectionLabel({ children }: { children: string }) {
  * `DateField`'s `size` prop exists.
  */
 function aboveBandCls(shelf: boolean): string {
-  return shelf ? 'px-4 pt-3' : 'px-3';
+  return shelf ? 'px-4 pt-3 pb-2.5' : 'px-3';
 }
 
 /**
@@ -144,6 +151,48 @@ function aboveBandCls(shelf: boolean): string {
 const workTitle = 'line-clamp-2 text-h2 font-semibold text-ink leading-[1.25]';
 
 /**
+ * The instrument grammar: a full-bleed hairline with its label sitting IN it.
+ *
+ * A section label and its divider are two objects — a line, then a heading
+ * under it — and the reader assembles them. This is one: a tinted cell at the
+ * left end carrying the label, the hairline continuing from it, and an
+ * optional figure in a rule-separated cell at the right end. The divider and
+ * the heading stop being two things.
+ *
+ * `bg-chip` is the tint. The mockup calls it `panel-hi`; this codebase has had
+ * that exact value under the name `chip` in both themes since the token set
+ * was written (`#F1F0EC` light, `#262421` dark), and adding a second name for
+ * one value is how a palette starts drifting.
+ *
+ * SHELF ONLY, and every caller gates on it. The 380px embedded panel keeps
+ * `SectionLabel` above its bands: a rule tag spends horizontal room on a cell,
+ * a hairline and a figure, and that panel has already had the 620px shape
+ * imposed on it twice — once by the alternatives row and once by the dials —
+ * with a measurement recorded each time saying what it cost.
+ *
+ * `top` draws the hairline on BOTH edges. The first rule on the card only has
+ * to separate itself from what follows; the `Or` rule sits between two regions
+ * and has to close the one above it as well.
+ */
+const ruleRow = 'flex items-stretch border-b border-line';
+const ruleCell = `${ruleTag} shrink-0 border-r border-line bg-chip px-[10px] py-[4px]`;
+const ruleFigure =
+  'flex shrink-0 items-center border-l border-line px-3 '
+  + 'font-mono text-micro tabular-nums text-muted';
+
+function RuleTag({ tag, figure, top }: { tag: string; figure?: string; top?: boolean }) {
+  return (
+    <div className={`${ruleRow} ${top ? 'border-t border-line' : ''}`}>
+      <span className={ruleCell}>{tag}</span>
+      {/* The rule itself: the empty middle IS the line, which is why the tag
+          cell and the figure cell are both `shrink-0` and this is not. */}
+      <span className="min-w-0 flex-1" />
+      {figure !== undefined && <span className={ruleFigure}>{figure}</span>}
+    </div>
+  );
+}
+
+/**
  * The shelf's two dials, and the only always-present controls on it.
  *
  * They are two axes and never one: the left says how long you have, which
@@ -169,7 +218,7 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
 }) {
   return (
     <div className={dialStripClass(shelf)}>
-      <div className="flex items-center gap-2.5">
+      <div className={dialCellCls(shelf, true)}>
         <span className={captionLabel}>Time</span>
         <SegmentedSwitch
           label="How long you have"
@@ -183,7 +232,7 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
           onChange={(next) => onAction({ type: 'set-time-level', level: next })}
         />
       </div>
-      <div className="flex items-center gap-2.5">
+      <div className={dialCellCls(shelf, false)}>
         <span className={captionLabel}>Focus</span>
         <SegmentedSwitch
           label="How much focus you have"
@@ -211,11 +260,27 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
  * The `flex-col` in the embedded branch and its absence in the shelf branch
  * are both load-bearing: the 380px host has nothing for a second
  * caption-plus-switch pair to live in on one line.
+ *
+ * On the shelf the bar is now two CELLS with a hairline between them, and the
+ * inset moved from the bar onto each cell — the same move the rule tags make
+ * one region up. Two axes crowded onto one row read as one wide control with
+ * six segments; ruled apart they read as two instruments, which is what they
+ * are and what `DialStrip`'s own doc has said all along.
  */
 function dialStripClass(shelf: boolean): string {
   return shelf
-    ? 'flex items-center gap-4 border-t border-line bg-bg px-4 py-[7px]'
+    ? 'flex items-stretch border-t border-line bg-bg'
     : 'flex flex-col gap-1.5 border-b border-line px-3 pb-2 pt-3';
+}
+
+/**
+ * One dial's cell. `first` is what decides the divider rather than a
+ * `:first-child` selector, because the hairline belongs to the SECOND cell —
+ * a leading border on cell one would draw a line down the card's own left edge.
+ */
+function dialCellCls(shelf: boolean, first: boolean): string {
+  if (!shelf) return 'flex items-center gap-2.5';
+  return `flex items-center gap-2.5 px-4 py-[7px] ${first ? '' : 'border-l border-line'}`;
 }
 
 /**
@@ -246,6 +311,19 @@ const altRow =
   + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
 
 /**
+ * The same row, full-bleed under a rule tag.
+ *
+ * No rounding and no band inset: the rows now run edge to edge like the rule
+ * above them, so the hover surface is the whole width of the card and a 6px
+ * radius inside it would be a corner belonging to nothing. The inset moved onto
+ * the row, which is what keeps the title's left edge on the same axis as the
+ * rule tag's label.
+ */
+const altRowShelf =
+  'w-full px-4 py-[7px] text-left '
+  + 'hover:bg-hover disabled:opacity-40 disabled:pointer-events-none';
+
+/**
  * A row's own arrangement, and the second place the 620px shape had to stop
  * being imposed on the 380px one.
  *
@@ -268,7 +346,7 @@ const altRow =
  * The row now gives its width to the work. See `altTitleCls`/`altMetaCls`.
  */
 function altRowCls(shelf: boolean): string {
-  return shelf ? `${altRow} flex items-baseline gap-3` : altRow;
+  return shelf ? `${altRowShelf} flex items-baseline gap-3` : altRow;
 }
 
 /**
@@ -295,9 +373,31 @@ const altTitleCls = (shelf: boolean): string => shelf
   ? 'min-w-[50%] flex-1 truncate text-body text-ink-soft'
   : 'block truncate text-body text-ink-soft';
 
+/**
+ * The metadata's voice, and the shelf's is MONO.
+ *
+ * What sits here is a project identifier and a duration — the two things a
+ * proportional face sets worst and a mono one sets for a living. `tabular-nums`
+ * on top of it so a column of minutes lines up rather than shimmering, which is
+ * the whole reason the figure on a rule tag is set the same way.
+ *
+ * Embedded is unchanged: that panel stacks the two spans and has no rule tags
+ * to be consistent with, so switching its face would be a change for its own
+ * sake on the presentation the spec pins as untouched.
+ */
 const altMetaCls = (shelf: boolean): string => shelf
-  ? 'min-w-0 shrink truncate text-meta text-muted'
+  ? 'min-w-0 shrink truncate font-mono text-micro tabular-nums text-muted'
   : 'block truncate text-meta text-muted';
+
+/**
+ * The subtitle under the primary's title. Same reasoning as `altMetaCls`: on
+ * the shelf it carries the project and nothing else — the duration moved to the
+ * rule tag's figure cell — so it is an identifier, and identifiers are what the
+ * mono face is for.
+ */
+const workSubtitleCls = (shelf: boolean): string => shelf
+  ? 'truncate font-mono text-micro tabular-nums text-muted'
+  : 'truncate text-meta text-muted';
 
 /**
  * The alternatives band's own inset, shared with `Skeleton` so the loading
@@ -307,33 +407,68 @@ function altBandCls(shelf: boolean): string {
   return `border-t border-line ${shelf ? 'px-4 pt-2 pb-2.5' : 'px-3 py-2'}`;
 }
 
-function AlternativesBand({ label, items, disabled, onPick, shelf }: {
+/**
+ * What the `Or` rule's figure states, and why it is honest.
+ *
+ * `MAX_ALTERNATIVES` really does cap this band — `FocusPanel` and `AdvicePanel`
+ * both slice to it — so a bare count would be describing a list the reader
+ * cannot see the end of. `N more` describes the ROWS, which is the one number
+ * that is true whether or not the cap bit, and it is stated on the rule rather
+ * than under the last row because a count of things you are about to read
+ * belongs at the top of them.
+ */
+function moreLabel(count: number): string {
+  return `${count} more`;
+}
+
+function AlternativesBand({ label, items, disabled, onPick, shelf, sharedPrefix }: {
   label: string;
   items: RecommendedWork[];
   disabled: boolean;
   onPick: (ref: RecommendedWork['ref']) => void;
   shelf: boolean;
+  /**
+   * The project prefix the PRIMARY already stated in full. Shelf only: the
+   * embedded panel gives the metadata its own line, so there is no row of
+   * repeated words to collapse.
+   */
+  sharedPrefix: string;
 }) {
   if (items.length === 0) return null;
+  const meta = (item: RecommendedWork): string => {
+    const goal = item.goalTitle === undefined
+      ? undefined
+      : shelf ? dropSharedPrefix(item.goalTitle, sharedPrefix) : item.goalTitle;
+    // `expectedTimeLabel` in full, never a bare `45m`. The prefix is what that
+    // function is FOR — it says where the number came from — and the history
+    // case is a RANGE no single figure can state.
+    return `${goal ? `${goal} · ` : ''}${expectedTimeLabel(item.expected)}`;
+  };
+  const rows = items.map((item, i) => (
+    <button
+      key={item.key}
+      type="button"
+      disabled={disabled}
+      className={`${altRowCls(shelf)} ${i ? 'border-t border-line-soft' : ''}`}
+      onClick={() => onPick(item.ref)}
+    >
+      <span className={altTitleCls(shelf)}>{item.title}</span>
+      <span className={altMetaCls(shelf)}>{meta(item)}</span>
+    </button>
+  ));
+
+  if (shelf) {
+    return (
+      <>
+        <RuleTag top tag={label} figure={moreLabel(items.length)} />
+        <div className="flex flex-col">{rows}</div>
+      </>
+    );
+  }
   return (
     <div className={altBandCls(shelf)}>
       <SectionLabel>{label}</SectionLabel>
-      <div className="mt-[2px] flex flex-col">
-        {items.map((item, i) => (
-          <button
-            key={item.key}
-            type="button"
-            disabled={disabled}
-            className={`${altRowCls(shelf)} ${i ? 'border-t border-line-soft' : ''}`}
-            onClick={() => onPick(item.ref)}
-          >
-            <span className={altTitleCls(shelf)}>{item.title}</span>
-            <span className={altMetaCls(shelf)}>
-              {item.goalTitle ? `${item.goalTitle} · ` : ''}{expectedTimeLabel(item.expected)}
-            </span>
-          </button>
-        ))}
-      </div>
+      <div className="mt-[2px] flex flex-col">{rows}</div>
     </div>
   );
 }
@@ -401,23 +536,37 @@ const RING_SLOT = 'w-[34px] shrink-0';
  * title's left edge must not move when a session ends, and that is true at
  * either width.
  */
-function WorkBand({ checkbox, ring, eyebrow, title, subtitle, extra, actions, shelf }: {
+function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, actions, shelf }: {
   checkbox: ReactNode;
   ring: ReactNode;
   eyebrow: string;
+  /**
+   * The rule tag's right-hand cell — shelf only, and only for work that has not
+   * STARTED. `expectedTimeLabel` states an expectation, and a rule that
+   * introduces a region is where a fact stated once belongs. A running session
+   * has no expectation left to state; it has PROGRESS, which is a readout that
+   * changes and therefore belongs beside the work rather than on its label.
+   * That split is `expectedTimeLabel` vs `elapsedAgainstExpected`, restated as
+   * a position.
+   */
+  figure?: string;
   title: ReactNode;
   subtitle: ReactNode;
   extra?: ReactNode;
   actions: ReactNode;
   shelf: boolean;
 }) {
-  return (
+  const band = (
     <div className={`${bandCls(shelf)} flex ${shelf ? 'items-center gap-3' : 'flex-col gap-2'}`}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div data-gutter className={GUTTER}>{checkbox}</div>
         {ring}
         <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-          <SectionLabel>{eyebrow}</SectionLabel>
+          {/* The eyebrow moved OUT of this column on the shelf and became the
+              rule above it, which is what buys the title its second line back
+              — see `workTitle`. Embedded keeps it here: a rule tag is a
+              full-bleed object and that panel is 380px of one. */}
+          {!shelf && <SectionLabel>{eyebrow}</SectionLabel>}
           {title}
           {subtitle}
           {extra}
@@ -425,6 +574,13 @@ function WorkBand({ checkbox, ring, eyebrow, title, subtitle, extra, actions, sh
       </div>
       <div className={`flex shrink-0 gap-2 ${shelf ? '' : 'justify-end'}`}>{actions}</div>
     </div>
+  );
+  if (!shelf) return band;
+  return (
+    <>
+      <RuleTag tag={eyebrow} {...(figure === undefined ? {} : { figure })} />
+      {band}
+    </>
   );
 }
 
@@ -453,13 +609,35 @@ function Skeleton({ shelf }: { shelf: boolean }) {
   const row = (height: string) => (
     <div data-testid="skeleton-row" className={`${height} w-full rounded-field bg-hover`} />
   );
+  // A rule tag is CHROME, not content, so the skeleton draws the real thing
+  // rather than a grey bar standing in for it: the same borders, the same tint,
+  // the same cell — with a non-breaking space giving the cell the exact line
+  // height its label would. That makes the promised height right by
+  // construction, which is the only way two hand-tuned numbers stay in step.
+  const rule = (top: boolean) => (
+    <div className={`${ruleRow} ${top ? 'border-t border-line' : ''}`}>
+      <span className={`${ruleCell} w-[104px]`}>{'\u00A0'}</span>
+    </div>
+  );
   const work = <div className={bandCls(shelf)}>{row('h-[46px]')}</div>;
-  const alternatives = <div className={altBandCls(shelf)}>{row('h-[42px]')}</div>;
-  // Two captioned switches stacked embedded, one row of them on the shelf.
-  const dials = <div className={dialStripClass(shelf)}>{row(shelf ? 'h-[26px]' : 'h-[58px]')}</div>;
+  const alternatives = shelf
+    ? <div className="flex flex-col px-4 py-[7px]">{row('h-[42px]')}</div>
+    : <div className={altBandCls(shelf)}>{row('h-[42px]')}</div>;
+  // Two captioned switches stacked embedded, one row of them on the shelf. The
+  // shelf's cells own the inset now, so the strip itself has none and the
+  // placeholder has to carry it.
+  const dials = (
+    <div className={dialStripClass(shelf)}>
+      {shelf
+        ? <div className={`${dialCellCls(true, true)} w-full`}>{row('h-[26px]')}</div>
+        : row('h-[58px]')}
+    </div>
+  );
   return (
     <div role="status" aria-label="Preparing your next step" className="flex flex-col">
-      {shelf ? <>{work}{alternatives}{dials}</> : <>{dials}{work}{alternatives}</>}
+      {shelf
+        ? <>{rule(false)}{work}{rule(true)}{alternatives}{dials}</>
+        : <>{dials}{work}{alternatives}</>}
     </div>
   );
 }
@@ -495,14 +673,14 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
     />
   ) : null;
   const subtitle = focus.goalTitle
-    ? <p className="truncate text-meta text-muted">{focus.goalTitle}</p>
+    ? <p className={workSubtitleCls(shelf)}>{focus.goalTitle}</p>
     : null;
   const extra = focus.phase === 'confirming' ? (
     <p className="text-body text-ink">
       This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
     </p>
   ) : (
-    <p className="text-meta text-muted">
+    <p className="text-meta tabular-nums text-muted">
       {elapsedAgainstExpected(focus.elapsedMin, focus.expected, focusLevel)}
       {focus.phase === 'break' ? ' · On a break' : ''}
     </p>
@@ -585,6 +763,12 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
         disabled={false}
         onPick={(ref) => onAction({ type: 'switch-focus', ref })}
         shelf={shelf}
+        // The running session is what states the project in full here, so it
+        // is the one the alternatives may stop repeating.
+        sharedPrefix={sharedProjectPrefix([
+          focus.goalTitle,
+          ...alternatives.slice(0, MAX_ALTERNATIVES).map((item) => item.goalTitle),
+        ])}
       />
     </>
   );
@@ -641,14 +825,23 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
         }
         ring={null}
         eyebrow={REASON_WORD[primary.reason]}
+        // On the shelf the expectation is stated ONCE, on the rule above the
+        // work, at the reading edge where a figure belongs. Embedded has no
+        // rule to put it on, so it stays in the subtitle exactly as it was —
+        // and that is the whole difference between these two branches.
+        {...(shelf ? { figure: expectedTimeLabel(primary.expected) } : {})}
         title={<h2 className={workTitle} title={primary.title}>{primary.title}</h2>}
-        subtitle={
+        subtitle={shelf ? (
+          primary.goalTitle
+            ? <p className={workSubtitleCls(true)}>{primary.goalTitle}</p>
+            : null
+        ) : (
           <p className="flex min-w-0 items-baseline gap-1.5 text-meta text-muted">
             {primary.goalTitle && <span className="truncate">{primary.goalTitle}</span>}
             {primary.goalTitle && <span aria-hidden>·</span>}
             <span className="shrink-0">{expectedTimeLabel(primary.expected)}</span>
           </p>
-        }
+        )}
         actions={
           <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
             Start session
@@ -661,6 +854,12 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
         disabled={pending}
         onPick={onStart}
         shelf={shelf}
+        // The primary names its project in full one region up; the alternatives
+        // only have to say what makes them different.
+        sharedPrefix={sharedProjectPrefix([
+          primary.goalTitle,
+          ...alternatives.map((item) => item.goalTitle),
+        ])}
       />
     </>
   );

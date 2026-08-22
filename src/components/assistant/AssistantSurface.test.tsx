@@ -1021,6 +1021,182 @@ describe('AssistantSurface', () => {
   });
 });
 
+/*
+ * The instrument grammar, and every one of these is a SHELF fact. Each pins
+ * the embedded half too, because "the 380px panel does not change" is a claim
+ * that only stays true if something checks it.
+ */
+describe('the rule tags', () => {
+  const withAlternatives = (over: Partial<RecommendedWork>[] = []) => ready({
+    advice: {
+      kind: 'work',
+      primary: work(),
+      alternatives: over.map((o, i) => work({ key: `step:n${i + 2}`, ...o })),
+    },
+  });
+
+  /*
+   * The eyebrow moved OUT of the text column and became the rule above it,
+   * which is what buys the title back the width it used to sit over. The
+   * figure moved with it, to the reading edge — stated once, on the rule that
+   * introduces the work, rather than trailing the project in the subtitle.
+   */
+  it('states the reason and the expectation on one rule above the work', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    const tag = screen.getByText('Happening now');
+    expect(tag.className).toContain('font-mono');
+    expect(tag.className).toContain('uppercase');
+    expect(tag.className).toContain('bg-chip');
+
+    const figure = screen.getByText('Planned 45m');
+    expect(figure.className).toContain('tabular-nums');
+    // One rule, two cells: the tag and the figure are siblings.
+    expect(figure.parentElement).toBe(tag.parentElement);
+    // And the heading is NOT inside it — the rule is chrome above the work.
+    expect(tag.parentElement!.contains(screen.getByRole('heading', { name: 'Problem set 4' })))
+      .toBe(false);
+  });
+
+  it('leaves the embedded panel its section label and its subtitle figure', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    const label = screen.getByText('Happening now');
+    expect(label.className).not.toContain('bg-chip');
+    // Embedded has no rule to hang a figure on, so it stays where it was.
+    expect(screen.getByText('Planned 45m').className).not.toContain('tabular-nums');
+  });
+
+  /*
+   * Honest chrome: `MAX_ALTERNATIVES` really does cap the band, so the number
+   * describes the ROWS — the one figure that is true whether or not the cap
+   * bit.
+   */
+  it('counts the alternatives on their own rule', () => {
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([{ title: 'Read chapter 5' }, { title: 'Pitch deck' }])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const tag = screen.getByText('Or');
+    expect(screen.getByText('2 more').parentElement).toBe(tag.parentElement);
+    cleanup();
+
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([{ title: 'Read chapter 5' }])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.getByText('1 more')).toBeTruthy();
+  });
+
+  /*
+   * A running session has no expectation left to state — it has PROGRESS,
+   * which changes, and a readout that changes belongs beside the work rather
+   * than on the label introducing it. That is `expectedTimeLabel` versus
+   * `elapsedAgainstExpected`, restated as a position.
+   */
+  it('puts no figure on a running session\'s rule', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView() })}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const rule = screen.getByText('Focus session').parentElement!;
+    expect(rule.textContent).toBe('Focus session');
+    expect(screen.getByText('12m of 45m')).toBeTruthy();
+  });
+
+  /*
+   * `Midterm — ` was stated four times on one 620px card. The primary names
+   * the project in FULL; the alternatives only say what makes them different.
+   */
+  it('drops from the alternatives the project prefix the primary already stated', () => {
+    const snapshot = ready({
+      advice: {
+        kind: 'work',
+        primary: work({ goalTitle: 'Midterm — 2301265 DATA STRUC ALGOR' }),
+        alternatives: [
+          work({ key: 'step:n2', title: 'Basic counting', goalTitle: 'Midterm — 2301230 DISCRETE CS' }),
+          work({ key: 'step:n3', title: 'Download slides', goalTitle: 'Midterm — 2301274 COMP SYS' }),
+        ],
+      },
+    });
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} presentation="shelf" />);
+    expect(screen.getByText('Midterm — 2301265 DATA STRUC ALGOR')).toBeTruthy();
+    expect(screen.getByText('2301230 DISCRETE CS · Planned 45m')).toBeTruthy();
+    expect(screen.getByText('2301274 COMP SYS · Planned 45m')).toBeTruthy();
+    cleanup();
+
+    // Embedded gives the metadata its own line, so there is no row of repeated
+    // words to collapse and nothing is dropped.
+    render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);
+    expect(screen.getByText('Midterm — 2301230 DISCRETE CS · Planned 45m')).toBeTruthy();
+  });
+
+  it('keeps a project name that is not shared by every row', () => {
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([
+          { title: 'Read chapter 5', goalTitle: 'Algorithms' },
+          { title: 'Pitch deck', goalTitle: 'Website' },
+        ])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    expect(screen.getByText('Algorithms · Planned 45m')).toBeTruthy();
+    expect(screen.getByText('Website · Planned 45m')).toBeTruthy();
+  });
+
+  /*
+   * The metadata is an identifier and a duration, which is what the mono face
+   * is for — and `expectedTimeLabel` stays WHOLE. A bare `45m` throws away
+   * where the number came from, and the history case is a range no single
+   * figure can state.
+   */
+  it('sets an alternative\'s metadata in mono, provenance and all', () => {
+    render(
+      <AssistantSurface
+        snapshot={withAlternatives([{
+          title: 'Read chapter 5',
+          expected: { kind: 'history', lowMin: 45, highMin: 60, confidence: 'high', sampleCount: 6 },
+        }])}
+        onAction={() => {}}
+        presentation="shelf"
+      />,
+    );
+    const meta = screen.getByText('Algorithms · Usually 45–60m');
+    expect(meta.className).toContain('font-mono');
+    expect(meta.className).toContain('tabular-nums');
+  });
+
+  /*
+   * A skeleton that promises the wrong layout is worse than no skeleton: it
+   * reflows twice. The rule is CHROME, so the loading state draws the real
+   * thing rather than a grey bar standing in for it — which is the only way
+   * two hand-tuned heights stay in step.
+   */
+  it('promises the rules it is about to be replaced by', () => {
+    const { container } = render(
+      <AssistantSurface snapshot={{ status: 'loading' }} onAction={() => {}} presentation="shelf" />,
+    );
+    const cells = container.querySelectorAll('.bg-chip');
+    expect(cells.length).toBe(2);
+    cleanup();
+
+    // Embedded has no rules, so its skeleton promises none.
+    const embedded = render(
+      <AssistantSurface snapshot={{ status: 'loading' }} onAction={() => {}} />,
+    );
+    expect(embedded.container.querySelectorAll('.bg-chip').length).toBe(0);
+  });
+});
+
 describe('marking the offered work done', () => {
   it('offers a checkbox on the idle card, named for the work', () => {
     render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
