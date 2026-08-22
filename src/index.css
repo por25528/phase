@@ -283,13 +283,38 @@
      which is the wrong hover, and Tailwind's bare `group` does not nest.
      `:focus-within` and opacity (rather than `display:none`) are what keep the
      input reachable by keyboard; the hover gate is what keeps it visible on
-     touch, where `:hover` never resolves. */
+     touch, where `:hover` never resolves.
+
+     It also collapses its HEIGHT, and that is the half that was missing.
+     Opacity alone is right for a `.quiet-control`, where an invisible ROW
+     CONTROL costs nothing — but this is a full-width BLOCK, so an invisible
+     one cost its whole ~34px in the middle of the tree, once per expanded
+     container. That is the unexplained hole between a container's last child
+     and the next top-level row.
+
+     `max-height`, never `display: none` or `visibility: hidden`: those two
+     take the input out of the focus order, which is the exact thing this rule
+     pair exists to protect, and `GoalTree.meta.test.tsx` reads this stylesheet
+     to say so. A zero-height element with `overflow: hidden` is still
+     focusable, so `:focus-within` can restore it — Tab reaches it, it opens,
+     and the reveal condition is unchanged.
+
+     `6rem` rather than a measured px height: the app's root font size is a
+     user setting (`loadScale`), so the input's real height moves with it. A
+     max-height only has to be an upper bound the content never reaches, and
+     it is what lets the reveal animate at all — `height: auto` cannot be
+     transitioned. */
   .subtree-reveal {
     opacity: 1;
-    transition: opacity .12s;
+    overflow: hidden;
+    max-height: 6rem;
+    transition: opacity .12s, max-height .12s;
   }
   @media (hover: hover) {
-    .subtree:not(:hover) .subtree-reveal:not(:focus-within) { opacity: 0; }
+    .subtree:not(:hover) .subtree-reveal:not(:focus-within) {
+      opacity: 0;
+      max-height: 0;
+    }
   }
 
   /* Markdown notes use the app's type and colour tokens rather than Tiptap's

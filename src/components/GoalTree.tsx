@@ -737,8 +737,23 @@ function GoalTreeNode({
   }
 
   // The row is a two-column grid now, not one flex line. Column 1 holds the
-  // leading controls; column 2 stacks the title over its metadata, which is what
-  // deletes the ~700px gutter the pinned right-edge cells used to leave.
+  // leading controls; column 2 stacks the title over its metadata.
+  //
+  // That deletes the ~700px gutter for a LEAF, whose metadata moved to line 2
+  // under the title. It did NOT delete it for a CONTAINER, and this comment
+  // used to claim otherwise. A container has no line 2 — it carries no
+  // estimate and no schedule of its own — so its `%`, its derived `blocked`
+  // flag and its read-only WHEN readout stayed on line 1, `flex-shrink-0`,
+  // AFTER a `flex-1` title. The title then absorbed every pixel of slack and
+  // pushed all three to the far edge: on a wide window `0%` sat ~1,300px from
+  // the words it describes, which is the same defect the grid was introduced
+  // to fix, surviving in the one row shape the grid did not change.
+  //
+  // The fix is that a container's title no longer takes the slack — it sizes
+  // to its content (and still truncates) while an explicit spacer AFTER the
+  // metadata takes it instead, so name and figures stay adjacent and the
+  // hover-only `⋯` is what sits at the edge. A leaf keeps `flex-1`: its
+  // metadata is on line 2, so there is nothing on line 1 for slack to strand.
   //
   // `items-start`, so the leading controls stay aligned to line 1 rather than
   // centring themselves across a two-line row.
@@ -853,7 +868,10 @@ function GoalTreeNode({
                  part that does not open it. `truncate` because the title is the
                  one user string here with no bound. */
               <span
-                className={`flex-1 min-w-0 truncate text-lead select-none ${
+                // `flex-1` on a LEAF only. A container's title sizes to its
+                // content so the figures after it stay beside it — see the
+                // ROW_CLS note above; the spacer below is where the slack goes.
+                className={`${hasKids ? 'flex-initial' : 'flex-1'} min-w-0 truncate text-lead select-none ${
                   hasKids
                     ? 'font-semibold text-ink'
                     : isDone(n)
@@ -879,7 +897,8 @@ function GoalTreeNode({
             )}
 
             {/* A container's read-only WHEN readout keeps its place: it has no
-                second line, and it is narrow enough not to leave a gutter. */}
+                second line to move to. It is no longer pushed to the far edge
+                — the spacer below now takes the slack the title used to. */}
             {hasKids && when?.text && (
               <span
                 className={`text-meta tabular-nums truncate flex-none px-[5px] py-[3px] ${
@@ -890,6 +909,13 @@ function GoalTreeNode({
                 {when.text}
               </span>
             )}
+
+            {/* The slack, taken AFTER a container's figures rather than by the
+                title before them. Everything past this point is a hover-only
+                control, so the reading edge holds nothing that has to be read.
+                A leaf has no spacer: its `flex-1` title already takes the
+                slack, and its own metadata is on line 2. */}
+            {hasKids && <span className="flex-1" aria-hidden="true" />}
 
             {/* Cycle status — leaves only. The one control that stayed on the
                 row while rename, add-subtask and delete moved into `⋯`, because
