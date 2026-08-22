@@ -1,4 +1,5 @@
 import type { GoalNode } from '../db/types';
+import { foldDone } from './doneFold';
 import { isDone } from './status';
 
 /**
@@ -20,6 +21,8 @@ import { isDone } from './status';
  * keyboard handling agree by construction, and it can be tested without a DOM.
  */
 
+const EMPTY: ReadonlySet<string> = new Set();
+
 /**
  * Ids in render order, counting only rows that are actually on screen.
  *
@@ -27,13 +30,28 @@ import { isDone } from './status';
  * collapsed subtree contributes exactly one row. Shift-click and Shift+Arrow
  * must use this order — using tree order instead would silently pull in rows
  * the user cannot see.
+ *
+ * A folded run of finished siblings is off screen for exactly the same reason,
+ * so it is dropped here too — and it is dropped by spending `foldDone`, the
+ * same function the tree renders from, rather than by re-deriving the rule.
+ * Two functions answering "is this row on screen" from two copies of one rule
+ * is how a shift-range comes to include a row nobody can see.
  */
-export function visibleRowIds(nodes: GoalNode[], expanded: Set<string>): string[] {
+export function visibleRowIds(
+  nodes: GoalNode[],
+  expanded: Set<string>,
+  /** Fold keys the user has opened. Absent means every run is folded. */
+  revealed: ReadonlySet<string> = EMPTY,
+): string[] {
   const out: string[] = [];
   const walk = (list: GoalNode[]): void => {
-    for (const n of list) {
-      out.push(n.id);
-      if (n.children?.length && expanded.has(n.id)) walk(n.children);
+    for (const item of foldDone(list)) {
+      if (item.kind === 'run' && !revealed.has(item.run.key)) continue;
+      const shown = item.kind === 'run' ? item.run.nodes : [item.node];
+      for (const n of shown) {
+        out.push(n.id);
+        if (n.children?.length && expanded.has(n.id)) walk(n.children);
+      }
     }
   };
   walk(nodes);

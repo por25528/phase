@@ -52,6 +52,53 @@ describe('visibleRowIds', () => {
   it('handles an empty tree', () => {
     expect(visibleRowIds([], ALL_OPEN)).toEqual([]);
   });
+
+  /**
+   * A folded run of finished siblings is off screen for exactly the reason a
+   * collapsed subtree is, so a shift-range must not reach into one. Both
+   * answers come from `foldDone`, so the tree and this cannot disagree about
+   * where the runs are — which is the failure mode worth a test: a range that
+   * silently selects rows nobody can see.
+   */
+  const FOLDED: GoalNode[] = [
+    { id: 'a', title: 'Pset 6', status: 'done', doneAt: '2026-07-01' },
+    { id: 'b', title: 'Pset 7', status: 'done', doneAt: '2026-07-01' },
+    { id: 'c', title: 'Pset 8' },
+  ];
+
+  it('drops a folded run of finished rows', () => {
+    expect(visibleRowIds(FOLDED, new Set())).toEqual(['c']);
+  });
+
+  it('takes the run back once it is revealed', () => {
+    expect(visibleRowIds(FOLDED, new Set(), new Set(['a']))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('leaves a lone finished row on screen — one row is not a run', () => {
+    expect(visibleRowIds(TREE, ALL_OPEN)).toContain('a');
+    expect(visibleRowIds(TREE, ALL_OPEN)).toContain('g1b');
+  });
+
+  it('folds inside a subtree too, and only while its parent is open', () => {
+    const nested: GoalNode[] = [
+      { id: 'g', title: 'Group', children: [...FOLDED] },
+    ];
+    expect(visibleRowIds(nested, new Set(['g']))).toEqual(['g', 'c']);
+    expect(visibleRowIds(nested, new Set(['g']), new Set(['a']))).toEqual(['g', 'a', 'b', 'c']);
+  });
+
+  it('does not descend into a folded container, however expanded it is', () => {
+    const nested: GoalNode[] = [
+      {
+        id: 'g',
+        title: 'Finished group',
+        children: [{ id: 'x', title: 'x', status: 'done', doneAt: '2026-07-01' }],
+      },
+      { id: 'b', title: 'b', status: 'done', doneAt: '2026-07-01' },
+      { id: 'c', title: 'c' },
+    ];
+    expect(visibleRowIds(nested, new Set(['g']))).toEqual(['c']);
+  });
 });
 
 describe('rangeBetween', () => {

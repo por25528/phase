@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
 import { stampLabel } from '../components/sectionLabel';
-import { RuleHeader } from './today/RuleHeader';
+import { RuleHeader } from '../components/RuleHeader';
 import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
 import { DayGauge } from './today/DayGauge';

@@ -19,14 +19,24 @@ import { stepStatus } from './status';
 export type MetaPlacement = 'below' | 'inline';
 
 /**
- * Leaves only. A container's `pct`, derived `blocked` word and demand chip stay
- * on line 1 and it has no line 2 — it carries no estimate and no schedule of
- * its own by design (`setNodeEstimate` refuses one; a group is scheduled
- * through its tasks).
+ * Leaves only. A container is a RULE rather than a row now — its name in the
+ * tinted cell at one end, its progress on the other — so it has no metadata
+ * line at all, and it never carried an estimate or a schedule of its own by
+ * design (`setNodeEstimate` refuses one; a group is scheduled through its
+ * tasks).
+ *
+ * The ESTIMATE is deliberately not a reason to take line 2 any more. It moved
+ * out of `LeafMeta` and onto the row's own reading edge, where it shows at
+ * rest — mono, tabular, `—` when unpriced — so that a goal card saying "4
+ * unestimated" can be checked against the tree without hovering every row.
+ * A column of figures only reads as a column if every row states its figure at
+ * the same x, and that cannot be true while half the rows put it on line 1 and
+ * half on line 2. Leaving the clause here would have cost a leaf whose only
+ * metadata was its estimate a second line with nothing but a hover control on
+ * it.
  */
 export function metaPlacement(n: GoalNode, today: string): MetaPlacement {
   if (scheduleCell(n, today) !== null) return 'below';
-  if (n.estimateMin !== undefined) return 'below';
   // The RAW field, never the resolved value: `demandIndex` inherits a goal's
   // value onto every leaf, and thirty rows saying "Deep" is a column that says
   // one word thirty times.

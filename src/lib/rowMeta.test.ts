@@ -23,8 +23,12 @@ describe('metaPlacement', () => {
     expect(metaPlacement(n, TODAY)).toBe('below');
   });
 
-  it('is "below" for a leaf with an estimate and nothing else', () => {
-    expect(metaPlacement(leaf({ estimateMin: 45 }), TODAY)).toBe('below');
+  // The estimate lives on the row's own reading edge now, at rest, in the
+  // same column on every row — so it is no longer a reason to open line 2.
+  // Keeping it as one would have cost this leaf a second line holding nothing
+  // but a hover-only schedule control.
+  it('is "inline" for a leaf with an estimate and nothing else', () => {
+    expect(metaPlacement(leaf({ estimateMin: 45 }), TODAY)).toBe('inline');
   });
 
   it('is "below" for a leaf whose demand is SET on the node', () => {
@@ -40,12 +44,12 @@ describe('metaPlacement', () => {
   });
 
   // scheduleCell returns null for a done leaf (rowSchedule.ts:65) — a finished
-  // task's schedule is history. The estimate is not, so it still earns line 2.
+  // task's schedule is history.
   it('is "inline" for a DONE leaf whose only metadata was its schedule', () => {
     expect(metaPlacement(leaf({ status: 'done', plannedWeek: '2026-08-10' }), TODAY)).toBe('inline');
   });
 
-  it('is "below" for a DONE leaf that still carries an estimate', () => {
-    expect(metaPlacement(leaf({ status: 'done', estimateMin: 30 }), TODAY)).toBe('below');
+  it('is "below" for a leaf that has something line 1 cannot hold', () => {
+    expect(metaPlacement(leaf({ demand: 'deep', estimateMin: 30 }), TODAY)).toBe('below');
   });
 });

@@ -126,24 +126,35 @@ describe('the hidden add-task input', () => {
  * produces it: which element takes the slack.
  */
 describe('a container states its figures beside its name', () => {
-  it('does not let the title absorb the row\'s slack', async () => {
+  /*
+   * A container is a RULE now, and this is the assertion that says the defect
+   * cannot come back by arrangement: the name and the figure are not two
+   * elements in one flex line that some future `flex-1` could drive apart —
+   * they are the two CELLS of a rule, with the hairline between them, and a
+   * rule has nowhere else to put either of them.
+   */
+  it('draws the name in the tag cell and the figure in the cell on the far end', async () => {
     await renderTree([{ id: 'p', title: 'Parent', children: [{ id: 'c', title: 'Child' }] }]);
-    expect(screen.getByText('Parent').className).not.toMatch(/\bflex-1\b/);
+    const rule = row('Parent').firstElementChild!;
+
+    expect(rule.className).toContain('border-b'); // the hairline IS the row
+    const [tag, spacer, fact] = Array.from(rule.children);
+    expect(tag.textContent).toContain('Parent');
+    expect(tag.className).toContain('border-r');
+    expect(spacer.className).toContain('flex-1');
+    expect(fact.textContent).toContain('0%');
+    expect(fact.className).toContain('border-l');
   });
 
-  it('takes the slack AFTER the figures, so nothing readable sits at the edge', async () => {
+  it('never puts a container back on the grid a leaf uses', async () => {
     await renderTree([{ id: 'p', title: 'Parent', children: [{ id: 'c', title: 'Child' }] }]);
-    const line = screen.getByText('Parent').parentElement!;
-    const kids = Array.from(line.children);
-    const spacer = kids.findIndex((el) => el.className.includes('flex-1'));
-    const pct = kids.indexOf(within(line).getByText('0%'));
-
-    expect(spacer).toBeGreaterThan(-1);
-    expect(spacer).toBeGreaterThan(pct);
+    // The grid is where the gutter lived: a `flex-1` title on line 1 with
+    // `flex-shrink-0` figures after it.
+    expect(row('Parent').className).not.toContain('grid-cols-');
   });
 
   it('leaves a LEAF title taking the slack, because its metadata is on line 2', async () => {
-    await renderTree([{ id: 'a', title: 'Ship it', estimateMin: 45 }]);
+    await renderTree([{ id: 'a', title: 'Ship it', demand: 'deep' }]);
     expect(within(row('Ship it')).getByText('Ship it').className).toMatch(/\bflex-1\b/);
   });
 });
