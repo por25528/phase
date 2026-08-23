@@ -37,8 +37,27 @@ export function LandingOutline({ startMin, durationMin }: { startMin: number; du
       style={{
         top: `${minuteToPx(startMin)}px`,
         height: `${Math.max(durationMin * PX_PER_MINUTE, MIN_BLOCK_PX)}px`,
-        // Above the blocks it is landing among, below the composer. A dashed
-        // outline hidden behind the bar it is going to displace states nothing.
+        /*
+         * Above the blocks it is landing among — which is the whole point: a
+         * dashed outline hidden behind the bar it is going to displace states
+         * nothing, and `vacating` excludes the bar being moved, so on every
+         * move-drag the outline lands directly on top of it. `bg-accent/10`
+         * therefore washes OVER that bar rather than under it. That is
+         * deliberate, and `pointer-events-none` is what keeps it free: the
+         * block's own controls stay clickable through the wash.
+         *
+         * It shares `Z_BLOCK_REVEALED` with `BlockComposer` and with a revealed
+         * `EventBlock`, and among equal z-indices DOM order decides. Both of
+         * those render AFTER the outline inside the day column (see the
+         * `WeekGrid` children in `Plan.tsx`), so both sit above it — which is
+         * the order we want, the composer especially, since it is a textbox.
+         * It is a TIE, not its own layer, and it cannot be made one: CSS
+         * `z-index` is an integer, so there is no value strictly between
+         * `Z_BLOCK` (1) and `Z_BLOCK_REVEALED` (2), and buying one would mean
+         * renumbering the whole scale in `lib/grid.ts` to separate three things
+         * that already paint in the right order. If that scale ever is
+         * renumbered, this is the layer that wants the gap.
+         */
         zIndex: Z_BLOCK_REVEALED,
       }}
     >

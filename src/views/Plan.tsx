@@ -4,11 +4,8 @@ import {
   DragOverlay,
   PointerSensor,
   KeyboardSensor,
-  pointerWithin,
-  rectIntersection,
   useSensor,
   useSensors,
-  type CollisionDetection,
   type DragEndEvent,
   type DragMoveEvent,
   type DragStartEvent,
@@ -17,6 +14,13 @@ import { useAppStore, actions, previewPlacement } from '../state/store';
 import { todayStr, addDays, weekDates, fmtD } from '../lib/dates';
 import { weekOf, plannedLeaves } from '../lib/plan';
 import { initialScrollWindow } from '../lib/grid';
+/*
+ * Named for the Goals board it was written for; it is not board-specific, and
+ * the calendar carried a byte-for-byte copy of it — plus a second copy of its
+ * keyboard-sensor rationale — until they were merged. The one comment lives at
+ * the definition. It is not renamed because `views/Goals.tsx` imports it too.
+ */
+import { boardCollision } from '../lib/boardCollision';
 
 import { scheduledByDate } from '../lib/scheduled';
 import { aimFor, DEFAULT_SLOT_MIN } from '../lib/slot';
@@ -45,33 +49,8 @@ import { PlanSkeleton } from './plan/PlanSkeleton';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { aimFromDrag, type PlanDragData } from './plan/dropTarget';
+import { makePreviewCache } from './plan/previewCache';
 import type { BacklogItem } from '../lib/backlog';
-
-/**
- * Resolve the drop target against the pointer when there is one, falling
- * back to rect intersection when there isn't.
- *
- * `pointerWithin` returns `[]` whenever `pointerCoordinates` is null — and
- * that's exactly what happens under `KeyboardSensor`: the activator is a
- * `KeyboardEvent`, `getEventCoordinates` has no `clientX`/`clientY` to read
- * from it, and the resulting null propagates all the way to `over`. A bare
- * `pointerWithin` therefore makes `handleDragEnd`'s `if (!data || !e.over...)`
- * guard bail on every keyboard-driven drag, silently turning keyboard
- * dragging inert. `rectIntersection` doesn't need pointer coordinates — it
- * compares the dragging node's own (translated) rect against droppable
- * rects — so it resolves correctly for the keyboard case, where arrow keys
- * move the dragging node itself rather than a pointer. Pointer-based drags
- * still resolve via the precise pointer basis first; this is dnd-kit's own
- * documented composite pattern for mixing sensor types under one
- * `collisionDetection`. Defined at module scope: it's pure, and passing an
- * inline arrow to `DndContext` would hand it a new function identity every
- * render. Do not simplify this back to bare `pointerWithin` — that
- * regresses keyboard drops.
- */
-const collisionDetection: CollisionDetection = (args) => {
-  const pointerCollisions = pointerWithin(args);
-  return pointerCollisions.length > 0 ? pointerCollisions : rectIntersection(args);
-};
 
 /**
  * The week the user was last looking at, remembered across unmounts.
@@ -283,6 +262,14 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     data: PlanDragData;
     landing: { date: string; startMin: number; durationMin: number } | null;
   } | null>(null);
+  /*
+   * The last answer `previewPlacement` gave, so the drag stops asking the same
+   * question hundreds of times. Held in a ref rather than in `drag` because it
+   * is not state — nothing renders from it, and a `setState` per pointermove is
+   * the cost `handleDragMove`'s identity check already exists to avoid. See
+   * `plan/previewCache.ts` for what the walk costs and what the memo saves.
+   */
+  const previewCache = useRef(makePreviewCache());
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
   const [showUnestimated, setShowUnestimated] = useState(false);
   /*
@@ -481,6 +468,9 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   function handleDragStart(e: DragStartEvent) {
     const data = e.active.data.current as PlanDragData | undefined;
+    // Never across drags: the world the last one was keyed on is the world the
+    // drop it served has just written to.
+    previewCache.current.clear();
     setDrag(data ? { data, landing: null } : null);
   }
 
@@ -512,13 +502,42 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
       scroller: scrollerRef.current,
       grid: gridRef.current,
     });
+    /*
+     * Memoised, because this is the heaviest thing on the drag path and the
+     * answer almost never changes between two events. `previewPlacement` walks
+     * every goal's leaves and every task through `spansOn` and then rebuilds
+     * the day's free intervals; dnd-kit fires this handler on every pointermove
+     * AND on every autoscroll frame, and `setDrag`'s identity check below saves
+     * only the re-render, never the walk that produced the identical answer.
+     *
+     * The cache is keyed on the world (`goals`/`tasks`/`allDayBlocks`, by
+     * identity, so a write from the agent socket mid-drag invalidates it) and
+     * on the drag (`date`, the aim bucketed to the 5 minutes `resolveSlot`
+     * snaps to anyway, and `blockId`). The RAW aim is still what gets passed —
+     * the bucket decides whether to ask, not what the answer is.
+     */
     const slot = aim === null
       ? null
-      : previewPlacement(
-        { kind: data.kind, id: data.id, goalId: data.goalId },
-        date,
-        aim,
-        { blockId: data.blockId },
+      : previewCache.current.read(
+        {
+          goals,
+          tasks,
+          allDayBlocks,
+          date,
+          aimMin: aim,
+          // Composite, so the key cannot collide across the three things that
+          // pick out an item. One drag carries one of them, and the cache is
+          // cleared between drags — but a key that only holds while something
+          // else is true is a key the next reader has to re-derive.
+          itemId: `${data.kind}:${data.goalId ?? ''}:${data.id}`,
+          blockId: data.blockId,
+        },
+        () => previewPlacement(
+          { kind: data.kind, id: data.id, goalId: data.goalId },
+          date,
+          aim,
+          { blockId: data.blockId },
+        ),
       );
     setDrag((was) => {
       if (!was) return was;
@@ -534,10 +553,12 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
   }
 
   function handleDragCancel() {
+    previewCache.current.clear();
     setDrag(null);
   }
 
   function handleDragEnd(e: DragEndEvent) {
+    previewCache.current.clear();
     setDrag(null);
     const data = e.active.data.current as PlanDragData | undefined;
     const overId = typeof e.over?.id === 'string' ? e.over.id : null;
@@ -604,7 +625,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
        * See dropTarget.ts.
        */
       autoScroll
-      collisionDetection={collisionDetection}
+      collisionDetection={boardCollision}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
@@ -690,8 +711,16 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
           >
             {(date) => (
               <>
-              {/* Drawn BEFORE the blocks so it sits behind their controls, and
-                  only in the column the drop is currently aimed at. */}
+              {/* Only in the column the drop is currently aimed at.
+
+                  Drawn BEFORE the blocks, but that does NOT put it behind
+                  them: it carries an explicit `Z_BLOCK_REVEALED` and a block
+                  carries `Z_BLOCK`, so the outline paints over the bar it is
+                  landing on — deliberately, and `pointer-events-none` is what
+                  keeps that bar's controls reachable. DOM order still decides
+                  the ties: the composer below and a revealed block both share
+                  `Z_BLOCK_REVEALED` and both render after this, so both sit
+                  above it. See the z-index note in `LandingOutline`. */}
               {drag?.landing?.date === date && (
                 <LandingOutline
                   startMin={drag.landing.startMin}

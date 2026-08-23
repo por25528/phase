@@ -1010,15 +1010,22 @@ function resolvePlacement(
  * solid. The last one is already stated in words by the day heading's `full`
  * chip, so nothing is lost by the outline simply not appearing.
  *
- * `mode` is accepted so an Option-drag (add a sitting rather than move one)
- * previews against the right occupancy — an ADD vacates nothing, so it has to
- * find room BESIDE the sittings a move would have ignored.
+ * `blockId` is the only option it takes, and deliberately: the sole caller is
+ * `Plan.tsx`'s `handleDragMove`, and a drag is either moving an existing bar
+ * (`blockId` set) or placing a rail row for the first time (absent). It used to
+ * accept `mode` as well, "so an Option-drag previews against the right
+ * occupancy" — but no Option-drag exists, no caller ever passed it, and the two
+ * real `mode: 'add'` sites (`SchedulePopover`, `TaskPage`) are menu items that
+ * write straight away and preview nothing. A parameter that can only ever be
+ * `undefined` is a comment promising a feature, which is worse than no comment.
+ * If an Option-drag is ever built, `vacating` already knows what an ADD means:
+ * thread the mode through then, with a caller behind it.
  */
 export function previewPlacement(
   target: { kind: 'step' | 'task'; id: string; goalId: string | null },
   date: string,
   aimMin: number,
-  opts: { blockId?: string; mode?: 'replace' | 'add' } = {},
+  opts: { blockId?: string } = {},
 ): { startMin: number; durationMin: number } | null {
   if (!isValidLocalDate(date)) return null;
 
