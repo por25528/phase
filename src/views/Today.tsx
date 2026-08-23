@@ -5,7 +5,6 @@ import { stampLabel } from '../components/sectionLabel';
 import { RuleHeader } from '../components/RuleHeader';
 import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
-import { DayGauge } from './today/DayGauge';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
 import { attentionItems, carriedFrom, carryOverRows, surfaceReason } from '../lib/todaySurface';
@@ -18,8 +17,6 @@ import { clockLabel } from '../lib/clock';
 import { fmtMinutes } from '../lib/effort';
 import { loggedForItemOn } from '../lib/actuals';
 import { dayStamp, greeting } from '../lib/today';
-import { dayGauge } from '../lib/dayGauge';
-import { scheduledOn } from '../lib/scheduled';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
 import { dueChip } from '../lib/backlog';
@@ -254,26 +251,6 @@ export function Today({
     ? offerInfo.rows.filter((row) => row.key !== primary?.key)
     : [];
 
-  /**
-   * The day, drawn.
-   *
-   * `scheduledOn` is the sittings, whole and already resolved — it walks the
-   * tree through `blocksOn`, which is the one module allowed to speak about a
-   * `WorkBlock`, so nothing here re-derives a placement. `dayGauge` returns
-   * null when no window covers today, and the page then keeps saying "no
-   * working hours set" in words: a flat empty bar would answer "you are out of
-   * time" to someone who was never asked when they work.
-   */
-  const gauge = useMemo(
-    () => dayGauge({
-      date: today,
-      windows: availability,
-      sittings: scheduledOn(goals, tasks, today),
-      now: { date: today, minute: nowMinute },
-    }),
-    [today, availability, goals, tasks, nowMinute],
-  );
-
   const stamp = dayStamp(today);
 
   return (
@@ -330,11 +307,6 @@ export function Today({
               <span className="flex-none text-ui text-muted tabular-nums">{leftCount} left</span>
             )}
           </div>
-
-          {/* The signature, and a SECOND reading of facts the page already
-              states in words — never the only one. Absent entirely when no
-              window covers today; see `dayGauge`. */}
-          {gauge && <DayGauge gauge={gauge} />}
         </div>
 
       {/* ── What slipped ──
