@@ -4,24 +4,21 @@ import { buildDailyWork } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { proposalRows } from './todayPlan';
 import { weekDates } from './dates';
-import type { AvailabilityWindow, Goal, Task } from '../db/types';
+import type { Goal, Task } from '../db/types';
 import type { Demand } from './demand';
 
 const today = '2026-08-12'; // a Wednesday
 const week = weekDates(today)[0];
 
 /** A window on every weekday, so free time exists wherever the test needs it. */
-const allWeek: AvailabilityWindow[] = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({
-  dow, startMin: 540, endMin: 1020,
-}));
 
 function input(over: Partial<ExecutionAdviceInput> = {}): ExecutionAdviceInput {
   return {
     goals: [],
     tasks: [],
     sessions: [],
-    availability: allWeek,
     blocks: [],
+    placedOn: () => [],
     allDayBlocks: true,
     today,
     week,
@@ -122,13 +119,22 @@ describe('executionAdvice', () => {
     expect(advice.alternatives[1].lifeId).toBe('life-startup');
   });
 
-  it('preserves the no-hours verdict instead of inventing a zero-minute plan', () => {
+  /*
+   * There is no `needs-hours` verdict left to preserve. It said "Phase doesn't
+   * know when you work", and nothing asks. A day booked solid still refuses —
+   * that is the offer's own `none`, and it leaves the pool empty rather than
+   * raising a verdict of its own.
+   */
+  it('is clear rather than needs-hours when every day inside the horizon is booked solid', () => {
     const g = goal({
       id: 'g1', title: 'Algorithms',
       nodes: [{ id: 'n1', title: 'Problem set 4', estimateMin: 60 }],
     });
-    const advice = executionAdvice(input({ goals: [g], availability: [] }));
-    expect(advice).toEqual({ kind: 'needs-hours' });
+    const advice = executionAdvice(input({
+      goals: [g],
+      placedOn: () => [{ startMin: 0, endMin: 1440 }],
+    }));
+    expect(advice).toEqual({ kind: 'clear' });
   });
 
   it('returns clear when there is nothing to do at all', () => {

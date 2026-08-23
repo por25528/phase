@@ -1,6 +1,6 @@
-import type { AvailabilityWindow, BusyBlock } from '../db/types';
-import { DEFAULT_START_MIN, MINUTES_PER_DAY, windowForDate } from './availability';
+import type { BusyBlock } from '../db/types';
 import {
+  MINUTES_PER_DAY,
   mergeIntervals,
   normalizeEstimate,
   remainingSpan,
@@ -43,6 +43,24 @@ export { NO_PAST_LIMIT } from './capacity';
 export const WHOLE_DAY: Interval = Object.freeze({ startMin: 0, endMin: MINUTES_PER_DAY });
 
 /**
+ * The span an AUTOMATIC placement aims inside: 08:00–20:00.
+ *
+ * This is what is left of working hours, and it is deliberately the smallest
+ * thing that could be left. It is NOT a fence — every manual route still
+ * passes `WHOLE_DAY`, so a drag, a drawn block and a `1`-`7` keypress all land
+ * at any minute of any day. It is NOT a setting: nothing edits it, because a
+ * number a person can change is a number that has to be explained, drawn and
+ * defended, which is the model that was just removed. And it is NOT drawn:
+ * `DayColumn` marks nothing outside it.
+ *
+ * What it IS: the region searched when the APP is choosing the hour — a
+ * replan, a slot migration, a booking made from a distance. Without it those
+ * paths would search `WHOLE_DAY` from minute 0 and book 4am, which is not a
+ * recovery.
+ */
+export const ORDINARY_DAY: Interval = Object.freeze({ startMin: 8 * 60, endMin: 20 * 60 });
+
+/**
  * Where a placement made FROM A DISTANCE should point on `date`.
  *
  * A drag and a drawn block carry their own aim — the minute the pointer was
@@ -52,20 +70,20 @@ export const WHOLE_DAY: Interval = Object.freeze({ startMin: 0, endMin: MINUTES_
  * the availability window fenced the search — with the fence gone, 0 means
  * midnight and every one of those verbs would book 00:00.
  *
- * So the window becomes the AIM instead of the gate, which is the honest
- * reading of what a person means by "when I work": point there, and let the
- * gap search move off it if the hour is taken. A day with no window at all —
- * every day switched off in Settings — still gets a sensible hour rather than
- * a refusal, because nothing is refused any more.
+ * So `ORDINARY_DAY` is the AIM rather than a gate: point there, and let the
+ * gap search move off it if the hour is taken. Every day answers the same way
+ * now — there are no days off to make an exception for — and nothing is
+ * refused for being outside it, because nothing is refused any more.
  *
  * Today is clamped forward to the clock. Not because the past is forbidden (a
  * drag onto this morning is allowed, and is how you record what actually
  * happened) but because "put this on today" said at 3pm cannot mean 8am: the
  * aim is the only thing left that carries that intent.
  */
-export function aimFor(date: string, windows: AvailabilityWindow[], now: Now): number {
-  const start = windowForDate(date, windows)?.startMin ?? DEFAULT_START_MIN;
-  return date === now.date ? Math.max(start, now.minute) : start;
+export function aimFor(date: string, now: Now): number {
+  return date === now.date
+    ? Math.max(ORDINARY_DAY.startMin, now.minute)
+    : ORDINARY_DAY.startMin;
 }
 
 /** A span already occupying part of a day. */
@@ -89,8 +107,8 @@ export function durationOf(estimateMin: number | undefined): number {
  *
  * `span` was `AvailabilityWindow[]` and this function looked the day's window
  * up itself, which is what made availability a fence. It is now a REGION the
- * caller chooses: `WHOLE_DAY` for a manual placement, `windowForDate(...)` for
- * the two automatic replan paths that propose hours on your behalf.
+ * caller chooses: `WHOLE_DAY` for a manual placement, `ORDINARY_DAY` for the
+ * automatic paths that propose hours on your behalf.
  *
  * Busy blocks and placed spans are merged together before subtraction — two
  * overlapping meetings must contribute their UNION, or the overlap is
@@ -128,6 +146,33 @@ export function freeIntervals(
   if (cursor < win.endMin) out.push({ startMin: cursor, endMin: win.endMin });
 
   return out.filter((i) => i.endMin > i.startMin);
+}
+
+/**
+ * The widest unbooked RUN inside `span` on `date`, in minutes. `0` when the
+ * span is entirely taken.
+ *
+ * This is the one measure of "does this day have room in it", and both callers
+ * that ask spend it: Today's offer, deciding which day to name, and the week
+ * grid's drag chip, deciding whether the bar under the cursor will fit. Two
+ * surfaces answering that question with two derivations is how a heading comes
+ * to read `fits` above a column that then refuses the drop.
+ *
+ * It reports a RUN and never a sum. Three separate half-hours are not an hour
+ * of room, and a figure that added them up would promise a sitting that cannot
+ * be placed — which is exactly the false promise `resolveSlot` would then have
+ * to break.
+ */
+export function longestFreeGap(
+  date: string,
+  span: Interval | null,
+  blocks: BusyBlock[],
+  placed: PlacedSpan[],
+  now: Now,
+  allDayBlocks: boolean,
+): number {
+  return freeIntervals(date, span, blocks, placed, now, allDayBlocks)
+    .reduce((widest, gap) => Math.max(widest, gap.endMin - gap.startMin), 0);
 }
 
 export interface ResolveSlotInput {

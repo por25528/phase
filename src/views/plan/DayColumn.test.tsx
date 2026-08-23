@@ -17,13 +17,10 @@ beforeAll(() => {
 
 afterEach(() => cleanup());
 
-const WINDOW = { dow: 2, startMin: 540, endMin: 1080 };
-
 function mount(onCreate: (span: CanvasSpan) => void) {
   render(createElement(DayColumn, {
     date: '2026-07-15',
     isToday: false,
-    availabilityWindow: WINDOW,
     nowMinute: null,
     onCreate,
     children: null,
@@ -90,7 +87,7 @@ describe('creating a block by gesture', () => {
 describe('telling elapsed from available at a glance', () => {
   it('washes a past day column so it does not read as available', () => {
     render(createElement(DayColumn, {
-      date: '2026-07-14', isToday: false, availabilityWindow: WINDOW,
+      date: '2026-07-14', isToday: false,
       nowMinute: null, isPast: true, onCreate: vi.fn(), children: null,
     }));
     expect(screen.getByTestId('day-past-2026-07-14')).not.toBeNull();
@@ -98,7 +95,7 @@ describe('telling elapsed from available at a glance', () => {
 
   it('leaves a current or future day undimmed', () => {
     render(createElement(DayColumn, {
-      date: '2026-07-16', isToday: false, availabilityWindow: WINDOW,
+      date: '2026-07-16', isToday: false,
       nowMinute: null, isPast: false, onCreate: vi.fn(), children: null,
     }));
     expect(screen.queryByTestId('day-past-2026-07-16')).toBeNull();
@@ -106,14 +103,14 @@ describe('telling elapsed from available at a glance', () => {
 
   it('draws the now-line only on today, and only when the minute is known', () => {
     const { rerender } = render(createElement(DayColumn, {
-      date: '2026-07-15', isToday: true, availabilityWindow: WINDOW,
+      date: '2026-07-15', isToday: true,
       nowMinute: 600, onCreate: vi.fn(), children: null,
     }));
     expect(document.querySelector('[data-testid="now-line-2026-07-15"]')).not.toBeNull();
 
     // A day that is not today never carries the line, even if handed a minute.
     rerender(createElement(DayColumn, {
-      date: '2026-07-15', isToday: false, availabilityWindow: WINDOW,
+      date: '2026-07-15', isToday: false,
       nowMinute: null, onCreate: vi.fn(), children: null,
     }));
     expect(document.querySelector('[data-testid="now-line-2026-07-15"]')).toBeNull();
@@ -125,7 +122,7 @@ describe('telling elapsed from available at a glance', () => {
   // stays a hairline precisely so it does not read as an error either.
   it('draws the now-line in warn, not accent', () => {
     render(createElement(DayColumn, {
-      date: '2026-07-15', isToday: true, availabilityWindow: WINDOW,
+      date: '2026-07-15', isToday: true,
       nowMinute: 600, onCreate: vi.fn(), children: null,
     }));
     const line = document.querySelector('[data-testid="now-line-2026-07-15"]');
@@ -136,31 +133,44 @@ describe('telling elapsed from available at a glance', () => {
 
 describe('when the day refuses work', () => {
   /*
-   * Was "renders no canvas on a day with no working hours", and it asserted
-   * the fence: a day off had its droppable disabled and its canvas withheld,
-   * so it could not be used at all. Job 1 makes a day off a MARKING (the
-   * `.hatch`) rather than a lock, so the assertion inverts — the canvas is
-   * there, because the drop that would follow it now succeeds.
+   * This describe has now inverted twice, and the second inversion is the
+   * bigger one. It began as "renders no canvas on a day with no working
+   * hours", asserting a fence: a day off had its droppable disabled and its
+   * canvas withheld. Then a day off became a MARKING — the `.hatch` — rather
+   * than a lock. Now there is no such thing as a day off at all, so the
+   * marking has nothing to mark and every day is simply a day.
    */
-  it('renders the canvas on a day with no working hours', () => {
+  it('renders the canvas on a Sunday like any other day', () => {
     render(createElement(DayColumn, {
-      date: '2026-07-19', isToday: false, availabilityWindow: null,
+      date: '2026-07-19', isToday: false,
       nowMinute: null, onCreate: vi.fn(), children: null,
     }));
     expect(screen.queryByTestId('day-canvas-2026-07-19')).toBeTruthy();
   });
 
-  it('hatches a day with no working hours instead of disabling it', () => {
+  /*
+   * `.hatch` still means "unclaimed space" on Today's frame and the Goals
+   * board. A stray one here would be saying that about an ordinary afternoon.
+   */
+  it('draws no hatch — every hour of every day reads the same', () => {
     const { container } = render(createElement(DayColumn, {
-      date: '2026-07-19', isToday: false, availabilityWindow: null,
+      date: '2026-07-19', isToday: false,
       nowMinute: null, onCreate: vi.fn(), children: null,
     }));
-    expect(container.querySelector('.hatch')).toBeTruthy();
+    expect(container.querySelector('.hatch')).toBeNull();
+  });
+
+  it('names the day without an outside-working-hours caveat', () => {
+    render(createElement(DayColumn, {
+      date: '2026-07-19', isToday: false,
+      nowMinute: null, onCreate: vi.fn(), children: null,
+    }));
+    expect(screen.getByRole('group').getAttribute('aria-label')).not.toMatch(/working hours/);
   });
 
   it('renders no canvas on a past week', () => {
     render(createElement(DayColumn, {
-      date: '2026-07-15', isToday: false, availabilityWindow: WINDOW,
+      date: '2026-07-15', isToday: false,
       nowMinute: null, readOnly: true, onCreate: vi.fn(), children: null,
     }));
     expect(screen.queryByTestId('day-canvas-2026-07-15')).toBeNull();

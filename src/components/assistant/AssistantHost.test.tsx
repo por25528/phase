@@ -2,14 +2,13 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, Task } from '../../db/types';
+import type { Goal, Task } from '../../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: Task[]; sessions: never[] }> =>
     ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -18,7 +17,6 @@ const dbMocks = vi.hoisted(() => ({
   saveGoalsMode: vi.fn(async () => {}),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
@@ -46,14 +44,10 @@ vi.mock('../../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) })
 
 /** Wednesday 10:00 — same anchor the Today tests use. */
 const TODAY = '2026-07-15';
-const WORKDAY: AvailabilityWindow[] = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({
-  dow, startMin: 9 * 60, endMin: 17 * 60,
-}));
 
 async function mountHost(over: {
   goals?: Goal[];
   tasks?: Task[];
-  availability?: AvailabilityWindow[];
   onClose?: () => void;
 } = {}) {
   vi.resetModules();
@@ -63,7 +57,6 @@ async function mountHost(over: {
     tasks: structuredClone(over.tasks ?? []),
     sessions: [],
   });
-  dbMocks.loadAvailability.mockResolvedValueOnce(over.availability ?? WORKDAY);
   const store = await import('../../state/store');
   await store.initStore();
   const { AssistantHost } = await import('./AssistantHost');

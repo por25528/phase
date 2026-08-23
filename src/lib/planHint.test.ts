@@ -58,24 +58,20 @@ describe('hasPlacedWork', () => {
 describe('showPlanHint', () => {
   const unplanned = [goal({ nodes: [{ id: 'n1', title: 'Draft' }] })];
 
-  it('shows when there is work, working hours, and nothing placed yet', () => {
-    expect(showPlanHint(unplanned, [], true)).toBe(true);
+  it('shows when there is work and nothing placed yet', () => {
+    expect(showPlanHint(unplanned, [])).toBe(true);
   });
 
   it('retires itself once anything has been placed', () => {
     const placed = [goal({ nodes: [{ id: 'n1', title: 'Draft', blocks: [makeBlock('2026-07-15', 600, 60)] }] })];
-    expect(showPlanHint(placed, [], true)).toBe(false);
-  });
-
-  it('stays hidden with no working hours — the drop it describes cannot succeed', () => {
-    expect(showPlanHint(unplanned, [], false)).toBe(false);
+    expect(showPlanHint(placed, [])).toBe(false);
   });
 
   it('stays hidden on an empty install — there is nothing to drag', () => {
-    expect(showPlanHint([], [], true)).toBe(false);
+    expect(showPlanHint([], [])).toBe(false);
   });
 
   it('shows for a loose task with no project', () => {
-    expect(showPlanHint([], [task()], true)).toBe(true);
+    expect(showPlanHint([], [task()])).toBe(true);
   });
 });

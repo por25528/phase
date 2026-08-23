@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode, Task } from '../db/types';
+import type { Goal, GoalNode, Task } from '../db/types';
 import type { Now } from './capacity';
 import { REPLAN_HORIZON_DAYS, proposalMinutes, proposeReplan, slippedWork } from './replan';
 import { makeBlock } from './blocks';
 
-// 2026-08-12 is a Wednesday. Mon–Fri 09:00–11:00 gives exactly two hours a day,
-// which is small enough to make the packing visible.
+/*
+ * 2026-08-12 is a Wednesday.
+ *
+ * A replan proposes inside `ORDINARY_DAY` — 08:00–20:00, every day, no
+ * exceptions and nothing configurable. These fixtures used a deliberately tiny
+ * Mon–Fri 09:00–11:00 window to make the packing visible in two-hour bites;
+ * with a fixed twelve-hour span the same demonstrations need items sized
+ * against IT, so the estimates below are large on purpose.
+ */
 const TODAY = '2026-08-12';
 const NOW: Now = { date: TODAY, minute: 0 };
-const HOURS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 660 }));
+const DAY_START = 8 * 60;   // ORDINARY_DAY.startMin
+const DAY_MIN = 12 * 60;    // ORDINARY_DAY, end to end
 
 const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
 
@@ -16,7 +24,7 @@ const goal = (nodes: GoalNode[], over: Partial<Goal> = {}): Goal =>
   ({ id: 'g', title: 'Physics Final', nodes, ...over });
 
 const input = (goals: Goal[], tasks: Task[] = []) =>
-  ({ goals, tasks, today: TODAY, windows: HOURS, blocks: [], allDayBlocks: true, now: NOW });
+  ({ goals, tasks, today: TODAY, blocks: [], allDayBlocks: true, now: NOW });
 
 describe('slippedWork', () => {
   it('finds unfinished work placed on a day that has passed', () => {
@@ -80,7 +88,7 @@ describe('proposeReplan', () => {
     const g = goal([
       leaf('a', { plannedWeek: '2026-08-10', estimateMin: 60, blocks: [makeBlock('2026-08-10', 540, 60)] }),
     ]);
-    expect(proposeReplan(input([g])).moves[0]).toMatchObject({ to: TODAY, startMin: 540 });
+    expect(proposeReplan(input([g])).moves[0]).toMatchObject({ to: TODAY, startMin: DAY_START });
   });
 
   /**
@@ -90,22 +98,24 @@ describe('proposeReplan', () => {
    * "nothing moves silently" rule in the flow built to enforce it.
    */
   it('never offers the same slot twice', () => {
-    const g = goal([1, 2, 3].map((n) => leaf(`n${n}`, { plannedWeek: '2026-08-10', estimateMin: 60, blocks: [makeBlock('2026-08-10', 540, 60)] })));
+    // Five hours each against a twelve-hour day: two fit today, the third
+    // cannot, which is what makes the roll to tomorrow observable.
+    const g = goal([1, 2, 3].map((n) => leaf(`n${n}`, { plannedWeek: '2026-08-10', estimateMin: 300, blocks: [makeBlock('2026-08-10', 540, 300)] })));
     const { moves } = proposeReplan(input([g]));
 
     expect(moves).toHaveLength(3);
-    // Two hours a day: two land today, the third goes to tomorrow.
     expect(moves.map((m) => `${m.to} ${m.startMin}`)).toEqual([
-      `${TODAY} 540`, `${TODAY} 600`, '2026-08-13 540',
+      `${TODAY} ${DAY_START}`, `${TODAY} ${DAY_START + 300}`, `2026-08-13 ${DAY_START}`,
     ]);
   });
 
   it('works around what is already on the calendar', () => {
     const g = goal([
       leaf('slipped', { plannedWeek: '2026-08-10', estimateMin: 60, blocks: [makeBlock('2026-08-10', 540, 60)] }),
-      leaf('kept', { plannedWeek: '2026-08-10', estimateMin: 60, blocks: [makeBlock(TODAY, 540, 60)] }),
+      // Sitting on the hour the replan would otherwise aim at.
+      leaf('kept', { plannedWeek: '2026-08-10', estimateMin: 60, blocks: [makeBlock(TODAY, DAY_START, 60)] }),
     ]);
-    expect(proposeReplan(input([g])).moves[0]).toMatchObject({ to: TODAY, startMin: 600 });
+    expect(proposeReplan(input([g])).moves[0]).toMatchObject({ to: TODAY, startMin: DAY_START + 60 });
   });
 
   /**
@@ -114,7 +124,8 @@ describe('proposeReplan', () => {
    */
   it('names what will not fit rather than dropping it', () => {
     const huge = goal([
-      leaf('marathon', { plannedWeek: '2026-08-10', estimateMin: 600, blocks: [makeBlock('2026-08-10', 540, 600)] }),
+      // Longer than the ordinary day, so no date inside the horizon can hold it.
+      leaf('marathon', { plannedWeek: '2026-08-10', estimateMin: DAY_MIN + 60, blocks: [makeBlock('2026-08-10', 540, DAY_MIN + 60)] }),
     ]);
     const { moves, unplaceable } = proposeReplan(input([huge]));
 
@@ -128,11 +139,11 @@ describe('proposeReplan', () => {
     for (let i = 0; i < REPLAN_HORIZON_DAYS; i += 1) {
       const d = new Date(2026, 7, 12 + i);
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      filler.push(leaf(`f${i}`, { plannedWeek: '2026-08-10', estimateMin: 120, blocks: [makeBlock(iso, 540, 120)] }));
+      filler.push(leaf(`f${i}`, { plannedWeek: '2026-08-10', estimateMin: DAY_MIN, blocks: [makeBlock(iso, 540, DAY_MIN)] }));
     }
     const g = goal([
       ...filler,
-      leaf('late', { plannedWeek: '2026-08-10', estimateMin: 120, blocks: [makeBlock('2026-08-10', 540, 120)] }),
+      leaf('late', { plannedWeek: '2026-08-10', estimateMin: DAY_MIN, blocks: [makeBlock('2026-08-10', 540, DAY_MIN)] }),
     ]);
 
     const { unplaceable } = proposeReplan(input([g]));

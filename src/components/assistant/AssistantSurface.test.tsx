@@ -526,17 +526,19 @@ describe('AssistantSurface', () => {
     expect(screen.getByRole('button', { name: 'Start session' })).toBeTruthy();
   });
 
-  // The verdict survives Job 1 and the copy does not. It can no longer say
-  // "Phase doesn't know your working hours yet" — every install starts on
-  // DEFAULT_AVAILABILITY, so the only way to reach this is to switch every day
-  // off in Settings — and it can no longer imply nothing may be scheduled,
-  // because everything may. What is genuinely lost is the denominator, which
-  // is what the sentence now names. See PlanNotice.tsx.
-  it('says the hours were switched off instead of inventing a zero-minute plan', () => {
-    render(
-      <AssistantSurface snapshot={ready({ advice: { kind: 'needs-hours' } })} onAction={() => {}} />,
-    );
-    expect(screen.getByText(/switched off in Settings/i)).toBeTruthy();
+  /*
+   * The `needs-hours` verdict is gone with the model behind it. It went
+   * through two rewordings first — "Phase doesn't know your working hours
+   * yet", then "every day is switched off in Settings" — and both described a
+   * state nothing can reach now. What the shelf keeps is `beyondFocus`, which
+   * carries the same idea it was really for: a missing model and a zero are
+   * different sentences, and the shelf still says which one it means.
+   */
+  it('has no needs-hours state left to render', () => {
+    render(<AssistantSurface snapshot={ready({ advice: { kind: 'clear' } })} onAction={() => {}} />);
+    expect(screen.queryByText(/working hours/i)).toBeNull();
+    expect(screen.queryByText(/switched off in Settings/i)).toBeNull();
+    expect(screen.getByText(/Nothing needs you right now/i)).toBeTruthy();
   });
 
   it('Escape emits exactly one close action', () => {

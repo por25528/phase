@@ -4,7 +4,7 @@ import { projectBlockClass } from '../../lib/projectColour';
 import type { ScheduledItem } from '../../lib/scheduled';
 import { parseD } from '../../lib/dates';
 import type { DayCapacity } from '../../lib/capacity';
-import { formatMinutes, isOverCommitted, dayLoadHint } from './capacityLabel';
+import { formatMinutes, dayLoadHint } from './capacityLabel';
 
 /**
  * How many chips a cell shows before collapsing the rest.
@@ -45,14 +45,15 @@ export function MonthCell({
   const shown = items.slice(0, MONTH_CHIP_CAP);
   const hidden = items.length - shown.length;
   /*
-   * The same silence rule `dayLoadLabel` keeps: a day with nothing planned that
-   * is not over-committed reports nothing, because an empty cell already looks
-   * empty and 42 instances of "0m" is noise on the calmest surface in the app.
-   * The figure is `plannedMin` ALONE, not `dayLoadLabel`'s "1h 30m / 6h" — that
-   * form is sized for a week column heading and does not fit an 86px cell.
+   * The same silence rule `dayLoadLabel` keeps: a day with nothing on it
+   * reports nothing, because an empty cell already looks empty and 42
+   * instances of "0m" is noise on the calmest surface in the app.
+   *
+   * The figure is `plannedMin` ALONE. That used to distinguish it from
+   * `dayLoadLabel`'s `1h 30m / 6h`, which was sized for a week column heading;
+   * both say the same thing now, since the free denominator is gone.
    */
-  const over = capacity ? isOverCommitted(capacity) : false;
-  const load = capacity && (capacity.plannedMin > 0 || over)
+  const load = capacity && (capacity.plannedMin > 0 || capacity.backlogMin > 0)
     ? formatMinutes(capacity.plannedMin)
     : null;
 
@@ -98,10 +99,8 @@ export function MonthCell({
         {load && (
           <span
             data-testid="month-day-load"
-            title={capacity ? dayLoadHint(capacity) : undefined}
-            className={`font-mono text-micro tabular-nums ${
-              over ? 'text-warn font-semibold' : 'text-muted'
-            }`}
+            title={(capacity && dayLoadHint(capacity)) || undefined}
+            className="font-mono text-micro tabular-nums text-muted"
           >
             {load}
           </span>

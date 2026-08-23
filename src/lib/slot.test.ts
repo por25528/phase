@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import type { AvailabilityWindow, BusyBlock } from '../db/types';
-import { aimFor, durationOf, freeIntervals, resolveSlot, DEFAULT_SLOT_MIN, WHOLE_DAY } from './slot';
-import { DEFAULT_START_MIN } from './availability';
+import type { BusyBlock } from '../db/types';
+import {
+  aimFor, durationOf, freeIntervals, longestFreeGap, resolveSlot,
+  DEFAULT_SLOT_MIN, ORDINARY_DAY, WHOLE_DAY, NO_PAST_LIMIT,
+} from './slot';
 import type { Interval, Now } from './capacity';
 
 // 2026-07-15 is a Wednesday → dow 2.
 const WED = '2026-07-15';
-const WINDOWS: AvailabilityWindow[] = [{ dow: 2, startMin: 540, endMin: 1080 }]; // 09:00–18:00
 /*
  * The region these tests search.
  *
@@ -273,23 +274,85 @@ describe('WHOLE_DAY — the region a manual placement searches', () => {
 });
 
 describe('aimFor', () => {
-  it('points at the day\'s working start', () => {
-    expect(aimFor(WED, WINDOWS, EARLY)).toBe(540);
+  it('points at the start of the ordinary day', () => {
+    expect(aimFor(WED, EARLY)).toBe(ORDINARY_DAY.startMin);
   });
 
-  it('falls back to a sensible hour on a day with no window', () => {
-    // Saturday. Nothing refuses the placement any more, so the only question
-    // left is which hour a verb naming a DAY should point at.
-    expect(aimFor('2026-07-18', WINDOWS, EARLY)).toBe(DEFAULT_START_MIN);
+  it('points at the same hour on a Saturday', () => {
+    // There are no days off any more, so there is no day this answers
+    // differently about. Nothing refuses the placement either; the only
+    // question left is which hour a verb naming a DAY should point at.
+    expect(aimFor('2026-07-18', EARLY)).toBe(ORDINARY_DAY.startMin);
   });
 
   it('clamps forward to the clock on today', () => {
-    // "Put this on today" said at 3pm cannot mean 9am — the aim is the only
+    // "Put this on today" said at 3pm cannot mean 8am — the aim is the only
     // thing left carrying that intent now that the search is unfenced.
-    expect(aimFor(WED, WINDOWS, { date: WED, minute: 900 })).toBe(900);
+    expect(aimFor(WED, { date: WED, minute: 900 })).toBe(900);
   });
 
   it('does not clamp a later day to today\'s clock', () => {
-    expect(aimFor('2026-07-22', [{ dow: 2, startMin: 540, endMin: 1080 }], { date: WED, minute: 900 })).toBe(540);
+    expect(aimFor('2026-07-22', { date: WED, minute: 900 })).toBe(ORDINARY_DAY.startMin);
+  });
+});
+
+/*
+ * ORDINARY_DAY is an AIM and not a fence, and these two tests are the whole
+ * distinction: the app searching on your behalf stays inside the ordinary day,
+ * and a person aiming at 2am gets 2am.
+ */
+describe('ORDINARY_DAY as an aim', () => {
+  it('keeps an automatic placement out of the small hours', () => {
+    expect(resolveSlot({
+      date: '2026-07-22',
+      aimMin: aimFor('2026-07-22', { date: WED, minute: 900 }),
+      durationMin: 60,
+      span: ORDINARY_DAY,
+      blocks: [],
+      placed: [],
+      now: NO_PAST_LIMIT,
+      allDayBlocks: false,
+    })).toBe(ORDINARY_DAY.startMin);
+  });
+
+  it('lets a manual placement land at 2am', () => {
+    expect(resolveSlot({
+      date: '2026-07-22',
+      aimMin: 2 * 60,
+      durationMin: 60,
+      span: WHOLE_DAY,
+      blocks: [],
+      placed: [],
+      now: NO_PAST_LIMIT,
+      allDayBlocks: false,
+    })).toBe(2 * 60);
+  });
+});
+
+describe('longestFreeGap', () => {
+  it('measures the widest unbooked RUN, never the sum of the gaps', () => {
+    const gap = longestFreeGap(
+      '2026-07-22',
+      ORDINARY_DAY,
+      [],
+      [{ startMin: 9 * 60, endMin: 10 * 60 }, { startMin: 11 * 60, endMin: 12 * 60 }],
+      NO_PAST_LIMIT,
+      false,
+    );
+    // 8-9, 10-11 and 12-20 are free. The sum is 10h; the widest run is 8h, and
+    // only the second is a sitting anyone could actually take.
+    expect(gap).toBe(8 * 60);
+  });
+
+  it('is 0 on a day booked solid across the span', () => {
+    expect(longestFreeGap(
+      '2026-07-22', ORDINARY_DAY, [], [{ startMin: 0, endMin: 1440 }], NO_PAST_LIMIT, false,
+    )).toBe(0);
+  });
+
+  it('spans the whole day when asked to', () => {
+    expect(longestFreeGap(
+      '2026-07-22', WHOLE_DAY, [], [], NO_PAST_LIMIT, false,
+    )).toBe(1440);
   });
 });

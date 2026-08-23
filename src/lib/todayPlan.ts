@@ -1,5 +1,6 @@
-import type { AvailabilityWindow, BusyBlock, Goal, Task } from '../db/types';
-import { freeMinutes, type Now } from './capacity';
+import type { BusyBlock, Goal, Task } from '../db/types';
+import type { Now } from './capacity';
+import { longestFreeGap, ORDINARY_DAY, type PlacedSpan } from './slot';
 import { addDays, fmtD } from './dates';
 import { fmtMinutes } from './effort';
 import { backlogGroups, sortByDue, type BacklogItem } from './backlog';
@@ -15,8 +16,8 @@ import { backlogGroups, sortByDue, type BacklogItem } from './backlog';
  * do now" needs an answer, and the answer "go and use Plan" is the morning
  * assembly this surface exists to end.
  *
- * So the empty day becomes the planning moment. One row per project, the free
- * time that is actually left, and a click that books it.
+ * So the empty day becomes the planning moment. One row per project, the room
+ * that is actually left on the day, and a click that books it.
  *
  * The candidates come from `backlogGroups` and nothing else. The
  * `PLANNING_HORIZONS` gate, the parked-project commitment exception, the
@@ -55,39 +56,51 @@ export interface ProposalRow {
 
 export interface FreeDay {
   date: string;
-  freeMin: number;
+  /** The widest unbooked RUN inside the ordinary day. See `nextFreeDay`. */
+  gapMin: number;
 }
 
 export type TodayPlan =
-  /**
-   * Availability was never set. A distinct verdict, not a zero: "Phase does not
-   * know when you work" and "you are out of time today" are different sentences
-   * and only one of them is true here — the same distinction `goalHealth` draws
-   * with `no-forecast`.
-   */
-  | { kind: 'no-hours' }
   /** Nothing to offer, or nowhere inside the horizon to put it. */
   | { kind: 'none' }
-  | { kind: 'offer'; date: string; today: boolean; freeMin: number; rows: ProposalRow[] };
+  | { kind: 'offer'; date: string; today: boolean; gapMin: number; rows: ProposalRow[] };
 
 /**
- * The first day from `today` onward that still has unbooked time.
+ * The shortest run this surface will call room.
  *
- * `remainingWindow` already reports nothing for a window that has closed, so
- * 19:00 on a Sunday rolls to Monday with no special case for "the evening" —
- * only the scan is new.
+ * A fifteen-minute crack between two meetings is not somewhere to start a
+ * project task, and an offer you cannot act on is worse than no offer.
+ */
+export const MIN_SITTING_MIN = 30;
+
+/**
+ * The first day from `today` onward with an unbooked run long enough to sit
+ * down in.
+ *
+ * `ORDINARY_DAY` and NOT `WHOLE_DAY`, deliberately. This is the app CHOOSING a
+ * day on your behalf, and the button on the row it produces places the work
+ * automatically — so the region it measures has to be the region that
+ * placement aims at, or the offer names a day whose only room is at 3am. A
+ * manual drag is measured against `WHOLE_DAY` instead; see `Plan.tsx`.
+ *
+ * It reports a RUN and never a sum, for the same reason `longestFreeGap` does:
+ * three separate half-hours are not an hour of room.
+ *
+ * `remainingSpan` inside `longestFreeGap` already clips the elapsed part of
+ * today, so 19:00 rolls forward with no special case for "the evening" — only
+ * the scan is new.
  */
 export function nextFreeDay(
   today: string,
-  windows: AvailabilityWindow[],
   blocks: BusyBlock[],
+  placedOn: (date: string) => PlacedSpan[],
   allDayBlocks: boolean,
   now: Now,
 ): FreeDay | null {
   for (let i = 0; i < PLAN_DAY_HORIZON; i++) {
     const date = addDays(today, i);
-    const freeMin = freeMinutes(date, windows, blocks, now, allDayBlocks);
-    if (freeMin > 0) return { date, freeMin };
+    const gapMin = longestFreeGap(date, ORDINARY_DAY, blocks, placedOn(date), now, allDayBlocks);
+    if (gapMin >= MIN_SITTING_MIN) return { date, gapMin };
   }
   return null;
 }
@@ -172,23 +185,35 @@ export function dayVerb(date: string, today: string): string {
  * The one sentence above the rows.
  *
  * It always names the day the click will book, because the offer's whole claim
- * is that it knows where the work is going. "No time left today" is about free
- * time, not about commitments — a day can be booked solid and still have three
- * things left on it.
+ * is that it knows where the work is going. It reports a RUN rather than a
+ * total, so the figure means "you could sit down for this long" — which is the
+ * only reading a person can act on.
+ *
+ * "Today is booked" is about ROOM, not about commitments: a day can be full of
+ * sittings and still have three unfinished things on it.
  */
 export function offerHeading(
-  offer: { date: string; today: boolean; freeMin: number },
+  offer: { date: string; today: boolean; gapMin: number },
   today: string,
 ): string {
-  if (offer.today) return `${fmtMinutes(offer.freeMin)} free today`;
-  return `No time left today — ${dayLabel(offer.date, today)} has ${fmtMinutes(offer.freeMin)} free`;
+  if (offer.today) return `${fmtMinutes(offer.gapMin)} open today`;
+  return `Today is booked — ${dayLabel(offer.date, today)} has ${fmtMinutes(offer.gapMin)} open`;
 }
 
 export interface TodayPlanInput {
   goals: Goal[];
   tasks: Task[];
-  availability: AvailabilityWindow[];
   blocks: BusyBlock[];
+  /**
+   * The sittings already on a date — `spansOn(goals, tasks, date)`, curried by
+   * the caller.
+   *
+   * A function rather than a precomputed map because the scan stops at the
+   * first day with room, which is almost always today: building seven days of
+   * placements to read one of them is a walk of every goal's leaf tree, six
+   * times for nothing.
+   */
+  placedOn: (date: string) => PlacedSpan[];
   allDayBlocks: boolean;
   today: string;
   week: string;
@@ -198,22 +223,25 @@ export interface TodayPlanInput {
 }
 
 export function todayPlan(input: TodayPlanInput): TodayPlan {
-  const { goals, tasks, availability, blocks, allDayBlocks, today, week, now, exclude } = input;
-  // Checked before the candidates: with no hours set there is nothing useful to
-  // say about having nothing to do, and one of the two answers is actionable.
-  if (availability.length === 0) return { kind: 'no-hours' };
+  const { goals, tasks, blocks, placedOn, allDayBlocks, today, week, now, exclude } = input;
 
+  /*
+   * There used to be a `no-hours` verdict here, checked before the candidates,
+   * because "Phase does not know when you work" is actionable where "nothing
+   * to do" is not. The state it named is gone — nothing is ever asked when you
+   * work — so the only refusal left is a horizon with no room in it.
+   */
   const rows = proposalRows(goals, tasks, week, today, exclude);
   if (rows.length === 0) return { kind: 'none' };
 
-  const day = nextFreeDay(today, availability, blocks, allDayBlocks, now);
+  const day = nextFreeDay(today, blocks, placedOn, allDayBlocks, now);
   if (!day) return { kind: 'none' };
 
   return {
     kind: 'offer',
     date: day.date,
     today: day.date === today,
-    freeMin: day.freeMin,
+    gapMin: day.gapMin,
     rows,
   };
 }

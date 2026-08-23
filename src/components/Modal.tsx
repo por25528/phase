@@ -15,7 +15,7 @@ import {
  *
  * Two frames, chosen by whether a `verb` was given. The card frame is the
  * original — panel padding, an `h2`, a ✕ in the corner — and is what
- * `SettingsModal`, `AvailabilityModal` and the week planner still wear. The
+ * `SettingsModal` and the week planner still wear. The
  * INSTRUMENT frame replaces that chrome with a ruled strip carrying the verb
  * and a masthead carrying the name, and hands the padding to the content so a
  * body and a footer bar can run edge to edge.

@@ -4,8 +4,8 @@ import { SegmentedSwitch } from '../../components/SegmentedControl';
 import { IconChevronLeft, IconChevronRight } from '../../components/Icons';
 import { fmtD, addDays, isoWeekNumber, MO, parseD } from '../../lib/dates';
 import { ymOf, ymLabel } from '../../lib/calendar';
-import { dayGaugeCells, weekLoadCells, capacityNote } from './capacityLabel';
-import { CapacityMeter } from './CapacityMeter';
+import { weekLoadCells, capacityNote } from './capacityLabel';
+import { LoadRule } from './LoadRule';
 import { stampLabel } from '../../components/sectionLabel';
 
 /**
@@ -39,19 +39,17 @@ const PLAN_RANGES = [
  * in Plan.tsx; this component only reflects that state, it does not create it.
  */
 export function WeekHeader({
-  weekStart, today, isPast, capacity, calendarAvailable = false, onPrev, onNext, onToday,
+  weekStart, isPast, capacity, calendarAvailable = false, onPrev, onNext, onToday,
   unestimatedOpen, onToggleUnestimated, mode = 'week', onModeChange,
   monthCapacity, monthSpanLabel,
 }: {
   weekStart: string;
-  /**
-   * Today's date, 'YYYY-MM-DD'. The free figure is split against it: a day
-   * already past is time SPENT, not time free. Without this the header spends
-   * the word "free" on hours that were all Mon–Fri and are all gone — the
-   * question a person reads it as ("what can I still get done") answered with a
-   * retrospective in the same font. See `weekLoadParts`.
+  /*
+   * `today` is gone. It split the free figure by tense — a day already past
+   * held time SPENT rather than time free — and there is no free figure left
+   * to split. Every figure here is a commitment, which a Thursday does not
+   * make less true about a Monday.
    */
-  today: string;
   isPast: boolean;
   capacity: WeekCapacity;
   /**
@@ -103,22 +101,9 @@ export function WeekHeader({
    * has to be on screen beside it.
    */
   const figures = isMonth ? monthCapacity : capacity;
-  // Month mode still needs the tense split — `monthCapacity.total.days` carries
-  // every day of every drawn week, which is exactly what `weekLoadParts` wants,
-  // so a past month (or the elapsed part of the current one) reports "spent"
-  // rather than being folded into "free". See CLAUDE.md: "'Free' is
-  // tense-sensitive."
   const cells = isMonth
-    ? (monthCapacity ? weekLoadCells(monthCapacity, today) : [])
-    : weekLoadCells(capacity, today);
-  /*
-   * One cell per day, straight off `weekCapacity.days` — the figure the header
-   * already summed away. It is `dayGaugeCells` and not a second pass over the
-   * week: the gauge and the text below it are read as one statement, so they
-   * have to be one derivation, and the same reasoning that makes
-   * `capacityMeter.over` a delegation makes this one too.
-   */
-  const gauge = dayGaugeCells(capacity.days);
+    ? (monthCapacity ? weekLoadCells(monthCapacity) : [])
+    : weekLoadCells(capacity);
 
   return (
     /*
@@ -221,19 +206,17 @@ export function WeekHeader({
         </div>
       </div>
 
-      {figures && (
+      {/*
+        Guarded on the CELLS and the unestimated count rather than on `figures`:
+        an untouched week has no cells, and the rule would then be a hairline
+        under the heading with nothing on it — but a week with nothing planned
+        and four unpriced tasks still has one thing to say.
+      */}
+      {figures && (cells.length > 0 || figures.unestimated > 0) && (
         <div className="mt-[11px]">
-          <CapacityMeter
+          <LoadRule
             figures={figures}
             cells={cells}
-            /*
-             * The gauge is a WEEK instrument. Month mode hands none, and
-             * `CapacityMeter` then draws the single bar it always drew — see
-             * its `gauge` note for why that is the answer rather than a
-             * fallback.
-             */
-            gauge={isMonth ? undefined : gauge}
-            today={today}
             spanLabel={isMonth ? monthSpanLabel : undefined}
             unestimatedOpen={unestimatedOpen}
             onToggleUnestimated={onToggleUnestimated}

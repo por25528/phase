@@ -1,16 +1,21 @@
-import type { AvailabilityWindow } from '../db/types';
-import { MINUTES_PER_DAY, windowForDate } from './availability';
+import { MINUTES_PER_DAY } from './capacity';
 import type { Interval } from './capacity';
+import { ORDINARY_DAY, type PlacedSpan } from './slot';
 
 const MINUTES_PER_HOUR = 60;
 
 /**
- * The grid shows all 24 hours regardless. These only floor the INITIAL
- * scroll window (see `initialScrollWindow`) at 08:00–20:00, so a week with
- * no availability set doesn't open scrolled to a sliver of empty morning.
+ * The grid shows all 24 hours regardless. These only floor the INITIAL scroll
+ * window (see `initialScrollWindow`) at 08:00–20:00, so an empty week doesn't
+ * open scrolled to a sliver of empty morning.
+ *
+ * They are `ORDINARY_DAY` restated, and deliberately not imported from it:
+ * that constant is the region an automatic PLACEMENT aims inside, and this is
+ * where a scroller starts. The two agree today and there is no rule that says
+ * they must — a change to one is not a reason to change the other.
  */
-export const MIN_VISIBLE_START = 480;
-export const MIN_VISIBLE_END = 1200;
+export const MIN_VISIBLE_START = ORDINARY_DAY.startMin;
+export const MIN_VISIBLE_END = ORDINARY_DAY.endMin;
 
 function floorToHour(minute: number): number {
   return Math.floor(minute / MINUTES_PER_HOUR) * MINUTES_PER_HOUR;
@@ -167,15 +172,21 @@ export const Z_HEADINGS = 5;
 export const Z_CORNER = 6;
 
 /**
- * Where to scroll the grid on mount: the union of the week's availability
- * windows, expanded to whole hours and then to at least 08:00-20:00.
+ * Where to scroll the grid on mount: the ordinary day, widened to whole hours
+ * around anything already placed in the week.
  *
- * This is NOT geometry. Nothing positions against it. Its predecessor had to
- * widen itself to cover every scheduled block or that block would render
- * off-grid — a `spans` parameter existed for exactly that, and its whole
- * justification disappears once every minute of the day is reachable by
- * scrolling. `blocks` went the same way: a calendar event is a reason to look
- * somewhere, not a reason to reshape the grid.
+ * This is NOT geometry. Nothing positions against it, and every minute of the
+ * day is reachable by scrolling regardless.
+ *
+ * It used to open on the union of the week's availability windows. With none,
+ * the honest starting point is the span the app itself aims at — opened out
+ * far enough that a 06:55 sitting is not above the fold on a grid that appears
+ * to start at eight. This is a RETURN of something that was deliberately
+ * removed: a `spans` parameter existed once, and was dropped on the reasoning
+ * that a block off-screen is still reachable by scrolling. That reasoning is
+ * still true; what changed is that the windows were the only other thing
+ * shaping this, so without them an early sitting has nothing at all pointing
+ * at it.
  *
  * `endMin` currently has no consumer — `WeekGrid` reads only `startMin` — and
  * is retained for the all-day lane and gutter planned later, so it is
@@ -183,16 +194,16 @@ export const Z_CORNER = 6;
  */
 export function initialScrollWindow(
   dates: string[],
-  windows: AvailabilityWindow[],
+  spansFor: (date: string) => PlacedSpan[],
 ): Interval {
   let startMin = MIN_VISIBLE_START;
   let endMin = MIN_VISIBLE_END;
 
   for (const date of dates) {
-    const w = windowForDate(date, windows);
-    if (!w) continue;
-    startMin = Math.min(startMin, w.startMin);
-    endMin = Math.max(endMin, w.endMin);
+    for (const span of spansFor(date)) {
+      startMin = Math.min(startMin, span.startMin);
+      endMin = Math.max(endMin, span.endMin);
+    }
   }
 
   return {

@@ -2,10 +2,9 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
-import { goalEffort, fmtMinutes } from '../../lib/effort';
+import type { Goal, GoalNode, Session } from '../../db/types';
+import { fmtMinutes } from '../../lib/effort';
 import { addDays, fmtD, todayStr } from '../../lib/dates';
-import { goalHealth, HEALTH_WORD } from '../../lib/health';
 import { weekOf } from '../../lib/plan';
 import { MIN_VELOCITY_SAMPLES, VELOCITY_WINDOW_DAYS } from '../../lib/velocity';
 
@@ -15,12 +14,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -63,8 +60,6 @@ beforeEach(() => vi.clearAllMocks());
 
 const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
 
-const WORKING_HOURS: AvailabilityWindow[] = [0, 1, 2, 3, 4]
-  .map((dow) => ({ dow, startMin: 540, endMin: 1020 }));
 
 function datedGoal(nodes: GoalNode[]): Goal {
   return {
@@ -80,12 +75,11 @@ function datedGoal(nodes: GoalNode[]): Goal {
 type Store = typeof import('../../state/store');
 
 /** Boot a store holding a goal and render OverviewTab against live state. */
-async function mountOverview(goal: Goal, availability?: AvailabilityWindow[]): Promise<Store> {
+async function mountOverview(goal: Goal): Promise<Store> {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
     goals: [structuredClone(goal)], habits: [], tasks: [], sessions: [],
   });
-  if (availability !== undefined) dbMocks.loadAvailability.mockResolvedValueOnce(availability);
   const store = await import('../../state/store');
   await store.initStore();
   const { OverviewTab } = await import('./OverviewTab');
@@ -157,7 +151,7 @@ describe('OverviewTab forecast and week load', () => {
     vi.setSystemTime(new Date(2026, 7, 11, 8));
     try {
       const goal = datedGoal([leaf('lead', { title: 'Lead task', estimateMin: 30 })]);
-      const store = await mountOverview(goal, WORKING_HOURS);
+      const store = await mountOverview(goal);
 
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
@@ -174,24 +168,22 @@ describe('OverviewTab forecast and week load', () => {
     }
   });
 
-  it('states the health verdict with its reason sentence', async () => {
+  /*
+   * The Forecast section used to open with a verdict word and its reason
+   * sentence. Both came from `goalHealth`, which compared remaining work
+   * against free hours before the deadline; with no free hours there is
+   * nothing to compare, and what survives is the MEASURED rate.
+   */
+  it('reports the observed rate and no verdict', async () => {
     vi.setSystemTime(new Date(2026, 7, 11, 12));
     try {
       const goal = datedGoal([leaf('a', { estimateMin: 60 })]);
-      await mountOverview(goal, WORKING_HOURS);
+      await mountOverview(goal);
 
-      const expected = goalHealth({
-        goal,
-        effort: goalEffort(goal),
-        today: todayStr(),
-        windows: WORKING_HOURS,
-        blocks: [],
-        allDayBlocks: true,
-      });
       const forecast = section('Forecast');
-      expect(expected.health).toBe('on-track');
-      expect(forecast.textContent).toContain(HEALTH_WORD[expected.health]);
-      expect(forecast.textContent).toContain(expected.reason);
+      expect(forecast.textContent).not.toContain('On track');
+      expect(forecast.textContent).not.toContain('At risk');
+      expect(forecast.textContent).toContain('nothing finished in');
     } finally {
       vi.useRealTimers();
     }
@@ -227,9 +219,12 @@ describe('OverviewTab forecast and week load', () => {
       expect(thisWeek.textContent).toContain('Nothing committed to this week yet.');
       expect(thisWeek.textContent).not.toContain('0 tasks');
       expect(thisWeek.textContent).not.toContain('0m');
+      // The Forecast section carries the MEASURED rate and no verdict — there
+      // is nothing left that could say "No forecast", because nothing prices a
+      // goal against hours any more.
       const forecast = section('Forecast');
-      expect(forecast.textContent).toContain('No forecast · No working hours set — set them in Plan to forecast against real time');
-      expect(forecast.querySelector('span')?.className).toContain('text-muted');
+      expect(forecast.textContent).not.toContain('No forecast');
+      expect(forecast.textContent).toContain('nothing finished in');
     } finally {
       vi.useRealTimers();
     }
@@ -244,7 +239,7 @@ describe('OverviewTab forecast and week load', () => {
         estimateMin: 30,
       }));
       const goal = datedGoal([...recentDone, leaf('open', { estimateMin: 60 })]);
-      await mountOverview(goal, WORKING_HOURS);
+      await mountOverview(goal);
 
       const forecast = section('Forecast');
       const text = forecast.textContent ?? '';

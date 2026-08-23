@@ -492,9 +492,14 @@ export function App() {
               {effectiveTheme === 'dark' ? <IconMoon /> : <IconSun />}
               Theme: {THEME_LABEL[theme]}
             </HeaderMenuItem>
+            {/* `IconClock` is a leftover from when this row opened working
+                hours; the dialog now holds Lives, the assistant shortcut and
+                launch-at-login, none of which is a clock. Left as-is rather
+                than swapped inside a removal — picking the right glyph is a
+                design call, not a consequence of deleting a model. */}
             <HeaderMenuItem onClick={actions.openSettings}>
               <IconClock />
-              Working hours
+              Settings
             </HeaderMenuItem>
             <HeaderMenuItem onClick={() => setShowShortcuts(true)}>
               {/* Stays a character: `?` is ASCII, it is in the font, and it is the
@@ -601,11 +606,11 @@ export function App() {
              would sit outside the frame as a band of nothing, and the hatched
              tail under the last row needs a height to grow into. */
           <div className="w-full flex-1 min-h-0 flex flex-col">
-            <Today onOpenSettings={actions.openSettings} onCapture={openTaskCapture} />
+            <Today onCapture={openTaskCapture} />
           </div>
         ) : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[18px]">
-            <Plan onOpenSettings={actions.openSettings} />
+            <Plan />
           </div>
         ) : view === 'project' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[20px] pb-[90px]">

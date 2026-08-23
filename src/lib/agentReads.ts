@@ -6,12 +6,12 @@ import { executionAdvice, type ExecutionAdviceInput } from './executionAdvisor';
 import { weekCapacity, type CapacityInput, type Now } from './capacity';
 import { backlogGroups } from './backlog';
 import { goalEffort } from './effort';
-import { goalHealth } from './health';
 import { goalPct } from './pct';
 import { todayStr } from './dates';
 import { HORIZON_LABELS } from './horizons';
 import { plannedLeaves, weekOf } from './plan';
 import { tasksForWeek } from './dailyWork';
+import { spansOn } from './scheduled';
 
 /**
  * The read half of the agent surface.
@@ -43,8 +43,8 @@ function adviceInput(state: FullState, now: Now): ExecutionAdviceInput {
     goals: state.goals,
     tasks: state.tasks,
     sessions: state.sessions,
-    availability: state.availability,
     blocks: [],
+    placedOn: (date: string) => spansOn(state.goals, state.tasks, date),
     allDayBlocks: state.allDayBlocks,
     today: now.date,
     week: weekOf(now.date),
@@ -57,7 +57,6 @@ function capacityInput(state: FullState, now: Now): CapacityInput {
   const week = weekOf(now.date);
   return {
     week,
-    windows: state.availability,
     blocks: [],
     leaves: plannedLeaves(state.goals, week),
     tasks: tasksForWeek(state.tasks, week),
@@ -73,7 +72,7 @@ function capacityInput(state: FullState, now: Now): CapacityInput {
  * `remainingMin` never travels without `unestimated`: the first is a FLOOR
  * while the second is above zero, and "8h left" alone is a number that grows.
  */
-function projectSummary(goal: Goal, state: FullState, today: string) {
+function projectSummary(goal: Goal) {
   const effort = goalEffort(goal);
   return {
     id: goal.id,
@@ -85,16 +84,6 @@ function projectSummary(goal: Goal, state: FullState, today: string) {
     pct: goalPct(goal),
     remainingMin: effort.remainingMin,
     unestimated: effort.unestimated,
-    // `effort` is passed rather than recomputed: `goalEffort` walks the whole
-    // leaf tree, and asking it twice per project would double the walk.
-    health: goalHealth({
-      goal,
-      effort,
-      today,
-      windows: state.availability,
-      blocks: [],
-      allDayBlocks: state.allDayBlocks,
-    }),
   };
 }
 
@@ -109,11 +98,10 @@ export function handleAgentRead(
       return okResponse({ advice: executionAdvice(adviceInput(state, now)) });
     }
     case 'week': {
-      // The whole object, no verdict. `isOverCommitted` does exist, but it
-      // lives in `src/views/plan/capacityLabel.ts` — above this seam — so
-      // spending it here would invert the layering, and the comparison it
-      // makes (`plannedMin + backlogMin > freeMin`) is the caller's to make
-      // from figures this response already carries.
+      // The whole object, no verdict. There is no over-commitment verdict
+      // left to pass: nothing prices a week against available hours. What this
+      // carries is what has been taken on — planned, to place, unestimated —
+      // and the caller reads it as such.
       const now = nowOf();
       return okResponse({ capacity: weekCapacity(capacityInput(state, now)) });
     }
@@ -124,9 +112,8 @@ export function handleAgentRead(
       });
     }
     case 'list_projects': {
-      const today = todayStr();
       return okResponse({
-        projects: state.goals.map((goal) => projectSummary(goal, state, today)),
+        projects: state.goals.map((goal) => projectSummary(goal)),
       });
     }
     case 'get_project': {

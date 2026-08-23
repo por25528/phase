@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, Habit, Task } from '../db/types';
+import type { Goal, Habit, Task } from '../db/types';
 import { blocksOf } from '../lib/blocks';
 import { ruleTag } from '../components/sectionLabel';
 
@@ -18,7 +18,6 @@ const dbMocks = vi.hoisted(() => ({
     ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -27,7 +26,6 @@ const dbMocks = vi.hoisted(() => ({
   saveGoalsMode: vi.fn(async () => {}),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
@@ -63,9 +61,6 @@ beforeAll(() => {
 
 /** Wednesday 10:00, so "today" still has room and the clock decides nothing. */
 const TODAY = '2026-07-15';
-const WORKDAY: AvailabilityWindow[] = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({
-  dow, startMin: 9 * 60, endMin: 17 * 60,
-}));
 
 const project: Goal = {
   id: 'g1', title: 'Thesis', column: 0,
@@ -76,7 +71,6 @@ async function mountToday(over: {
   goals?: Goal[];
   tasks?: Task[];
   habits?: Habit[];
-  availability?: AvailabilityWindow[];
   onOpenSettings?: () => void;
 } = {}) {
   vi.resetModules();
@@ -86,11 +80,10 @@ async function mountToday(over: {
     tasks: structuredClone(over.tasks ?? []),
     sessions: [],
   });
-  dbMocks.loadAvailability.mockResolvedValueOnce(over.availability ?? WORKDAY);
   const store = await import('../state/store');
   await store.initStore();
   const { Today } = await import('./Today');
-  render(createElement(Today, { onOpenSettings: over.onOpenSettings ?? (() => {}) }));
+  render(createElement(Today, {}));
   return store;
 }
 
@@ -125,7 +118,7 @@ describe('the free-time offer', () => {
   it('offers a project’s next action when the day is uncommitted', async () => {
     await mountToday();
 
-    expect(screen.getByText('7h free today')).toBeTruthy(); // 10:00 → 17:00
+    expect(screen.getByText('10h open today')).toBeTruthy(); // 10:00 → 20:00
     expect(screen.getByRole('button', { name: 'Plan “Draft the intro” today' })).toBeTruthy();
     // The Now zone stays silent: two messages both saying "nothing" is the
     // apologetic page this replaces.
@@ -182,30 +175,33 @@ describe('the free-time offer', () => {
   });
 
   /**
-   * The Sunday-evening case. The window has closed, so the offer names the day
-   * it will actually book rather than pretending there is time left.
+   * The late-evening case. The ordinary day has closed, so the offer names the
+   * day it will actually book rather than pretending there is room left.
    */
-  it('rolls to the next open day once today’s window has closed', async () => {
-    vi.setSystemTime(new Date(2026, 6, 15, 19, 0, 0));
+  it('rolls to the next open day once the ordinary day has closed', async () => {
+    vi.setSystemTime(new Date(2026, 6, 15, 21, 0, 0));
     const store = await mountToday();
 
-    expect(screen.getByText('No time left today — tomorrow has 8h free')).toBeTruthy();
+    expect(screen.getByText('Today is booked — tomorrow has 12h open')).toBeTruthy();
     await act(async () => {
       screen.getByRole('button', { name: 'Plan “Draft the intro” tomorrow' }).click();
     });
 
     expect(blocksOf(store.getState().goals[0].nodes[0])[0]).toMatchObject({
-      date: '2026-07-16', startMin: 9 * 60,
+      date: '2026-07-16', startMin: 8 * 60, // ORDINARY_DAY.startMin
     });
   });
 
-  it('says nobody set working hours rather than claiming there is no time', async () => {
-    const onOpenSettings = vi.fn();
-    await mountToday({ availability: [], onOpenSettings });
-
-    expect(screen.getByText(/No working hours set/)).toBeTruthy();
-    screen.getByRole('button', { name: 'Set your working hours' }).click();
-    expect(onOpenSettings).toHaveBeenCalled();
+  /*
+   * There used to be a "No working hours set" notice here, with a button into
+   * Settings. Nothing asks when you work, so the state is unreachable — and
+   * the only thing that can turn the offer away now is a horizon with no run
+   * long enough in it, which hides the section rather than explaining itself.
+   */
+  it('has no working-hours notice left to show', async () => {
+    await mountToday();
+    expect(screen.queryByText(/No working hours set/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Set your working hours' })).toBeNull();
   });
 
   it('offers nothing when there is nothing left to place', async () => {
@@ -242,10 +238,12 @@ describe('the shared primary', () => {
 
     const { executionAdvice } = await import('../lib/executionAdvisor');
     const { weekOf } = await import('../lib/plan');
+    const { spansOn } = await import('../lib/scheduled');
     const s = store.getState();
     const advice = executionAdvice({
       goals: s.goals, tasks: s.tasks, sessions: s.sessions,
-      availability: s.availability, blocks: [], allDayBlocks: s.allDayBlocks,
+      blocks: [], placedOn: (date: string) => spansOn(s.goals, s.tasks, date),
+      allDayBlocks: s.allDayBlocks,
       today: TODAY, week: weekOf(TODAY), now: { date: TODAY, minute: 10 * 60 },
     });
     expect(advice.kind).toBe('work');

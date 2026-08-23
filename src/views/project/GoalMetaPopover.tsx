@@ -11,7 +11,6 @@ import { goalWeekLoad } from '../../lib/overview';
 import { projectVelocity, describeVelocity } from '../../lib/velocity';
 import { projectCalibration, describeCalibration } from '../../lib/actuals';
 import type { GoalEffort } from '../../lib/effort';
-import type { HealthVerdict } from '../../lib/health';
 import { DEMANDS, DEMAND_WORD } from '../../lib/demand';
 import {
   goalDateDraftIsDirty,
@@ -31,14 +30,17 @@ import {
  * manipulate.
  *
  * So it lives behind the status cluster instead. Progressive disclosure, not
- * deletion: the header still states health, deadline and remaining effort, and
- * one click gets the arithmetic behind them.
+ * deletion: the header still states the deadline and remaining effort, and one
+ * click gets the arithmetic behind them.
+ *
+ * A health sentence used to open this panel — "6h of work against 4h free
+ * before the deadline". It went with `goalHealth`, and the panel now opens on
+ * the dates, which is what the rest of it was always about.
  */
 export function GoalMetaPopover({
   goal: g,
   actions,
   effort,
-  verdict,
   draftStart,
   draftDeadline,
   onDraftChange,
@@ -47,7 +49,6 @@ export function GoalMetaPopover({
   goal: Goal;
   actions: ReturnType<typeof useAppStore>['actions'];
   effort: GoalEffort;
-  verdict: HealthVerdict;
   draftStart: string;
   draftDeadline: string;
   onDraftChange: (start: string, deadline: string) => void;
@@ -108,9 +109,7 @@ export function GoalMetaPopover({
       aria-label="Goal status"
       className="absolute right-0 top-[34px] z-40 w-[320px] bg-panel border border-line-2 rounded-card shadow-card p-[14px] text-left"
     >
-      <p className="text-ui text-ink-soft leading-[1.5]">{verdict.reason}</p>
-
-      <div className="mt-[12px] pt-[12px] border-t border-line">
+      <div className="pt-[2px]">
         <div className="text-meta font-[550] text-muted mb-[6px]">Dates</div>
         <div className="flex flex-wrap items-center gap-[6px]">
           <DateField

@@ -285,13 +285,6 @@ export interface Asset {
   createdAt: string; // 'YYYY-MM-DD'
 }
 
-// A weekday's availability window. Absent dow means that day is off.
-export interface AvailabilityWindow {
-  dow: number;      // 0 = Mon … 6 = Sun, matching weekDates() order
-  startMin: number; // minutes from local midnight; 540 = 09:00
-  endMin: number;   // exclusive
-}
-
 // A busy slice, already flattened onto one local day by the main process.
 // Always empty in slice 1; populated from Google in slice 2.
 // MUST stay identical to electron/busyBlocks.d.cts: the process seam prevents

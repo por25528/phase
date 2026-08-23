@@ -17,7 +17,6 @@ const dbMocks = vi.hoisted(() => ({
     ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async () => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -26,7 +25,6 @@ const dbMocks = vi.hoisted(() => ({
   saveGoalsMode: vi.fn(async () => {}),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
@@ -108,9 +106,6 @@ describe('a fully blocked goal', () => {
       store.getState().goals,
       { commitments: [], carryOvers: [], completedToday: [] },
       '2026-06-01',
-      [{ dow: 0, startMin: 540, endMin: 1020 }],
-      [],
-      true,
     );
 
     expect(exception).toMatchObject({ kind: 'blocked', goalId: 'g1', nodeId: 'n1' });

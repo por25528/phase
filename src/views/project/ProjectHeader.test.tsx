@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, Session } from '../../db/types';
+import type { Goal, Session } from '../../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -10,12 +10,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -121,15 +119,15 @@ describe('the header after the density pass', () => {
     expect(screen.queryByRole('button', { name: /Focus needed/ })).toBeNull();
   });
 
-  it('states health as one object', async () => {
+  /*
+   * The pill said "On track" / "At risk", and it came from `goalHealth`, which
+   * priced the work remaining against the free hours before the deadline.
+   * There are no free hours, so there is no verdict — and a header that kept
+   * the object while losing the arithmetic behind it would be a label nobody
+   * could act on.
+   */
+  it('carries no health pill — nothing forecasts a goal any more', async () => {
     await renderProjectHeader({ title: 'Systems' });
-    const pill = screen.getByTestId('health-pill');
-    expect(pill.className).toContain('rounded-[4px]');
-    expect(pill.className).toContain('font-semibold');
-  });
-
-  it('paints no warning colour on a goal that is not at risk', async () => {
-    await renderProjectHeader({ title: 'Systems' });
-    expect(screen.getByTestId('health-pill').className).not.toContain('text-warn');
+    expect(screen.queryByTestId('health-pill')).toBeNull();
   });
 });

@@ -1,8 +1,9 @@
-import type { AvailabilityWindow, BusyBlock, Goal, GoalNode, Session, Task } from '../db/types';
+import type { BusyBlock, Goal, GoalNode, Session, Task } from '../db/types';
 import type { Now } from './capacity';
 import { buildDailyWork, type DailyWorkItem } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { todayPlan } from './todayPlan';
+import type { PlacedSpan } from './slot';
 import { expectedTimeFor, type ExpectedTime, type WorkRef } from './expectedTime';
 import { admits, type TimeLevel } from './timeLens';
 import { admitsWork, type FocusLevel } from './focusLens';
@@ -68,16 +69,15 @@ export type ExecutionAdvice =
        */
       beyondFocus?: true;
     }
-  /** Availability was never set — the same distinct verdict `todayPlan` keeps. */
-  | { kind: 'needs-hours' }
   | { kind: 'clear' };
 
 export interface ExecutionAdviceInput {
   goals: Goal[];
   tasks: Task[];
   sessions: Session[];
-  availability: AvailabilityWindow[];
   blocks: BusyBlock[];
+  /** The sittings already on a date. See `TodayPlanInput.placedOn`. */
+  placedOn: (date: string) => PlacedSpan[];
   allDayBlocks: boolean;
   today: string; // 'YYYY-MM-DD'
   week: string;  // Monday of the current week
@@ -161,8 +161,8 @@ function toCandidate(
  * projects contribute nothing — `attentionItems`' quiet-project rule, applied
  * to a surface that speaks first.
  */
-function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[]; noHours: boolean } {
-  const { goals, tasks, availability, blocks, allDayBlocks, today, week, now } = input;
+function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[] } {
+  const { goals, tasks, blocks, placedOn, allDayBlocks, today, week, now } = input;
 
   const nodeByid = new Map<string, GoalNode>();
   const goalById = new Map(goals.map((g) => [g.id, g]));
@@ -212,7 +212,7 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[]; no
   for (const item of carryOvers) push(toCandidate(item, 'carried-over', lifeByGoal, demandFor(item)));
 
   const plan = todayPlan({
-    goals, tasks, availability, blocks, allDayBlocks, today, week, now,
+    goals, tasks, blocks, placedOn, allDayBlocks, today, week, now,
     exclude: seen,
   });
   if (plan.kind === 'offer') {
@@ -233,7 +233,7 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[]; no
     }
   }
 
-  return { pool, noHours: plan.kind === 'no-hours' };
+  return { pool };
 }
 
 function withExpected(c: Candidate, input: ExecutionAdviceInput): RecommendedWork {
@@ -248,8 +248,8 @@ function withExpected(c: Candidate, input: ExecutionAdviceInput): RecommendedWor
 }
 
 export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
-  const { pool, noHours } = orderedCandidates(input);
-  if (pool.length === 0) return noHours ? { kind: 'needs-hours' } : { kind: 'clear' };
+  const { pool } = orderedCandidates(input);
+  if (pool.length === 0) return { kind: 'clear' };
 
   // Evidence is attached to the whole pool because membership depends on it.
   // Both callers memoize this, so the cost is per-change and not per-frame.

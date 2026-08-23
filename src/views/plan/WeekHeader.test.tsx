@@ -8,16 +8,14 @@ afterEach(cleanup);
 
 const cap: WeekCapacity = {
   days: [
-    { date: '2026-08-10', freeMin: 300, plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-    { date: '2026-08-11', freeMin: 300, plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-  ],
-  freeMin: 600, plannedMin: 120, backlogMin: 0, unestimated: 2, hasData: false,
+    { date: '2026-08-10', plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+    { date: '2026-08-11', plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+  ], plannedMin: 120, backlogMin: 0, unestimated: 2, hasData: false,
 };
 
 const noop = () => {};
 const base = {
   weekStart: '2026-08-10',
-  today: '2026-08-10',
   isPast: false,
   capacity: cap,
   onPrev: noop, onNext: noop, onToday: noop,
@@ -48,11 +46,18 @@ describe('WeekHeader', () => {
     expect(screen.queryByText(/^Week /)).toBeNull();
   });
 
-  it('draws one gauge cell per day of the week, and none in month mode', () => {
+  /*
+   * The gauge and the bar are gone with the free time that gave them a
+   * denominator. What is left is the figures, which is what the gauge was
+   * always a second reading of.
+   */
+  it('draws no gauge and no bar, in either mode', () => {
     const { container, rerender } = render(<WeekHeader {...base} />);
-    expect(container.querySelectorAll('[data-testid^="gauge-cell-"]').length).toBe(cap.days.length);
+    expect(container.querySelector('[data-testid="week-gauge"]')).toBeNull();
+    expect(container.querySelector('[data-testid="meter-planned"]')).toBeNull();
     rerender(<WeekHeader {...base} mode="month" monthCapacity={cap} />);
     expect(container.querySelector('[data-testid="week-gauge"]')).toBeNull();
+    expect(container.querySelector('[data-testid="meter-planned"]')).toBeNull();
   });
 
   it('gives the nav arrows accessible names', () => {
@@ -79,7 +84,7 @@ describe('WeekHeader', () => {
     );
     expect(screen.getByText('Jul 27 – Sep 6')).toBeTruthy();
     // The count is a key/value cell now, so the phrase lives in its
-    // accessible name rather than in one text node. See CapacityMeter.test.
+    // accessible name rather than in one text node. See LoadRule.test.
     expect(screen.getByLabelText('2 unestimated')).toBeTruthy();
   });
 
@@ -89,39 +94,38 @@ describe('WeekHeader', () => {
     expect(screen.queryByLabelText('2 unestimated')).toBeNull();
   });
 
-  // Fix for: month mode used to call `loadParts`, which has no notion of
-  // tense and prints the WHOLE window as "free" — a past day's `freeMin` is
-  // its entire held window (NO_PAST_LIMIT), not what remains. Mid-month that
-  // reads as "160h free" for hours that are mostly gone.
-  it('splits a month\'s free figure by tense, same as a week', () => {
-    const monthCap: WeekCapacity = {
-      days: [
-        // Before `today`: spent, not free.
-        { date: '2026-08-10', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-        { date: '2026-08-11', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-        // On/after `today`: still ahead.
-        { date: '2026-08-16', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-        { date: '2026-08-17', freeMin: 300, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-      ],
-      freeMin: 1200, plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: false,
-    };
-    render(
-      <WeekHeader
-        {...base}
-        today="2026-08-16"
-        mode="month"
-        monthCapacity={monthCap}
-        monthSpanLabel="Aug 3 – Aug 30"
-      />,
-    );
-    // Spent: the two days before today (300 + 300 = 10h). Left: freeMin minus
-    // spent (1200 - 600 = 600 = 10h). Read off the cells rather than off a
-    // joined phrase — `Left` and `Spent` are two labelled figures now, and
-    // both values happen to be `10h`, so the label is what tells them apart.
-    const left = document.querySelector('[data-fig="left"]')?.textContent ?? '';
-    const spent = document.querySelector('[data-fig="spent"]')?.textContent ?? '';
-    expect(left).toContain('10h');
-    expect(spent).toContain('10h');
+  /*
+   * The tense split is gone with `freeMin`. What replaced it is a rule about
+   * the CELLS themselves: `head` is spent exactly once, and it is `Planned` —
+   * the week is planned against what is on it, now that nothing measures what
+   * would fit.
+   */
+  it('leads with Planned and states no free figure at all', () => {
+    render(<WeekHeader {...base} />);
+    expect(document.querySelector('[data-fig="planned"]')?.textContent).toContain('2h');
     expect(document.querySelector('[data-fig="free"]')).toBeNull();
+    expect(document.querySelector('[data-fig="left"]')).toBeNull();
+    expect(document.querySelector('[data-fig="spent"]')).toBeNull();
+  });
+
+  /*
+   * An untouched week draws its stamp and range alone. The rule is guarded on
+   * the cells rather than on `capacity`, so a week with nothing planned and
+   * four unpriced tasks still has one thing to say.
+   */
+  it('draws no rule at all for a week with nothing on it', () => {
+    const empty: WeekCapacity = {
+      days: [], plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: false,
+    };
+    const { container } = render(<WeekHeader {...base} capacity={empty} />);
+    expect(container.querySelector('[data-fig]')).toBeNull();
+  });
+
+  it('still draws the rule when the only thing to say is an unpriced count', () => {
+    const unpriced: WeekCapacity = {
+      days: [], plannedMin: 0, backlogMin: 0, unestimated: 4, hasData: false,
+    };
+    render(<WeekHeader {...base} capacity={unpriced} />);
+    expect(screen.getByLabelText('4 unestimated')).toBeTruthy();
   });
 });

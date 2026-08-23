@@ -43,8 +43,8 @@ export function ScheduleMenu({
   node: GoalNode;
   close: () => void;
 }) {
-  const { availability, actions } = useAppStore();
-  const aimOn = (date: string): number => aimFor(date, availability, liveNow());
+  const { actions } = useAppStore();
+  const aimOn = (date: string): number => aimFor(date, liveNow());
   const placed = isPlaced(node);
   // A week commitment with no sitting yet (`plannedWeek` set, no `blocks`) is
   // still something to clear. Gating on `placed` alone left it unclearable from

@@ -22,8 +22,8 @@ import { initialScrollWindow } from '../lib/grid';
  */
 import { boardCollision } from '../lib/boardCollision';
 
-import { scheduledByDate } from '../lib/scheduled';
-import { aimFor, DEFAULT_SLOT_MIN } from '../lib/slot';
+import { scheduledByDate, spansOn } from '../lib/scheduled';
+import { aimFor, longestFreeGap, DEFAULT_SLOT_MIN, WHOLE_DAY, NO_PAST_LIMIT } from '../lib/slot';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
@@ -84,8 +84,8 @@ function liveNow(): Now {
   return { date: todayStr(), minute: d.getHours() * 60 + d.getMinutes() };
 }
 
-export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { goals, tasks, habits, hydration, availability, allDayBlocks, revealItem, planMode } = useAppStore();
+export function Plan() {
+  const { goals, tasks, habits, hydration, allDayBlocks, revealItem, planMode } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
@@ -127,8 +127,8 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     [goals, tasks, visibleDays],
   );
   const scrollWindow = useMemo(
-    () => initialScrollWindow(days, availability),
-    [days, availability],
+    () => initialScrollWindow(days, (date) => spansOn(goals, tasks, date)),
+    [days, goals, tasks],
   );
   const isPast = weekStart < weekOf(today);
 
@@ -155,13 +155,9 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
   // of every goal's leaf tree, and it was being redone on every render — the
   // 60-second now-line tick included — two hundred lines below the note
   // claiming those scans had been eliminated.
-  const planHint = useMemo(
-    () => showPlanHint(goals, tasks, availability.length > 0),
-    [goals, tasks, availability],
-  );
+  const planHint = useMemo(() => showPlanHint(goals, tasks), [goals, tasks]);
   const capacity = weekCapacity({
     week: weekStart,
-    windows: availability,
     blocks: [],
     leaves: weekLeaves,
     tasks: weekTasks,
@@ -186,9 +182,9 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
    */
   const monthCap = useMemo(
     () => (planMode === 'month'
-      ? monthCapacity({ ym, goals, tasks, windows: availability, now: { date: today, minute: nowMinute }, allDayBlocks })
+      ? monthCapacity({ ym, goals, tasks, now: { date: today, minute: nowMinute }, allDayBlocks })
       : null),
-    [planMode, ym, goals, tasks, availability, today, nowMinute, allDayBlocks],
+    [planMode, ym, goals, tasks, today, nowMinute, allDayBlocks],
   );
 
   /**
@@ -269,6 +265,29 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
    * the cost `handleDragMove`'s identity check already exists to avoid. See
    * `plan/previewCache.ts` for what the walk costs and what the memo saves.
    */
+  /*
+   * The longest unbooked run on each day, for the heading's `fits` / `full`
+   * chip. Computed only while something is in the air — it is seven passes
+   * over the week's placements, and at rest nothing reads it.
+   *
+   * `WHOLE_DAY`, not `ORDINARY_DAY`: this answers a question about a MANUAL
+   * drop, and a manual drop lands wherever it is aimed. Measuring it against
+   * the region the app aims at on its own would call a day full while 21:00
+   * sat empty under the cursor.
+   *
+   * `NO_PAST_LIMIT` for the same reason every manual path passes it: dropping
+   * onto this morning is allowed, so the elapsed part of today is not clipped
+   * away before the gaps are measured.
+   */
+  const dayGapMin = useMemo(
+    () => (drag
+      ? days.map((date) => longestFreeGap(
+        date, WHOLE_DAY, [], spansOn(goals, tasks, date), NO_PAST_LIMIT, allDayBlocks,
+      ))
+      : undefined),
+    [drag, days, goals, tasks, allDayBlocks],
+  );
+
   const previewCache = useRef(makePreviewCache());
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
   const [showUnestimated, setShowUnestimated] = useState(false);
@@ -306,7 +325,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     const date = monthDraft;
     setMonthDraft(null);
     if (!date) return;
-    actions.createTaskAt(title, date, aimFor(date, availability, liveNow()), DEFAULT_SLOT_MIN);
+    actions.createTaskAt(title, date, aimFor(date, liveNow()), DEFAULT_SLOT_MIN);
   }
 
   /**
@@ -433,7 +452,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
        * refusing: the column is droppable now, so a keypress that refused
        * where a drag succeeded would be the two gestures disagreeing.
        */
-      const aim = aimFor(date, availability, liveNow());
+      const aim = aimFor(date, liveNow());
       const placed = focusedItem.kind === 'task'
         ? actions.scheduleTask(focusedItem.id, date, aim)
         : focusedItem.goalId
@@ -464,7 +483,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [focusedItem, weekStart, availability, isPast, draft]);
+  }, [focusedItem, weekStart, isPast, draft]);
 
   function handleDragStart(e: DragStartEvent) {
     const data = e.active.data.current as PlanDragData | undefined;
@@ -577,7 +596,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
      * still takes the drop at its first free gap.
      */
     if (planMode === 'month') {
-      const aim = aimFor(date, availability, liveNow());
+      const aim = aimFor(date, liveNow());
       if (data.kind === 'task') actions.scheduleTask(data.id, date, aim, { blockId: data.blockId });
       else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim, { blockId: data.blockId });
       return;
@@ -644,7 +663,6 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
         <div className="min-w-0 md:pl-[18px]">
           <WeekHeader
             weekStart={weekStart}
-            today={today}
             isPast={isPast}
             capacity={capacity}
             mode={planMode}
@@ -668,11 +686,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             />
           )}
 
-          <PlanNotice
-            needsHours={availability.length === 0}
-            showHint={planHint}
-            onOpenSettings={onOpenSettings}
-          />
+          <PlanNotice showHint={planHint} />
 
           {planMode === 'month' && monthDraft && (
             <BlockComposer
@@ -700,11 +714,11 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             days={days}
             today={today}
             nowMinute={nowMinute}
-            windows={availability}
             scrollWindow={scrollWindow}
             readOnly={isPast}
             dayCapacity={capacity.days}
             dragDurationMin={drag?.data.durationMin ?? null}
+            dayGapMin={dayGapMin}
             onCreate={(date, span) => setDraft({ date, span })}
             scrollerRef={scrollerRef}
             gridRef={gridRef}

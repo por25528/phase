@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { dayBusySpans } from './busyLayout';
 import { assignLanes, DAY_START_MIN, DAY_END_MIN } from './grid';
 import { weekCapacity } from './capacity';
-import type { AvailabilityWindow, BusyBlock } from '../db/types';
+import type { BusyBlock } from '../db/types';
 
 const DAY = '2026-08-04';
 
@@ -79,15 +79,10 @@ describe('dayBusySpans', () => {
 
   it('matches capacity blockedBy for both all-day preference values', () => {
     const blocks = [allDay('Conference'), timed('standup', 540, 600)];
-    const windows: AvailabilityWindow[] = Array.from({ length: 7 }, (_, dow) => ({
-      dow, startMin: 0, endMin: 1440,
-    }));
-
     for (const allDayBlocks of [false, true]) {
       const layoutTitles = dayBusySpans(DAY, blocks, allDayBlocks).map((span) => span.title);
       const capacityTitles = weekCapacity({
         week: '2026-08-03',
-        windows,
         blocks,
         leaves: [],
         tasks: [],

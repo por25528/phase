@@ -13,12 +13,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async () => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async (): Promise<'week' | 'month'> => 'week'),
@@ -59,7 +57,7 @@ beforeAll(() => {
 const NODE: GoalNode = { id: 'n1', title: 'Implement parser' };
 const GOAL: Goal = { id: 'g', title: '6.1200', nodes: [NODE] };
 
-async function mount(freeDay?: { date: string; freeMin: number }) {
+async function mount(freeDay?: { date: string; gapMin: number }) {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
     goals: [structuredClone(GOAL)], habits: [], tasks: [], sessions: [],
@@ -110,22 +108,24 @@ describe('the breakdown proposal', () => {
   it('quotes priced work and the next free day separately', async () => {
     const today = todayStr();
     const tomorrow = addDays(today, 1);
-    await mount({ date: tomorrow, freeMin: 85 });
+    await mount({ date: tomorrow, gapMin: 85 });
 
     paste('Read chapter 7 — 45m\nProblems 1–15 — 1h\nMock quiz');
 
     const estimate = fmtMinutes(45 + 60);
     const day = dayLabel(tomorrow, today);
-    const free = fmtMinutes(85);
+    // "open", not "free": the figure is the widest unbooked RUN on the day,
+    // which is what you could actually sit down for.
+    const open = fmtMinutes(85);
     const line = screen.getByText(new RegExp(`${day} has`));
-    expect(line.textContent).toBe(`${estimate} · 1 unestimated · ${day} has ${free} free`);
+    expect(line.textContent).toBe(`${estimate} · 1 unestimated · ${day} has ${open} open`);
     expect(line.textContent).toContain('· 1 unestimated');
   });
 
   it('discloses unestimated rows when only free time is priced', async () => {
     const today = todayStr();
     const tomorrow = addDays(today, 1);
-    await mount({ date: tomorrow, freeMin: 85 });
+    await mount({ date: tomorrow, gapMin: 85 });
 
     paste('Read the spec\nWrite the lexer');
 

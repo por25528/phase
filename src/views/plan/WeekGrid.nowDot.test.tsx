@@ -24,7 +24,6 @@ function mount(today: string, nowMinute: number | null) {
     days: DAYS,
     today,
     nowMinute,
-    windows: [],
     scrollWindow: RANGE,
     scrollerRef: createRef<HTMLDivElement>(),
     gridRef: createRef<HTMLDivElement>(),

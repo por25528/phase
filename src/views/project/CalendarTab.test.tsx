@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
+import type { Goal, GoalNode, Session } from '../../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -10,12 +10,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async (): Promise<'week' | 'month'> => 'week'),
@@ -56,14 +54,12 @@ beforeAll(() => {
 
 // A Wednesday, Mon–Fri 09:00–18:00.
 const NOW = new Date(2026, 7, 12, 8, 0);
-const HOURS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1080 }));
 
 const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
 
 async function mount(goals: Goal[]) {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({ goals: structuredClone(goals), habits: [], tasks: [], sessions: [] });
-  dbMocks.loadAvailability.mockResolvedValueOnce(HOURS);
   const store = await import('../../state/store');
   await store.initStore();
   const { CalendarTab } = await import('./CalendarTab');

@@ -1,8 +1,7 @@
-import type { AvailabilityWindow, BusyBlock, Goal } from '../db/types';
+import type { Goal } from '../db/types';
 import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
-import { goalEffort } from './effort';
-import { goalHealth, type Health } from './health';
-import { fmtD, parseD } from './dates';
+import { parseD } from './dates';
+import { isFullyBlocked } from './plan';
 import { firstBlockedLeaf } from './board';
 
 /**
@@ -66,7 +65,16 @@ export function nowFocus(items: DailyWorkItem[], nowMinute: number): NowFocus | 
 
 // ── Attention ─────────────────────────────────────────────────────────────────
 
-export type AttentionKind = 'at-risk' | 'blocked';
+/**
+ * What Today interrupts you about.
+ *
+ * ONE kind, not two. `at-risk` came from `goalHealth`, which compared the work
+ * remaining against the free hours before a deadline — and free hours no
+ * longer exist, so there is no arithmetic left that could call a goal doomed.
+ * `blocked` never needed them: it is `isFullyBlocked`, a fact about the tree,
+ * and a goal with nothing startable is worth a row whatever the calendar says.
+ */
+export type AttentionKind = 'blocked';
 
 export interface AttentionItem {
   id: string;
@@ -91,51 +99,27 @@ export interface AttentionItem {
  * The board's focus summary showed five tiles of portfolio analytics above the
  * work, every visit, whether or not any of them applied — which trains a person
  * to skip the region, and a warning region that gets skipped is worse than none.
- * These are exceptions: something has slipped, something cannot be finished,
- * something cannot be started. A quiet day shows nothing here.
+ * These are exceptions: something cannot be started. A quiet day shows nothing
+ * here — which, with `at-risk` gone, is most days.
  */
 export const MAX_ATTENTION = 3;
 
 export function attentionItems(
   goals: Goal[],
   _sections: DailyWorkSections,
-  today: string,
-  windows: AvailabilityWindow[],
-  blocks: BusyBlock[],
-  allDayBlocks: boolean,
+  _today: string,
 ): AttentionItem[] {
   const out: AttentionItem[] = [];
 
-  /*
-   * Verdicts, in severity order, and only the two that need acting on.
-   * `Tight` is deliberately absent: it is a state to be aware of when you open
-   * the goal, not one to interrupt a Tuesday morning with.
-   */
-  const verdicts = goals
-    .filter((g) => !g.completedAt)
-    .map((g) => ({
-      goal: g,
-      verdict: goalHealth({ goal: g, effort: goalEffort(g), today, windows, blocks, allDayBlocks }),
-    }));
-
-  const byKind = (health: Health) => verdicts.filter((v) => v.verdict.health === health);
-
-  for (const { goal } of byKind('at-risk')) {
-    out.push({
-      id: `at-risk:${goal.id}`,
-      kind: 'at-risk',
-      goalId: goal.id,
-      text: goal.deadline
-        ? `${goal.title} will not fit before ${fmtD(goal.deadline)}`
-        : `${goal.title} will not fit before its deadline`,
-    });
-  }
-  for (const { goal } of byKind('blocked')) {
+  for (const goal of goals) {
+    if (goal.completedAt) continue; // archived projects have no exceptions left
+    if (!isFullyBlocked(goal)) continue;
+    const first = firstBlockedLeaf(goal.nodes);
     out.push({
       id: `blocked:${goal.id}`,
       kind: 'blocked',
       goalId: goal.id,
-      ...(firstBlockedLeaf(goal.nodes) ? { nodeId: firstBlockedLeaf(goal.nodes)!.id } : {}),
+      ...(first ? { nodeId: first.id } : {}),
       text: `${goal.title} has nothing that can be started`,
     });
   }

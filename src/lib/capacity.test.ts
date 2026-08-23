@@ -1,18 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import type { BusyBlock, AvailabilityWindow, Task } from '../db/types';
+import type { BusyBlock, Task } from '../db/types';
 import type { PlannedLeaf } from './plan';
-import { capacityBefore, freeMinutes, MAX_FORECAST_DAYS, mergeIntervals, workloadOf, weekCapacity, normalizeEstimate, type Now } from './capacity';
+import { mergeIntervals, workloadOf, weekCapacity, normalizeEstimate, type Now } from './capacity';
 import { makeBlock } from './blocks';
 
-// Mon–Fri 09:00–18:00 (540 min window), weekend off.
-const WINDOWS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({
-  dow, startMin: 540, endMin: 1080,
-}));
-
-// 2026-07-27 Mon, 07-28 Tue, 07-29 Wed, 08-01 Sat
+// 2026-07-27 Mon, 07-28 Tue
 const MON = '2026-07-27';
 const TUE = '2026-07-28';
-const SAT = '2026-08-01';
 
 // "Now" is Monday at 00:00 unless a test says otherwise, so the whole week is ahead.
 const EARLY: Now = { date: MON, minute: 0 };
@@ -75,92 +69,14 @@ describe('mergeIntervals', () => {
   });
 });
 
-describe('freeMinutes', () => {
-  it('returns the full window when nothing is booked', () => {
-    expect(freeMinutes(TUE, WINDOWS, [], EARLY, true)).toBe(540);
-  });
-
-  it('returns zero on a day with no window', () => {
-    expect(freeMinutes(SAT, WINDOWS, [], EARLY, true)).toBe(0);
-  });
-
-  it('subtracts a meeting inside the window', () => {
-    expect(freeMinutes(TUE, WINDOWS, [block(TUE, 600, 660)], EARLY, true)).toBe(480);
-  });
-
-  it('does NOT double-count overlapping meetings', () => {
-    // 10:00-11:00 and 10:30-12:00 overlap; union is 10:00-12:00 = 120 min.
-    const blocks = [block(TUE, 600, 660), block(TUE, 630, 720)];
-    expect(freeMinutes(TUE, WINDOWS, blocks, EARLY, true)).toBe(540 - 120);
-  });
-
-  it('ignores a meeting entirely outside the window', () => {
-    // 22:00-23:00 is past an 18:00 window end.
-    expect(freeMinutes(TUE, WINDOWS, [block(TUE, 1320, 1380)], EARLY, true)).toBe(540);
-  });
-
-  it('clips a meeting that straddles the window start', () => {
-    // 08:00-10:00 overlaps the window only from 09:00 → 60 min consumed.
-    expect(freeMinutes(TUE, WINDOWS, [block(TUE, 480, 600)], EARLY, true)).toBe(480);
-  });
-
-  it('ignores blocks belonging to another day', () => {
-    expect(freeMinutes(TUE, WINDOWS, [block(MON, 600, 660)], EARLY, true)).toBe(540);
-  });
-
-  it('clamps at zero when the day is over-booked', () => {
-    expect(freeMinutes(TUE, WINDOWS, [block(TUE, 0, 1440)], EARLY, true)).toBe(0);
-  });
-
-  describe('remaining capacity, not nominal', () => {
-    it('gives a past day zero', () => {
-      const now: Now = { date: TUE, minute: 0 };
-      expect(freeMinutes(MON, WINDOWS, [], now, true)).toBe(0);
-    });
-
-    it('clips today to the current minute', () => {
-      // Now is Tuesday 15:00 (900). Window 09:00-18:00 → 180 min left.
-      const now: Now = { date: TUE, minute: 900 };
-      expect(freeMinutes(TUE, WINDOWS, [], now, true)).toBe(180);
-    });
-
-    it('gives zero once today\'s window has closed', () => {
-      const now: Now = { date: TUE, minute: 1200 }; // 20:00, past an 18:00 end
-      expect(freeMinutes(TUE, WINDOWS, [], now, true)).toBe(0);
-    });
-
-    it('ignores a meeting that already finished today', () => {
-      // Now 15:00; a 10:00-11:00 meeting is already spent, not deducted again.
-      const now: Now = { date: TUE, minute: 900 };
-      expect(freeMinutes(TUE, WINDOWS, [block(TUE, 600, 660)], now, true)).toBe(180);
-    });
-
-    it('deducts only the remaining part of an in-progress meeting', () => {
-      // Now 15:00; meeting 14:00-16:00 → only 15:00-16:00 (60 min) still costs.
-      const now: Now = { date: TUE, minute: 900 };
-      expect(freeMinutes(TUE, WINDOWS, [block(TUE, 840, 960)], now, true)).toBe(120);
-    });
-
-    it('leaves future days at their full window', () => {
-      const now: Now = { date: MON, minute: 900 };
-      expect(freeMinutes(TUE, WINDOWS, [], now, true)).toBe(540);
-    });
-  });
-
-  describe('all-day blocks', () => {
-    const allDay: BusyBlock = {
-      date: TUE, startMin: 0, endMin: 1440, title: 'Conference', allDay: true,
-    };
-
-    it('zeroes the day when allDayBlocks is on', () => {
-      expect(freeMinutes(TUE, WINDOWS, [allDay], EARLY, true)).toBe(0);
-    });
-
-    it('is ignored when allDayBlocks is off', () => {
-      expect(freeMinutes(TUE, WINDOWS, [allDay], EARLY, false)).toBe(540);
-    });
-  });
-});
+/*
+ * `freeMinutes`, `remainingWindow` and `capacityBefore` are gone with the
+ * availability windows they priced. Every one of them answered "how much of
+ * this day is still available", and nothing asks any more — `weekCapacity`
+ * reports COMMITMENTS, and `longestFreeGap` in slot.ts answers the narrower
+ * question "is there a run long enough on this day", measured against
+ * occupancy rather than against a window.
+ */
 
 describe('workloadOf', () => {
   it('is empty for no commitments', () => {
@@ -214,7 +130,6 @@ describe('workloadOf', () => {
 describe('weekCapacity', () => {
   const base = {
     week: MON,
-    windows: WINDOWS,
     blocks: [] as BusyBlock[],
     leaves: [] as PlannedLeaf[],
     tasks: [] as Task[],
@@ -230,9 +145,6 @@ describe('weekCapacity', () => {
     expect(out.days[6].date).toBe('2026-08-02');
   });
 
-  it('totals free minutes over five working days', () => {
-    expect(weekCapacity(base).freeMin).toBe(540 * 5);
-  });
 
   /**
    * "Planned" means ON THE CALENDAR — a day AND a start minute, the same
@@ -277,13 +189,18 @@ describe('weekCapacity', () => {
     expect(out.days.every((d) => d.plannedMin === 0 && d.backlogMin === 0)).toBe(true);
   });
 
-  it('still calls the week over-committed when the excess is unplaced', () => {
-    // The whole week is 45h; commit 50h of unplaced work to it.
+  /*
+   * Unplaced commitment is `backlogMin` and never `plannedMin`. There is no
+   * over-commitment verdict left to check it against — nothing weighs a week
+   * against available hours — but the split is what the rail beside the header
+   * partitions on, so it still has to hold.
+   */
+  it('reports unplaced commitment separately from what is on the calendar', () => {
     const leaves = Array.from({ length: 50 }, (_, i) =>
       leaf({ nodeId: `n${i}`, estimateMin: 60 }));
     const out = weekCapacity({ ...base, leaves });
     expect(out.plannedMin).toBe(0);
-    expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(true);
+    expect(out.backlogMin).toBe(50 * 60);
   });
 
   it('charges an unestimated anyday leaf to the week count only', () => {
@@ -394,20 +311,20 @@ describe('weekCapacity', () => {
   });
 });
 
-/**
- * "Free" is two different questions depending on tense, and answering the
- * forward-looking one about a day that has been and gone produces a falsehood.
+/*
+ * This describe used to be about the one tense-sensitive figure in the app:
+ * `freeMin` reported what a PAST day held rather than what was left of it, so
+ * a retrospective read "you had six hours and planned two" instead of "you
+ * have nothing left". The figure is gone with the availability windows that
+ * priced it, and every figure that remains is a COMMITMENT — which a Thursday
+ * does not make less true about a Monday.
  *
- * `remainingWindow` returns null for any date before `now.date`, so every past
- * day reported 0 free — and with anything planned on it that is
- * `isOverCommitted`, so a whole past week rendered in warning red ("0m free ·
- * 6h planned") and, on a Thursday, so did Monday–Wednesday of the current week.
+ * What survives is the check that the clock changes nothing.
  */
-describe('weekCapacity in the past tense', () => {
+describe('weekCapacity is indifferent to the clock', () => {
   const THU = '2026-07-30';
   const base = {
     week: MON,
-    windows: WINDOWS,
     blocks: [] as BusyBlock[],
     leaves: [] as PlannedLeaf[],
     tasks: [] as Task[],
@@ -416,60 +333,34 @@ describe('weekCapacity in the past tense', () => {
     hasData: true,
   };
 
-  it('reports what an elapsed day HELD, not what is left of it', () => {
-    const out = weekCapacity(base);
-    expect(out.days.find((d) => d.date === MON)?.freeMin).toBe(540);
-    expect(out.days.find((d) => d.date === TUE)?.freeMin).toBe(540);
-  });
-
-  it('still clamps today to the hours actually remaining', () => {
-    const out = weekCapacity(base);
-    // Window 09:00–18:00, now is 12:00 → six hours left.
-    expect(out.days.find((d) => d.date === THU)?.freeMin).toBe(360);
-  });
-
-  /**
-   * The week total is the sum of the day figures, so the header and the day
-   * headings beneath it describe the same span.
-   *
-   * Clamping the week to "what is still left" instead sounds more actionable,
-   * but `plannedMin` counts the WHOLE week's commitments including the elapsed
-   * days — and `isOverCommitted` compares the two. An ordinary Thursday with
-   * Monday's work still on the board therefore read as over-committed, turning
-   * the header red above a grid of perfectly healthy day chips.
-   */
-  it('sums the day figures, so it cannot contradict the grid beneath it', () => {
-    const out = weekCapacity(base);
-    expect(out.freeMin).toBe(out.days.reduce((sum, d) => sum + d.freeMin, 0));
-    // Mon–Wed full (540 × 3) + Thu's remaining 360 + Fri full 540; weekend off.
-    expect(out.freeMin).toBe(540 * 3 + 360 + 540);
-  });
-
-  it('does not call an ordinary mid-week Thursday over-committed', () => {
+  it('reports an elapsed day\'s commitments in full', () => {
     const out = weekCapacity({
       ...base,
-      leaves: [leaf({ estimateMin: 120, blocks: [makeBlock(MON, 600, 120)] })], // Monday's, already spent
+      leaves: [leaf({ estimateMin: 120, blocks: [makeBlock(MON, 600, 120)] })],
     });
-    expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(false);
-  });
-
-  it('reports a finished week as the capacity it had, so it cannot read as over-committed', () => {
-    const out = weekCapacity({
-      ...base,
-      now: { date: '2026-08-10', minute: 0 },
-      leaves: [leaf({ estimateMin: 120, blocks: [makeBlock(TUE, 600, 120)] })],
-    });
-    expect(out.freeMin).toBe(540 * 5);
+    expect(out.days.find((d) => d.date === MON)?.plannedMin).toBe(120);
     expect(out.plannedMin).toBe(120);
-    expect(out.plannedMin + out.backlogMin > out.freeMin).toBe(false);
+  });
+
+  it('answers identically from a week that has entirely passed', () => {
+    const leaves = [leaf({ estimateMin: 120, blocks: [makeBlock(TUE, 600, 120)] })];
+    const during = weekCapacity({ ...base, leaves });
+    const after = weekCapacity({ ...base, leaves, now: { date: '2026-08-10', minute: 0 } });
+    expect(after).toEqual(during);
+  });
+
+  it('sums the day figures, so it cannot contradict the grid beneath it', () => {
+    const out = weekCapacity({
+      ...base,
+      leaves: [
+        leaf({ nodeId: 'a', estimateMin: 120, blocks: [makeBlock(MON, 600, 120)] }),
+        leaf({ nodeId: 'b', estimateMin: 60, blocks: [makeBlock(THU, 600, 60)] }),
+      ],
+    });
+    expect(out.plannedMin).toBe(out.days.reduce((sum, d) => sum + d.plannedMin, 0));
   });
 });
 
-/*
- * `normalizeEstimate` is the single definition of "a usable estimate", read by
- * capacity, the weighted roll-up, the unestimated list and the store. It had no
- * direct tests, and that is exactly how it shipped returning 0.
- */
 describe('normalizeEstimate', () => {
   it('rounds a usable value to whole minutes', () => {
     expect(normalizeEstimate(45)).toBe(45);
@@ -525,41 +416,3 @@ describe('normalizeEstimate', () => {
  * are a cache of whatever range was last fetched — so the health verdict built
  * on it has to be conservative in the same direction.
  */
-describe('capacityBefore', () => {
-  it('sums the free minutes of every day up to and including the deadline', () => {
-    // Mon 00:00 → deadline Tue. Two full 540-minute windows.
-    expect(capacityBefore(TUE, WINDOWS, [], EARLY, true)).toBe(1080);
-  });
-
-  it('counts only what is left of today', () => {
-    const noon: Now = { date: MON, minute: 720 };
-    // Monday 12:00–18:00 is 360, plus Tuesday's whole 540.
-    expect(capacityBefore(TUE, WINDOWS, [], noon, true)).toBe(900);
-  });
-
-  it('skips days with no availability window at all', () => {
-    // Sat and Sun are off, so a Saturday deadline adds nothing after Friday.
-    expect(capacityBefore(SAT, WINDOWS, [], EARLY, true))
-      .toBe(capacityBefore('2026-07-31', WINDOWS, [], EARLY, true));
-  });
-
-  it('deducts meetings, like every other capacity figure', () => {
-    expect(capacityBefore(MON, WINDOWS, [block(MON, 600, 660)], EARLY, true)).toBe(480);
-  });
-
-  it('reports a passed deadline as no capacity rather than as negative time', () => {
-    expect(capacityBefore('2026-07-01', WINDOWS, [], EARLY, true)).toBe(0);
-  });
-
-  /**
-   * Past the horizon the sum is so large that every goal is trivially fine,
-   * which is arithmetic with no opinion rather than a forecast. `null` lets
-   * `goalHealth` say "too far out" instead of "on track".
-   */
-  it('refuses a deadline past the forecast horizon', () => {
-    const far = new Date(Date.UTC(2026, 6, 27));
-    far.setUTCDate(far.getUTCDate() + MAX_FORECAST_DAYS + 1);
-    const iso = far.toISOString().slice(0, 10);
-    expect(capacityBefore(iso, WINDOWS, [], EARLY, true)).toBeNull();
-  });
-});

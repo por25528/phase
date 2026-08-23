@@ -23,12 +23,10 @@ const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: Habit[]; tasks: Task[]; sessions: never[] }> => ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async () => [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1080 }))),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => ['habits', 'stats', 'availability']),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async (): Promise<'week' | 'month'> => 'week'),
@@ -164,7 +162,7 @@ describe('the three views render against a populated store', () => {
   it('Today leads with one thing and stays out of the way otherwise', async () => {
     await readyStore();
     const { Today } = await import('./Today');
-    const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+    const html = renderToStaticMarkup(createElement(Today, {}));
 
     expect(html).not.toContain('Loading…');
     /*
@@ -190,7 +188,7 @@ describe('the three views render against a populated store', () => {
     expect(html).not.toContain('Loading your plan'); // the hydration skeleton
     expect(html).toContain('To plan');          // the backlog rail
     expect(html).toContain('Investor deck');    // an unplanned step, in the rail
-    expect(html).toContain('free');             // the capacity readout
+    expect(html).toContain('planned');          // the capacity readout
     expect(html).toContain('Read a paper');     // the habits panel
   });
 
@@ -208,13 +206,13 @@ describe('the three views render against a populated store', () => {
     // The month's weekday strip, and none of the week grid's hour axis.
     expect(html).toContain('Sun');
     expect(html).not.toContain('8am');
-    // Month mode now reports a MONTH's load — but the intent of the original
+    // Month mode reports a MONTH's load, and the intent of the original
     // assertion stands: what must never appear is a WEEK's figures under a
     // month heading. The gutter is the proof of provenance. It renders one row
     // per week the grid draws, from the same `monthCapacity` the header's
     // figures come from, so its presence means the month path ran rather than
     // the week's numbers leaking through.
-    expect(html).toContain('free');
+    expect(html).toContain('planned');
     expect(html).toContain('month-gutter-row');
   });
 
@@ -285,14 +283,14 @@ describe('the three views render against a populated store', () => {
       // there is nothing to do.
       await emptyStore();
       const { Today } = await import('./Today');
-      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+      const html = renderToStaticMarkup(createElement(Today, {}));
       expect(html).toContain('Nothing committed to today');
     });
 
     it('offers work to place when projects exist but the day is empty', async () => {
       await readyStore();
       const { Today } = await import('./Today');
-      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+      const html = renderToStaticMarkup(createElement(Today, {}));
 
       expect(html).toContain('aria-label="Free time"');
       expect(html).toContain('Investor deck');       // one project's next action

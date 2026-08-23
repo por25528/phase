@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode, Task } from '../../db/types';
+import type { Goal, GoalNode, Task } from '../../db/types';
 import { makeBlock } from '../../lib/blocks';
 
 const dbMocks = vi.hoisted(() => ({
@@ -11,12 +11,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async (): Promise<'week' | 'month'> => 'week'),
@@ -56,14 +54,12 @@ beforeAll(() => {
 
 // A Wednesday, with Mon–Fri 09:00–11:00 available.
 const TODAY = new Date(2026, 7, 12, 8, 0);
-const HOURS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 660 }));
 
 const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
 
 async function mount(goals: Goal[], tasks: Task[] = []) {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({ goals: structuredClone(goals), habits: [], tasks, sessions: [] });
-  dbMocks.loadAvailability.mockResolvedValueOnce(HOURS);
   const store = await import('../../state/store');
   await store.initStore();
   const { Today } = await import('../Today');
@@ -158,7 +154,10 @@ describe('recovering a day that slipped', () => {
     const store = await mount([{
       id: 'g',
       title: 'Big',
-      nodes: [leaf('marathon', { title: 'Marathon', plannedWeek: '2026-08-10', estimateMin: 600, blocks: [makeBlock('2026-08-10', 540, 600)] })],
+      // 13 hours, against the ordinary day's 12 — nothing inside the horizon
+      // can hold it. It was 600 minutes when a replan proposed inside a
+      // configurable window; the fixed span is wider, so the figure grew.
+      nodes: [leaf('marathon', { title: 'Marathon', plannedWeek: '2026-08-10', estimateMin: 780, blocks: [makeBlock('2026-08-10', 540, 780)] })],
     }]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Replan' }));
