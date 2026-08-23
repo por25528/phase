@@ -135,4 +135,20 @@ describe('the backlog rail', () => {
     await mountRail({ goals: [PROJECT], tasks: [] });
     expect(screen.queryByRole('button', { name: /^Delete "/ })).toBeNull();
   });
+
+  it('parks a step from its row, and offers no park on a loose task', async () => {
+    const { store, user } = await mountRail({ goals: [PROJECT], tasks: [LOOSE] });
+    await user.click(screen.getByRole('button', { name: 'Park "Estimate time for each study goal"' }));
+    const node = store.getState().goals[0].nodes.find((n) => n.id === 'n2');
+    expect(node?.status).toBe('parked');
+    expect(screen.queryByRole('button', { name: 'Park "Estimate time for each study goal"' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Park "Buy a new keyboard"' })).toBeNull();
+  });
+
+  it('marks exactly one head row per group', async () => {
+    await mountRail({ goals: [PROJECT], tasks: [LOOSE] });
+    const heads = document.querySelectorAll('[data-backlog-head]');
+    expect(heads.length).toBe(2);
+    expect(heads[0].textContent).toContain('Break each topic into daily study goals');
+  });
 });

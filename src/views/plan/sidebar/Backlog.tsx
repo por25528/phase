@@ -9,7 +9,9 @@ import { durationOf } from '../../../lib/slot';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
-import { IconArrowUpRight, IconCheck, IconX } from '../../../components/Icons';
+import {
+  IconArrowUpRight, IconCheck, IconCircle, IconX,
+} from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 import { sectionLabel } from '../../../components/sectionLabel';
 import { projectSpineClass } from '../../../lib/projectColour';
@@ -44,15 +46,22 @@ import { projectSpineClass } from '../../../lib/projectColour';
  * that was the whole problem: the rail lists only unplaced work from Now/Next
  * projects, so being the sole host made `estimateMin` unreachable for most of
  * the data the capacity engine reads.
+ *
+ * The HEAD of each group — its first shown row — is drawn as a card: more
+ * padding, the body size, a bordered panel. It is the row most worth dragging
+ * (the cap sorts by due, so it is the project's most urgent work) and the one
+ * a 249px rail made no easier to grab than the rest. One per group, never
+ * one per rail: each project has its own next thing.
  */
 function BacklogRow({
-  item, onFocusItem, revealed, today,
+  item, onFocusItem, revealed, today, head,
 }: {
   item: BacklogItem;
   onFocusItem: (item: BacklogItem | null) => void;
   /** The palette sent the user to this row — mark it so the search has a visible answer. */
   revealed: boolean;
   today: string;
+  head: boolean;
 }) {
   const due = dueChip(item.due, today);
   const data: PlanDragData = {
@@ -69,6 +78,7 @@ function BacklogRow({
       ref={setNodeRef}
       id={revealDomId(item.kind, item.id)}
       data-backlog-row=""
+      {...(head ? { 'data-backlog-head': '' } : {})}
       {...containerDragAttributes(attributes, { keyboardDraggable: true })}
       {...listeners}
       aria-label={`${item.title} — drag onto a day, or press 1–7`}
@@ -83,9 +93,9 @@ function BacklogRow({
       // switching to Goals. That arms an undo now, but a mode still has to be
       // visible for as long as it is active — an undo is a way back, not a
       // warning, and it expires.
-      className={`group flex items-center gap-[6px] text-ui text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
-        isDragging ? 'opacity-40' : 'hover:bg-hover'
-      } ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
+      className={`group flex items-center gap-[6px] text-ink-soft px-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint rounded-[6px] ${
+        head ? 'py-[8px] text-body bg-panel border border-line-2' : 'py-[3px] text-ui'
+      } ${isDragging ? 'opacity-40' : 'hover:bg-hover'} ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
     >
       {/* The rail is 249px, so a title shares the row with a due chip and the
           estimate. Wrapping to a SECOND line rather than truncating on the
@@ -93,7 +103,7 @@ function BacklogRow({
           `6.006 Proble…` named nothing and named the same nothing. Two lines is
           the cap — past that it clips — and `title` still carries the full
           string for the rare overflow. */}
-      <span title={item.title} className="flex-1 min-w-0 line-clamp-2 break-words">{item.title}</span>
+      <span title={item.title} className={`flex-1 min-w-0 break-words ${head ? 'line-clamp-3' : 'line-clamp-2'}`}>{item.title}</span>
       {/* Only inside the next week, and always for anything overdue. Printing a
           date on every row would make the urgent ones harder to find, not
           easier — the sort already put them on top; this says why. */}
@@ -127,6 +137,22 @@ function BacklogRow({
       >
         <IconCheck size={13} />
       </button>
+      {/* Steps only: a loose Task has no status to park. */}
+      {item.kind === 'step' && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.setNodeStatus(item.id, 'parked');
+          }}
+          aria-label={`Park "${item.title}"`}
+          title="Park — set aside, not now"
+          className="quiet-control flex-none text-muted hover:text-ink rounded-[4px] hover:bg-hover"
+        >
+          <IconCircle size={13} />
+        </button>
+      )}
       {/*
         Loose tasks only. A goal's task belongs to its structure — it is deleted in
         the Goals view, where the tree it lives in is visible; offering that
@@ -326,13 +352,14 @@ export function Backlog({
                 </span>
               )}
             </div>
-            {group.shown.map((item) => (
+            {group.shown.map((item, idx) => (
               <BacklogRow
                 key={`${item.kind}:${item.id}`}
                 item={item}
                 onFocusItem={onFocusItem}
                 revealed={reveal?.kind === item.kind && reveal.id === item.id}
                 today={today}
+                head={idx === 0}
               />
             ))}
             {group.expandable && (
