@@ -122,11 +122,29 @@ function validSnapshot(snapshot) {
     && validNotice(snapshot.notice);
 }
 
+/**
+ * Every `type` in `AssistantAction` must appear here, and NOTHING enforces
+ * that but `assistantIpc.test.ts`.
+ *
+ * This module imports nothing from `src/` by design, so the union in
+ * `src/lib/assistantProtocol.ts` and this switch are two hand-kept lists — and
+ * a verb missing here does not fail to compile, does not throw, and does not
+ * log. It falls to `default` and the relay drops it, so the control in the
+ * overlay simply does nothing while the identical control in the embedded
+ * panel (which never crosses this seam) works. That is exactly how
+ * `complete-work` shipped broken: the checkbox on the shelf card looked live,
+ * did nothing on the ⌘Space overlay, and worked in the app.
+ *
+ * The test walks the union and asserts each verb is accepted, so the next one
+ * added cannot repeat it.
+ */
 function validAction(action) {
   if (!action || typeof action !== 'object') return false;
   switch (action.type) {
     case 'start-focus':
     case 'switch-focus':
+    // Ends the WORK, not the sitting — the shelf card's checkbox.
+    case 'complete-work':
       return validRef(action.ref);
     case 'pause-focus':
     case 'resume-focus':
