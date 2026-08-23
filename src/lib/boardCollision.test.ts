@@ -9,7 +9,7 @@ import { boardCollision } from './boardCollision';
  * because the defect is a distance comparison and a plausible-looking rect would
  * prove nothing.
  *
- * The last block covers the SECOND caller. `views/Plan.tsx` used to carry its
+ * The last block covers the OTHER callers. `views/Plan.tsx` used to carry its
  * own byte-for-byte copy of this function, so the keyboard-drag guarantee had
  * two homes and a fix to one would silently leave the other inert. There is one
  * home now, and the calendar's contract is asserted here rather than assumed —
@@ -129,5 +129,38 @@ describe('boardCollision, spent by the week calendar', () => {
     // a drop onto whichever day happened to be nearest.
     const offGrid = dayArgs({ x: 20, y: 640 }, rect(-200, -25, 600, 690));
     expect(boardCollision(offGrid)).toHaveLength(0);
+  });
+});
+
+/**
+ * The rule is only one rule while nobody re-rolls it. This is a source scan in
+ * the shape `designScale.test.ts` already uses: three surfaces had drifted into
+ * three copies of the same three lines — the week calendar's was byte-for-byte,
+ * the goal calendar's was an inline arrow at its `DndContext` that also handed
+ * dnd-kit a new function identity on every render — and each copy carried the
+ * keyboard fix with none of the reasoning that explains why it cannot be
+ * trimmed. Nothing above can catch a FOURTH copy, because a copy passes every
+ * assertion in this file by construction.
+ */
+describe('nobody re-rolls the collision rule', () => {
+  it('is the only module in src/ that reaches for pointerWithin', async () => {
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
+        return /\.tsx?$/.test(e.name) ? [full] : [];
+      });
+
+    // The rule itself, and this file — which names the symbol in its own prose
+    // and in the pattern two lines down.
+    const mine = [join('lib', 'boardCollision.ts'), join('lib', 'boardCollision.test.ts')];
+    const offenders = walk('src')
+      .filter((f) => !mine.some((m) => f.endsWith(m)))
+      .filter((f) => /\bpointerWithin\b/.test(readFileSync(f, 'utf8')));
+
+    expect(offenders).toEqual([]);
   });
 });

@@ -4,11 +4,12 @@ import { pointerWithin, rectIntersection, type CollisionDetection } from '@dnd-k
  * Which droppable the thing in the air is over — the pointer decides, and the
  * rects decide when there is no pointer.
  *
- * Spent by BOTH boards that need it: the Goals board (`views/Goals.tsx`) and
- * the week calendar (`views/Plan.tsx`). The name is historical — it was written
- * for the board and the calendar carried a byte-for-byte copy of it, with its
- * own twenty lines of the same reasoning, until the two were merged here. It is
- * not board-specific and nothing in it knows what a bay or a day column is.
+ * Spent by all THREE surfaces that drag onto a grid: the Goals board
+ * (`views/Goals.tsx`), the week calendar (`views/Plan.tsx`) and a goal's own
+ * calendar tab (`views/project/CalendarTab.tsx`). The name is historical — it
+ * was written for the board, and each calendar carried its own copy of the same
+ * three lines until they were folded in here. It is not board-specific and
+ * nothing in it knows what a bay or a day column is.
  *
  * **`closestCorners` cannot see an empty bay, and the Instrument board is what
  * made that fatal.** A bay is stretched to the height of the tallest column
@@ -48,16 +49,20 @@ import { pointerWithin, rectIntersection, type CollisionDetection } from '@dnd-k
  * keyboard case, where arrow keys move the dragging node rather than a cursor.
  * This is dnd-kit's own documented composite pattern for mixing sensor types
  * under one `collisionDetection`. **Do not simplify it back to bare
- * `pointerWithin`** — that regresses keyboard drops on both surfaces at once,
- * which is the cost of the two copies having become one.
+ * `pointerWithin`** — that regresses keyboard drops on all three surfaces at
+ * once, which is the cost of the copies having become one. Each of the three
+ * registers a `KeyboardSensor`, so each had the same latent hole; the goal
+ * calendar's inline copy carried the fix but none of the reasoning for it, and
+ * a reader trimming three lines there would have had nothing to warn them.
  *
  * There is deliberately no third `closestCorners` step: with nothing under the
  * pointer and nothing intersecting, the honest answer is that the card is off
  * the sheet and no drop is meant — a nearest-anything fallback is what put the
  * card somewhere nobody aimed at in the first place.
  *
- * Module scope, not an inline arrow at either `DndContext`: it is pure, and an
- * inline arrow would hand dnd-kit a new function identity on every render.
+ * Module scope, not an inline arrow at any of the three `DndContext`s: it is
+ * pure, and an inline arrow would hand dnd-kit a new function identity on every
+ * render — which is exactly what the goal calendar's copy did.
  *
  * `views/project/BoardTab.tsx` runs the same four-column pattern on
  * `closestCorners` and is NOT affected: its columns are `items-start` with a

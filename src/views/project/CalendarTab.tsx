@@ -4,8 +4,6 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  pointerWithin,
-  rectIntersection,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -18,6 +16,7 @@ import { WeekGrid } from '../plan/WeekGrid';
 import { DayBlocks } from '../plan/DayBlocks';
 import { WeekHeader } from '../plan/WeekHeader';
 import { aimMinuteFor, type PlanDragData } from '../plan/dropTarget';
+import { boardCollision } from '../../lib/boardCollision';
 import { scheduledByDate, type ScheduledItem } from '../../lib/scheduled';
 import { weekCapacity } from '../../lib/capacity';
 import { plannedLeaves, walkLeaves, weekOf } from '../../lib/plan';
@@ -125,10 +124,7 @@ export function CalendarTab({ goal }: { goal: Goal }) {
     <section>
       <DndContext
         sensors={sensors}
-        collisionDetection={(args) => {
-          const hits = pointerWithin(args);
-          return hits.length > 0 ? hits : rectIntersection(args);
-        }}
+        collisionDetection={boardCollision}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragCancel={() => { setDragTitle(null); setDragDuration(null); }}
