@@ -946,6 +946,97 @@ function vacating(
   return new Set(blocksOf(item).map((b) => b.id));
 }
 
+/**
+ * Where a manual placement of `item` on `date` would actually land.
+ *
+ * The ONE resolution. `scheduleNode`, `scheduleTask` and `previewPlacement`
+ * all call it, which is what makes "the preview and the write agree about
+ * where things land" true by construction rather than by a test keeping two
+ * copies of the arithmetic in step — the same rule `proposeReplan` already
+ * holds itself to, and the reason a replan uses the days and minutes the user
+ * already saw instead of recomputing at apply time.
+ *
+ * `startMin === null` means the day is booked solid: every gap clear of
+ * existing work is shorter than the block. It does NOT mean "outside your
+ * working hours" — `WHOLE_DAY` and `NO_PAST_LIMIT` are the unfenced manual
+ * region, and the two automatic replan paths deliberately do not come through
+ * here (they pass `windowForDate` and the real clock, because they are the app
+ * choosing an hour on your behalf).
+ *
+ * It raises no toast and writes nothing. The callers that need a refusal
+ * message build it from `placed`, which is returned for exactly that — so the
+ * refusal describes the same gaps the search was allowed to use.
+ */
+function resolvePlacement(
+  item: GoalNode | Task,
+  date: string,
+  aimMin: number,
+  opts: { blockId?: string; mode?: 'replace' | 'add' },
+): { startMin: number | null; durationMin: number; placed: ReturnType<typeof spansOn> } {
+  const moving = opts.blockId ? blocksOf(item).find((b) => b.id === opts.blockId) : undefined;
+  // The sitting keeps its own length when it moves; a fresh one is sized from
+  // the estimate, which is the only thing there is to go on.
+  const durationMin = moving?.minutes ?? durationOf(item.estimateMin);
+  const placed = spansOn(state.goals, state.tasks, date, vacating(item, opts));
+  const startMin = resolveSlot({
+    date,
+    aimMin,
+    durationMin,
+    span: WHOLE_DAY,
+    blocks: [], // slice 2 supplies real busy blocks
+    placed,
+    now: NO_PAST_LIMIT,
+    allDayBlocks: state.allDayBlocks,
+  });
+  return { startMin, durationMin, placed };
+}
+
+/**
+ * Where a drag currently in the air WOULD land — a dry run of the write.
+ *
+ * `store.ts` says of its scheduling actions that "views never call
+ * resolveSlot", and that rule stands: this is the store answering, not the
+ * view resolving. What it buys is the landing outline the week grid draws
+ * under a dragged block, which has to name the minute the drop will actually
+ * take rather than the minute the pointer is over. Those differ the moment the
+ * day has anything on it — `resolveSlot` slides a block to the nearest gap
+ * that fits — and an outline showing the raw aim would be a promise the drop
+ * then breaks, which is the exact failure `proposeReplan` exists to avoid on
+ * the other surface.
+ *
+ * It writes nothing, arms no undo and raises no toast. `null` covers three
+ * cases the caller treats identically, because all three mean "do not draw an
+ * outline": the item is gone, its project is frozen, or the day is booked
+ * solid. The last one is already stated in words by the day heading's `full`
+ * chip, so nothing is lost by the outline simply not appearing.
+ *
+ * `mode` is accepted so an Option-drag (add a sitting rather than move one)
+ * previews against the right occupancy — an ADD vacates nothing, so it has to
+ * find room BESIDE the sittings a move would have ignored.
+ */
+export function previewPlacement(
+  target: { kind: 'step' | 'task'; id: string; goalId: string | null },
+  date: string,
+  aimMin: number,
+  opts: { blockId?: string; mode?: 'replace' | 'add' } = {},
+): { startMin: number; durationMin: number } | null {
+  if (!isValidLocalDate(date)) return null;
+
+  let item: GoalNode | Task | null = null;
+  if (target.kind === 'task') {
+    item = state.tasks.find((t) => t.id === target.id) ?? null;
+  } else if (target.goalId && isActiveGoal(target.goalId)) {
+    const goal = state.goals.find((g) => g.id === target.goalId);
+    const node = goal ? findNode(goal.nodes, target.id) : null;
+    // A container is not schedulable, exactly as `scheduleNode` refuses one.
+    item = node && !node.children ? node : null;
+  }
+  if (!item) return null;
+
+  const { startMin, durationMin } = resolvePlacement(item, date, aimMin, opts);
+  return startMin === null ? null : { startMin, durationMin };
+}
+
 /*
  * `warnIfEstimateOverflows` lived here.
  *
@@ -2535,47 +2626,26 @@ export const actions = {
     const sourceNode = source ? findNode(source.nodes, nodeId) : null;
     if (!sourceNode || sourceNode.children) return false;
 
-    const moving = opts.blockId ? blocksOf(sourceNode).find((b) => b.id === opts.blockId) : undefined;
-    // The sitting keeps its own length when it moves; a fresh one is sized from
-    // the estimate, which is the only thing there is to go on.
-    const durationMin = moving?.minutes ?? durationOf(sourceNode.estimateMin);
-    const placed = spansOn(state.goals, state.tasks, day, vacating(sourceNode, opts));
     /*
      * A manual placement lands where it is aimed, at any minute of any day.
      *
-     * `WHOLE_DAY` is the fence coming off: the day's availability window used
-     * to bound this search, so a drop at 20:30 slid back to 17:00 and a drop
-     * on a day switched off was refused outright. `NO_PAST_LIMIT` is the same
-     * decision on the other axis — a person may drop a block on this morning
-     * because they are recording what actually happened, and that is exactly
-     * the case the automatic paths (`todayPlan`, `proposeReplan`) must keep
-     * refusing. The two are not the same question and are not flattened here.
-     *
-     * It also subsumes the ADJUSTMENT rule this used to spell out: dragging a
-     * 09:00 block at 2pm, or onto an earlier weekday, no longer needs a
-     * special case, because nothing distinguishes a rearrangement from a fresh
-     * booking any more — neither is clamped.
+     * The search itself is `resolvePlacement` — `WHOLE_DAY` and
+     * `NO_PAST_LIMIT`, the unfenced manual region — and the reason it is a
+     * shared function rather than inline arithmetic is `previewPlacement`
+     * below: the landing outline a drag draws has to name the minute this
+     * write will choose, and two copies of the same search is how those two
+     * come to disagree.
      *
      * What did NOT change is `placed`, and it is the whole of the collision
      * behaviour: the day's existing sittings are still subtracted, so
      * `resolveSlot` still slides this block to the nearest gap that fits it
      * rather than letting two bars claim the same minutes.
      */
-    const now = NO_PAST_LIMIT;
-    const startMin = resolveSlot({
-      date: day,
-      aimMin,
-      durationMin,
-      span: WHOLE_DAY,
-      blocks: [], // slice 2 supplies real busy blocks
-      placed,
-      now,
-      allDayBlocks: state.allDayBlocks,
-    });
+    const { startMin, durationMin, placed } = resolvePlacement(sourceNode, day, aimMin, opts);
     if (startMin === null) {
       // Same region and `now` as the search above, or the refusal describes
       // gaps the search was never allowed to use.
-      const gaps = freeIntervals(day, WHOLE_DAY, [], placed, now, state.allDayBlocks);
+      const gaps = freeIntervals(day, WHOLE_DAY, [], placed, NO_PAST_LIMIT, state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
       return false;
     }
@@ -2617,24 +2687,11 @@ export const actions = {
     const task = state.tasks.find((t) => t.id === taskId);
     if (!task || !isValidLocalDate(date)) return false;
 
-    const moving = opts.blockId ? blocksOf(task).find((b) => b.id === opts.blockId) : undefined;
-    const durationMin = moving?.minutes ?? durationOf(task.estimateMin);
-    const placed = spansOn(state.goals, state.tasks, date, vacating(task, opts));
-    // See `scheduleNode`: manual placement is unfenced on both axes, and
+    // See `scheduleNode`: one shared search, unfenced on both axes, and
     // `placed` is what still keeps two bars off the same minutes.
-    const now = NO_PAST_LIMIT;
-    const startMin = resolveSlot({
-      date,
-      aimMin,
-      durationMin,
-      span: WHOLE_DAY,
-      blocks: [],
-      placed,
-      now,
-      allDayBlocks: state.allDayBlocks,
-    });
+    const { startMin, durationMin, placed } = resolvePlacement(task, date, aimMin, opts);
     if (startMin === null) {
-      const gaps = freeIntervals(date, WHOLE_DAY, [], placed, now, state.allDayBlocks);
+      const gaps = freeIntervals(date, WHOLE_DAY, [], placed, NO_PAST_LIMIT, state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
       return false;
     }

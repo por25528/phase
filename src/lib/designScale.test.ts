@@ -392,8 +392,17 @@ describe('hover-revealed controls', () => {
  * while something is in the air. Spending it on ordinary empty states, in four
  * board columns at once, is how it stops meaning anything.
  *
- * The two survivors are semantic: the drop preview itself, and a calendar block
- * whose height is a guessed hour rather than an estimate somebody typed.
+ * The survivors are all semantic, and all say some version of "a block is going
+ * to be here and is not here yet":
+ *
+ *   DayColumn      the drawn-block preview, before the composer opens
+ *   LandingOutline where a dragged block will actually land, resolved
+ *   EventBlock     TWO uses — a block whose height is a guessed hour rather
+ *                  than an estimate somebody typed, and the HOLE a bar leaves
+ *                  behind while it is in the air. The second is the same
+ *                  sentence as the outline, said from the other end: a bar in
+ *                  flight has a place it came from and a place it is going, and
+ *                  both are drawn as pending rather than as absent.
  */
 describe('dashed borders', () => {
   it('are reserved for drop targets and guessed durations', () => {
@@ -401,6 +410,7 @@ describe('dashed borders', () => {
     expect([...new Set(files)].sort()).toEqual([
       'views/plan/DayColumn.tsx',
       'views/plan/EventBlock.tsx',
+      'views/plan/LandingOutline.tsx',
     ]);
   });
 });

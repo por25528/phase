@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { minuteToPx, PX_PER_MINUTE, Z_BLOCK_REVEALED } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
+import { BlockTime, blockFootCls, blockPadCls, blockTimeCls, MIN_BLOCK_PX, FOOTER_BLOCK_PX } from './blockChrome';
 
 /**
  * The inline title field for a block being drawn.
@@ -14,6 +15,12 @@ import { clockLabel } from '../../lib/clock';
  * `resolved` guards the three exits against each other: committing unmounts
  * the field, which fires `blur`, which would otherwise cancel the commit that
  * had just succeeded.
+ *
+ * **It is the block it is about to become.** Same capped spine, same padding,
+ * same title size, and the span on the same footer rule where the block will
+ * keep it. That is not decoration: a composer whose title measured 14px while
+ * every bar on the grid measured 12px made the one field on the calendar the
+ * one element that did not belong to the calendar.
  */
 export function BlockComposer({
   startMin, durationMin, onCommit, onCancel, variant = 'block', label,
@@ -49,39 +56,136 @@ export function BlockComposer({
   }
 
   const isBar = variant === 'bar';
+  const heightPx = Math.max(durationMin * PX_PER_MINUTE, MIN_BLOCK_PX);
+  /*
+   * The same threshold the bar uses, from the same constant. Below it there is
+   * no room for a rule, so the field and the span share one row — which is
+   * also the only shape `variant: 'bar'` has ever had.
+   */
+  const stacked = !isBar && heightPx >= FOOTER_BLOCK_PX;
+
+  /*
+   * The block variant prints what the BAR prints — the full span where the
+   * column can hold one, the start alone where it cannot (`BlockTime`, and the
+   * `@container` note in index.css). The composer's whole argument is that it
+   * is the bar it is about to become, and a readout that changed on commit
+   * would be the one place that stopped being true.
+   *
+   * The `bar` variant is a full-width row on the month grid, where there is no
+   * time axis and therefore no drawn span at all — so it keeps the `label` its
+   * caller hands it, whole.
+   */
+  const startLabel = clockLabel(startMin);
+  const endLabel = clockLabel(startMin + durationMin);
 
   return (
     <div
-      className={`rounded-[6px] border border-accent bg-panel px-[5px] py-[2px] overflow-hidden text-badge leading-[1.2] ${
-        isBar ? 'mb-[6px] flex items-baseline gap-[8px]' : 'absolute left-[2px] right-[2px]'
+      className={`rounded-[6px] border border-accent bg-panel overflow-hidden text-badge leading-[1.2] ${
+        isBar
+          ? 'mb-[6px] flex items-baseline gap-[8px] px-[5px] py-[2px]'
+          : `blk-cq absolute left-[2px] right-[2px] ${blockPadCls}`
       }`}
       style={isBar ? undefined : {
         top: `${minuteToPx(startMin)}px`,
-        height: `${durationMin * PX_PER_MINUTE}px`,
+        height: `${heightPx}px`,
         zIndex: Z_BLOCK_REVEALED,
       }}
-      // The blocks' own buttons do this so a pointerdown does not start a drag
-      // (EventBlock.tsx:137, :153). Typing in a field inside the grid needs the
-      // same protection.
-      onPointerDown={(e) => e.stopPropagation()}
+      /*
+       * The blocks' own buttons stop propagation so a pointerdown does not
+       * start a drag. Typing in a field inside the grid needs that too — and
+       * it needs `preventDefault` as well, which it did not have.
+       *
+       * Without it, a press anywhere on the composer's own body moved focus
+       * off the input, `onBlur` fired, and `finish(false)` threw away
+       * everything typed. On a two-hour block that is ~130px of the composer's
+       * own surface that silently cancelled it. `preventDefault` keeps focus
+       * where it is; blur still cancels, which is correct and is what makes
+       * this a one-click gesture with no confirmation step — what is fixed is
+       * that the composer counted as "somewhere else".
+       *
+       * Not applied when the target IS the field: a press there is how you
+       * place the caret, and suppressing it would break selection and
+       * click-to-position inside your own title.
+       */
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        if (e.target !== fieldRef.current) e.preventDefault();
+      }}
     >
-      <input
-        ref={fieldRef}
-        type="text"
-        aria-label="Title for the new block"
-        placeholder="What is this?"
-        className="w-full bg-transparent outline-none font-medium text-ink placeholder:text-faint"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-          else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
-        }}
-        onBlur={() => finish(false)}
-      />
-      <div
-        data-testid="composer-span"
-        className={`truncate text-muted text-tiny tabular-nums ${isBar ? 'flex-none order-first' : ''}`}
-      >
-        {label ?? `${clockLabel(startMin)}–${clockLabel(startMin + durationMin)}`}
+      {/*
+        NO spine, and the padding that would hold one is kept anyway.
+        A composer already wears `border-accent` on all four sides — that is
+        what says "you are editing this" — and an accent spine inside an accent
+        border stacks two 3px and 1px marks of the same colour into one heavy
+        black edge that reads as a rendering fault. The gap stays, so the title
+        sits at exactly the x the bar's title will, and committing DRAWS the
+        spine into a space already reserved for it.
+      */}
+
+      <div className={isBar ? 'contents' : 'relative h-full flex flex-col'}>
+        <input
+          ref={fieldRef}
+          type="text"
+          aria-label="Title for the new block"
+          placeholder="What is this?"
+          /*
+           * `text-badge` on the INPUT, not on the wrapper.
+           *
+           * `index.css` sets `input, select { font-size: 14px }` in
+           * `@layer base`. The wrapper's `text-badge` (12px) is inherited, and
+           * inheritance loses to any rule that matches the element — so the
+           * title being typed was 14px while the bar it became was 12px, and
+           * the field was the only thing on the grid that did not measure like
+           * the grid. Fixed here rather than in the base rule, which is right
+           * for every dialog field in the app.
+           */
+          className={`w-full bg-transparent outline-none font-medium text-badge text-ink placeholder:text-faint ${
+            stacked ? 'flex-1 min-h-0' : ''
+          }`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+            else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+          }}
+          onBlur={() => finish(false)}
+        />
+        {stacked ? (
+          <>
+            {/*
+              The two exits, stated — in the BODY, at its foot.
+              The composer documented NEITHER before this: Enter and Escape both
+              worked and neither was ever mentioned, on a surface with ~130px of
+              blank body to say it in. The move is `dialogRuleHint`'s, where the
+              affordance becomes a sentence.
+              It is not on the rule's reading edge, where it belongs by every
+              other convention in this app, for one reason: a week column is
+              ~105px and the rule has room for exactly ONE mono cell. The span
+              wins that cell, because the composer's job is to prefigure the bar
+              it becomes and the bar keeps its time there. So the hint takes the
+              dead space instead — which is the space this whole change is about.
+              `faint`, because it is an instruction and not a value.
+            */}
+            <div aria-hidden="true" className={`${blockTimeCls} text-faint flex-none truncate`}>
+              ↵ add · esc
+            </div>
+            {/*
+              The footer rule — the bar's own, on the bar's own edges, so the
+              composer prefigures where the span will sit rather than parking it
+              under the title and moving it on commit.
+            */}
+            <div className={blockFootCls}>
+              <span data-testid="composer-span">
+                <BlockTime start={startLabel} end={endLabel} />
+              </span>
+            </div>
+          </>
+        ) : (
+          <div
+            data-testid="composer-span"
+            className={`flex-none ${isBar ? `${blockTimeCls} text-ink-soft truncate order-first` : ''}`}
+          >
+            {isBar ? (label ?? startLabel) : <BlockTime start={startLabel} end={endLabel} />}
+          </div>
+        )}
       </div>
     </div>
   );
