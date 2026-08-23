@@ -60,7 +60,11 @@ const STATUS_BOX: Record<StepStatus, string> = {
   todo: 'border-check group-hover/cb:border-muted',
   doing: 'border-accent',
   blocked: 'border-warn bg-warn-tint',
-  parked: 'border-faint',
+  // Not 'border-faint': a parked box drawn fainter than an untouched one is
+  // indistinguishable from it at rest, and parking is a decision the row has
+  // to state. Same border as `todo`, told apart by the bar inside — the mark
+  // is what carries the fact, exactly as the dot carries 'doing'.
+  parked: 'border-check',
   done: 'bg-accent border-accent',
 };
 
@@ -104,6 +108,9 @@ function LeafStatusBox({
           <svg viewBox="0 0 12 12" className="w-[11px] h-[11px] stroke-warn fill-none" strokeWidth={2}>
             <path d="M2.5 9.5 9.5 2.5" />
           </svg>
+        )}
+        {status === 'parked' && (
+          <span className="w-[9px] h-[1.5px] rounded-full bg-muted" aria-hidden="true" />
         )}
       </span>
     </button>
@@ -267,7 +274,7 @@ function SelectionBar({
               className="text-compact font-medium text-ink-soft px-[8px] py-[4px] min-h-[24px] rounded-field border border-line-2 bg-transparent hover:bg-hover focus-visible:border-accent"
             >
               <option value="" disabled>Set status…</option>
-              {(['todo', 'doing', 'blocked', 'done'] as const).map((s) => (
+              {(['todo', 'doing', 'blocked', 'parked', 'done'] as const).map((s) => (
                 <option key={s} value={s}>{STATUS_WORD[s]}</option>
               ))}
             </select>

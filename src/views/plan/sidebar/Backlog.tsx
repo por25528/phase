@@ -10,7 +10,7 @@ import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
 import {
-  IconArrowUpRight, IconCheck, IconCircle, IconX,
+  IconArrowUpRight, IconCheck, IconX,
 } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 import { sectionLabel } from '../../../components/sectionLabel';
@@ -19,8 +19,9 @@ import { projectSpineClass } from '../../../lib/projectColour';
 /**
  * One draggable row.
  *
- * No border, no fill, no radius at rest — the rail holds dozens of these and
- * every border is a decision the eye has to process for nothing.
+ * No border, no fill, no radius at rest — except the head row, below — and the
+ * rail holds dozens of these, where every border is a decision the eye has to
+ * process for nothing.
  *
  * It carries NO grip, which reverses the reversal recorded here before it. The
  * argument for the glyph was that `cursor-grab` "only says it once the pointer
@@ -37,7 +38,7 @@ import { projectSpineClass } from '../../../lib/projectColour';
  * is gone, so they cannot be hover-only in the pointer sense —
  * `focus-visible:opacity-100` keeps them reachable by keyboard.
  *
- * Both buttons stop the pointer-down from reaching the row: `listeners` is
+ * All three buttons stop the pointer-down from reaching the row: `listeners` is
  * spread onto the row itself, so an un-stopped press would arm the drag sensor
  * and a 5px twitch would turn the click into a drag instead of an action.
  *
@@ -144,20 +145,32 @@ function BacklogRow({
       >
         <IconCheck size={13} />
       </button>
-      {/* Steps only: a loose Task has no status to park. */}
+      {/*
+        Steps only: a loose Task has no status to park.
+
+        A TOGGLE, not a one-way trip. A parked step carrying a `plannedWeek`
+        stays in the rail (the committed-work exception), so this row is the
+        only place it can be unparked from; `toggleParked` also arms the undo,
+        because parking an UNcommitted step makes its row vanish from the one
+        surface it was on.
+
+        The glyph is the bar `LeafStatusBox` draws inside a parked box and
+        `StatusMark` draws beside the word — not a circle, which is what the
+        untouched state already looks like everywhere else in the app.
+      */}
       {item.kind === 'step' && (
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            actions.setNodeStatus(item.id, 'parked');
+            actions.toggleParked(item.id);
           }}
-          aria-label={`Park "${item.title}"`}
-          title="Park — set aside, not now"
+          aria-label={item.parked ? `Unpark "${item.title}"` : `Park "${item.title}"`}
+          title={item.parked ? 'Unpark — put it back in the queue' : 'Park — set aside, not now'}
           className="quiet-control flex-none text-muted hover:text-ink rounded-[4px] hover:bg-hover"
         >
-          <IconCircle size={13} />
+          <span aria-hidden className="block w-[9px] h-[1.5px] rounded-full bg-current" />
         </button>
       )}
       {/*
@@ -221,10 +234,11 @@ export function Backlog({
   );
   // Only when there is nothing to show: an empty rail must not read as "you
   // are finished" while hidden projects hold the work — deferred to Later/
-  // Someday, or blocked with nothing committed. Guarded on `groups.length` so
-  // the extra tree walk never runs in the normal case.
+  // Someday, blocked with nothing committed, or parked a step at a time until
+  // nothing workable is left. Guarded on `groups.length` so the extra tree
+  // walk never runs in the normal case.
   const hidden = useMemo(
-    () => (groups.length === 0 ? hiddenProjectCounts(goals, today) : { parked: 0, blocked: 0 }),
+    () => (groups.length === 0 ? hiddenProjectCounts(goals, today) : { parked: 0, blocked: 0, setAside: 0 }),
     [groups, goals, today],
   );
   const isCurrentWeek = weekStart === weekOf(today);
@@ -297,7 +311,7 @@ export function Backlog({
 
       {capped.length === 0 ? (
         <div className="text-muted text-body italic px-[6px]">
-          {hidden.parked === 0 && hidden.blocked === 0 ? (
+          {hidden.parked === 0 && hidden.blocked === 0 && hidden.setAside === 0 ? (
             'Nothing left to plan.'
           ) : (
             <>
@@ -314,6 +328,13 @@ export function Backlog({
                 <span className="not-italic">
                   {hidden.blocked} goal{hidden.blocked === 1 ? ' has' : 's have'} blocked tasks
                   not shown — unblock one to plan it.
+                </span>
+              )}
+              {hidden.setAside > 0 && (hidden.parked > 0 || hidden.blocked > 0) && ' '}
+              {hidden.setAside > 0 && (
+                <span className="not-italic">
+                  {hidden.setAside} goal{hidden.setAside === 1 ? ' has' : 's have'} only parked
+                  tasks — unpark one to plan it.
                 </span>
               )}
             </>

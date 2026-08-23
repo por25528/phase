@@ -88,8 +88,11 @@ export function goalWeekLoad(goal: Goal, week: string): GoalWeekLoad {
  * The two-pass shape is `firstOpenLeaf`'s, and copying it is the point — this
  * list's FIRST entry has to be the task the rest of the app calls next, or the
  * Overview tab and the goal header would name different work on the same
- * screen. Blocked leaves are skipped for the same reason `firstOpenLeaf` skips
- * them: they are open, but they are not available.
+ * screen. Blocked AND parked leaves are skipped for the same reason
+ * `firstOpenLeaf` skips them: they are open, but they are not available. The
+ * filter is positive — only 'doing' and 'todo' pass — so a sixth status would
+ * be excluded until someone decides otherwise, which is the right default for
+ * a list whose first row the goal header also names.
  *
  * Milestones are NOT filtered out, again matching `firstOpenLeaf`. One that is
  * genuinely next is a real answer — "the exam is the next thing on this goal"

@@ -58,7 +58,10 @@ export function removeNode(nodes: GoalNode[], id: string): boolean {
  * depth-first pass cannot express a preference that spans the whole tree.
  *
  * Returns null when open work exists but ALL of it is blocked or parked.
- * Callers must treat that as "unblock something", not as "nothing to do".
+ * Callers must not treat that as "nothing to do". They must not name the
+ * remedy either: unblocking is the answer for a stuck step and the wrong word
+ * for one set aside on purpose, and this function cannot tell the caller
+ * which it found.
  */
 export function firstOpenLeaf(nodes: GoalNode[]): GoalNode | null {
   return firstLeafMatching(nodes, (n) => stepStatus(n) === 'doing')

@@ -1298,13 +1298,24 @@ export const actions = {
   /**
    * The toggle lives here, not in the three callers that used to compute it
    * themselves, for the same reason `toggleCheckpoint`'s does: one seam for
-   * one decision. It reuses `setNodeStatus` rather than duplicating its undo
-   * wiring, so a status flip always arms one undo entry the same way.
+   * one decision.
+   *
+   * It arms an undo where `setNodeStatus` does not, and the rail is why.
+   * Parking from a backlog row makes that row VANISH from the only surface it
+   * was on — the same disappearance `toggleLeaf` arms an undo for when a leaf
+   * is completed, and the distance-booking rule restated: a write whose effect
+   * is that you can no longer see the thing you wrote to needs a way back.
+   * `setNodeStatus`'s own callers are the tree row and the task page, where
+   * the step you changed is still in front of you, so it stays silent.
    */
   toggleParked(nodeId: string): void {
-    const node = findInAll(state.goals, nodeId);
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
     if (!node || node.children?.length) return;
-    actions.setNodeStatus(nodeId, stepStatus(node) === 'parked' ? 'todo' : 'parked');
+    const wasParked = stepStatus(node) === 'parked';
+    writeStatus(node, wasParked ? 'todo' : 'parked', todayStr());
+    withUndo(`${wasParked ? 'Unparked' : 'Parked'} "${node.title}"`, 'goals', goals);
   },
 
   toggleExpand(nodeId: string) {

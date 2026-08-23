@@ -318,6 +318,31 @@ describe('acting on a selection', () => {
     expect(selectedIds()).toEqual([]); // the bar retires with the selection, like Complete/Delete
   });
 
+  /*
+   * The bulk bar is one of the two surfaces that may reach a status DIRECTLY
+   * (the other is the task page's popover) — `S` and the row's `◐` cycle and
+   * cannot reach 'done' or 'parked'. It offered four of the five, so the one
+   * status with no keyboard route was also the one missing from the only
+   * control that sets a status on N rows at once.
+   */
+  it('offers all five statuses, parked among them', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+    row('Pset 6').focus();
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}'); // a, b
+
+    // The bar exists only while something is selected.
+    const select = screen.getByRole('combobox', { name: 'Set status' });
+    expect(
+      [...select.querySelectorAll('option')].map((o) => (o as HTMLOptionElement).value),
+    ).toEqual(['', 'todo', 'doing', 'blocked', 'parked', 'done']);
+
+    await user.selectOptions(select, 'parked');
+
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('parked');
+    expect(store.getState().pendingUndo?.label).toBe('Parked 2 tasks');
+  });
+
   it('sets focus needed on a selection in ONE undoable write', async () => {
     const { store, user } = await mountTree();
     const { findInAll } = await import('../lib/tree');

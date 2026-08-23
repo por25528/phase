@@ -25,6 +25,14 @@ export interface BacklogItem {
    * holding several deadlines at once.
    */
   due?: string;
+  /**
+   * Set aside, still listed because committed. A parked leaf is normally
+   * dropped from the rail; one carrying a `plannedWeek` stays, because
+   * `weekCapacity` bills it to "to place" and a number you plan against must
+   * have a row beside it. The flag is what lets the row's button say `Unpark`
+   * — this is the only surface that step is still on.
+   */
+  parked?: true;
 }
 
 /**
@@ -163,6 +171,7 @@ export function backlogGroups(
         kind: 'step', id: n.id, goalId: g.id, title: n.title,
         ...withEstimate(n.estimateMin),
         ...(n.deadline ? { due: n.deadline } : {}),
+        ...(s === 'parked' ? { parked: true as const } : {}),
       });
     });
     byGoal.set(g.id, items);
@@ -221,6 +230,13 @@ export interface HiddenProjectCounts {
    * loosely here than "fully blocked".
    */
   blocked: number;
+  /**
+   * A Now/Next project whose open leaves are ALL parked and none committed —
+   * so `backlogGroups` returns no group for it at all. Strict where `blocked`
+   * is loose, because that is what makes it worth printing: the rail is empty
+   * BECAUSE of this project, not merely shorter.
+   */
+  setAside: number;
 }
 
 /**
@@ -234,12 +250,19 @@ export interface HiddenProjectCounts {
  * is applying a rule at all. The counts turn an apparent dead end into an
  * instruction: promote a parked project, or unblock a stuck one.
  *
- * A project can land in both buckets (parked AND fully blocked) — the buckets
- * are independent counts of DIFFERENT rules, not a partition of projects.
+ * A project can land in more than one bucket — they are independent counts of
+ * DIFFERENT rules, not a partition of projects. The three name three different
+ * sentences: `parked` is a project the USER deferred to Later or Someday,
+ * `blocked` is a Now/Next project holding a stuck, uncommitted step, and
+ * `setAside` is a Now/Next project every one of whose open steps has been
+ * parked one at a time. Only the third can be true of a project the user still
+ * calls current and still thinks is workable, which is why it needs its own
+ * instruction ("unpark one") rather than borrowing either of the others'.
  */
 export function hiddenProjectCounts(goals: Goal[], today: string): HiddenProjectCounts {
   let parked = 0;
   let blocked = 0;
+  let setAside = 0;
   for (const g of attentionRank(goals, today)) {
     let hiddenBlocked = false;
     walkLeaves(g, (n) => {
@@ -253,9 +276,24 @@ export function hiddenProjectCounts(goals: Goal[], today: string): HiddenProject
         if (!isDone(n) && n.plannedWeek === undefined) hidden = true;
       });
       if (hidden) parked++;
+    } else {
+      // Strict, and it has to be: this is the count that claims the rail is
+      // empty because of THIS project, so one workable leaf — or one parked
+      // leaf carrying a commitment, which `backlogGroups` keeps — makes it
+      // false. A project with a group in the rail can never be counted here.
+      let open = 0;
+      let allParked = true;
+      let committed = false;
+      walkLeaves(g, (n) => {
+        if (isDone(n)) return;
+        open++;
+        if (stepStatus(n) !== 'parked') allParked = false;
+        if (n.plannedWeek !== undefined) committed = true;
+      });
+      if (open > 0 && allParked && !committed) setAside++;
     }
   }
-  return { parked, blocked };
+  return { parked, blocked, setAside };
 }
 
 /**
