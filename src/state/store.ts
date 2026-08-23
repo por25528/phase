@@ -1295,6 +1295,18 @@ export const actions = {
     setAndPersist({ goals });
   },
 
+  /**
+   * The toggle lives here, not in the three callers that used to compute it
+   * themselves, for the same reason `toggleCheckpoint`'s does: one seam for
+   * one decision. It reuses `setNodeStatus` rather than duplicating its undo
+   * wiring, so a status flip always arms one undo entry the same way.
+   */
+  toggleParked(nodeId: string): void {
+    const node = findInAll(state.goals, nodeId);
+    if (!node || node.children?.length) return;
+    actions.setNodeStatus(nodeId, stepStatus(node) === 'parked' ? 'todo' : 'parked');
+  },
+
   toggleExpand(nodeId: string) {
     const expanded = new Set(state.expanded);
     expanded.has(nodeId) ? expanded.delete(nodeId) : expanded.add(nodeId);

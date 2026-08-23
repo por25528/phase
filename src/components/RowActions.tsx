@@ -58,7 +58,7 @@ export function RowActions({
       case 'schedule': onSchedule(); return;
       case 'estimate': onEstimate(); return;
       case 'milestone': actions.toggleCheckpoint(node.id); return;
-      case 'park': actions.setNodeStatus(node.id, node.status === 'parked' ? 'todo' : 'parked'); return;
+      case 'park': actions.toggleParked(node.id); return;
       case 'indent': actions.indentNode(node.id); return;
       case 'outdent': actions.outdentNode(node.id); return;
       case 'delete': actions.removeNode(node.id); return;

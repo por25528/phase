@@ -835,7 +835,7 @@ function GoalTreeNode({
     if (plain && (e.key === 'p' || e.key === 'P') && !editing) {
       e.preventDefault();
       if (hasKids) return;
-      actions.setNodeStatus(n.id, stepStatus(n) === 'parked' ? 'todo' : 'parked');
+      actions.toggleParked(n.id);
       return;
     }
     // E opens the estimate editor — the row's own control, not a second one.

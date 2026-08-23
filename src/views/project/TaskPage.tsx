@@ -185,7 +185,7 @@ export function TaskPage({
     switch (id) {
       case 'rename': setEditingTitle(true); return;
       case 'breakdown': setProposing(true); return;
-      case 'park': actions.setNodeStatus(node.id, node.status === 'parked' ? 'todo' : 'parked'); return;
+      case 'park': actions.toggleParked(node.id); return;
       case 'indent': actions.indentNode(node.id); return;
       case 'outdent': actions.outdentNode(node.id); return;
       // `removeNode` nulls `openStepId` when the open node is inside what it
