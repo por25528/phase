@@ -194,7 +194,8 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[] } {
       if (!node || !goal) return false;
       if (goal.completedAt) return false;
       if (!isPlanningHorizon(goal.column)) return false;
-      if (stepStatus(node) === 'blocked') return false;
+      const s = stepStatus(node);
+      if (s === 'blocked' || s === 'parked') return false;
     }
     return true;
   };

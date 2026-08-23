@@ -153,11 +153,12 @@ export function backlogGroups(
       // and a leaf with one on the calendar is not waiting to be placed.
       if (isPlaced(n)) return;
       if (parked.has(g.id) && n.plannedWeek === undefined) return;
-      // Blocked work is not a queue you can work. Dropped, unless committed —
-      // weekCapacity bills a plannedWeek step to "to place", and a number you
-      // plan against must have a row beside it. Same exception a parked
-      // project gets, just above.
-      if (stepStatus(n) === 'blocked' && n.plannedWeek === undefined) return;
+      // Blocked or parked work is not a queue you can work. Dropped, unless
+      // committed — weekCapacity bills a plannedWeek step to "to place", and a
+      // number you plan against must have a row beside it. Same exception a
+      // parked PROJECT gets, just above.
+      const s = stepStatus(n);
+      if ((s === 'blocked' || s === 'parked') && n.plannedWeek === undefined) return;
       items.push({
         kind: 'step', id: n.id, goalId: g.id, title: n.title,
         ...withEstimate(n.estimateMin),

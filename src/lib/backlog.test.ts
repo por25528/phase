@@ -264,6 +264,17 @@ describe('backlogGroups', () => {
     const g = goal({ nodes: [{ id: 'n1', title: 'Draft' }] });
     expect(backlogGroups([g, empty], [], WEEK, TODAY).map((x) => x.goalId)).toEqual(['g1']);
   });
+
+  it('drops a parked leaf, unless it carries a plannedWeek', () => {
+    const g: Goal = { id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'p', title: 'Parked', status: 'parked' },
+      { id: 'c', title: 'Committed', status: 'parked', plannedWeek: WEEK },
+      { id: 'o', title: 'Open' },
+    ] };
+    const ids = backlogGroups([g], [], WEEK, TODAY).flatMap((grp) => grp.items.map((i) => i.id));
+    expect(ids).toEqual(expect.arrayContaining(['c', 'o']));
+    expect(ids).not.toContain('p');
+  });
 });
 
 describe('blocked work in the rail', () => {

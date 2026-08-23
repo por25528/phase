@@ -157,6 +157,10 @@ describe('executionAdvice', () => {
       id: 'gp', title: 'Someday reading', column: 3,
       nodes: [{ id: 'np', title: 'Read the dragon book' }],
     });
+    const parkedLeaf = goal({
+      id: 'gpl', title: 'Parked leaf', column: 0,
+      nodes: [{ id: 'npl', title: 'Set aside', status: 'parked', deadline: today, start: today }],
+    });
     const fine = goal({
       id: 'gf', title: 'Algorithms',
       nodes: [
@@ -164,12 +168,12 @@ describe('executionAdvice', () => {
         { id: 'nd', title: 'Done already', status: 'done', doneAt: today },
       ],
     });
-    const advice = executionAdvice(input({ goals: [blocked, archived, parked, fine] }));
+    const advice = executionAdvice(input({ goals: [blocked, archived, parked, parkedLeaf, fine] }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
     const keys = [advice.primary.key, ...advice.alternatives.map((a) => a.key)];
     expect(keys).toContain('step:nf');
-    for (const bad of ['step:nb', 'step:nx', 'step:np', 'step:nd']) {
+    for (const bad of ['step:nb', 'step:nx', 'step:np', 'step:nd', 'step:npl']) {
       expect(keys).not.toContain(bad);
     }
   });
