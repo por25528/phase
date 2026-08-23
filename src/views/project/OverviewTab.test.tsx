@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
+import type { Goal, GoalNode, Session } from '../../db/types';
 import { fmtMinutes } from '../../lib/effort';
 import { addDays, fmtD, todayStr } from '../../lib/dates';
 import { weekOf } from '../../lib/plan';
@@ -14,12 +14,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -62,8 +60,6 @@ beforeEach(() => vi.clearAllMocks());
 
 const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
 
-const WORKING_HOURS: AvailabilityWindow[] = [0, 1, 2, 3, 4]
-  .map((dow) => ({ dow, startMin: 540, endMin: 1020 }));
 
 function datedGoal(nodes: GoalNode[]): Goal {
   return {
@@ -79,12 +75,11 @@ function datedGoal(nodes: GoalNode[]): Goal {
 type Store = typeof import('../../state/store');
 
 /** Boot a store holding a goal and render OverviewTab against live state. */
-async function mountOverview(goal: Goal, availability?: AvailabilityWindow[]): Promise<Store> {
+async function mountOverview(goal: Goal): Promise<Store> {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
     goals: [structuredClone(goal)], habits: [], tasks: [], sessions: [],
   });
-  if (availability !== undefined) dbMocks.loadAvailability.mockResolvedValueOnce(availability);
   const store = await import('../../state/store');
   await store.initStore();
   const { OverviewTab } = await import('./OverviewTab');
@@ -156,7 +151,7 @@ describe('OverviewTab forecast and week load', () => {
     vi.setSystemTime(new Date(2026, 7, 11, 8));
     try {
       const goal = datedGoal([leaf('lead', { title: 'Lead task', estimateMin: 30 })]);
-      const store = await mountOverview(goal, WORKING_HOURS);
+      const store = await mountOverview(goal);
 
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
@@ -183,7 +178,7 @@ describe('OverviewTab forecast and week load', () => {
     vi.setSystemTime(new Date(2026, 7, 11, 12));
     try {
       const goal = datedGoal([leaf('a', { estimateMin: 60 })]);
-      await mountOverview(goal, WORKING_HOURS);
+      await mountOverview(goal);
 
       const forecast = section('Forecast');
       expect(forecast.textContent).not.toContain('On track');
@@ -244,7 +239,7 @@ describe('OverviewTab forecast and week load', () => {
         estimateMin: 30,
       }));
       const goal = datedGoal([...recentDone, leaf('open', { estimateMin: 60 })]);
-      await mountOverview(goal, WORKING_HOURS);
+      await mountOverview(goal);
 
       const forecast = section('Forecast');
       const text = forecast.textContent ?? '';

@@ -187,7 +187,7 @@ export function IconRotate(p: IconProps) {
   );
 }
 
-/** Working hours — the availability window everything free is measured against. */
+/** A clock. */
 export function IconClock(p: IconProps) {
   return (
     <Icon {...p}>

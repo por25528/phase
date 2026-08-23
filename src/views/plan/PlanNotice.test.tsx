@@ -5,29 +5,25 @@ import { PlanNotice } from './PlanNotice';
 
 afterEach(cleanup);
 
+/*
+ * There were two notices, and most of this file was about which one won: the
+ * working-hours one outranked the drag hint, because it described a state that
+ * made the hint's advice impossible to follow. Both the state and the notice
+ * are gone, so there is one notice and nothing to arbitrate.
+ */
 describe('PlanNotice', () => {
-  it('shows the availability notice when hours are unset', () => {
-    render(<PlanNotice needsHours showHint onOpenSettings={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Set your working hours' })).toBeTruthy();
-  });
-
-  // Both at once used to render two identical bordered boxes stacked, pushing
-  // the grid down. Availability wins: it describes a state that makes the
-  // hint's advice impossible to follow.
-  it('shows only the availability notice when both apply', () => {
-    render(<PlanNotice needsHours showHint onOpenSettings={() => {}} />);
-    expect(screen.queryByText(/onto a day/)).toBeNull();
-  });
-
-  it('shows the hint when hours are set', () => {
-    render(<PlanNotice needsHours={false} showHint onOpenSettings={() => {}} />);
+  it('shows the drag hint when asked', () => {
+    render(<PlanNotice showHint />);
     expect(screen.getByText(/onto a day/)).toBeTruthy();
   });
 
-  it('renders nothing when neither applies', () => {
-    const { container } = render(
-      <PlanNotice needsHours={false} showHint={false} onOpenSettings={() => {}} />,
-    );
+  it('has no working-hours notice left to show', () => {
+    render(<PlanNotice showHint />);
+    expect(screen.queryByRole('button', { name: 'Set your working hours' })).toBeNull();
+  });
+
+  it('renders nothing when the hint does not apply', () => {
+    const { container } = render(<PlanNotice showHint={false} />);
     expect(container.firstChild).toBeNull();
   });
 });

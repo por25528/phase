@@ -3,18 +3,16 @@ import { createElement } from 'react';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode } from '../db/types';
+import type { Goal, GoalNode } from '../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: never[] }> => ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => [0, 1, 2, 3, 4, 5, 6].map((dow) => ({ dow, startMin: 540, endMin: 1080 }))),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),

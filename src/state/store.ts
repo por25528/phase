@@ -1,8 +1,8 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, AvailabilityWindow, Asset, Life } from '../db/types';
+import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, Asset, Life } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
-  loadPlanReview, savePlanReview, loadAvailability, saveAvailability,
+  loadPlanReview, savePlanReview,
   loadAllDayBlocks, saveAllDayBlocks,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   loadPlanMode, savePlanMode, type PlanMode,
@@ -17,7 +17,6 @@ import {
 } from '../db/db';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
-import { DEFAULT_AVAILABILITY, parseAvailability, windowForDate } from '../lib/availability';
 import { todayStr, addDays, fmtD } from '../lib/dates';
 import { clampSpan } from '../lib/timeline';
 import { isValidLocalDate, projectDateError, confirmableDateGoalIds } from '../lib/schedule';
@@ -36,7 +35,7 @@ import { goalsInScope, resolveScope, type LifeScope } from '../lib/lifeScope';
 import { acquireTabLock } from '../lib/tabLock';
 import { normalizeEstimate, type Now } from '../lib/capacity';
 import { formatEstimateValue } from '../lib/estimateInput';
-import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, WHOLE_DAY } from '../lib/slot';
+import { resolveSlot, durationOf, freeIntervals, NO_PAST_LIMIT, ORDINARY_DAY, WHOLE_DAY } from '../lib/slot';
 import { spansOn } from '../lib/scheduled';
 import { assetIdsInMarkdown } from '../lib/notes';
 import { addPlannedSlot, clampResize, setPlannedSlot, clearPlannedSlot } from './scheduleActions';
@@ -181,7 +180,6 @@ interface UIState {
   dateReviewDismissed: boolean;
   theme: Theme; // per-device UI preference (localStorage, not Dexie)
   planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
-  availability: AvailabilityWindow[]; // per-weekday planning window (device preference)
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
   sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
   planMode: PlanMode;                 // week or month shape for the Plan view (device preference)
@@ -270,7 +268,6 @@ let state: FullState = {
   persistFailed: false,
   dateReviewDismissed: false,
   planReview: null,
-  availability: DEFAULT_AVAILABILITY,
   allDayBlocks: true,
   sidebarPanels: [],
   planMode: 'week',
@@ -357,7 +354,7 @@ function flushPendingNote(): void {
  * Run a settings write only if this tab owns the single-writer lock.
  *
  * `setAndPersist`'s guard covers the four main tables. Every OTHER write to
- * IndexedDB — the timeline scale, availability, the all-day preference, the
+ * IndexedDB — the timeline scale, the all-day preference, the
  * sidebar layout, the week-review snapshot — went straight through, so a
  * non-owning tab still overwrote the owner's settings, and `ensureWeekRollover`
  * (which runs unconditionally at the end of `initStore`) stamped its own
@@ -611,8 +608,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, availability, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAvailability(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(),
+    const [appState, pxPerDay, planReview, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -676,7 +673,6 @@ export async function initStore(): Promise<void> {
       ...migrated,
       pxPerDay,
       planReview,
-      availability,
       allDayBlocks,
       sidebarPanels,
       planMode,
@@ -2496,22 +2492,16 @@ export const actions = {
     scaleTimer = setTimeout(() => ifOwner(() => saveScale(state.pxPerDay)), 400);
   },
 
-  // Availability and the all-day preference are device preferences, not app
-  // data: they follow setScale/setTheme's pattern (set + persist directly),
-  // never routed through setAndPersist.
-  setAvailability(windows: AvailabilityWindow[]): void {
-    const next = parseAvailability(windows); // reject a malformed set at the door
-    set({ availability: next });
-    ifOwner(() => saveAvailability(next));
-  },
-
+  // The all-day preference is a device preference, not app data: it follows
+  // setScale/setTheme's pattern (set + persist directly), never routed through
+  // setAndPersist.
   setAllDayBlocks(value: boolean): void {
     if (value === state.allDayBlocks) return;
     set({ allDayBlocks: value });
     ifOwner(() => saveAllDayBlocks(value));
   },
 
-  // A device preference, like availability and the all-day setting: set() plus
+  // A device preference, like the all-day setting: set() plus
   // its own save, never setAndPersist — this is not app data.
   setSidebarPanels(panels: SidebarPanel[]): void {
     set({ sidebarPanels: panels });
@@ -2784,9 +2774,9 @@ export const actions = {
    * can actually take it.
    *
    * It used to be `scheduleNode(goalId, nodeId, today, 0)`. Two things were
-   * wrong with that, and they compounded. Under the then-default Mon–Fri
-   * availability, `windowForDate` returns null for a weekend, so every Replan
-   * button failed outright on a Saturday or Sunday — which is exactly when a
+   * wrong with that, and they compounded. It searched the availability window,
+   * which returned nothing at all on a day the user had switched off — so
+   * every Replan button failed outright on a weekend, which is exactly when a
    * weekly review gets done. And on a weekday that succeeded, nothing changed
    * on screen: `weekRecap` buckets on completion, which a replan doesn't
    * touch, and `scheduleNode`'s return value was discarded, so only the FAILURE
@@ -2806,17 +2796,16 @@ export const actions = {
       const date = addDays(from, i);
       const startMin = resolveSlot({
         date,
-        aimMin: 0, // earliest gap that fits, inside the window below
+        aimMin: 0, // earliest gap that fits, inside the span below
         durationMin,
         /*
-         * The availability window, and the real clock — the same pair
-         * `proposeReplan` keeps and for the same reason. "Next free slot" is
-         * the app PROPOSING an hour, not a person aiming at one, so it stays
-         * inside the days and hours the user said they work and never offers
-         * the past. Every manual route searches `WHOLE_DAY` instead; see
-         * `scheduleNode`.
+         * `ORDINARY_DAY`, and the real clock — the same pair `proposeReplan`
+         * keeps and for the same reason. "Next free slot" is the app PROPOSING
+         * an hour, not a person aiming at one, so it stays inside the ordinary
+         * day and never offers the past. Every manual route searches
+         * `WHOLE_DAY` instead; see `scheduleNode`.
          */
-        span: windowForDate(date, state.availability),
+        span: ORDINARY_DAY,
         blocks: [],
         placed: spansOn(state.goals, state.tasks, date, nodeId),
         now: nowMoment(),
@@ -3314,7 +3303,6 @@ export const actions = {
         { goals: state.goals, habits: state.habits, tasks: state.tasks, sessions: state.sessions, lives: state.lives },
         state.pxPerDay,
         state.planReview,
-        state.availability,
         state.allDayBlocks,
         state.sidebarPanels,
         preSlotMigrationSnapshot,

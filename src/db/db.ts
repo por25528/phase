@@ -1,10 +1,9 @@
 import Dexie, { type Table } from 'dexie';
-import type { Goal, Habit, Task, Session, AppState, PlanReview, AvailabilityWindow, Asset, CalendarCache, Life } from './types';
+import type { Goal, Habit, Task, Session, AppState, PlanReview, Asset, CalendarCache, Life } from './types';
 import { todayStr } from '../lib/dates';
 import { clampScale } from '../lib/timeline';
 import { sanitizeBackupGoal, sanitizeBackupHabit } from '../lib/goalImport';
 import { sanitizeBackupLives } from '../lib/lives';
-import { parseAvailability, serializeAvailability } from '../lib/availability';
 import { migrateCheckpoints } from '../lib/migrateCheckpoints';
 import { migrateNodeStatus } from '../lib/migrateNodeStatus';
 import { migrateWorkBlocks } from '../lib/migrateWorkBlocks';
@@ -117,7 +116,7 @@ export async function loadState(): Promise<AppState> {
    * `migrateSlots` — which repairs pre-slot-era data by reading the very
    * `plannedDay`/`plannedStartMin` pair the block migration consumes. Running
    * the two in the other order leaves the repair with nothing to read, and it
-   * needs the availability windows and the tab lock that only the store has.
+   * needs the tab lock that only the store has.
    */
   return { goals: migrateNodeStatus(goals), habits, tasks, sessions, lives };
 }
@@ -164,20 +163,11 @@ export async function saveScale(pxPerDay: number): Promise<void> {
   await db.settings.put({ key: 'pxPerDay', value: String(pxPerDay) });
 }
 
-export async function loadAvailability(): Promise<AvailabilityWindow[]> {
-  const row = await db.settings.get('availability');
-  return parseAvailability(row?.value);
-}
-
-export async function saveAvailability(windows: AvailabilityWindow[]): Promise<void> {
-  await db.settings.put({ key: 'availability', value: serializeAvailability(windows) });
-}
-
 /**
  * The in-progress focus draft, one settings row.
  *
  * Device-local by design: an unfinished sitting on this machine is not user
- * work, so it rides in `settings` (like availability) rather than in a table,
+ * work, so it rides in `settings` (like the timeline scale) rather than in a table,
  * and it is deliberately NOT part of backup export/import — restoring a backup
  * must not resurrect a half-run session from another day. Writes happen only
  * on state TRANSITIONS (start, pause, resume, complete), never on a timer
@@ -280,7 +270,7 @@ const SIDEBAR_PANELS_KEY = 'sidebarPanels';
 
 /**
  * Total parse: a malformed or partly-unknown value yields the default rather
- * than a half-trusted list, mirroring `parseAvailability`. Collapsing every
+ * than a half-trusted list. Collapsing every
  * panel is a harmless fallback — the backlog, the only section that matters
  * for placing work, is pinned open regardless.
  */
@@ -534,9 +524,8 @@ export async function exportState(
   state: AppState,
   pxPerDay: number,
   planReview: PlanReview | null,
-  availability: AvailabilityWindow[],
   allDayBlocks: boolean,
-  // Persisted like availability and allDayBlocks, and it was the one device
+  // Persisted like allDayBlocks, and it was the one device
   // preference the backup left out — so "the backup contains everything
   // persisted" was not true, and the next preference added would have copied
   // the omission.
@@ -550,7 +539,6 @@ export async function exportState(
   const backup = {
     ...state,
     pxPerDay,
-    availability,
     allDayBlocks,
     sidebarPanels,
     ...(planReview ? { planReview } : {}),
@@ -567,7 +555,6 @@ export async function exportState(
 
 export type ImportedBackupState = AppState & {
   pxPerDay: number;
-  availability: AvailabilityWindow[];
   allDayBlocks: boolean;
   sidebarPanels: SidebarPanel[];
 };
@@ -597,7 +584,6 @@ export async function importStateFromFile(
     AppState & {
       pxPerDay?: number;
       zoom?: string;
-      availability?: unknown;
       allDayBlocks?: unknown;
       sidebarPanels?: unknown;
       // Present on backups exported by this feature, but deliberately NOT part
@@ -630,15 +616,16 @@ export async function importStateFromFile(
     Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0
       ? clampScale(raw.pxPerDay as number)
       : legacyZoomToScale(raw.zoom); // old backups carry a zoom string
-  // Old backups predate availability/allDayBlocks entirely — an ABSENT key
-  // means the backup says NOTHING about this device preference, which is not
-  // the same as the backup saying "use the default". Leave the current
-  // persisted value alone in that case. A PRESENT-but-malformed value still
-  // goes through `parseAvailability`, which is total validation: malformed or
-  // hand-edited windows collapse to DEFAULT_AVAILABILITY.
-  const availability =
-    raw.availability === undefined ? await loadAvailability() : parseAvailability(raw.availability);
-  // Mirrors loadAllDayBlocks (`row?.value !== 'false'`): a PRESENT value of
+  // A backup exported before working hours were removed still carries an
+  // `availability` key. It is IGNORED rather than migrated: the model it
+  // described is gone, and a stale settings row is inert — the same licence a
+  // dangling `Session.nodeId` has. Nothing reads it, so nothing has to be
+  // taught to skip it either.
+  //
+  // Old backups predate allDayBlocks entirely — an ABSENT key means the backup
+  // says NOTHING about this device preference, which is not the same as the
+  // backup saying "use the default". Leave the current persisted value alone
+  // in that case. Mirrors loadAllDayBlocks (`row?.value !== 'false'`): a PRESENT value of
   // anything but the literal false (string 'false' from an old settings-table
   // dump, or an actual JSON `false` written by the current exportState) means
   // on. An ABSENT key means the backup is silent, so keep the current setting.
@@ -646,8 +633,8 @@ export async function importStateFromFile(
     raw.allDayBlocks === undefined
       ? await loadAllDayBlocks()
       : raw.allDayBlocks !== 'false' && raw.allDayBlocks !== false;
-  // Same absent-vs-malformed rule as availability above: an absent key means
-  // the backup is silent about this preference, so keep what this device has.
+  // Same absent-vs-malformed rule: an absent key means the backup is silent
+  // about this preference, so keep what this device has.
   // Re-stringified so it goes through the SAME total validator the settings row
   // uses: `parseSidebarPanels` takes the stored JSON string, while a backup
   // carries a real array. Anything malformed (null, a string, unknown panel
@@ -667,10 +654,9 @@ export async function importStateFromFile(
    * …and the block migration last, so nodes APPENDED by migrateCheckpoints go
    * through it too rather than entering the store with a legacy placement.
    *
-   * Unlike hydration there is no `migrateSlots` to run first — this path has no
-   * availability windows to place anything against — so a day with no start
-   * minute degrades to a week commitment here. That is lossless: the rail lists
-   * a week-committed leaf exactly as it listed a day-committed one.
+   * Unlike hydration there is no `migrateSlots` to run first, so a day with no
+   * start minute degrades to a week commitment here. That is lossless: the rail
+   * lists a week-committed leaf exactly as it listed a day-committed one.
    */
   const blocked = migrateWorkBlocks(migrateNodeStatus(checkpointed), raw.tasks ?? []);
   const parsed: AppState = {
@@ -701,7 +687,6 @@ export async function importStateFromFile(
     assetWriteFailed = true;
   }
   await saveScale(pxPerDay);
-  await saveAvailability(availability);
   await saveAllDayBlocks(allDayBlocks);
   await saveSidebarPanels(sidebarPanels);
   // Every backup predates the calendar-grid migration, and this device's own
@@ -725,7 +710,7 @@ export async function importStateFromFile(
   } else {
     await db.planReview.clear();
   }
-  const imported = { ...parsed, pxPerDay, availability, allDayBlocks, sidebarPanels };
+  const imported = { ...parsed, pxPerDay, allDayBlocks, sidebarPanels };
   if (assetWriteFailed) {
     const failure = new Error('Imported goals and notes, but images could not be saved.');
     Object.assign(failure, { code: 'asset-import-failed', imported });

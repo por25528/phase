@@ -1,6 +1,5 @@
 import { Modal } from './Modal';
 import { sectionLabel } from './sectionLabel';
-import { AvailabilitySettings } from '../views/plan/AvailabilitySettings';
 import { LivesSettings } from '../views/goals/LivesSettings';
 import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings';
 import { LaunchAtLoginSettings } from './assistant/LaunchAtLoginSettings';
@@ -9,11 +8,10 @@ import { useAppStore } from '../state/store';
 /**
  * Where the low-frequency system operations live.
  *
- * Working hours were an accordion in the Plan rail, sitting as a peer of "To
- * plan" — the one section used repeatedly while planning — even though a
- * person edits their availability roughly never after the first week. The rail
- * is 249px of the most valuable column on the busiest screen; a settings form
- * is not what it is for.
+ * Working hours used to be the reason this dialog existed — they had been an
+ * accordion in the Plan rail, sitting as a peer of the section used most while
+ * planning. They are gone entirely now, and what is left is the class of thing
+ * they were moved here to join.
  *
  * A dialog earns itself here for the reason §14 gives: this is provider-style
  * configuration, not routine editing, and it is reached deliberately from the
@@ -30,14 +28,6 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         them, or to none — an errand is nobody's project.
       </p>
       <LivesSettings />
-
-      <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Working hours</h3>
-      <p className="text-ui text-muted mb-[12px] leading-[1.5]">
-        The hours Phase may schedule into. Everything that reports free time —
-        the week's capacity, where a dragged task lands, whether a goal still
-        fits before its deadline — is measured against these.
-      </p>
-      <AvailabilitySettings />
 
       <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Assistant shortcut</h3>
       <p className="text-ui text-muted mb-[12px] leading-[1.5]">

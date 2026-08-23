@@ -47,7 +47,7 @@ import { sectionLabel } from '../../components/sectionLabel';
  * the size of everything else you committed to.
  */
 export function CalendarTab({ goal }: { goal: Goal }) {
-  const { goals, tasks, availability, allDayBlocks, actions } = useAppStore();
+  const { goals, tasks, allDayBlocks, actions } = useAppStore();
   const today = todayStr();
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
   const [dragTitle, setDragTitle] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export function CalendarTab({ goal }: { goal: Goal }) {
     now: { date: today, minute: 0 },
     allDayBlocks,
     hasData: false,
-  }), [goals, tasks, weekStart, availability, allDayBlocks, today]);
+  }), [goals, tasks, weekStart, allDayBlocks, today]);
 
   /** This goal's open work with nothing on the calendar — the tab's own rail. */
   const unplaced = useMemo(() => {

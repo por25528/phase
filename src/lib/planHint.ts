@@ -37,7 +37,7 @@ function hasPlacedLeaf(nodes: GoalNode[]): boolean {
 /**
  * Should the Plan view show its "how do I get work onto the grid" hint?
  *
- * Three conditions, and all three matter:
+ * Two conditions, and both matter:
  *
  * - Nothing has ever been placed. This is the whole point — the hint teaches a
  *   thing you only need told once, and it retires itself the moment the user
@@ -45,19 +45,14 @@ function hasPlacedLeaf(nodes: GoalNode[]): boolean {
  * - There is something to place. On a genuinely empty install the hint would
  *   describe dragging from an empty rail; the Projects view's own empty state
  *   is the right teacher there.
- * - Working hours exist. Not because a drop would fail without them — since
- *   Job 1 nothing refuses a drop for being outside a window — but because
- *   `PlanNotice` gives that state the louder of its two sentences, and a hint
- *   that can never be the one shown is a condition evaluated for nothing.
- *   Keeping the gate here means the two agree at the source rather than by the
- *   accident of which branch `PlanNotice` happens to test first.
+ *
+ * There was a third condition — working hours exist — and it went with them.
+ * It was never about a drop failing; it was there because `PlanNotice` gave
+ * the no-hours state the louder of its two sentences, so a hint that could
+ * never be the one shown was a condition evaluated for nothing. `PlanNotice`
+ * has one sentence now.
  */
-export function showPlanHint(
-  goals: Goal[],
-  tasks: Task[],
-  hasAvailability: boolean,
-): boolean {
-  if (!hasAvailability) return false;
+export function showPlanHint(goals: Goal[], tasks: Task[]): boolean {
   if (goals.length === 0 && tasks.length === 0) return false;
   return !hasPlacedWork(goals, tasks);
 }

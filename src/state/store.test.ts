@@ -4,7 +4,6 @@ import { goalPct } from '../lib/pct';
 import { leafCount } from '../lib/board';
 import { resolveScope } from '../lib/lifeScope';
 import type { Asset, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
-import { DEFAULT_AVAILABILITY } from '../lib/availability';
 import { makeBlock } from '../lib/blocks';
 import type { ActiveFocusSession } from '../lib/focusSession';
 
@@ -12,18 +11,10 @@ const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [], lives: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async () => [
-    { dow: 0, startMin: 540, endMin: 1080 },
-    { dow: 1, startMin: 540, endMin: 1080 },
-    { dow: 2, startMin: 540, endMin: 1080 },
-    { dow: 3, startMin: 540, endMin: 1080 },
-    { dow: 4, startMin: 540, endMin: 1080 },
-  ]),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -1137,10 +1128,11 @@ describe('store actions', () => {
       expect(getState().goals[0].nodes[0].blocks?.[0].startMin).toBe(1320);
     });
 
-    it('places a block on a day with no working hours at all', async () => {
+    it('places a block at any minute of any day', async () => {
+      // This used to switch every day off in Settings first, to prove the
+      // window fenced nothing. There is no window and no Settings to switch.
       vi.setSystemTime(new Date(2026, 6, 15, 8));
       const { actions, getState } = await freshStore();
-      actions.setAvailability([]); // every day switched off in Settings
       actions.addGoal('G');
       const gid = getState().goals[0].id;
       actions.addRootNode(gid, 'anyway');
@@ -1855,7 +1847,7 @@ describe('store actions', () => {
           nodes: [{ id: 'new-node', title: 'New commitment', plannedWeek: prevWeek }],
         }],
         habits: [], tasks: [], sessions: [], lives: [], pxPerDay: 40,
-        availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
+        allDayBlocks: true, sidebarPanels: [],
       });
 
       const store = await freshStore();
@@ -2281,7 +2273,7 @@ describe('store actions', () => {
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith({
         goals: [], habits: [], tasks: [legacyTask], sessions: [legacySession], lives: [],
-      }, 13, planReview, store.getState().availability, store.getState().allDayBlocks,
+      }, 13, planReview, store.getState().allDayBlocks,
        store.getState().sidebarPanels, null, null);
     });
 
@@ -2296,7 +2288,7 @@ describe('store actions', () => {
       await store.actions.exportBackup();
 
       expect(exportState).toHaveBeenCalledWith(
-        expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+        expect.anything(), expect.anything(), expect.anything(), expect.anything(),
         expect.anything(), snapshot, null,
       );
     });
@@ -2312,7 +2304,7 @@ describe('store actions', () => {
 
       expect(exportState).toHaveBeenCalledOnce();
       expect(exportState).toHaveBeenCalledWith(
-        expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(),
+        expect.anything(), expect.anything(), expect.anything(), expect.anything(),
         expect.anything(), null, null,
       );
     });
@@ -2980,41 +2972,17 @@ describe('view', () => {
   });
 });
 
-describe('availability and all-day preference (device settings)', () => {
-  it('hydrates availability and allDayBlocks from the db on init', async () => {
-    const { actions: _actions, getState, initStore } = await freshStore();
+describe('the all-day preference (device setting)', () => {
+  /*
+   * This describe used to cover availability too — hydrating it, setting it,
+   * rejecting a malformed set at the door. The whole model is gone; what is
+   * left beside it is the one device preference that shares its persistence
+   * pattern (set + save directly, never through setAndPersist).
+   */
+  it('hydrates allDayBlocks from the db on init', async () => {
+    const { getState, initStore } = await freshStore();
     await initStore();
-    expect(getState().availability).toEqual([
-      { dow: 0, startMin: 540, endMin: 1080 },
-      { dow: 1, startMin: 540, endMin: 1080 },
-      { dow: 2, startMin: 540, endMin: 1080 },
-      { dow: 3, startMin: 540, endMin: 1080 },
-      { dow: 4, startMin: 540, endMin: 1080 },
-    ]);
     expect(getState().allDayBlocks).toBe(true);
-  });
-
-  it('setAvailability updates state and persists the new windows', async () => {
-    const { actions, getState } = await freshStore();
-    dbMocks.saveAvailability.mockClear();
-    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
-
-    actions.setAvailability(windows);
-
-    expect(getState().availability).toEqual(windows);
-    expect(dbMocks.saveAvailability).toHaveBeenCalledWith(windows);
-  });
-
-  it('setAvailability rejects a malformed set at the door, falling back to the default', async () => {
-    const { actions, getState } = await freshStore();
-    dbMocks.saveAvailability.mockClear();
-
-    // Structurally valid AvailabilityWindow[], but semantically malformed (out-of-range dow/minutes).
-    actions.setAvailability([{ dow: 9, startMin: -1, endMin: 5000 }]);
-
-    const { DEFAULT_AVAILABILITY } = await import('../lib/availability');
-    expect(getState().availability).toEqual(DEFAULT_AVAILABILITY);
-    expect(dbMocks.saveAvailability).toHaveBeenCalledWith(DEFAULT_AVAILABILITY);
   });
 
   it('setAllDayBlocks updates state and persists the new value', async () => {
@@ -3524,19 +3492,16 @@ describe('a tab that does not own the lock', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(store.getState().secondTab).toBe(true);
 
-    vi.mocked(db.saveAvailability).mockClear();
     vi.mocked(db.saveAllDayBlocks).mockClear();
     vi.mocked(db.saveSidebarPanels).mockClear();
     vi.mocked(db.savePlanReview).mockClear();
     vi.mocked(db.saveGoalsMode).mockClear();
 
-    store.actions.setAvailability([{ dow: 0, startMin: 540, endMin: 600 }]);
     store.actions.setAllDayBlocks(false);
     store.actions.setSidebarPanels(['habits']);
     store.actions.setGoalsMode('timeline');
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(vi.mocked(db.saveAvailability)).not.toHaveBeenCalled();
     expect(vi.mocked(db.saveAllDayBlocks)).not.toHaveBeenCalled();
     expect(vi.mocked(db.saveSidebarPanels)).not.toHaveBeenCalled();
     expect(vi.mocked(db.savePlanReview)).not.toHaveBeenCalled();
@@ -3605,15 +3570,21 @@ describe('replanNode', () => {
     return store;
   }
 
-  it('finds the next weekday when today is a weekend, instead of failing', async () => {
-    // 2026-07-18 is a Saturday; the default window is Mon–Fri.
-    vi.setSystemTime(new Date(2026, 6, 18, 9));
+  /*
+   * This test used to be "finds the next weekday when today is a weekend": the
+   * default window was Mon–Fri, so a Saturday replan had to skip to Monday,
+   * and the version before THAT failed outright. There are no days off now —
+   * `ORDINARY_DAY` is the same 08:00–20:00 on every date — so a Saturday takes
+   * the work itself, which is the answer someone doing a weekend review wants.
+   */
+  it('replans onto the weekend itself rather than skipping to Monday', async () => {
+    vi.setSystemTime(new Date(2026, 6, 18, 9)); // Saturday
     const { actions, getState } = await storeWithCarryOver();
 
     actions.replanNode('g', 'n');
 
     const { findInAll } = await import('../lib/tree');
-    expect(findInAll(getState().goals, 'n')?.blocks?.[0].date).toBe('2026-07-20'); // Monday
+    expect(findInAll(getState().goals, 'n')?.blocks?.[0].date).toBe('2026-07-18');
     expect(getState().toast).toContain('Replanned "Part 2B"');
   });
 
@@ -3628,14 +3599,29 @@ describe('replanNode', () => {
     expect(getState().toast).toContain('Replanned');
   });
 
+  /*
+   * The horizon is FILLED with work rather than emptied of hours. It used to
+   * be the second — every day switched off in Settings — and there are no
+   * hours to switch off any more, so the only way a day can refuse is by being
+   * booked solid across the ordinary day.
+   */
   it('explains itself when nothing in the horizon can take it', async () => {
     vi.setSystemTime(new Date(2026, 6, 15, 8));
     const store = await freshStore();
     await store.initStore();
-    store.actions.setAvailability([]); // no working hours at all
+    const { addDays } = await import('../lib/dates');
+    const { makeBlock } = await import('../lib/blocks');
+    const DAY_MIN = 12 * 60; // ORDINARY_DAY, end to end
+    const filler = Array.from({ length: 20 }, (_, i) => {
+      const date = addDays('2026-07-15', i);
+      return {
+        id: `f${i}`, title: `Filler ${i}`, estimateMin: DAY_MIN,
+        blocks: [makeBlock(date, 0, 1440)],
+      };
+    });
     store.actions.addGoals([{
       id: 'g', title: '6.5840', column: 0,
-      nodes: [{ id: 'n', title: 'Part 2B', estimateMin: 60 }],
+      nodes: [...filler, { id: 'n', title: 'Part 2B', estimateMin: 60 }],
     }]);
 
     store.actions.replanNode('g', 'n');
@@ -3832,7 +3818,7 @@ describe('planNextStepFor', () => {
         id: 'step', title: 'Imported step', notes: '![image](asset:a_1)', done: false,
       }] }],
       habits: [], tasks: [], sessions: [], pxPerDay: 13,
-      availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
+      allDayBlocks: true, sidebarPanels: [],
     };
     const failure = Object.assign(
       new Error('Imported goals and notes, but images could not be saved.'),
@@ -4431,7 +4417,7 @@ describe('undo durability', () => {
     vi.mocked(importStateFromFile).mockResolvedValueOnce({
       goals: [{ id: 'imported', title: 'Restored project', column: 0, nodes: [] }],
       habits: [], tasks: [], sessions: [], lives: [],
-      pxPerDay: 13, availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
+      pxPerDay: 13, allDayBlocks: true, sidebarPanels: [],
     });
     await actions.importBackup(new File([''], 'backup.json'));
     expect(getState().goals.map((g) => g.id)).toEqual(['imported']);
@@ -4486,7 +4472,7 @@ describe('undo durability', () => {
     vi.mocked(importStateFromFile).mockResolvedValueOnce({
       goals: [{ id: 'g', title: 'Same id, new generation', column: 0, nodes: [] }],
       habits: [], tasks: [], sessions: [], lives: [],
-      pxPerDay: 13, availability: DEFAULT_AVAILABILITY, allDayBlocks: true, sidebarPanels: [],
+      pxPerDay: 13, allDayBlocks: true, sidebarPanels: [],
     });
     await actions.importBackup(new File([''], 'backup.json'));
 

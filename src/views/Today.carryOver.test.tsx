@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, Habit, Task } from '../db/types';
+import type { Goal, Habit, Task } from '../db/types';
 import { blocksOf } from '../lib/blocks';
 
 /**
@@ -17,7 +17,6 @@ const dbMocks = vi.hoisted(() => ({
     ({ goals: [], habits: [], tasks: [], sessions: [] })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -26,7 +25,6 @@ const dbMocks = vi.hoisted(() => ({
   saveGoalsMode: vi.fn(async () => {}),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   persist: vi.fn(async () => {}),
@@ -62,9 +60,6 @@ beforeAll(() => {
 
 /** Wednesday 10:00, so "today" still has room and the clock decides nothing. */
 const TODAY = '2026-07-15';
-const WORKDAY: AvailabilityWindow[] = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({
-  dow, startMin: 9 * 60, endMin: 17 * 60,
-}));
 
 const project: Goal = {
   id: 'g1', title: 'Thesis', column: 0,
@@ -75,7 +70,6 @@ async function mountToday(over: {
   goals?: Goal[];
   tasks?: Task[];
   habits?: Habit[];
-  availability?: AvailabilityWindow[];
   onOpenSettings?: () => void;
 } = {}) {
   vi.resetModules();
@@ -85,7 +79,6 @@ async function mountToday(over: {
     tasks: structuredClone(over.tasks ?? []),
     sessions: [],
   });
-  dbMocks.loadAvailability.mockResolvedValueOnce(over.availability ?? WORKDAY);
   const store = await import('../state/store');
   await store.initStore();
   const { Today } = await import('./Today');

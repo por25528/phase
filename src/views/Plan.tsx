@@ -84,8 +84,8 @@ function liveNow(): Now {
   return { date: todayStr(), minute: d.getHours() * 60 + d.getMinutes() };
 }
 
-export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { goals, tasks, habits, hydration, availability, allDayBlocks, revealItem, planMode } = useAppStore();
+export function Plan() {
+  const { goals, tasks, habits, hydration, allDayBlocks, revealItem, planMode } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
@@ -155,10 +155,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
   // of every goal's leaf tree, and it was being redone on every render — the
   // 60-second now-line tick included — two hundred lines below the note
   // claiming those scans had been eliminated.
-  const planHint = useMemo(
-    () => showPlanHint(goals, tasks, availability.length > 0),
-    [goals, tasks, availability],
-  );
+  const planHint = useMemo(() => showPlanHint(goals, tasks), [goals, tasks]);
   const capacity = weekCapacity({
     week: weekStart,
     blocks: [],
@@ -486,7 +483,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [focusedItem, weekStart, availability, isPast, draft]);
+  }, [focusedItem, weekStart, isPast, draft]);
 
   function handleDragStart(e: DragStartEvent) {
     const data = e.active.data.current as PlanDragData | undefined;
@@ -689,11 +686,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             />
           )}
 
-          <PlanNotice
-            needsHours={availability.length === 0}
-            showHint={planHint}
-            onOpenSettings={onOpenSettings}
-          />
+          <PlanNotice showHint={planHint} />
 
           {planMode === 'month' && monthDraft && (
             <BlockComposer

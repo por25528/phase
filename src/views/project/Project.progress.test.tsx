@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
+import type { Goal, GoalNode, Session } from '../../db/types';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: never[]; sessions: Session[] }> => ({
@@ -10,12 +10,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -506,10 +504,8 @@ describe('the compact goal header', () => {
   }
 
   /** Mon–Fri 09:00–17:00, so the forecast has real hours to divide into. */
-  const WORKING_HOURS = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 }));
 
   it('states the deadline and remaining effort, and nothing else', async () => {
-    dbMocks.loadAvailability.mockResolvedValueOnce(WORKING_HOURS);
     await mountGoal(await withDeadline());
     const cluster = screen.getByRole('button', { name: 'Goal status and dates' });
 
@@ -531,7 +527,6 @@ describe('the compact goal header', () => {
   });
 
   it('opens the panel on the dates, with no verdict sentence above them', async () => {
-    dbMocks.loadAvailability.mockResolvedValueOnce(WORKING_HOURS);
     await mountGoal(await withDeadline());
     openStatus();
     expect(screen.queryByText(/of work fits in/)).toBeNull();

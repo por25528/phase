@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   db, persist, exportState, importStateFromFile, loadState,
-  loadAvailability, saveAvailability, loadAllDayBlocks, saveAllDayBlocks,
+  loadAllDayBlocks, saveAllDayBlocks,
   isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
   resetSlotMigration, loadSlotMigrationSnapshot,
   isCheckpointMigrationDone, markCheckpointMigrationDone, saveCheckpointMigrationSnapshot,
@@ -11,7 +11,6 @@ import {
   loadPlanMode, savePlanMode,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
-import { DEFAULT_AVAILABILITY } from '../lib/availability';
 import { loadCalendarCache, saveCalendarCache } from './calendarCache';
 
 function goal(id: string): Goal {
@@ -72,7 +71,7 @@ async function exportedPayload(state: AppState): Promise<Record<string, unknown>
     }),
   });
 
-  await exportState(state, 13, null, DEFAULT_AVAILABILITY, true, []);
+  await exportState(state, 13, null, true, []);
   expect(anchor.click).toHaveBeenCalledOnce();
   return JSON.parse(await backupBlob!.text()) as Record<string, unknown>;
 }
@@ -272,20 +271,36 @@ describe('importStateFromFile', () => {
     await expect(importStateFromFile(fileOf('{"goals": "nope"}'))).rejects.toThrow(/Phase backup/);
   });
 
-  it('round-trips availability and allDayBlocks through a backup', async () => {
+  it('round-trips allDayBlocks through a backup', async () => {
     // Mirrors the JSON shape exportState() produces (exportState itself is
     // untestable here — it drives DOM download APIs not present under
     // environment: 'node' — so we build the same backup literal it would).
-    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
     const backup = {
       goals: [goal('g1')], habits: [], tasks: [], sessions: [],
-      pxPerDay: 40, availability: windows, allDayBlocks: false,
+      pxPerDay: 40, allDayBlocks: false,
     };
     const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
-    expect(imported.availability).toEqual(windows);
     expect(imported.allDayBlocks).toBe(false);
-    expect(await loadAvailability()).toEqual(windows);
     expect(await loadAllDayBlocks()).toBe(false);
+  });
+
+  /*
+   * Working hours are gone, and a backup exported before they went still
+   * carries the key. It is IGNORED rather than migrated: the model it
+   * described no longer exists, and a stale settings row is inert — the same
+   * licence a dangling `Session.nodeId` has. The import must not fail on it,
+   * and must not resurrect it either.
+   */
+  it('ignores an availability key from a backup exported before working hours went', async () => {
+    const backup = {
+      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
+      pxPerDay: 40,
+      availability: [{ dow: 2, startMin: 600, endMin: 720 }],
+      allDayBlocks: false,
+    };
+    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
+    expect(imported).not.toHaveProperty('availability');
+    expect(await db.settings.get('availability')).toBeUndefined();
   });
 
   // Spec §7.6: the cache is device-local derived data, not user data. An
@@ -306,22 +321,17 @@ describe('importStateFromFile', () => {
     expect((await loadCalendarCache())?.accountId).toBe('me@example.com');
   });
 
-  it('leaves existing availability/allDayBlocks alone for an old backup that predates them', async () => {
-    // Seed non-default settings first, so we can tell "left the existing
-    // settings alone" apart from "fell back to the default" — an absent key
-    // in the backup means it says nothing about this device preference, not
-    // that the user wants the default restored (a prior regression reset a
-    // user's working hours to the default on every old-backup import).
-    const seededAvailability = [{ dow: 5, startMin: 0, endMin: 60 }];
-    await saveAvailability(seededAvailability);
+  it('leaves existing allDayBlocks alone for an old backup that predates it', async () => {
+    // Seed a non-default setting first, so we can tell "left the existing
+    // setting alone" apart from "fell back to the default" — an absent key in
+    // the backup means it says nothing about this device preference, not that
+    // the user wants the default restored.
     await saveAllDayBlocks(false);
 
     const oldBackup = { goals: [goal('g1')], habits: [], tasks: [], sessions: [], pxPerDay: 40 };
     const imported = await importStateFromFile(fileOf(JSON.stringify(oldBackup)));
 
-    expect(imported.availability).toEqual(seededAvailability);
     expect(imported.allDayBlocks).toBe(false);
-    expect(await loadAvailability()).toEqual(seededAvailability);
     expect(await loadAllDayBlocks()).toBe(false);
   });
 
@@ -333,18 +343,6 @@ describe('importStateFromFile', () => {
     const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
     expect(imported.allDayBlocks).toBe(false);
     expect(await loadAllDayBlocks()).toBe(false);
-  });
-
-  it('falls back to DEFAULT_AVAILABILITY for a malformed availability array in the backup', async () => {
-    const backup = {
-      goals: [goal('g1')], habits: [], tasks: [], sessions: [],
-      pxPerDay: 40,
-      availability: [{ dow: 9, startMin: -1, endMin: 5000 }], // out-of-range, malformed
-      allDayBlocks: true,
-    };
-    const imported = await importStateFromFile(fileOf(JSON.stringify(backup)));
-    expect(imported.availability).toEqual(DEFAULT_AVAILABILITY);
-    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
   });
 
   // Finding I2: every backup predates the calendar-grid migration, but this
@@ -444,23 +442,7 @@ describe('loadState', () => {
   });
 });
 
-describe('availability', () => {
-  it('returns the default availability when nothing is stored', async () => {
-    await db.settings.clear();
-    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
-  });
-
-  it('round-trips saved availability', async () => {
-    const windows = [{ dow: 2, startMin: 600, endMin: 720 }];
-    await saveAvailability(windows);
-    expect(await loadAvailability()).toEqual(windows);
-  });
-
-  it('falls back to the default when the stored value is corrupt', async () => {
-    await db.settings.put({ key: 'availability', value: '{not json' });
-    expect(await loadAvailability()).toEqual(DEFAULT_AVAILABILITY);
-  });
-
+describe('allDayBlocks', () => {
   it('defaults allDayBlocks to true and round-trips false', async () => {
     await db.settings.clear();
     expect(await loadAllDayBlocks()).toBe(true);

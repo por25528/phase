@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AvailabilityWindow, Goal, Session } from '../../db/types';
+import type { Goal, Session } from '../../db/types';
 import { makeBlock } from '../../lib/blocks';
 import { addDays, todayStr } from '../../lib/dates';
 import { fmtMinutes } from '../../lib/effort';
@@ -15,12 +15,10 @@ const dbMocks = vi.hoisted(() => ({
   })),
   loadScale: vi.fn(async () => 13),
   loadPlanReview: vi.fn(async () => null),
-  loadAvailability: vi.fn(async (): Promise<AvailabilityWindow[]> => []),
   loadAllDayBlocks: vi.fn(async () => true),
   loadSidebarPanels: vi.fn(async () => []),
   saveScale: vi.fn(async () => {}),
   savePlanReview: vi.fn(async () => {}),
-  saveAvailability: vi.fn(async () => {}),
   saveAllDayBlocks: vi.fn(async () => {}),
   saveSidebarPanels: vi.fn(async () => {}),
   loadPlanMode: vi.fn(async () => 'week' as const),
@@ -100,12 +98,11 @@ type Store = typeof import('../../state/store');
  * uses in StepPanel.test.tsx, so an action's effect is readable through
  * `store.getState()`.
  */
-async function mountTask(nodeId: string, availability?: AvailabilityWindow[]): Promise<Store> {
+async function mountTask(nodeId: string): Promise<Store> {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
     goals: [structuredClone(goalSeed)], habits: [], tasks: [], sessions: [],
   });
-  if (availability !== undefined) dbMocks.loadAvailability.mockResolvedValueOnce(availability);
   const store = await import('../../state/store');
   await store.initStore();
   store.actions.openProject('g1');
@@ -312,9 +309,6 @@ describe('TaskPage', () => {
 
   it('schedules an unplanned task onto today from the Schedule chip', async () => {
     vi.setSystemTime(new Date(2026, 6, 27, 8));
-    dbMocks.loadAvailability.mockResolvedValueOnce(
-      [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 })),
-    );
     const store = await mountTask('n2');
 
     fireEvent.click(screen.getByRole('button', { name: 'Schedule: Not scheduled' }));
@@ -381,9 +375,7 @@ describe('TaskPage', () => {
     try {
       const today = todayStr();
       const tomorrow = addDays(today, 1);
-      await mountTask('n1', [0, 1, 2, 3, 4].map((dow) => ({
-        dow, startMin: 540, endMin: 1020,
-      })));
+      await mountTask('n1');
 
       fireEvent.click(screen.getByRole('button', { name: /^Actions for / }));
       fireEvent.click(screen.getByRole('menuitem', { name: 'Break into smaller steps' }));
@@ -463,9 +455,6 @@ describe('TaskPage', () => {
       // has somewhere to put the new sitting — matching StepPanel.test.tsx's
       // pattern for the same store action.
       vi.setSystemTime(new Date(2026, 6, 27, 8));
-      dbMocks.loadAvailability.mockResolvedValueOnce(
-        [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 })),
-      );
       const store = await mountTask('n3');
 
       fireEvent.click(screen.getByRole('button', { name: 'Sit again today' }));
@@ -484,9 +473,6 @@ describe('TaskPage', () => {
      */
     it('shows the future sitting in the Schedule chip, not the past one', async () => {
       vi.setSystemTime(new Date(2026, 7, 12, 8)); // 2026-08-12
-      dbMocks.loadAvailability.mockResolvedValueOnce(
-        [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 })),
-      );
       const store = await mountTask('n1');
       await act(async () => {
         // Booked in this order because `scheduleNode` refuses a fresh sitting
