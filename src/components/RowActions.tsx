@@ -44,6 +44,7 @@ export function RowActions({
     isContainer,
     isDone: node.status === 'done',
     isMilestone: node.checkpoint === true,
+    isParked: node.status === 'parked',
     // Nothing above to nest under, and nothing above the root to rise to.
     canIndent: !isFirstSibling,
     canOutdent: depth > 0,
@@ -57,6 +58,7 @@ export function RowActions({
       case 'schedule': onSchedule(); return;
       case 'estimate': onEstimate(); return;
       case 'milestone': actions.toggleCheckpoint(node.id); return;
+      case 'park': actions.setNodeStatus(node.id, node.status === 'parked' ? 'todo' : 'parked'); return;
       case 'indent': actions.indentNode(node.id); return;
       case 'outdent': actions.outdentNode(node.id); return;
       case 'delete': actions.removeNode(node.id); return;

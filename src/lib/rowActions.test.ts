@@ -5,6 +5,7 @@ const ctx = (over: Partial<RowActionContext> = {}): RowActionContext => ({
   isContainer: false,
   isDone: false,
   isMilestone: false,
+  isParked: false,
   canIndent: true,
   canOutdent: true,
   ...over,
@@ -47,6 +48,15 @@ describe('rowActions', () => {
     const on = rowActions(ctx({ isMilestone: true })).find((a) => a.id === 'milestone');
     expect(off?.label).toBe('Make a milestone');
     expect(on?.label).toBe('Not a milestone');
+  });
+
+  it('offers Park on a leaf only, worded by its current state', () => {
+    expect(ids(ctx({ isContainer: true }))).not.toContain('park');
+    const off = rowActions(ctx({ isParked: false })).find((a) => a.id === 'park');
+    const on = rowActions(ctx({ isParked: true })).find((a) => a.id === 'park');
+    expect(off?.label).toBe('Park');
+    expect(on?.label).toBe('Unpark');
+    expect(off?.hint).toBe('P');
   });
 
   it('drops Indent for a first child and Outdent at the root', () => {
@@ -111,7 +121,10 @@ describe('rowActionGroups', () => {
 
 describe('the focus-needed verb', () => {
   const ctx = (over: Partial<RowActionContext> = {}): RowActionContext =>
-    ({ isContainer: false, isDone: false, isMilestone: false, canIndent: false, canOutdent: false, ...over });
+    ({
+      isContainer: false, isDone: false, isMilestone: false, isParked: false,
+      canIndent: false, canOutdent: false, ...over,
+    });
 
   it('is offered on a LEAF', () => {
     expect(rowActions(ctx()).map((a) => a.id)).toContain('demand');
@@ -128,11 +141,11 @@ describe('the focus-needed verb', () => {
 });
 
 describe('taskPageActions', () => {
-  const leaf = { canIndent: true, canOutdent: true };
+  const leaf = { canIndent: true, canOutdent: true, isParked: false };
 
-  it('offers rename, breakdown, indent, outdent and delete', () => {
+  it('offers rename, breakdown, park, indent, outdent and delete', () => {
     expect(taskPageActions(leaf).map((a) => a.id)).toEqual([
-      'rename', 'breakdown', 'indent', 'outdent', 'delete',
+      'rename', 'breakdown', 'park', 'indent', 'outdent', 'delete',
     ]);
   });
 
@@ -143,7 +156,7 @@ describe('taskPageActions', () => {
    */
   it('keeps breakdown off the tree row, where the panel cannot open', () => {
     const ctx: RowActionContext = {
-      isContainer: false, isDone: false, isMilestone: false,
+      isContainer: false, isDone: false, isMilestone: false, isParked: false,
       canIndent: true, canOutdent: true,
     };
     expect(rowActions(ctx).map((a) => a.id)).not.toContain('breakdown');
@@ -160,14 +173,22 @@ describe('taskPageActions', () => {
     expect(taskPageActions(leaf).map((a) => a.id)).not.toContain('add-task');
   });
 
-  it('drops indent for a first sibling and outdent at the root', () => {
-    const stuck = { ...leaf, canIndent: false, canOutdent: false };
-    expect(taskPageActions(stuck).map((a) => a.id)).toEqual(['rename', 'breakdown', 'delete']);
+  it('offers park, worded by its current state — the page has no park chip', () => {
+    const off = taskPageActions(leaf).find((a) => a.id === 'park');
+    const on = taskPageActions({ ...leaf, isParked: true }).find((a) => a.id === 'park');
+    expect(off?.label).toBe('Park');
+    expect(on?.label).toBe('Unpark');
+    expect(off?.hint).toBe('P');
   });
 
-  it('groups rename, breakdown, the move verbs and delete apart', () => {
+  it('drops indent for a first sibling and outdent at the root', () => {
+    const stuck = { ...leaf, canIndent: false, canOutdent: false };
+    expect(taskPageActions(stuck).map((a) => a.id)).toEqual(['rename', 'breakdown', 'park', 'delete']);
+  });
+
+  it('groups rename, breakdown+park, the move verbs and delete apart', () => {
     expect(taskPageActionGroups(leaf).map((g) => g.map((a) => a.id))).toEqual([
-      ['rename'], ['breakdown'], ['indent', 'outdent'], ['delete'],
+      ['rename'], ['breakdown', 'park'], ['indent', 'outdent'], ['delete'],
     ]);
   });
 });

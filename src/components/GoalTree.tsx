@@ -830,6 +830,14 @@ function GoalTreeNode({
       actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
       return;
     }
+    // P parks a leaf, or unparks one. Its own key rather than a stop on S's
+    // cycle, for the reason rowActions.ts gives.
+    if (plain && (e.key === 'p' || e.key === 'P') && !editing) {
+      e.preventDefault();
+      if (hasKids) return;
+      actions.setNodeStatus(n.id, stepStatus(n) === 'parked' ? 'todo' : 'parked');
+      return;
+    }
     // E opens the estimate editor — the row's own control, not a second one.
     if (plain && (e.key === 'e' || e.key === 'E')) {
       e.preventDefault();
