@@ -3,6 +3,8 @@ import { useAppStore } from '../../state/store';
 import { AssistantSurface } from './AssistantSurface';
 import { assistantMainBridge } from '../../lib/assistantBridge';
 import { executionAdvice } from '../../lib/executionAdvisor';
+import { promoteWork } from '../../lib/pickWork';
+import type { WorkRef } from '../../lib/expectedTime';
 import { expectedTimeFor } from '../../lib/expectedTime';
 import type {
   AssistantAction, AssistantFocusView, AssistantSnapshot,
@@ -52,6 +54,11 @@ export function AssistantHost({ open, onClose, theme }: {
     assistantAccelerator, timeLevel, focusLevel, hydration, actions,
   } = useAppStore();
   const [notice, setNotice] = useState<Notice | null>(null);
+  // The row the user PICKED in the `Or` / `Switch to` band. A pick points the
+  // shelf at work; it does not start a clock — `Start session` does that, and
+  // is the only thing that does. Cleared when a session starts on it and when
+  // the shelf closes, and otherwise a lens the advice is read through.
+  const [chosen, setChosen] = useState<WorkRef | null>(null);
 
   // Escape is CONSUMED, exactly as Popover consumes it: App listens on the
   // bubble phase, and letting the key through would close this panel and the
@@ -70,14 +77,14 @@ export function AssistantHost({ open, onClose, theme }: {
   const snapshot: AssistantSnapshot = useMemo(() => {
     if (hydration !== 'ready') return { status: 'loading' };
     const today = todayStr();
-    const advice = executionAdvice({
+    const advice = promoteWork(executionAdvice({
       goals, tasks, sessions, blocks: [],
       placedOn: (date: string) => spansOn(goals, tasks, date),
       allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute() },
       timeLevel,
       focusLevel,
-    });
+    }), chosen);
     const activeFocus: AssistantFocusView | null = activeFocusSession
       ? {
           ref: activeFocusSession.ref,
@@ -98,7 +105,7 @@ export function AssistantHost({ open, onClose, theme }: {
       theme,
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, notice]);
+  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, notice, chosen]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {
@@ -109,6 +116,7 @@ export function AssistantHost({ open, onClose, theme }: {
           expectedTimeFor(action.ref, { goals, tasks, sessions }),
         );
         if (!started) setNotice({ tone: 'warning', text: 'A session is already running.' });
+        else setChosen(null);
         return;
       }
       case 'set-time-level': actions.setTimeLevel(action.level); return;
@@ -134,18 +142,26 @@ export function AssistantHost({ open, onClose, theme }: {
       }
       case 'confirm-focus': actions.confirmFocus(action.minutes); return;
       case 'switch-focus': {
-        // Log the running session first; only a clean log releases the switch.
-        // A stale one parks in `confirming` and the surface asks about it.
-        const result = actions.completeFocus();
-        if (result === 'refused') {
-          setNotice({ tone: 'warning', text: "Couldn't log the current session." });
-          return;
+        // A pick POINTS the shelf at work; it starts nothing. With a session
+        // running it is logged first — a stale one parks in `confirming` and
+        // the surface asks about it, and the choice waits behind that answer —
+        // and the shelf then lands idle on the chosen row, `Start session`
+        // beside it. It used to start the new session in the same press, so
+        // "switch" meant "end one clock and start another" with no moment in
+        // between to change your mind.
+        setNotice(null);
+        if (activeFocusSession) {
+          const result = actions.completeFocus();
+          if (result === 'refused') {
+            setNotice({ tone: 'warning', text: "Couldn't log the current session." });
+            return;
+          }
         }
-        if (result === 'needs-confirmation') return;
-        actions.startFocus(action.ref, expectedTimeFor(action.ref, { goals, tasks, sessions }));
+        setChosen(action.ref);
         return;
       }
       case 'close':
+        setChosen(null);
         onClose();
     }
   }

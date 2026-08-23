@@ -352,47 +352,49 @@ describe('AssistantSurface', () => {
     vi.useRealTimers();
   });
 
-  it('routes an alternative Start session through the same send-off as the primary', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-15T09:00:00Z'));
+  /*
+   * An `Or` row is a CHOICE, not a start. Picking one points the shelf at it
+   * (`switch-focus`) and nothing else; `Start session` remains the one thing
+   * that starts a clock, and it still goes through the send-off.
+   */
+  it('an Or row picks the work; only Start session starts it', () => {
     const onAction = vi.fn();
     const alternative = work({ key: 'step:n2', title: 'Read chapter 5' });
-    const { rerender } = render(
+    render(
       <AssistantSurface
         snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives: [alternative] } })}
         onAction={onAction}
       />,
     );
-    const alt = screen.getByRole('button', { name: /Read chapter 5/ });
-    fireEvent.click(alt);
-    fireEvent.click(alt);
+    fireEvent.click(screen.getByRole('button', { name: /Read chapter 5/ }));
     expect(onAction).toHaveBeenCalledTimes(1);
-    expect(onAction).toHaveBeenCalledWith({ type: 'start-focus', ref: alternative.ref });
-    expect(alt.hasAttribute('disabled')).toBe(true);
+    expect(onAction).toHaveBeenCalledWith({ type: 'switch-focus', ref: alternative.ref });
 
-    rerender(
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    expect(onAction).toHaveBeenLastCalledWith({ type: 'start-focus', ref: work().ref });
+  });
+
+  /*
+   * The band beside a running session used to list `alternatives` alone — so
+   * it hid the advisor's primary and, when the running work was itself an
+   * alternative, offered to switch to the task already on the clock.
+   */
+  it('Switch to lists the primary and never the running work', () => {
+    const running = work({ key: 'step:n2', ref: { kind: 'step', id: 'n2', goalId: 'g1' }, title: 'Read chapter 5' });
+    render(
       <AssistantSurface
         snapshot={ready({
-          advice: { kind: 'work', primary: work(), alternatives: [alternative] },
-          activeFocus: {
-            ref: alternative.ref,
-            title: alternative.title,
-            goalTitle: alternative.goalTitle,
-            phase: 'active',
-            elapsedMin: 0,
-            expected: alternative.expected,
-          },
+          activeFocus: focusView({ ref: running.ref, title: running.title }),
+          advice: { kind: 'work', primary: work(), alternatives: [running] },
         })}
-        onAction={onAction}
+        onAction={() => {}}
+        presentation="shelf"
       />,
     );
-    const quote = sendoffFor(Date.now());
-    const status = screen.getByRole('status').textContent ?? '';
-    expect(status).toContain(quote.text);
-    expect(status).toContain(quote.who);
-    expect(status).toContain(quote.source);
-    expect(screen.queryByRole('textbox')).toBeNull();
-    vi.useRealTimers();
+    expect(screen.getByText('Switch to')).toBeTruthy();
+    const rows = screen.getAllByRole('button').map((b) => b.textContent ?? '');
+    expect(rows.some((t) => t.includes('Problem set 4'))).toBe(true);
+    expect(rows.some((t) => t.includes('Read chapter 5'))).toBe(false);
   });
 
   it('keeps the running session controls under a neutral notice', () => {

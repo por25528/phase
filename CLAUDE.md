@@ -351,6 +351,19 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   different question than the one on screen. No checkbox on the alternatives
   band's rows: those are lists of things to PICK, and a list of choices is not
   a commit.
+- **A row in the shelf's `Or` / `Switch to` band is a CHOICE, and `Start
+  session` is the only thing that starts a clock.** Picking a row dispatches
+  `switch-focus`, which POINTS the shelf at that work — `AssistantHost` holds
+  `chosen` and reads the advice through `promoteWork` (`lib/pickWork.ts`), a
+  lens that moves the picked row to primary and never invents one — and
+  starts nothing. With a session running it is logged first (a stale one still
+  parks in `confirming` and the choice waits behind the answer), and the shelf
+  lands idle on the chosen row. It used to end one clock and start another in
+  one press. `switchCandidates` is the other half: the band beside a running
+  session lists primary AND alternatives minus the running ref, because
+  `alternatives` alone hid the advisor's head and could offer the task already
+  on the clock. `chosen` clears when a session starts and when the shelf
+  closes.
 - **A focus draft follows the work it names.** `finishWork` was the only path
   that settled `activeFocusSession`, but Today's checkbox, the bulk bar and the
   agent socket all reach `toggleLeaf`/`toggleTask`, and a delete removes the

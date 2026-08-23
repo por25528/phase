@@ -99,7 +99,7 @@ describe('AssistantHost', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('switching tasks logs the current non-stale session before starting the alternative', async () => {
+  it('switching tasks logs the current non-stale session and POINTS at the alternative without starting it', async () => {
     const tasks: Task[] = [
       { id: 't1', title: 'Draft essay', done: false, goalId: null, date: TODAY },
       { id: 't2', title: 'Revise notes', done: false, goalId: null, date: TODAY },
@@ -119,9 +119,16 @@ describe('AssistantHost', () => {
       fireEvent.click(screen.getByRole('button', { name: /Revise notes/ }));
     });
 
-    // One session logged for the first task, and the draft now points at the second.
+    // One session logged for the first task; NO draft — the shelf is idle on
+    // the chosen row, and Start session is what would start it.
     expect(store.getState().sessions).toHaveLength(1);
     expect(store.getState().sessions[0]).toMatchObject({ taskId: 't1', minutes: 25 });
+    expect(store.getState().activeFocusSession).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Revise notes' })).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    });
     expect(store.getState().activeFocusSession?.ref.id).toBe('t2');
   });
 

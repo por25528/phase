@@ -4,6 +4,7 @@ import type {
   AssistantAction, AssistantFocusView, AssistantSnapshot,
 } from '../../lib/assistantProtocol';
 import { elapsedAgainstExpected, expectedTimeLabel } from '../../lib/assistantProtocol';
+import { switchCandidates } from '../../lib/pickWork';
 import type { AdviceReason, RecommendedWork } from '../../lib/executionAdvisor';
 import { TIME_LEVELS, TIME_WORD, type TimeLevel } from '../../lib/timeLens';
 import { FOCUS_LEVELS, FOCUS_WORD, type FocusLevel } from '../../lib/focusLens';
@@ -851,7 +852,9 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
         label="Or"
         items={alternatives}
         disabled={pending}
-        onPick={onStart}
+        // A pick points the shelf at the row; `Start session` starts it. The
+        // same verb `Switch to` spends, because both bands are one region.
+        onPick={(ref) => onAction({ type: 'switch-focus', ref })}
         shelf={shelf}
         // The primary names its project in full one region up; the alternatives
         // only have to say what makes them different.
@@ -952,7 +955,10 @@ export function AssistantSurface({
         {snapshot.activeFocus ? (
           <FocusPanel
             focus={snapshot.activeFocus}
-            alternatives={snapshot.advice.kind === 'work' ? snapshot.advice.alternatives : []}
+            // Primary included, running work excluded: `alternatives` alone
+            // hid the advisor's head and could offer the task already on
+            // the clock as something to switch to.
+            alternatives={switchCandidates(snapshot.advice, snapshot.activeFocus.ref)}
             onAction={onAction}
             shelf={shelf}
             focusLevel={snapshot.focusLevel}
