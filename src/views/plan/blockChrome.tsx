@@ -84,9 +84,9 @@ export const blockFootCls =
  * technical drawing, which is the reading the whole surface is after.
  *
  * A border cannot do it: caps need real elements, so the spine is painted
- * rather than stroked and takes `projectFillClass` rather than
- * `projectAccentClass`. Both index the same palette, so the hue cannot
- * disagree with itself.
+ * rather than stroked and takes `projectFillClass` rather than the
+ * `border-l-*` a block used to wear. Both index the same palette, so the hue
+ * cannot disagree with itself.
  *
  * `aria-hidden`, and the block's own `overflow-hidden` clips it to the corner
  * radius without restating it.
@@ -120,10 +120,29 @@ export function BlockSpine({ className }: { className: string }) {
  * the length, so announcing the visible readout would say the time twice and,
  * worse, would announce BOTH forms — the CSS hides one visually and hiding
  * something visually does not remove it from the accessible tree.
+ *
+ * `block` before `truncate`, and it is load-bearing rather than tidy:
+ * `overflow`/`text-overflow` do not apply to an inline box (CSS 2.1 §11.1.1),
+ * so `truncate` on a bare `<span>` does nothing at all unless something else
+ * blockifies it. In the footer the parent is `blockFootCls` — a flex
+ * container — which does; in the two `flex-none` wrappers above the footer
+ * threshold it does not, and a long time ran to the block's edge and was hard
+ * CLIPPED by the root's `overflow-hidden`, with no ellipsis to say so. It is
+ * fixed here rather than at either call site because that is what this file is
+ * for — a rule that reached two of three callers is the drift it exists to
+ * prevent.
+ *
+ * `block` rather than `inline-block`: inside `blockFootCls` the span is a flex
+ * ITEM either way, and a flex item's `display` is already blockified, so
+ * `items-baseline` keeps aligning it on the baseline of its first line exactly
+ * as before — the change is inert in the one branch that already worked.
+ * Outside a flex parent, `block` takes the full line rather than shrinking to
+ * its text, which is what gives `truncate` a width to cut against; an
+ * `inline-block` would shrink-to-fit and overflow again.
  */
 export function BlockTime({ start, end }: { start: string; end: string }) {
   return (
-    <span aria-hidden="true" className={`${blockTimeCls} text-ink-soft truncate`}>
+    <span aria-hidden="true" className={`${blockTimeCls} text-ink-soft block truncate`}>
       <span className="blk-span">{start} – {end}</span>
       <span className="blk-start">{start}</span>
     </span>

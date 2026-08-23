@@ -51,6 +51,22 @@ export function BlockGhost({
    */
   const label = startMin === null ? fmtMinutes(durationMin) : clockLabel(startMin);
   const endLabel = startMin === null ? null : clockLabel(startMin + durationMin);
+  /*
+   * What the ghost prints, decided ONCE. The footer threshold changes the
+   * wrapper the time sits in — a rule at `FOOTER_BLOCK_PX`, a plain line below
+   * it — and nothing else, so writing the children out under both arms of that
+   * ternary meant every change to the readout had to be made twice and a change
+   * made once was invisible at the other height. That is the same drift
+   * `blockChrome` exists to prevent between the three surfaces; it has no
+   * business reappearing inside one of them.
+   *
+   * The length, ONLY while there is no resolved time to state — the ghost is
+   * never empty, and "90m in the air over nowhere" is more useful than a blank
+   * rule. See EventBlock's note on why the length is not a standing cell.
+   */
+  const time = endLabel === null
+    ? <span className={`${blockTimeCls} text-ink-soft block truncate`}>{label}</span>
+    : <BlockTime start={label} end={endLabel} />;
 
   return (
     <div
@@ -81,23 +97,7 @@ export function BlockGhost({
           <div className="flex-1 min-h-0 overflow-hidden">
             <div className="font-medium line-clamp-3">{title}</div>
           </div>
-          {hasFooter ? (
-            <div className={blockFootCls}>
-              {/* The length, ONLY while there is no resolved time to state —
-                  the ghost is never empty, and "90m in the air over nowhere"
-                  is more useful than a blank rule. See EventBlock's note on
-                  why the length is not a standing cell. */}
-              {endLabel === null
-                ? <span className={`${blockTimeCls} text-ink-soft truncate`}>{label}</span>
-                : <BlockTime start={label} end={endLabel} />}
-            </div>
-          ) : (
-            <div className="flex-none">
-              {endLabel === null
-                ? <span className={`${blockTimeCls} text-ink-soft truncate`}>{label}</span>
-                : <BlockTime start={label} end={endLabel} />}
-            </div>
-          )}
+          <div className={hasFooter ? blockFootCls : 'flex-none'}>{time}</div>
         </div>
       )}
     </div>

@@ -65,8 +65,7 @@ export function projectBlockClass(goalId: string | null): string {
 }
 
 /**
- * The same two facts, separately, for a caller that has to paint them on
- * DIFFERENT elements.
+ * The wash alone, for a caller that has to paint it on its OWN element.
  *
  * `EventBlock` is the one: a block's tint is an alpha over whatever is behind
  * it, and what is behind it on the week grid is now the `.hatch` marking the
@@ -75,16 +74,17 @@ export function projectBlockClass(goalId: string | null): string {
  * lays the tint over it — which is also the condition `projectColour.test.ts`
  * measures these hues against, since it checks their contrast on the PANEL.
  *
- * Both are derived from the same array `projectBlockClass` joins, so a hue can
- * never disagree with itself about which element it is on. Anywhere the two
- * belong together (`MonthCell`) keeps spending the joined form.
+ * It is the same array `projectBlockClass` joins, so a hue can never disagree
+ * with itself about which element it is on. Anywhere the tint and the rail
+ * belong together (`MonthCell`) keeps spending the joined form — which is the
+ * only consumer `ACCENT_CLASSES` has left. There WAS a `projectAccentClass`
+ * beside this, handing the `border-l-*` out on its own; the block that wanted
+ * it now paints `projectFillClass` on a capped spine instead, and a fourth
+ * near-identical `project*Class` accessor with no caller is one more name a
+ * reader has to disambiguate before finding the three that are real.
  */
 export function projectTintClass(goalId: string | null): string {
   return goalId === null ? 'bg-panel' : TINT_CLASSES[projectColourIndex(goalId)];
-}
-
-export function projectAccentClass(goalId: string | null): string {
-  return goalId === null ? 'border-l-line-2' : ACCENT_CLASSES[projectColourIndex(goalId)];
 }
 
 /**
@@ -116,11 +116,11 @@ export function projectSpineClass(goalId: string | null): string {
 /**
  * The block's dimension-line spine — the project hue as a FILL.
  *
- * `projectAccentClass` above is a `border-l-*`, and a border cannot carry the
- * end caps: a capped spine needs a real element with a `::before`/`::after`
- * pair, and that element is painted rather than stroked. The two are the same
- * hue by construction (both index the same palette), so a block cannot show
- * one colour on its edge and another on its caps.
+ * The `border-l-*` in `ACCENT_CLASSES` above cannot do it: a border carries no
+ * end caps, and a capped spine needs real elements, which are painted rather
+ * than stroked. The two arrays are the same hue by construction (both index
+ * the same palette), so a block cannot show one colour on its edge and another
+ * on its caps.
  *
  * Written out in full, as every array in this file is: Tailwind's scanner
  * reads source TEXT and cannot evaluate `bg-proj-${i}`.
