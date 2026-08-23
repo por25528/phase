@@ -54,6 +54,7 @@ where `goalId` is the project holding a step and `null` for a loose task.
 | `list_projects` | — | Every project with its horizon, percentage, remaining minutes and health sentence |
 | `get_project` | `goalId` | The full step tree for one project: statuses, estimates and scheduled sittings |
 | `get_note` | `ref` (`{ kind: 'step' \| 'project', id }`) | The markdown note on a step or project, with its title; `''` when there is none |
+| `propose_replan` | — | Where each slipped sitting would go within `REPLAN_HORIZON_DAYS`, and which will not fit — `proposeReplan`, as Today's Replan strip calls it |
 | `time_log` | `ref` | Minutes logged against a task or step — the same total `TaskPage` prints — and the entries behind it |
 
 Every read **spends the lib function its view spends and re-derives nothing** —
@@ -97,6 +98,7 @@ and persistence come for free.
 | `append_note` | `ref`, `markdown` | `setNodeNotes` / `setGoalNotes` | Adds a paragraph at the end — ONE write, so nothing typed between a read and a write is lost |
 | `log_time` | `ref`, `minutes`, `date?` | `logSession` | After the fact, never a running timer; `date` defaults to today and may not be in the future |
 | `clear_time` | `ref` | `clearSessionsFor` | Discards every entry on the item; refuses when there was none |
+| `apply_replan` | `moves` | `applyReplan` | Any subset of `propose_replan`'s moves, as `{ kind, id, blockId, goalId, to, startMin }`; one undoable write — see below |
 
 Two things a write will never do:
 
@@ -149,7 +151,7 @@ Which writes arm an undo entry at all:
 
 | Arms one | Arms nothing |
 |---|---|
-| `delete` (15s), `complete_task`, `set_status` → `done`, `set_horizon`, `estimate`, `schedule`, `log_time`, `clear_time` | `create_project`, `add_task`, `rename`, `set_life`, `set_status` → `todo`/`doing`/`blocked`, `set_note`, `append_note` |
+| `delete` (15s), `complete_task`, `set_status` → `done`, `set_horizon`, `estimate`, `schedule`, `log_time`, `clear_time`, `apply_replan` | `create_project`, `add_task`, `rename`, `set_life`, `set_status` → `todo`/`doing`/`blocked`, `set_note`, `append_note` |
 
 `schedule` arms one because it has no `blockId`: a booking made from a distance
 is not direct manipulation, and a press you did not watch land needs a way back.
@@ -170,6 +172,16 @@ no notes field and get no note verb.
 (`startFocus`/`completeFocus`) is deliberately not exposed: a terminal cannot
 watch a timer, a session it started would run unattended, and the shelf's
 "was that real work?" question would have no one to answer it.
+
+### A replan proposes; `apply_replan` takes the proposal back
+
+`propose_replan` is a read. `apply_replan` takes its moves — any subset,
+unchanged — and joins each to the sitting that actually slipped by `blockId`:
+the caller says where it goes, the app restates what it is (title, length,
+origin). A move naming a sitting that never slipped, or one moved since, or a
+destination in the past, refuses the WHOLE call, because the write is one undo
+entry. Days and minutes are passed through exactly as proposed, never
+re-resolved — the invariant Today's strip holds, for the same reason.
 
 ### Prompts and resources
 

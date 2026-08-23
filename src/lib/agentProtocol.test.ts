@@ -116,6 +116,21 @@ describe('note and ledger requests', () => {
   });
 });
 
+describe('replan requests', () => {
+  const move = { kind: 'step', id: 'n1', blockId: 'b1', goalId: 'g1', to: '2026-09-01', startMin: 540 };
+  it('propose_replan takes nothing', () => {
+    expect(validAgentRequest({ tool: 'propose_replan' })).toBe(true);
+  });
+  it('apply_replan needs a non-empty list of well-formed moves', () => {
+    expect(validAgentRequest({ tool: 'apply_replan', moves: [move] })).toBe(true);
+    expect(validAgentRequest({ tool: 'apply_replan', moves: [{ ...move, goalId: null, kind: 'task' }] })).toBe(true);
+    expect(validAgentRequest({ tool: 'apply_replan', moves: [] })).toBe(false);
+    expect(validAgentRequest({ tool: 'apply_replan', moves: [{ ...move, to: 'monday' }] })).toBe(false);
+    expect(validAgentRequest({ tool: 'apply_replan', moves: [{ ...move, blockId: undefined }] })).toBe(false);
+    expect(validAgentRequest({ tool: 'apply_replan', moves: [move, { kind: 'habit' }] })).toBe(false);
+  });
+});
+
 describe('AGENT_TOOLS vs mcp/server.js', () => {
   const SERVER = readFileSync(new URL('../../mcp/server.js', import.meta.url), 'utf8');
 

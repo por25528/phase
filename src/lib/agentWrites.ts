@@ -11,6 +11,7 @@ import { todayStr } from './dates';
 import { columnOfHorizonWord, HORIZON_LABELS } from './horizons';
 import { noteOf, missingRef } from './agentReads';
 import { formatEstimateValue } from './estimateInput';
+import { slippedWork, type ReplanMove } from './replan';
 
 /**
  * The write half of the agent surface.
@@ -465,6 +466,29 @@ export function handleAgentWrite(
         return errorResponse(`Nothing was logged on "${target.found}".`);
       }
       return settled({ cleared: request.ref.id });
+    }
+
+    case 'apply_replan': {
+      // Each move is joined to the sitting that ACTUALLY slipped, by blockId.
+      // The caller says where it goes; the app says what it is — title,
+      // length, origin — so a move invented for a sitting that never slipped,
+      // or one that slipped and was since moved, cannot reach the store.
+      // All-or-nothing, because the write is ONE undo entry.
+      const slipped = new Map(slippedWork(state.goals, state.tasks, todayStr()).map((s) => [s.blockId, s]));
+      const today = todayStr();
+      const moves: ReplanMove[] = [];
+      for (const m of request.moves) {
+        const item = slipped.get(m.blockId);
+        if (!item || item.kind !== m.kind || item.id !== m.id) {
+          return errorResponse(`No slipped sitting "${m.blockId}" on "${m.id}" — call propose_replan again.`);
+        }
+        if (m.to < today) return errorResponse(`${m.to} is in the past; a replan moves work forward.`);
+        moves.push({ ...item, to: m.to, startMin: m.startMin });
+      }
+      if (!actions.applyReplan(moves)) return errorResponse('Nothing was moved.');
+      return settled({
+        moved: moves.map((m) => ({ id: m.id, blockId: m.blockId, title: m.title, from: m.from, to: m.to, startMin: m.startMin })),
+      });
     }
 
     default:

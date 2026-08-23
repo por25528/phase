@@ -422,7 +422,10 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   "was that real?" question would have no one to answer it. Prompts and
   resources are declared in `server.js` and pinned to `AGENT_PROMPTS`/
   `AGENT_RESOURCES` and the `agentPrompts.ts` text by `agentProtocol.test.ts`,
-  the same way `AGENT_TOOLS` is.
+  the same way `AGENT_TOOLS` is. `propose_replan`/`apply_replan` are the
+  replan rule restated across a socket: the read proposes, the write joins each
+  returned move to `slippedWork` by `blockId` and passes `to`/`startMin`
+  through un-resolved — all-or-nothing, because it is one undo entry.
 
 ## Conventions
 

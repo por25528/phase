@@ -41,7 +41,23 @@ export type AgentRequest =
   | { tool: 'append_note'; ref: NoteRef; markdown: string }
   | { tool: 'time_log'; ref: WorkRef }
   | { tool: 'log_time'; ref: WorkRef; minutes: number; date?: string }
-  | { tool: 'clear_time'; ref: WorkRef };
+  | { tool: 'clear_time'; ref: WorkRef }
+  | { tool: 'propose_replan' }
+  | { tool: 'apply_replan'; moves: ReplanMoveRequest[] };
+
+/**
+ * One move handed BACK from a `propose_replan` answer. Only the fields that
+ * identify the sitting and say where it goes: the title, length and origin
+ * are the app's to restate from `slippedWork`, never the caller's to assert.
+ */
+export interface ReplanMoveRequest {
+  kind: 'step' | 'task';
+  id: string;
+  blockId: string;
+  goalId: string | null;
+  to: string;
+  startMin: number;
+}
 
 /**
  * Something that carries a note: a step (any node, group or leaf — both have
@@ -62,6 +78,7 @@ export const AGENT_TOOLS = [
   'create_project', 'add_task', 'rename', 'estimate', 'set_status',
   'set_life', 'set_horizon', 'complete_task', 'schedule', 'delete', 'undo_last',
   'get_note', 'set_note', 'append_note', 'time_log', 'log_time', 'clear_time',
+  'propose_replan', 'apply_replan',
 ] as const;
 
 /**
@@ -115,6 +132,16 @@ function markdown(value: unknown): value is string {
   return typeof value === 'string' && value.length <= MAX_NOTE;
 }
 
+function validMove(value: unknown): value is ReplanMoveRequest {
+  if (!value || typeof value !== 'object') return false;
+  const m = value as Record<string, unknown>;
+  return (m.kind === 'step' || m.kind === 'task')
+    && id(m.id) && id(m.blockId)
+    && (m.goalId === null || id(m.goalId))
+    && typeof m.to === 'string' && DAY.test(m.to)
+    && minutes(m.startMin);
+}
+
 function validRef(value: unknown): value is WorkRef {
   if (!value || typeof value !== 'object') return false;
   const ref = value as Record<string, unknown>;
@@ -133,7 +160,12 @@ export function validAgentRequest(value: unknown): value is AgentRequest {
     case 'backlog':
     case 'list_projects':
     case 'undo_last':
+    case 'propose_replan':
       return true;
+    case 'apply_replan':
+      // Non-empty: `applyReplan` answers false to `[]`, and "nothing moved"
+      // is a refusal this surface would rather make before the store does.
+      return Array.isArray(req.moves) && req.moves.length > 0 && req.moves.every(validMove);
     case 'get_project':
       return id(req.goalId);
     case 'create_project':

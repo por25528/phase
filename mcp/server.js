@@ -74,6 +74,7 @@ const READS = {
   week: 'Planned, committed-but-unplaced, and free minutes for the week.',
   backlog: 'Queued work, grouped by project.',
   list_projects: 'Every project with its percentage, remaining minutes and health.',
+  propose_replan: 'Where each slipped sitting (placed on a past day, not done) would go within the next 14 days, and which will not fit. Proposes only — pass the moves you want to apply_replan.',
 };
 
 for (const [tool, description] of Object.entries(READS)) {
@@ -188,6 +189,19 @@ const WRITES = {
   clear_time: [
     'Discard every time entry logged against a task or step. Reversible with undo_last.',
     { ref: REF },
+  ],
+  apply_replan: [
+    'Move slipped sittings to the days and minutes propose_replan answered with. Pass any subset of its moves, unchanged — the app looks each up by blockId and refuses the whole call if one no longer matches a slipped sitting. One undoable write.',
+    {
+      moves: z.array(z.object({
+        kind: z.enum(['step', 'task']),
+        id: z.string(),
+        blockId: z.string(),
+        goalId: z.string().nullable(),
+        to: z.string(),
+        startMin: z.number(),
+      })).min(1),
+    },
   ],
 };
 

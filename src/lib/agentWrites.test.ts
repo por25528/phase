@@ -118,6 +118,7 @@ function harness(opts: {
       patch({ goals: current.goals.map((g) => (g.id === goalId ? { ...g, notes } : g)) });
     }),
     logSession: vi.fn(() => true),
+    applyReplan: vi.fn(() => true),
     clearSessionsFor: vi.fn(() => true),
     setNodeEstimate: vi.fn((nodeId: string, minutes: number | null) => {
       const goal = current.goals.find((g) => findEverywhere(g.nodes, nodeId));
@@ -846,5 +847,54 @@ describe('log_time / clear_time', () => {
     );
     expect(h.spies.clearSessionsFor).toHaveBeenCalledWith('step', 'n1');
     expect(res).toEqual({ ok: false, error: 'Nothing was logged on "Draft outline".' });
+  });
+});
+
+describe('apply_replan', () => {
+  // A sitting on a day long past, so `slippedWork` lists it on any real clock.
+  const SLIPPED = (): Goal => GOAL({
+    nodes: [{ id: 'n1', title: 'Draft outline', blocks: [{ id: 'b1', date: '2000-01-03', startMin: 540, minutes: 60 }] }],
+  });
+  const MOVE = { kind: 'step' as const, id: 'n1', blockId: 'b1', goalId: 'g1', to: '2999-01-01', startMin: 600 };
+
+  it('joins each move to the sitting that slipped and hands applyReplan the app\'s own facts', () => {
+    const h = harness({ goals: [SLIPPED()] });
+    const res = handleAgentWrite({ tool: 'apply_replan', moves: [MOVE] }, h.deps);
+    expect(h.spies.applyReplan).toHaveBeenCalledTimes(1);
+    const [moves] = h.spies.applyReplan.mock.calls[0];
+    expect(moves).toEqual([expect.objectContaining({
+      kind: 'step', id: 'n1', blockId: 'b1', goalId: 'g1',
+      title: 'Draft outline', goalTitle: 'Thesis', from: '2000-01-03', minutes: 60,
+      to: '2999-01-01', startMin: 600,
+    })]);
+    expect(res).toMatchObject({ ok: true, data: { moved: [{ blockId: 'b1', to: '2999-01-01', startMin: 600 }] } });
+  });
+
+  it('refuses the WHOLE call when one move names a sitting that did not slip', () => {
+    const h = harness({ goals: [SLIPPED()] });
+    const res = handleAgentWrite(
+      { tool: 'apply_replan', moves: [MOVE, { ...MOVE, blockId: 'ghost' }] }, h.deps,
+    );
+    expect(errorOf(res)).toMatch(/No slipped sitting "ghost"/);
+    expect(h.spies.applyReplan).not.toHaveBeenCalled();
+  });
+
+  it('refuses a move whose id does not own the block', () => {
+    const h = harness({ goals: [SLIPPED()] });
+    const res = handleAgentWrite({ tool: 'apply_replan', moves: [{ ...MOVE, id: 'other' }] }, h.deps);
+    expect(res.ok).toBe(false);
+    expect(h.spies.applyReplan).not.toHaveBeenCalled();
+  });
+
+  it('refuses a destination in the past', () => {
+    const h = harness({ goals: [SLIPPED()] });
+    const res = handleAgentWrite({ tool: 'apply_replan', moves: [{ ...MOVE, to: '2001-01-01' }] }, h.deps);
+    expect(errorOf(res)).toBe('2001-01-01 is in the past; a replan moves work forward.');
+  });
+
+  it('propagates applyReplan\'s refusal', () => {
+    const h = harness({ goals: [SLIPPED()], actions: { applyReplan: vi.fn(() => false) } });
+    const res = handleAgentWrite({ tool: 'apply_replan', moves: [MOVE] }, h.deps);
+    expect(res).toEqual({ ok: false, error: 'Nothing was moved.' });
   });
 });

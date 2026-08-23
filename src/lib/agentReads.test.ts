@@ -93,3 +93,24 @@ describe('get_note / time_log', () => {
       .toEqual({ ok: false, error: 'No task with id "zz".' });
   });
 });
+
+describe('propose_replan', () => {
+  it('answers the proposal shape, empty when nothing slipped', () => {
+    expect(handleAgentRead({ tool: 'propose_replan' }, emptyState()))
+      .toEqual({ ok: true, data: { moves: [], unplaceable: [] } });
+  });
+
+  it('proposes a forward day for a sitting placed in the past', () => {
+    const state = {
+      ...emptyState(),
+      goals: [{ id: 'g1', title: 'Thesis', nodes: [
+        { id: 'n1', title: 'Draft', blocks: [{ id: 'b1', date: '2000-01-03', startMin: 540, minutes: 60 }] },
+      ] }],
+    } as unknown as FullState;
+    const res = handleAgentRead({ tool: 'propose_replan' }, state);
+    const data = (res as { data: { moves: Array<{ blockId: string; to: string; from: string }> } }).data;
+    expect(data.moves).toHaveLength(1);
+    expect(data.moves[0]).toMatchObject({ blockId: 'b1', from: '2000-01-03' });
+    expect(data.moves[0].to > '2000-01-03').toBe(true);
+  });
+});

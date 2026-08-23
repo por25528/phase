@@ -16,6 +16,7 @@ import { findNode } from './tree';
 import { loggedForNode, loggedForTask } from './actuals';
 import type { NoteRef } from './agentProtocol';
 import type { WorkRef } from './expectedTime';
+import { proposeReplan } from './replan';
 
 /**
  * The read half of the agent surface.
@@ -167,6 +168,20 @@ export function handleAgentRead(
       const goal = state.goals.find((g) => g.id === request.goalId);
       if (!goal) return errorResponse(`No project with id "${request.goalId}".`);
       return okResponse({ project: goal });
+    }
+    case 'propose_replan': {
+      // `Today.tsx`'s call, verbatim: `blocks: []` for the reason `nowOf`
+      // gives. Proposes only — `apply_replan` is the write, and it takes
+      // these moves back rather than recomputing them.
+      const now = nowOf();
+      return okResponse(proposeReplan({
+        goals: state.goals,
+        tasks: state.tasks,
+        today: now.date,
+        blocks: [],
+        allDayBlocks: state.allDayBlocks,
+        now,
+      }));
     }
     case 'get_note': {
       const note = noteOf(state, request.ref);
