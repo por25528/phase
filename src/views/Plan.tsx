@@ -127,8 +127,8 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     [goals, tasks, visibleDays],
   );
   const scrollWindow = useMemo(
-    () => initialScrollWindow(days, availability),
-    [days, availability],
+    () => initialScrollWindow(days, (date) => spansOn(goals, tasks, date)),
+    [days, goals, tasks],
   );
   const isPast = weekStart < weekOf(today);
 

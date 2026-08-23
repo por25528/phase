@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import type { AvailabilityWindow } from '../db/types';
 import {
   hourMarks, assignLanes,
   MIN_VISIBLE_START, MIN_VISIBLE_END,
@@ -9,7 +8,6 @@ import {
 } from './grid';
 
 const WEEK = ['2026-07-13', '2026-07-14', '2026-07-15', '2026-07-16', '2026-07-17', '2026-07-18', '2026-07-19'];
-const NINE_TO_SIX: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1080 }));
 
 describe('hourMarks', () => {
   it('labels every whole hour of the day, both ends inclusive', () => {
@@ -142,41 +140,43 @@ describe('the stacking order', () => {
 });
 
 describe('initialScrollWindow', () => {
-  it('never returns less than the 08:00-20:00 floor', () => {
-    expect(initialScrollWindow(WEEK, NINE_TO_SIX))
+  const clear = () => [];
+  const on = (date: string, startMin: number, endMin: number) =>
+    (d: string) => (d === date ? [{ startMin, endMin }] : []);
+
+  it('opens on the ordinary day when the week is empty', () => {
+    expect(initialScrollWindow(WEEK, clear))
       .toEqual({ startMin: MIN_VISIBLE_START, endMin: MIN_VISIBLE_END });
   });
 
-  it('grows to cover an early availability window, floored to the hour', () => {
-    const early: AvailabilityWindow[] = [{ dow: 2, startMin: 415, endMin: 1080 }]; // 06:55
-    expect(initialScrollWindow(WEEK, early).startMin).toBe(360); // 06:00
+  it('grows to cover an early sitting, floored to the hour', () => {
+    expect(initialScrollWindow(WEEK, on('2026-07-15', 415, 480)).startMin).toBe(360); // 06:55 → 06:00
   });
 
-  it('grows to cover a late availability window, ceiled to the hour', () => {
-    const late: AvailabilityWindow[] = [{ dow: 2, startMin: 540, endMin: 1330 }]; // 22:10
-    expect(initialScrollWindow(WEEK, late).endMin).toBe(1380); // 23:00
+  it('grows to cover a late sitting, ceiled to the hour', () => {
+    expect(initialScrollWindow(WEEK, on('2026-07-15', 1260, 1330)).endMin).toBe(1380); // 22:10 → 23:00
   });
 
-  it('ignores windows for days not in the week', () => {
+  it('ignores sittings on days not in the week', () => {
     const SIX = WEEK.slice(0, 6);
-    expect(initialScrollWindow(SIX, [{ dow: 6, startMin: 60, endMin: 120 }]))
+    expect(initialScrollWindow(SIX, on('2026-07-19', 60, 120)))
       .toEqual({ startMin: MIN_VISIBLE_START, endMin: MIN_VISIBLE_END });
   });
 
-  it('stays inside the day even for an absurd window', () => {
-    const w = initialScrollWindow(WEEK, [{ dow: 2, startMin: 0, endMin: 1440 }]);
+  it('stays inside the day even for an absurd sitting', () => {
+    const w = initialScrollWindow(WEEK, on('2026-07-15', 0, 1440));
     expect(w.startMin).toBeGreaterThanOrEqual(DAY_START_MIN);
     expect(w.endMin).toBeLessThanOrEqual(DAY_END_MIN);
   });
 
   it('always returns a positive-width window', () => {
-    const cases: Array<[string, string[], AvailabilityWindow[]]> = [
-      ['empty week', WEEK, []],
-      ['a narrow midday window', WEEK, [{ dow: 2, startMin: 700, endMin: 720 }]],
-      ['a genuinely empty dates array', [], []],
+    const cases: Array<[string, string[], (d: string) => { startMin: number; endMin: number }[]]> = [
+      ['empty week', WEEK, clear],
+      ['a narrow midday sitting', WEEK, on('2026-07-15', 700, 720)],
+      ['a genuinely empty dates array', [], clear],
     ];
-    for (const [label, dates, windows] of cases) {
-      const w = initialScrollWindow(dates, windows);
+    for (const [label, dates, spansFor] of cases) {
+      const w = initialScrollWindow(dates, spansFor);
       expect(w.endMin, label).toBeGreaterThan(w.startMin);
     }
   });

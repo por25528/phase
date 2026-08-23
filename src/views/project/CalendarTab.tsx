@@ -201,7 +201,7 @@ export function CalendarTab({ goal }: { goal: Goal }) {
               days={days}
               today={today}
               nowMinute={null}
-              scrollWindow={initialScrollWindow(days, availability)}
+              scrollWindow={initialScrollWindow(days, (date) => spansOn(goals, tasks, date))}
               dayCapacity={capacity.days}
               dragDurationMin={dragDuration}
               dayGapMin={dayGapMin}
