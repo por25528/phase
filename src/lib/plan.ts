@@ -428,6 +428,13 @@ export function nextOpenAction(g: Goal, today: string): NextAction {
     // verdict is a later task's job, not this one's to invent.
     return { kind: 'open', title: 'All open tasks are blocked' };
   }
+  if (workable.length === 0) {
+    // Open work exists and is not all blocked, yet nothing is doing/todo —
+    // so something is parked. Same 'open' verdict as above, one word longer:
+    // "unblock" is not the instruction when the thing set aside was set aside
+    // on purpose.
+    return { kind: 'open', title: 'All open tasks are blocked or parked' };
+  }
   const planned = workable.find((n) => n.plannedWeek === week);
   const pick = planned ?? doing[0] ?? todo[0];
   return { kind: planned ? 'planned' : 'open', title: pick.title, nodeId: pick.id };

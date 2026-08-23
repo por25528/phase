@@ -523,6 +523,11 @@ describe('firstOpenLeaf and status', () => {
     expect(firstOpenLeaf([leaf('a', 'blocked'), leaf('b', 'done')])).toBeNull();
   });
 
+  it('skips parked work like blocked, and returns null when nothing is workable', () => {
+    expect(firstOpenLeaf([leaf('a', 'parked'), leaf('b')])?.id).toBe('b');
+    expect(firstOpenLeaf([leaf('a', 'parked'), leaf('b', 'blocked')])).toBeNull();
+  });
+
   it('finds a doing leaf across container boundaries', () => {
     expect(firstOpenLeaf([
       { id: 'p', title: 'P', children: [leaf('c1')] },
