@@ -38,11 +38,6 @@ describe('the month grid', () => {
 const cap = monthCapacity({
   ym: '2026-08',
   goals: [], tasks: [],
-  windows: [
-    // 0 = Monday. See the note in monthCapacity.test.ts.
-    { dow: 0, startMin: 540, endMin: 1020 },
-    { dow: 1, startMin: 540, endMin: 1020 },
-  ],
   now: { date: '2026-08-16', minute: 600 },
   allDayBlocks: false,
 });

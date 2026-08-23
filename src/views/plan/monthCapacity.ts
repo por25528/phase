@@ -1,4 +1,4 @@
-import type { AvailabilityWindow, Goal, Task } from '../../db/types';
+import type { Goal, Task } from '../../db/types';
 import { weekCapacity, type Now, type WeekCapacity } from '../../lib/capacity';
 import { monthGrid } from '../../lib/calendar';
 import { weekOf, plannedLeaves } from '../../lib/plan';
@@ -25,7 +25,6 @@ export interface MonthCapacityInput {
   ym: string;
   goals: Goal[];
   tasks: Task[];
-  windows: AvailabilityWindow[];
   now: Now;
   allDayBlocks: boolean;
 }
@@ -60,7 +59,7 @@ export interface MonthCapacityInput {
  * starts on 27 July. A figure whose span is not the heading's has to say so.
  */
 export function monthCapacity(input: MonthCapacityInput): MonthCapacity {
-  const { ym, goals, tasks, windows, now, allDayBlocks } = input;
+  const { ym, goals, tasks, now, allDayBlocks } = input;
   const grid = monthGrid(ym);
   // `monthGrid` is Monday-first, so the first cell of each row IS that row's
   // Monday — no need to re-derive it. `weekOf` is used anyway as the single
@@ -73,7 +72,6 @@ export function monthCapacity(input: MonthCapacityInput): MonthCapacity {
     isoWeekLabel: `W${isoWeekNumber(week)}`,
     capacity: weekCapacity({
       week,
-      windows,
       blocks: [],
       leaves: plannedLeaves(goals, week),
       tasks: tasksForWeek(tasks, week),
@@ -85,7 +83,6 @@ export function monthCapacity(input: MonthCapacityInput): MonthCapacity {
 
   const total: WeekCapacity = {
     days: rows.flatMap((r) => r.capacity.days),
-    freeMin: rows.reduce((n, r) => n + r.capacity.freeMin, 0),
     plannedMin: rows.reduce((n, r) => n + r.capacity.plannedMin, 0),
     backlogMin: rows.reduce((n, r) => n + r.capacity.backlogMin, 0),
     unestimated: rows.reduce((n, r) => n + r.capacity.unestimated, 0),

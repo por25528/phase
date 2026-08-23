@@ -8,10 +8,9 @@ afterEach(cleanup);
 
 const cap: WeekCapacity = {
   days: [
-    { date: '2026-08-10', freeMin: 300, plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-    { date: '2026-08-11', freeMin: 300, plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
-  ],
-  freeMin: 600, plannedMin: 120, backlogMin: 0, unestimated: 2, hasData: false,
+    { date: '2026-08-10', plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+    { date: '2026-08-11', plannedMin: 60, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: false },
+  ], plannedMin: 120, backlogMin: 0, unestimated: 2, hasData: false,
 };
 
 const noop = () => {};
@@ -116,7 +115,7 @@ describe('WeekHeader', () => {
    */
   it('draws no rule at all for a week with nothing on it', () => {
     const empty: WeekCapacity = {
-      days: [], freeMin: 0, plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: false,
+      days: [], plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: false,
     };
     const { container } = render(<WeekHeader {...base} capacity={empty} />);
     expect(container.querySelector('[data-fig]')).toBeNull();
@@ -124,7 +123,7 @@ describe('WeekHeader', () => {
 
   it('still draws the rule when the only thing to say is an unpriced count', () => {
     const unpriced: WeekCapacity = {
-      days: [], freeMin: 0, plannedMin: 0, backlogMin: 0, unestimated: 4, hasData: false,
+      days: [], plannedMin: 0, backlogMin: 0, unestimated: 4, hasData: false,
     };
     render(<WeekHeader {...base} capacity={unpriced} />);
     expect(screen.getByLabelText('4 unestimated')).toBeTruthy();

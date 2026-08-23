@@ -77,7 +77,6 @@ export function CalendarTab({ goal }: { goal: Goal }) {
   // The whole dataset, not this goal's slice: free time is free time.
   const capacity = useMemo(() => weekCapacity({
     week: weekStart,
-    windows: availability,
     blocks: [],
     leaves: plannedLeaves(goals, weekStart),
     tasks: tasksForWeek(tasks, weekStart),

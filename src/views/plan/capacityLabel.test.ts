@@ -5,11 +5,9 @@ import {
   loadParts, unestimatedLabel, weekLoadCells, weekLoadParts,
 } from './capacityLabel';
 
-// `freeMin` is still on `DayCapacity` until it is stripped from `capacity.ts`;
-// nothing here reads it.
 function day(over: Partial<DayCapacity> = {}): DayCapacity {
   return {
-    date: '2026-07-28', freeMin: 0, plannedMin: 120, backlogMin: 0, unestimated: 0,
+    date: '2026-07-28', plannedMin: 120, backlogMin: 0, unestimated: 0,
     blockedBy: [], hasData: true, ...over,
   };
 }
@@ -103,7 +101,7 @@ describe('capacityParts over a WeekCapacity', () => {
   // The same formatter serves the week — WeekCapacity structurally satisfies
   // CapacityFigures, so no second function is needed.
   const week: WeekCapacity = {
-    days: [], freeMin: 0, plannedMin: 300, backlogMin: 0, unestimated: 3, hasData: true,
+    days: [], plannedMin: 300, backlogMin: 0, unestimated: 3, hasData: true,
   };
 
   it('summarises the week', () => {

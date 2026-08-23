@@ -1,6 +1,6 @@
 import type { BusyBlock } from '../db/types';
-import { MINUTES_PER_DAY } from './availability';
 import {
+  MINUTES_PER_DAY,
   mergeIntervals,
   normalizeEstimate,
   remainingSpan,

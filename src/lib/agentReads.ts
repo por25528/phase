@@ -57,7 +57,6 @@ function capacityInput(state: FullState, now: Now): CapacityInput {
   const week = weekOf(now.date);
   return {
     week,
-    windows: state.availability,
     blocks: [],
     leaves: plannedLeaves(state.goals, week),
     tasks: tasksForWeek(state.tasks, week),
@@ -99,11 +98,10 @@ export function handleAgentRead(
       return okResponse({ advice: executionAdvice(adviceInput(state, now)) });
     }
     case 'week': {
-      // The whole object, no verdict. `isOverCommitted` does exist, but it
-      // lives in `src/views/plan/capacityLabel.ts` — above this seam — so
-      // spending it here would invert the layering, and the comparison it
-      // makes (`plannedMin + backlogMin > freeMin`) is the caller's to make
-      // from figures this response already carries.
+      // The whole object, no verdict. There is no over-commitment verdict
+      // left to pass: nothing prices a week against available hours. What this
+      // carries is what has been taken on — planned, to place, unestimated —
+      // and the caller reads it as such.
       const now = nowOf();
       return okResponse({ capacity: weekCapacity(capacityInput(state, now)) });
     }

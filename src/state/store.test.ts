@@ -1356,7 +1356,7 @@ describe('store actions', () => {
     /**
      * Rearranging the day you are standing in.
      *
-     * Placement resolved against the real wall clock, and `remainingWindow`
+     * Placement resolved against the real wall clock, and `remainingSpan`
      * treats everything before "now" as gone — so at 2pm the only gap Wednesday
      * had left was 14:00–18:00. Dragging the 09:00 block up to 11:00 therefore
      * found no gap at the aim, slid to the first one that fit, and dropped the
@@ -4588,7 +4588,6 @@ describe('several sittings for one task', () => {
     const week = weekOf('2026-07-15');
     const cap = weekCapacity({
       week,
-      windows: getState().availability,
       blocks: [],
       leaves: plannedLeaves(getState().goals, week),
       tasks: [],

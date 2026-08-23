@@ -3,21 +3,10 @@ import { monthCapacity } from './monthCapacity';
 import { makeBlock } from '../../lib/blocks';
 import type { Goal, Task } from '../../db/types';
 
-// AvailabilityWindow.dow is 0 = MONDAY … 6 = Sunday, matching weekDates()
-// order — NOT the JS Date convention. 0-4 is Mon-Fri; 1-5 would be Tue-Sat.
-const windows = [
-  { dow: 0, startMin: 540, endMin: 1020 },
-  { dow: 1, startMin: 540, endMin: 1020 },
-  { dow: 2, startMin: 540, endMin: 1020 },
-  { dow: 3, startMin: 540, endMin: 1020 },
-  { dow: 4, startMin: 540, endMin: 1020 },
-];
-
 const input = {
   ym: '2026-08',
   goals: [] as Goal[],
   tasks: [] as Task[],
-  windows,
   now: { date: '2026-08-16', minute: 600 },
   allDayBlocks: false,
 };
@@ -84,14 +73,12 @@ describe('monthCapacity', () => {
   // again if the fixture above is ever pared back down to nothing.
   it('sums its rows exactly into its total', () => {
     const m = monthCapacity(populatedInput);
-    const sum = (pick: (c: { freeMin: number; plannedMin: number; backlogMin: number; unestimated: number }) => number) =>
+    const sum = (pick: (c: { plannedMin: number; backlogMin: number; unestimated: number }) => number) =>
       m.rows.reduce((n, r) => n + pick(r.capacity), 0);
-    expect(m.total.freeMin).toBe(sum((c) => c.freeMin));
     expect(m.total.plannedMin).toBe(sum((c) => c.plannedMin));
     expect(m.total.backlogMin).toBe(sum((c) => c.backlogMin));
     expect(m.total.unestimated).toBe(sum((c) => c.unestimated));
 
-    expect(m.total.freeMin).toBeGreaterThan(0);
     expect(m.total.plannedMin).toBeGreaterThan(0);
     expect(m.total.backlogMin).toBeGreaterThan(0);
     expect(m.total.unestimated).toBeGreaterThan(0);
@@ -130,7 +117,7 @@ describe('monthCapacity', () => {
   it('handles a four-row month', () => {
     const m = monthCapacity({ ...input, ym: '2027-02' });
     expect(m.rows.length).toBe(4);
-    expect(m.total.freeMin).toBe(m.rows.reduce((n, r) => n + r.capacity.freeMin, 0));
+    expect(m.total.plannedMin).toBe(m.rows.reduce((n, r) => n + r.capacity.plannedMin, 0));
   });
 
   // September 2026 starts Tuesday 1st, so its first row is the trailing week
@@ -141,7 +128,7 @@ describe('monthCapacity', () => {
     const m = monthCapacity({ ...input, ym: '2026-09' });
     expect(m.rows.length).toBe(5);
     expect(m.rows[0].week).toBe('2026-08-31');
-    expect(m.total.freeMin).toBe(m.rows.reduce((n, r) => n + r.capacity.freeMin, 0));
+    expect(m.total.plannedMin).toBe(m.rows.reduce((n, r) => n + r.capacity.plannedMin, 0));
   });
 
   it('numbers its rows', () => {

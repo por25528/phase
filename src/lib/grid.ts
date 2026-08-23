@@ -1,5 +1,6 @@
 import type { AvailabilityWindow } from '../db/types';
-import { MINUTES_PER_DAY, windowForDate } from './availability';
+import { windowForDate } from './availability';
+import { MINUTES_PER_DAY } from './capacity';
 import type { Interval } from './capacity';
 
 const MINUTES_PER_HOUR = 60;

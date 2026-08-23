@@ -1,7 +1,7 @@
 import type { AvailabilityWindow } from '../db/types';
 import { parseD } from './dates';
+import { MINUTES_PER_DAY } from './capacity';
 
-export const MINUTES_PER_DAY = 1440;
 
 /**
  * The default working week: all seven days, 08:00–20:00.

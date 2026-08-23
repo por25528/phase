@@ -280,7 +280,7 @@ describe('vertical restoration', () => {
 describe('capacity while dragging', () => {
   const DAYS = ['2026-08-10', '2026-08-11'];
   const cap = (plannedMin = 0) => ({
-    date: '2026-08-10', freeMin: 0, plannedMin, backlogMin: 0, unestimated: 0,
+    date: '2026-08-10', plannedMin, backlogMin: 0, unestimated: 0,
     blockedBy: [], hasData: true,
   });
 

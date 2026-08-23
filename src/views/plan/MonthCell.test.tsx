@@ -91,7 +91,6 @@ describe('a day in the month grid', () => {
 
 const dayCap = (over: boolean) => ({
   date: '2026-08-06',
-  freeMin: 300,
   plannedMin: over ? 540 : 180,
   backlogMin: 0,
   unestimated: 0,

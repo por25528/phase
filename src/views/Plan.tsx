@@ -161,7 +161,6 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
   );
   const capacity = weekCapacity({
     week: weekStart,
-    windows: availability,
     blocks: [],
     leaves: weekLeaves,
     tasks: weekTasks,
@@ -186,9 +185,9 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
    */
   const monthCap = useMemo(
     () => (planMode === 'month'
-      ? monthCapacity({ ym, goals, tasks, windows: availability, now: { date: today, minute: nowMinute }, allDayBlocks })
+      ? monthCapacity({ ym, goals, tasks, now: { date: today, minute: nowMinute }, allDayBlocks })
       : null),
-    [planMode, ym, goals, tasks, availability, today, nowMinute, allDayBlocks],
+    [planMode, ym, goals, tasks, today, nowMinute, allDayBlocks],
   );
 
   /**
