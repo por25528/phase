@@ -288,7 +288,9 @@ export function hiddenProjectCounts(goals: Goal[], today: string): HiddenProject
         if (isDone(n)) return;
         open++;
         if (stepStatus(n) !== 'parked') allParked = false;
-        if (n.plannedWeek !== undefined) committed = true;
+        // Placed or week-committed: `backlogGroups` keeps (or has already
+        // dropped as placed) such a leaf, so the project is not "only parked".
+        if (n.plannedWeek !== undefined || isPlaced(n)) committed = true;
       });
       if (open > 0 && allParked && !committed) setAside++;
     }

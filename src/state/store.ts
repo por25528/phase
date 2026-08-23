@@ -1305,8 +1305,9 @@ export const actions = {
    * was on — the same disappearance `toggleLeaf` arms an undo for when a leaf
    * is completed, and the distance-booking rule restated: a write whose effect
    * is that you can no longer see the thing you wrote to needs a way back.
-   * `setNodeStatus`'s own callers are the tree row and the task page, where
-   * the step you changed is still in front of you, so it stays silent.
+   * `setNodeStatus`'s own callers are the tree row, the task page and the
+   * project Board tab's drag — in all three the step you changed is still in
+   * front of you (the board card simply moves column), so it stays silent.
    */
   toggleParked(nodeId: string): void {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
