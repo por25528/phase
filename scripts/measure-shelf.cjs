@@ -28,7 +28,7 @@ const work = (over = {}) => ({
 
 const NOTICE = { tone: 'neutral', text: `Completed "${LONG}" · logged 45m` }
 
-// Two alternatives, and they belong to the SHARED base rather than to the
+// MAX_ALTERNATIVES (three) alternatives, and they belong to the SHARED base rather than to the
 // sidecar state alone. `AssistantSurface` hands `snapshot.advice.alternatives`
 // to `FocusPanel` too, and that list is the only thing that draws the "Other
 // options" row — the row the 247.6px measurement of `confirming` in
@@ -38,6 +38,7 @@ const NOTICE = { tone: 'neutral', text: `Completed "${LONG}" · logged 45m` }
 const ALTERNATIVES = [
   work({ key: 'step:n2', ref: { kind: 'step', id: 'n2', goalId: 'g1' } }),
   work({ key: 'step:n3', ref: { kind: 'step', id: 'n3', goalId: 'g1' } }),
+  work({ key: 'step:n4', ref: { kind: 'step', id: 'n4', goalId: 'g1' } }),
 ]
 
 const base = {

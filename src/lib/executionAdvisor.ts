@@ -98,8 +98,14 @@ export interface ExecutionAdviceInput {
   focusLevel?: FocusLevel;
 }
 
-/** The most quiet alternatives shown beside the primary. Two is the cap, and the point. */
-export const MAX_ALTERNATIVES = 2;
+/**
+ * The most quiet alternatives shown beside the primary. Three is the cap, and
+ * a cap is the point: the shelf is a card you summon to START something, not
+ * the backlog. It was two until 2026-08-23 — the band kept reading as one row
+ * once the running work and the focus lens had each taken a slot, and one
+ * row is not a choice. The shelf's `HEIGHT` is measured against this.
+ */
+export const MAX_ALTERNATIVES = 3;
 
 interface Candidate {
   key: string;
@@ -277,17 +283,18 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
   const alternatives: RecommendedWork[] = rest.slice(0, MAX_ALTERNATIVES);
   if (rest.length > MAX_ALTERNATIVES) {
     /*
-     * Alternative two may diversify by life: the first LATER candidate from a
-     * life the primary and first alternative do not already cover. It swaps in
-     * quietly — the primary and alternative one never move, and no
-     * "under-served" claim is made.
+     * The LAST alternative may diversify by life: the first later candidate
+     * from a life the primary and the earlier alternatives do not already
+     * cover. It swaps in quietly — the primary and the earlier alternatives
+     * never move, and no "under-served" claim is made.
      */
-    const covered = new Set([primary.lifeId, alternatives[0]?.lifeId]);
+    const last = MAX_ALTERNATIVES - 1;
+    const covered = new Set([primary.lifeId, ...alternatives.slice(0, last).map((a) => a.lifeId)]);
     const other = rest.slice(MAX_ALTERNATIVES).find(
       (c) => c.lifeId !== undefined && !covered.has(c.lifeId),
     );
-    if (other && alternatives[1] && covered.has(alternatives[1].lifeId)) {
-      alternatives[1] = other;
+    if (other && alternatives[last] && covered.has(alternatives[last].lifeId)) {
+      alternatives[last] = other;
     }
   }
 

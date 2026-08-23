@@ -35,11 +35,15 @@ const path = require('node:path')
 // ("Draft the comparative literature review for the graduate seminar on
 // nineteenth-century industrialization"):
 //
-//   confirming   342.48px
-//   active       318.48px
-//   sidecar      297.48px
+//   confirming   378.48px
+//   active       354.48px
+//   sidecar      333.48px
 //   beyondWindow 239.98px
 //   beyondFocus  239.98px
+//
+// Re-measured 2026-08-23 when MAX_ALTERNATIVES went from two to three: the
+// band's third row added 36px to every state that draws it (the previous
+// figures were 342.48 / 318.48 / 297.48).
 //
 // `confirming` is still the tallest, and still for the reason it always was:
 // it is the only state whose body is a QUESTION under the title rather than a
@@ -51,14 +55,14 @@ const path = require('node:path')
 // construction.
 //
 // HEIGHT is the tallest of those figures rounded UP to the next whole pixel
-// (343, from confirming's 342.48) — never a margin. A window sized to the
+// (379, from confirming's 378.48) — never a margin. A window sized to the
 // fraction would clip a pane whose measured height sits between two
 // integers, so the round trip is always ceil(), the same rule every prior
 // pass in this file has followed (263.2 became 264).
 //
 // If a state grows, measure it again.
 const WIDTH = 620
-const HEIGHT = 343
+const HEIGHT = 379
 const TOP_GAP = 18
 
 /**

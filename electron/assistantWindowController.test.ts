@@ -122,11 +122,11 @@ describe('assistantWindowOptions', () => {
     expect(options).toMatchObject({
       type: 'panel',
       width: 620,
-      height: 343,
+      height: 379,
       minWidth: 620,
       maxWidth: 620,
-      minHeight: 343,
-      maxHeight: 343,
+      minHeight: 379,
+      maxHeight: 379,
       useContentSize: true,
       frame: false,
       show: false,
@@ -184,13 +184,13 @@ describe('assistantWindowOptions', () => {
 describe('assistantShelfBounds', () => {
   it('centres inside a positive-origin work area', () => {
     expect(assistantShelfBounds({ x: 0, y: 25, width: 1512, height: 957 })).toEqual({
-      x: 446, y: 43, width: 620, height: 343,
+      x: 446, y: 43, width: 620, height: 379,
     });
   });
 
   it('centres inside a negative-origin secondary display', () => {
     expect(assistantShelfBounds({ x: -1440, y: 0, width: 1440, height: 900 })).toEqual({
-      x: -1030, y: 18, width: 620, height: 343,
+      x: -1030, y: 18, width: 620, height: 379,
     });
   });
 });
@@ -220,7 +220,7 @@ describe('assistantWindowController', () => {
     expect(getCursorScreenPoint).toHaveBeenCalled();
     expect(getDisplayNearestPoint).toHaveBeenCalledWith({ x: -100, y: 200 });
     expect(win.setBounds).toHaveBeenCalledWith(
-      { x: -1030, y: 18, width: 620, height: 343 },
+      { x: -1030, y: 18, width: 620, height: 379 },
       false,
     );
     expect(calls).toEqual(['bounds', 'snapshot', 'show', 'focus', 'web-focus']);
@@ -242,7 +242,7 @@ describe('assistantWindowController', () => {
 
     expect(win.setBounds).toHaveBeenCalledTimes(2);
     expect(win.setBounds).toHaveBeenLastCalledWith(
-      { x: 446, y: 18, width: 620, height: 343 },
+      { x: 446, y: 18, width: 620, height: 379 },
       false,
     );
   });
@@ -288,7 +288,7 @@ describe('assistantWindowController', () => {
     const controller = controllerWith(win, { createWindow });
     controller.create();
     expect(createWindow).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'panel', width: 620, height: 343,
+      type: 'panel', width: 620, height: 379,
     }));
     expect(win.setAlwaysOnTop).toHaveBeenCalledWith(true, 'floating');
     expect(win.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { executionAdvice, type ExecutionAdviceInput } from './executionAdvisor';
+import { executionAdvice, MAX_ALTERNATIVES, type ExecutionAdviceInput } from './executionAdvisor';
 import { buildDailyWork } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { proposalRows } from './todayPlan';
@@ -88,12 +88,13 @@ describe('executionAdvice', () => {
     expect(advice.primary.reason).toBe('free-time');
   });
 
-  it('returns at most two unique alternatives', () => {
-    const tasks = [1, 2, 3, 4, 5].map((n) => task({ id: `t${n}`, title: `Task ${n}`, date: today }));
+  it('returns at most MAX_ALTERNATIVES unique alternatives', () => {
+    const tasks = [1, 2, 3, 4, 5, 6].map((n) => task({ id: `t${n}`, title: `Task ${n}`, date: today }));
     const advice = executionAdvice(input({ tasks }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
-    expect(advice.alternatives.length).toBe(2);
+    expect(advice.alternatives.length).toBe(MAX_ALTERNATIVES);
+    expect(MAX_ALTERNATIVES).toBe(3);
     const keys = [advice.primary.key, ...advice.alternatives.map((a) => a.key)];
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -107,16 +108,17 @@ describe('executionAdvice', () => {
       id: 'gs', title: 'Startup', lifeId: 'life-startup',
       nodes: [{ id: 'gs-n', title: 'Pitch deck', deadline: today, start: today }],
     });
-    // Canonical order: three university steps, then the startup one.
-    const goals = [uni('ga', 'Algorithms'), uni('gb', 'Biology'), uni('gc', 'Chemistry'), startup];
+    // Canonical order: four university steps, then the startup one.
+    const goals = [uni('ga', 'Algorithms'), uni('gb', 'Biology'), uni('gc', 'Chemistry'), uni('gd', 'Drama'), startup];
     const advice = executionAdvice(input({ goals }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
     expect(advice.primary.key).toBe('step:ga-n');
     expect(advice.alternatives[0].key).toBe('step:gb-n');
-    // Alternative two skips the third university step for the other life.
-    expect(advice.alternatives[1].key).toBe('step:gs-n');
-    expect(advice.alternatives[1].lifeId).toBe('life-startup');
+    expect(advice.alternatives[1].key).toBe('step:gc-n');
+    // The LAST alternative skips the fourth university step for the other life.
+    expect(advice.alternatives[2].key).toBe('step:gs-n');
+    expect(advice.alternatives[2].lifeId).toBe('life-startup');
   });
 
   /*
