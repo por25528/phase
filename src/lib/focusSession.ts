@@ -1,6 +1,8 @@
 import type { ExpectedTime, WorkRef } from './expectedTime';
 import { DEFAULT_TIME_LEVEL, isTimeLevel, type TimeLevel } from './timeLens';
-import { uid } from './tree';
+import { findNode, uid } from './tree';
+import { isDone } from './status';
+import type { Goal, Task } from '../db/types';
 
 /**
  * A calm focus session: no countdown, no ticking writes, no state that only a
@@ -129,6 +131,57 @@ export function finishFocusSession(session: ActiveFocusSession, nowMs: number): 
     };
   }
   return { kind: 'log', minutes: Math.max(1, minutes) };
+}
+
+/**
+ * What a draft becomes when the work it names changes under it.
+ *
+ * The shelf's own checkbox settles a draft through `finishWork`, but it is not
+ * the only way to finish work: Today's row, the tree's bulk bar and the agent
+ * socket all reach `toggleLeaf`/`toggleTask`, and a delete can remove the
+ * step outright. A draft left running past any of those showed the shelf a
+ * session still ticking on a task the page beneath it had struck through.
+ *
+ * Three answers. Work still open → the same draft, untouched. Work gone → no
+ * draft, because there is nothing left to ask about (a logged `Session` may
+ * dangle; an unasked question may not). Work DONE → `confirming`, with the
+ * elapsed minutes proposed: the tick is certain and already written, the
+ * minutes are not, and logging them here would be a second write sweeping the
+ * undo the first one armed — so the shelf asks, as it already knows how to.
+ * A draft already `confirming` is left alone; it is already the question.
+ */
+export function reconcileFocusDraft(
+  draft: ActiveFocusSession | null,
+  goals: Goal[],
+  tasks: Task[],
+  nowMs: number,
+): ActiveFocusSession | null {
+  if (!draft || draft.phase === 'confirming') return draft;
+  const { ref } = draft;
+  let exists = false;
+  let done = false;
+  if (ref.kind === 'step') {
+    for (const goal of goals) {
+      const node = findNode(goal.nodes, ref.id);
+      if (!node) continue;
+      exists = true;
+      done = isDone(node);
+      break;
+    }
+  } else {
+    const task = tasks.find((t) => t.id === ref.id);
+    exists = task !== undefined;
+    done = task?.done === true;
+  }
+  if (!exists) return null;
+  if (!done) return draft;
+  return {
+    ...draft,
+    accumulatedMs: draft.accumulatedMs + stretchMs(draft, nowMs),
+    activeSinceMs: null,
+    phase: 'confirming',
+    proposedMinutes: elapsedFocusMinutes(draft, nowMs),
+  };
 }
 
 /**

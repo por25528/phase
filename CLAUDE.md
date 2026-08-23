@@ -351,6 +351,17 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   different question than the one on screen. No checkbox on the alternatives
   band's rows: those are lists of things to PICK, and a list of choices is not
   a commit.
+- **A focus draft follows the work it names.** `finishWork` was the only path
+  that settled `activeFocusSession`, but Today's checkbox, the bulk bar and the
+  agent socket all reach `toggleLeaf`/`toggleTask`, and a delete removes the
+  step outright — so the shelf kept a session ticking on a task the page below
+  had struck through (`20h 43m of 20m`). `reconcileFocusDraft`
+  (`lib/focusSession.ts`) is the one rule, run by `setAndPersist` after any
+  write touching `goals`/`tasks`: work open → untouched; work gone → discarded;
+  work done → `confirming` with the elapsed minutes PROPOSED, never logged —
+  logging there would be a second write sweeping the undo the completing write
+  just armed, and the shelf already knows how to ask. It spends `set()` via
+  `setFocusDraft`, so it cannot re-enter the sweep.
 - **`focusLens.ts` is the one vocabulary for how much focus the room supports**,
   and it is a LENS, never a ranking: order never changes, membership does, the
   same move `lifeScope` makes on the board. The caps (`low` 25, `medium` 60,

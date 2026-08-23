@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  reconcileFocusDraft,
   startFocusSession,
   pauseFocusSession,
   resumeFocusSession,
@@ -185,5 +186,41 @@ describe('the focus level a session ran at', () => {
       focusLevel: 'sideways',
     });
     expect(parseActiveFocusSession(odd)?.focusLevel).toBe('medium');
+  });
+});
+
+describe('reconcileFocusDraft', () => {
+  const goals = (status?: 'done') => [{
+    id: 'g1', title: 'G', nodes: [{ id: 'n1', title: 'Step', ...(status ? { status } : {}) }],
+  }];
+  const tasks = (done = false) => [{ id: 't1', title: 'Task', done, goalId: null } as unknown as import('../db/types').Task];
+  const draft = start({ ref: { kind: 'step', id: 'n1', goalId: 'g1' } });
+
+  it('keeps a draft whose work is still open', () => {
+    expect(reconcileFocusDraft(draft, goals(), tasks(), t0 + 10 * MIN)).toBe(draft);
+  });
+
+  it('parks a draft in confirming when its work was completed elsewhere, proposing the elapsed minutes', () => {
+    const next = reconcileFocusDraft(draft, goals('done'), tasks(), t0 + 25 * MIN);
+    expect(next?.phase).toBe('confirming');
+    expect(next?.proposedMinutes).toBe(25);
+    expect(next?.activeSinceMs).toBeNull();
+  });
+
+  it('discards a draft whose work no longer exists', () => {
+    expect(reconcileFocusDraft(draft, [], tasks(), t0 + 10 * MIN)).toBeNull();
+  });
+
+  it('resolves a loose task by id', () => {
+    const d = start({ ref: { kind: 'task', id: 't1', goalId: null } });
+    expect(reconcileFocusDraft(d, goals(), tasks(false), t0)).toBe(d);
+    expect(reconcileFocusDraft(d, goals(), tasks(true), t0 + MIN)?.phase).toBe('confirming');
+    expect(reconcileFocusDraft(d, goals(), [], t0)).toBeNull();
+  });
+
+  it('never touches a draft that is already confirming, or no draft', () => {
+    const confirming = { ...draft, phase: 'confirming' as const, activeSinceMs: null, proposedMinutes: 5 };
+    expect(reconcileFocusDraft(confirming, goals('done'), tasks(), t0)).toBe(confirming);
+    expect(reconcileFocusDraft(null, goals('done'), tasks(), t0)).toBeNull();
   });
 });

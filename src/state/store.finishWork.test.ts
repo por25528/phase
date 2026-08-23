@@ -213,4 +213,39 @@ describe('finishWork', () => {
     expect(getState().activeFocusSession?.ref.id).toBe('n2');
     expect(getState().activeFocusSession?.phase).toBe('active');
   });
+
+  /*
+   * The shelf's checkbox is not the only way to finish work: Today's row, the
+   * bulk bar and the agent socket all reach `toggleLeaf`/`toggleTask`, and
+   * none of them knew a draft was running. The shelf then showed a session
+   * still ticking on a task the page below it had struck through.
+   */
+  describe('a draft settles when its work is finished by any other path', () => {
+    it('parks in confirming when toggleLeaf ticks the draft\'s own step', async () => {
+      const { actions, getState } = await workStore();
+      actions.startFocus(ref, starter, t0);
+      actions.toggleLeaf('n1');
+      expect(isDone(getState().goals[0].nodes[0])).toBe(true);
+      expect(getState().activeFocusSession?.phase).toBe('confirming');
+      // The completing write's undo survives: nothing else was written.
+      expect(getState().pendingUndo?.label).toBe('Completed "Problem set 4"');
+      expect(getState().sessions).toEqual([]);
+    });
+
+    it('is discarded when the step is deleted', async () => {
+      const { actions, getState } = await workStore();
+      actions.startFocus(ref, starter, t0);
+      actions.removeNodes(['n1']);
+      expect(getState().activeFocusSession).toBeNull();
+    });
+
+    it('is untouched by edits to other work', async () => {
+      const { actions, getState } = await workStore([{
+        ...goal, nodes: [...goal.nodes, { id: 'n2', title: 'Other' }],
+      }]);
+      actions.startFocus(ref, starter, t0);
+      actions.toggleLeaf('n2');
+      expect(getState().activeFocusSession?.phase).toBe('active');
+    });
+  });
 });

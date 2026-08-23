@@ -64,6 +64,7 @@ import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status'
 import {
   startFocusSession, pauseFocusSession, resumeFocusSession, finishFocusSession,
   discardFocusSession, type ActiveFocusSession,
+  reconcileFocusDraft,
 } from '../lib/focusSession';
 import {
   DEFAULT_TIME_LEVEL, timeLevelFor, isTimeLevel, type TimeLevel,
@@ -528,6 +529,13 @@ function setAndPersist(patch: Partial<AppState>, uiPatch?: Partial<UIState>) {
   const next = { ...state, ...retire, ...uiPatch, ...patch };
   state = next;
   notify();
+  // A write that touched the work a focus draft names may have finished or
+  // removed it; the draft follows. `setFocusDraft` spends `set()`, so this
+  // cannot re-enter here or sweep the undo the write above just armed.
+  if (patch.goals !== undefined || patch.tasks !== undefined) {
+    const settled = reconcileFocusDraft(state.activeFocusSession, state.goals, state.tasks, Date.now());
+    if (settled !== state.activeFocusSession) setFocusDraft(settled);
+  }
   /*
    * A tab that does not hold the lock never writes.
    *
