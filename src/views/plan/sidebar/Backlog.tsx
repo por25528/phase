@@ -94,8 +94,15 @@ function BacklogRow({
       // visible for as long as it is active — an undo is a way back, not a
       // warning, and it expires.
       className={`group flex items-center gap-[6px] text-ink-soft px-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint rounded-[6px] ${
-        head ? 'py-[8px] text-body bg-panel border border-line-2' : 'py-[3px] text-ui'
-      } ${isDragging ? 'opacity-40' : 'hover:bg-hover'} ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
+        head ? 'py-[8px] text-body border border-line-2' : 'py-[3px] text-ui'
+      } ${isDragging ? 'opacity-40' : 'hover:bg-hover'} ${
+        // One precedence chain, not two independent ternaries: Tailwind emits
+        // .bg-accent-tint before .bg-panel in the stylesheet (alphabetical),
+        // same specificity, so on a row that is both `head` and `revealed`,
+        // stylesheet order — not class-string order — would let bg-panel win
+        // and swallow the reveal tint. Chaining makes `revealed` win outright.
+        revealed ? 'ring-2 ring-accent bg-accent-tint' : head ? 'bg-panel' : ''
+      }`}
     >
       {/* The rail is 249px, so a title shares the row with a due chip and the
           estimate. Wrapping to a SECOND line rather than truncating on the

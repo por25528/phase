@@ -70,6 +70,7 @@ type Store = typeof import('../../../state/store');
 
 async function mountRail(
   seed: { goals: Goal[]; tasks: Task[] },
+  reveal: { kind: 'step' | 'task'; id: string; nonce: number } | null = null,
 ): Promise<{ store: Store; user: ReturnType<typeof userEvent.setup> }> {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
@@ -83,7 +84,7 @@ async function mountRail(
       DndContext,
       null,
       createElement(Backlog, {
-        weekStart: WEEK, today: TODAY, onFocusItem: () => {}, reveal: null,
+        weekStart: WEEK, today: TODAY, onFocusItem: () => {}, reveal,
       }),
     ),
   );
@@ -150,5 +151,12 @@ describe('the backlog rail', () => {
     const heads = document.querySelectorAll('[data-backlog-head]');
     expect(heads.length).toBe(2);
     expect(heads[0].textContent).toContain('Break each topic into daily study goals');
+  });
+
+  it('a revealed head row keeps the reveal tint', async () => {
+    await mountRail({ goals: [PROJECT], tasks: [] }, { kind: 'step', id: 'n1', nonce: 1 });
+    const head = document.querySelector('[data-backlog-head]');
+    expect(head?.className).toContain('bg-accent-tint');
+    expect(head?.className).not.toContain('bg-panel');
   });
 });
