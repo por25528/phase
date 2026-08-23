@@ -1,6 +1,7 @@
 import type { Goal, GoalNode } from '../db/types';
 import type { actions as storeActions, FullState } from '../state/store';
 import type { AgentRequest, AgentResponse } from './agentProtocol';
+import type { WorkRef } from './expectedTime';
 import { okResponse, errorResponse } from './agentProtocol';
 import { parseGoalImport } from './goalImport';
 import { isValidLocalDate } from './schedule';
@@ -8,6 +9,8 @@ import { findNode, isLeafNode } from './tree';
 import { isDone } from './status';
 import { todayStr } from './dates';
 import { columnOfHorizonWord, HORIZON_LABELS } from './horizons';
+import { noteOf, missingRef } from './agentReads';
+import { formatEstimateValue } from './estimateInput';
 
 /**
  * The write half of the agent surface.
@@ -110,6 +113,20 @@ function leaf(state: FullState, nodeId: string, clause: string, goalId?: string)
     return { error: `"${result.found.title}" is a group — ${clause}` };
   }
   return result;
+}
+
+/**
+ * The TITLE of the work a `WorkRef` names, for the ledger verbs. A LEAF: a
+ * group holds no estimate, so `sessionFor` refuses it, and saying so here is
+ * better than a bare "Nothing was logged". A loose task is looked up by id.
+ */
+function workItem(state: FullState, ref: WorkRef): Found<string> {
+  if (ref.kind === 'step') {
+    const found = leaf(state, ref.id, 'log time on the steps inside it instead.', ref.goalId ?? undefined);
+    return failed(found) ? found : { found: found.found.title };
+  }
+  const task = state.tasks.find((t) => t.id === ref.id);
+  return task ? { found: task.title } : { error: missingRef(ref) };
 }
 
 export function handleAgentWrite(
@@ -402,6 +419,52 @@ export function handleAgentWrite(
         return errorResponse('Nothing to undo — an edit in Phase since then cleared it.');
       }
       return okResponse({ undone });
+    }
+
+    case 'set_note':
+    case 'append_note': {
+      const note = noteOf(state, request.ref);
+      if (!note) return errorResponse(missingRef(request.ref));
+      // The frozen-project rule, stated through `project()` so the sentence
+      // matches every other write's.
+      const owner = project(state, note.goalId);
+      if (failed(owner)) return errorResponse(owner.error);
+      // Appending to nothing is setting; `\n\n` between two paragraphs is
+      // what makes the result one document rather than one run-on line.
+      const markdown = request.tool === 'set_note'
+        ? request.markdown
+        : note.markdown === '' ? request.markdown : `${note.markdown}\n\n${request.markdown}`;
+      if (request.ref.kind === 'project') actions.setGoalNotes(request.ref.id, markdown);
+      else actions.setNodeNotes(request.ref.id, markdown);
+      const after = noteOf(getState(), request.ref);
+      if (!after || after.markdown !== markdown) return errorResponse('The note was not saved.');
+      return settled({ title: note.title, markdown });
+    }
+
+    case 'log_time': {
+      const date = request.date ?? todayStr();
+      if (!isValidLocalDate(date)) return errorResponse(`"${date}" is not a real date.`);
+      // Future time is a plan, not a record; the ledger holds records.
+      if (date > todayStr()) return errorResponse(`${date} has not happened yet.`);
+      const target = workItem(state, request.ref);
+      if (failed(target)) return errorResponse(target.error);
+      if (!actions.logSession(request.ref.kind, request.ref.id, request.minutes, date)) {
+        return errorResponse('Nothing was logged.');
+      }
+      return settled({
+        logged: `Logged ${formatEstimateValue(request.minutes)} on "${target.found}"`,
+        date,
+        minutes: request.minutes,
+      });
+    }
+
+    case 'clear_time': {
+      const target = workItem(state, request.ref);
+      if (failed(target)) return errorResponse(target.error);
+      if (!actions.clearSessionsFor(request.ref.kind, request.ref.id)) {
+        return errorResponse(`Nothing was logged on "${target.found}".`);
+      }
+      return settled({ cleared: request.ref.id });
     }
 
     default:

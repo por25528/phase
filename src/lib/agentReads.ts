@@ -12,6 +12,10 @@ import { HORIZON_LABELS } from './horizons';
 import { plannedLeaves, weekOf } from './plan';
 import { tasksForWeek } from './dailyWork';
 import { spansOn } from './scheduled';
+import { findNode } from './tree';
+import { loggedForNode, loggedForTask } from './actuals';
+import type { NoteRef } from './agentProtocol';
+import type { WorkRef } from './expectedTime';
 
 /**
  * The read half of the agent surface.
@@ -87,6 +91,49 @@ function projectSummary(goal: Goal) {
   };
 }
 
+/**
+ * The title and note a `NoteRef` names. Shared by `get_note` here and the
+ * note writes in `agentWrites.ts`, so the two halves resolve a ref identically.
+ * A step is found in ANY project, completed or not — reading a frozen
+ * project's notes is fine; writing is the write half's refusal to make.
+ */
+export function noteOf(
+  state: FullState,
+  ref: NoteRef,
+): { title: string; markdown: string; goalId: string } | null {
+  if (ref.kind === 'project') {
+    const goal = state.goals.find((g) => g.id === ref.id);
+    return goal ? { title: goal.title, markdown: goal.notes ?? '', goalId: goal.id } : null;
+  }
+  for (const goal of state.goals) {
+    const node = findNode(goal.nodes, ref.id);
+    if (node) return { title: node.title, markdown: node.notes ?? '', goalId: goal.id };
+  }
+  return null;
+}
+
+/** "No task with id" / "No project with id" — the same sentence the other reads use. */
+export function missingRef(ref: NoteRef | WorkRef): string {
+  return `No ${ref.kind === 'project' ? 'project' : 'task'} with id "${ref.id}".`;
+}
+
+/**
+ * The ledger for one piece of work: the same `loggedForNode`/`loggedForTask`
+ * `TaskPage` prints, plus the entries behind the figure. `nodeId` takes
+ * precedence in the filter for the reason `loggedForTask` states.
+ */
+function timeLogOf(state: FullState, ref: WorkRef) {
+  const sessions = state.sessions
+    .filter((s) => (ref.kind === 'step'
+      ? s.nodeId === ref.id
+      : s.nodeId === undefined && s.taskId === ref.id))
+    .map((s) => ({ id: s.id, date: s.date, minutes: s.minutes, note: s.note }));
+  const loggedMin = ref.kind === 'step'
+    ? loggedForNode(state.sessions, ref.id)
+    : loggedForTask(state.sessions, ref.id);
+  return { loggedMin, sessions };
+}
+
 export function handleAgentRead(
   request: AgentRequest,
   state: FullState,
@@ -120,6 +167,18 @@ export function handleAgentRead(
       const goal = state.goals.find((g) => g.id === request.goalId);
       if (!goal) return errorResponse(`No project with id "${request.goalId}".`);
       return okResponse({ project: goal });
+    }
+    case 'get_note': {
+      const note = noteOf(state, request.ref);
+      if (!note) return errorResponse(missingRef(request.ref));
+      return okResponse({ title: note.title, markdown: note.markdown });
+    }
+    case 'time_log': {
+      const exists = request.ref.kind === 'step'
+        ? state.goals.some((g) => findNode(g.nodes, request.ref.id))
+        : state.tasks.some((t) => t.id === request.ref.id);
+      if (!exists) return errorResponse(missingRef(request.ref));
+      return okResponse(timeLogOf(state, request.ref));
     }
     default:
       return null;

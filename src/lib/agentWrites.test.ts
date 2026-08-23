@@ -104,6 +104,21 @@ function harness(opts: {
         }),
       });
     }),
+    setNodeNotes: vi.fn((nodeId: string, markdown: string) => {
+      const goal = current.goals.find((g) => findEverywhere(g.nodes, nodeId));
+      if (!goal) return;
+      withNode(goal.id, (nodes) => {
+        const node = findEverywhere(nodes, nodeId);
+        if (!node) return;
+        if (markdown === '') delete node.notes;
+        else node.notes = markdown;
+      });
+    }),
+    setGoalNotes: vi.fn((goalId: string, notes: string) => {
+      patch({ goals: current.goals.map((g) => (g.id === goalId ? { ...g, notes } : g)) });
+    }),
+    logSession: vi.fn(() => true),
+    clearSessionsFor: vi.fn(() => true),
     setNodeEstimate: vi.fn((nodeId: string, minutes: number | null) => {
       const goal = current.goals.find((g) => findEverywhere(g.nodes, nodeId));
       if (!goal) return;
@@ -713,5 +728,123 @@ describe('reads', () => {
     const h = harness();
     const res = handleAgentWrite({ tool: 'today' }, h.deps);
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('set_note / append_note', () => {
+  it('replaces a step note through setNodeNotes and answers with what is stored', () => {
+    const h = harness({ goals: [GOAL({ nodes: [{ id: 'n1', title: 'Draft', notes: 'old' }] })] });
+    const res = handleAgentWrite(
+      { tool: 'set_note', ref: { kind: 'step', id: 'n1' }, markdown: '# New' }, h.deps,
+    );
+    expect(h.spies.setNodeNotes).toHaveBeenCalledWith('n1', '# New');
+    expect(res).toEqual({ ok: true, data: { title: 'Draft', markdown: '# New' } });
+  });
+
+  it('clears a note on an empty string, and confirms the field went away', () => {
+    const h = harness({ goals: [GOAL({ nodes: [{ id: 'n1', title: 'Draft', notes: 'old' }] })] });
+    const res = handleAgentWrite(
+      { tool: 'set_note', ref: { kind: 'step', id: 'n1' }, markdown: '' }, h.deps,
+    );
+    expect(res.ok).toBe(true);
+    expect(h.deps.getState().goals[0].nodes[0].notes).toBeUndefined();
+  });
+
+  it('appends as a new paragraph, in ONE write', () => {
+    const h = harness({ goals: [GOAL({ notes: 'first' })] });
+    const res = handleAgentWrite(
+      { tool: 'append_note', ref: { kind: 'project', id: 'g1' }, markdown: 'second' }, h.deps,
+    );
+    expect(h.spies.setGoalNotes).toHaveBeenCalledTimes(1);
+    expect(h.spies.setGoalNotes).toHaveBeenCalledWith('g1', 'first\n\nsecond');
+    expect(res.ok).toBe(true);
+  });
+
+  it('appending to an empty note is setting it — no leading blank lines', () => {
+    const h = harness({ goals: [GOAL()] });
+    handleAgentWrite(
+      { tool: 'append_note', ref: { kind: 'project', id: 'g1' }, markdown: 'only' }, h.deps,
+    );
+    expect(h.spies.setGoalNotes).toHaveBeenCalledWith('g1', 'only');
+  });
+
+  it('refuses a completed project rather than writing into a frozen tree', () => {
+    const h = harness({ goals: [GOAL({ completedAt: '2026-01-01' })] });
+    const res = handleAgentWrite(
+      { tool: 'set_note', ref: { kind: 'step', id: 'n1' }, markdown: 'x' }, h.deps,
+    );
+    expect(errorOf(res)).toMatch(/completed project/);
+    expect(h.spies.setNodeNotes).not.toHaveBeenCalled();
+  });
+
+  it('names a ref it cannot find', () => {
+    const h = harness({ goals: [GOAL()] });
+    expect(errorOf(handleAgentWrite(
+      { tool: 'set_note', ref: { kind: 'project', id: 'nope' }, markdown: 'x' }, h.deps,
+    ))).toBe('No project with id "nope".');
+  });
+
+  it('reports a refusal when the store silently declined to write', () => {
+    const h = harness({ goals: [GOAL()], actions: { setNodeNotes: vi.fn() } });
+    const res = handleAgentWrite(
+      { tool: 'set_note', ref: { kind: 'step', id: 'n1' }, markdown: 'x' }, h.deps,
+    );
+    expect(res).toEqual({ ok: false, error: 'The note was not saved.' });
+  });
+});
+
+describe('log_time / clear_time', () => {
+  it('logs through logSession, defaulting to today, and names what it logged', () => {
+    const h = harness({ goals: [GOAL()] });
+    const res = handleAgentWrite(
+      { tool: 'log_time', ref: { kind: 'step', id: 'n1', goalId: 'g1' }, minutes: 45 }, h.deps,
+    );
+    const [kind, id, minutes, date] = h.spies.logSession.mock.calls[0];
+    expect([kind, id, minutes]).toEqual(['step', 'n1', 45]);
+    expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(res).toMatchObject({ ok: true, data: { logged: 'Logged 45m on "Draft outline"', minutes: 45 } });
+  });
+
+  it('logs against a loose task by id', () => {
+    const h = harness({ tasks: [{ id: 't1', title: 'Taxes' } as Task] });
+    const res = handleAgentWrite(
+      { tool: 'log_time', ref: { kind: 'task', id: 't1', goalId: null }, minutes: 20, date: '2026-01-05' }, h.deps,
+    );
+    expect(h.spies.logSession).toHaveBeenCalledWith('task', 't1', 20, '2026-01-05');
+    expect(res).toMatchObject({ ok: true, data: { date: '2026-01-05' } });
+  });
+
+  it('refuses a date in the future — the ledger holds records, not plans', () => {
+    const h = harness({ goals: [GOAL()] });
+    const res = handleAgentWrite(
+      { tool: 'log_time', ref: { kind: 'step', id: 'n1', goalId: 'g1' }, minutes: 10, date: '2999-01-01' }, h.deps,
+    );
+    expect(errorOf(res)).toBe('2999-01-01 has not happened yet.');
+    expect(h.spies.logSession).not.toHaveBeenCalled();
+  });
+
+  it('refuses a group: there is no estimate to measure the time against', () => {
+    const h = harness({ goals: [GOAL({ nodes: [{ id: 'p', title: 'Part', children: [{ id: 'c', title: 'Leaf' }] }] })] });
+    const res = handleAgentWrite(
+      { tool: 'log_time', ref: { kind: 'step', id: 'p', goalId: 'g1' }, minutes: 10 }, h.deps,
+    );
+    expect(errorOf(res)).toMatch(/is a group/);
+  });
+
+  it('propagates logSession\'s refusal', () => {
+    const h = harness({ goals: [GOAL()], actions: { logSession: vi.fn(() => false) } });
+    const res = handleAgentWrite(
+      { tool: 'log_time', ref: { kind: 'step', id: 'n1', goalId: 'g1' }, minutes: 10 }, h.deps,
+    );
+    expect(res).toEqual({ ok: false, error: 'Nothing was logged.' });
+  });
+
+  it('clears through clearSessionsFor and refuses when there was nothing to clear', () => {
+    const h = harness({ goals: [GOAL()], actions: { clearSessionsFor: vi.fn(() => false) } });
+    const res = handleAgentWrite(
+      { tool: 'clear_time', ref: { kind: 'step', id: 'n1', goalId: 'g1' } }, h.deps,
+    );
+    expect(h.spies.clearSessionsFor).toHaveBeenCalledWith('step', 'n1');
+    expect(res).toEqual({ ok: false, error: 'Nothing was logged on "Draft outline".' });
   });
 });

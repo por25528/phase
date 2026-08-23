@@ -86,6 +86,13 @@ for (const [tool, description] of Object.entries(READS)) {
 // loose task — nullable rather than optional, because that is the pairing the
 // app checks and a schema that let it go missing would invite a call that
 // always fails.
+// Something that carries a note: a step or a project. Not a loose task, which
+// has no notes field.
+const NOTE_REF = z.object({
+  kind: z.enum(['step', 'project']),
+  id: z.string(),
+});
+
 const REF = z.object({
   kind: z.enum(['step', 'task']),
   id: z.string(),
@@ -166,6 +173,22 @@ const WRITES = {
     'Reverse the last change. Only works if nothing has been edited in Phase since.',
     {},
   ],
+  set_note: [
+    'Replace the note on a step or project with this markdown. Pass an empty string to clear it. An editor open on that note inside Phase keeps its own text and saves over this on its next change.',
+    { ref: NOTE_REF, markdown: z.string() },
+  ],
+  append_note: [
+    'Add a paragraph to the end of a step\'s or project\'s note. Use this rather than get_note + set_note: it is one write, so nothing typed in between is lost.',
+    { ref: NOTE_REF, markdown: z.string() },
+  ],
+  log_time: [
+    'Record minutes spent on a task or step — after the fact, not a running timer. date is YYYY-MM-DD and defaults to today; it cannot be in the future. Reversible with undo_last.',
+    { ref: REF, minutes: z.number().int().positive(), date: z.string().optional() },
+  ],
+  clear_time: [
+    'Discard every time entry logged against a task or step. Reversible with undo_last.',
+    { ref: REF },
+  ],
 };
 
 // `get_project` is a READ, and it lands here because it takes an argument —
@@ -174,6 +197,14 @@ const ARGUMENT_READS = {
   get_project: [
     'The full step tree for one project: statuses, estimates and scheduled sittings.',
     { goalId: z.string() },
+  ],
+  get_note: [
+    'The markdown note on a step or project, with its title. Empty string when there is none.',
+    { ref: NOTE_REF },
+  ],
+  time_log: [
+    'Minutes logged against a task or step, and the entries behind the total.',
+    { ref: REF },
   ],
 };
 
@@ -185,6 +216,68 @@ for (const [tool, [description, schema]] of [
   // cannot be overwritten by a caller, and saying so costs nothing.
   server.tool(tool, description, schema, async (args) => ({
     content: [{ type: 'text', text: await ask({ ...args, tool }) }],
+  }));
+}
+
+// Resources: the four no-argument reads, addressable as context rather than
+// as a tool call. Each URI forwards to the read named beside it; the pairing
+// is pinned to AGENT_RESOURCES by `agentProtocol.test.ts`.
+const RESOURCES = {
+  'phase://today': 'today',
+  'phase://week': 'week',
+  'phase://backlog': 'backlog',
+  'phase://projects': 'list_projects',
+};
+
+for (const [uri, tool] of Object.entries(RESOURCES)) {
+  server.resource(tool, uri, { description: READS[tool], mimeType: 'application/json' }, async () => ({
+    contents: [{ uri, mimeType: 'application/json', text: await ask({ tool }) }],
+  }));
+}
+
+// Prompts: conversation openers a client offers by name. The text is a COPY of
+// `src/lib/agentPrompts.ts` — this process cannot import from src/ — and the
+// test pins both the names and the text, line for line.
+const PROMPTS = {
+  'plan-my-day': [
+    'Propose up to three placements for today from what slipped and what is queued; books nothing until told.',
+    {},
+    () => [
+      'Help me plan today in Phase.',
+      '1. Call `today` for what is on, what slipped and where there is room, then `backlog` for what is queued.',
+      '2. Propose at most three placements for today, naming the task, the project and the minute you would aim for. Prefer carried-over work, then the first item of each project.',
+      '3. Do NOT call `schedule` until I say which of them to book. A sitting is a commitment and I place those.',
+      '4. After booking, call `today` again and show me the day as it now reads.',
+    ].join('\n'),
+  ],
+  'review-week': [
+    'Read the week: planned, to place, unestimated and blocked. Suggests, never acts.',
+    {},
+    () => [
+      'Review my week in Phase.',
+      '1. Call `week` for what is planned and what is still to place, then `backlog` for the queue.',
+      '2. Tell me, in a few lines: how much is on the calendar, how much is committed but unplaced, and which tasks have no estimate (`unestimated`) — those are the ones the figures cannot see.',
+      '3. If something is blocked, say what on. Suggest, do not act: this is a reading of the week, not a replan.',
+    ].join('\n'),
+  ],
+  'log-session': [
+    'Find a task by title and log minutes against it.',
+    { task: z.string().describe('The task title, or part of it'), minutes: z.string().describe('Minutes spent') },
+    ({ task, minutes }) => [
+      `Log ${minutes} minutes on "${task}" in Phase.`,
+      '1. Find the work: `backlog` and `list_projects` name projects, `get_project` shows a project\'s steps with ids. Match the title; if more than one fits, ask me which.',
+      '2. Call `log_time` with its ref and the minutes (today unless I said otherwise).',
+      '3. Call `time_log` on the same ref and tell me the total logged against it now.',
+    ].join('\n'),
+  ],
+};
+
+for (const [name, [description, schema, text]] of Object.entries(PROMPTS)) {
+  // `registerPrompt`, not `prompt`: the latter's overloads tell a description
+  // from an empty schema by arity, and a zero-argument prompt has both.
+  const argsSchema = Object.keys(schema).length ? schema : undefined;
+  server.registerPrompt(name, { description, argsSchema }, (args) => ({
+    messages: [{ role: 'user', content: { type: 'text', text: text(args) } }],
   }));
 }
 

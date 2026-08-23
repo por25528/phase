@@ -413,7 +413,16 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   and "reach as far as `⌘Z` does" was never a real trade: the label was already
   sitting on `UndoEntry`, unreturned. `⌘Z` and the toast button ignore that
   return because the user watched it happen. `docs/mcp-server.md` is the setup
-  and the limits.
+  and the limits. **The dispatcher flushes the note editor before every
+  request** (`actions.flushNote`, `App.tsx`), so `get_note` is a pure read that
+  still sees what was typed a second ago, and `append_note` is one
+  read-modify-write inside the app rather than two calls across the socket.
+  There is deliberately no live-session verb: `log_time` writes the ledger
+  after the fact, because a terminal cannot watch a timer and the shelf's
+  "was that real?" question would have no one to answer it. Prompts and
+  resources are declared in `server.js` and pinned to `AGENT_PROMPTS`/
+  `AGENT_RESOURCES` and the `agentPrompts.ts` text by `agentProtocol.test.ts`,
+  the same way `AGENT_TOOLS` is.
 
 ## Conventions
 

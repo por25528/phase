@@ -15,6 +15,8 @@ import { isHorizonWord } from './horizons';
 const MAX_ID = 200;
 const MAX_TITLE = 500;
 const MAX_MINUTES = 24 * 60;
+/** A note is a document, not a title. Generous, but a socket is not a trusted caller. */
+const MAX_NOTE = 200_000;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 export type AgentRequest =
@@ -33,7 +35,23 @@ export type AgentRequest =
   | { tool: 'complete_task'; ref: WorkRef }
   | { tool: 'schedule'; ref: WorkRef; day: string; startMin?: number; minutes?: number }
   | { tool: 'delete'; ref: WorkRef }
-  | { tool: 'undo_last' };
+  | { tool: 'undo_last' }
+  | { tool: 'get_note'; ref: NoteRef }
+  | { tool: 'set_note'; ref: NoteRef; markdown: string }
+  | { tool: 'append_note'; ref: NoteRef; markdown: string }
+  | { tool: 'time_log'; ref: WorkRef }
+  | { tool: 'log_time'; ref: WorkRef; minutes: number; date?: string }
+  | { tool: 'clear_time'; ref: WorkRef };
+
+/**
+ * Something that carries a note: a step (any node, group or leaf — both have
+ * `notes`) or a project. NOT a loose task: `Task` has no notes field, and a
+ * verb that accepted one would have nowhere to put it.
+ */
+export interface NoteRef {
+  kind: 'step' | 'project';
+  id: string;
+}
 
 export type AgentResponse =
   | { ok: true; data: unknown }
@@ -43,7 +61,23 @@ export const AGENT_TOOLS = [
   'today', 'week', 'backlog', 'list_projects', 'get_project',
   'create_project', 'add_task', 'rename', 'estimate', 'set_status',
   'set_life', 'set_horizon', 'complete_task', 'schedule', 'delete', 'undo_last',
+  'get_note', 'set_note', 'append_note', 'time_log', 'log_time', 'clear_time',
 ] as const;
+
+/**
+ * The prompts and resources `mcp/server.js` declares. They have no handler on
+ * this side of the socket — a resource forwards to the read named beside it
+ * and a prompt is text — but the server's copy is pinned against these lists
+ * by `agentProtocol.test.ts` exactly as `AGENT_TOOLS` is.
+ */
+export const AGENT_RESOURCES = {
+  'phase://today': 'today',
+  'phase://week': 'week',
+  'phase://backlog': 'backlog',
+  'phase://projects': 'list_projects',
+} as const;
+
+export const AGENT_PROMPTS = ['plan-my-day', 'review-week', 'log-session'] as const;
 
 export function okResponse(data: unknown): AgentResponse {
   return { ok: true, data };
@@ -68,6 +102,17 @@ function title(value: unknown): value is string {
 function minutes(value: unknown): boolean {
   return typeof value === 'number' && Number.isFinite(value)
     && value >= 0 && value <= MAX_MINUTES;
+}
+
+function validNoteRef(value: unknown): value is NoteRef {
+  if (!value || typeof value !== 'object') return false;
+  const ref = value as Record<string, unknown>;
+  return (ref.kind === 'step' || ref.kind === 'project') && id(ref.id);
+}
+
+/** Markdown may be empty (that is how a note is cleared) but must be a string. */
+function markdown(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= MAX_NOTE;
 }
 
 function validRef(value: unknown): value is WorkRef {
@@ -124,6 +169,21 @@ export function validAgentRequest(value: unknown): value is AgentRequest {
         && typeof req.day === 'string' && DAY.test(req.day)
         && (req.startMin === undefined || minutes(req.startMin))
         && (req.minutes === undefined || minutes(req.minutes));
+    case 'get_note':
+      return validNoteRef(req.ref);
+    case 'set_note':
+    case 'append_note':
+      return validNoteRef(req.ref) && markdown(req.markdown);
+    case 'time_log':
+    case 'clear_time':
+      return validRef(req.ref);
+    case 'log_time':
+      // Strictly positive: `logSession` refuses zero, and a zero-minute entry
+      // would be a measurement nobody took. The date is a shape check here;
+      // "not after today" needs a clock and is the handler's to say.
+      return validRef(req.ref)
+        && minutes(req.minutes) && (req.minutes as number) > 0
+        && (req.date === undefined || (typeof req.date === 'string' && DAY.test(req.date)));
     default:
       return false;
   }

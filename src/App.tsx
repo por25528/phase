@@ -189,6 +189,10 @@ export function App() {
         bridge.reply(id, errorResponse('Not a request Phase understands.'));
         return;
       }
+      // An open editor's unsaved typing lands first, so a note read from a
+      // terminal cannot be a second behind the screen, and a note WRITE
+      // cannot be built on a stale document.
+      storeActions.flushNote();
       const read = handleAgentRead(request, getState());
       bridge.reply(id, read ?? handleAgentWrite(request, {
         actions: storeActions,

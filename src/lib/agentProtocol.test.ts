@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { validAgentRequest, okResponse, errorResponse, AGENT_TOOLS } from './agentProtocol';
+import {
+  validAgentRequest, okResponse, errorResponse, AGENT_TOOLS, AGENT_RESOURCES, AGENT_PROMPTS,
+} from './agentProtocol';
+import { PLAN_MY_DAY, REVIEW_WEEK, logSessionPrompt } from './agentPrompts';
 import { HORIZON_LABELS } from './horizons';
 
 describe('validAgentRequest', () => {
@@ -85,6 +88,34 @@ describe('response helpers', () => {
  * schema advertises stays in the protocol vocabulary, and the horizon enum
  * stays the labels, in both casings.
  */
+describe('note and ledger requests', () => {
+  it('accepts a NoteRef of kind step or project, and nothing else', () => {
+    expect(validAgentRequest({ tool: 'get_note', ref: { kind: 'step', id: 'n1' } })).toBe(true);
+    expect(validAgentRequest({ tool: 'get_note', ref: { kind: 'project', id: 'g1' } })).toBe(true);
+    expect(validAgentRequest({ tool: 'get_note', ref: { kind: 'task', id: 't1' } })).toBe(false);
+  });
+
+  it('set_note takes an empty string (that is how a note is cleared) but not a non-string', () => {
+    expect(validAgentRequest({ tool: 'set_note', ref: { kind: 'step', id: 'n1' }, markdown: '' })).toBe(true);
+    expect(validAgentRequest({ tool: 'set_note', ref: { kind: 'step', id: 'n1' }, markdown: null })).toBe(false);
+    expect(validAgentRequest({ tool: 'append_note', ref: { kind: 'step', id: 'n1' } })).toBe(false);
+  });
+
+  it('log_time needs a positive whole-day-bounded minutes and an optional YYYY-MM-DD', () => {
+    const ref = { kind: 'task', id: 't1', goalId: null };
+    expect(validAgentRequest({ tool: 'log_time', ref, minutes: 30 })).toBe(true);
+    expect(validAgentRequest({ tool: 'log_time', ref, minutes: 30, date: '2026-08-01' })).toBe(true);
+    expect(validAgentRequest({ tool: 'log_time', ref, minutes: 0 })).toBe(false);
+    expect(validAgentRequest({ tool: 'log_time', ref, minutes: 30, date: 'yesterday' })).toBe(false);
+    expect(validAgentRequest({ tool: 'log_time', ref, minutes: 1441 })).toBe(false);
+  });
+
+  it('time_log and clear_time take a WorkRef', () => {
+    expect(validAgentRequest({ tool: 'time_log', ref: { kind: 'step', id: 'n1', goalId: 'g1' } })).toBe(true);
+    expect(validAgentRequest({ tool: 'clear_time', ref: { kind: 'step', id: 'n1' } })).toBe(false);
+  });
+});
+
 describe('AGENT_TOOLS vs mcp/server.js', () => {
   const SERVER = readFileSync(new URL('../../mcp/server.js', import.meta.url), 'utf8');
 
@@ -137,5 +168,30 @@ describe('AGENT_TOOLS vs mcp/server.js', () => {
       words,
       `set_horizon's z.enum in mcp/server.js is [${words.join(', ')}], expected [${expected.join(', ')}]`,
     ).toEqual(expected);
+  });
+
+  it('every resource URI in mcp/server.js forwards to the read AGENT_RESOURCES names', () => {
+    const match = SERVER.match(/const RESOURCES = \{([\s\S]*?)\n\};/);
+    if (!match) throw new Error('could not locate const RESOURCES in mcp/server.js');
+    const declared = Object.fromEntries(
+      [...match[1].matchAll(/'([^']+)': '(\w+)'/g)].map((m) => [m[1], m[2]]),
+    );
+    expect(declared).toEqual(AGENT_RESOURCES);
+  });
+
+  it('every prompt in mcp/server.js is in AGENT_PROMPTS, and its text is the lib copy', () => {
+    const match = SERVER.match(/const PROMPTS = \{([\s\S]*?)\n\};/);
+    if (!match) throw new Error('could not locate const PROMPTS in mcp/server.js');
+    const names = [...match[1].matchAll(/^\s{2}'([\w-]+)': \[/gm)].map((m) => m[1]);
+    expect(names).toEqual([...AGENT_PROMPTS]);
+    // The server inlines the prompt bodies as arrays of single-quoted lines.
+    // Reassembling them pins the COPY to the lib text, line for line.
+    const bodies = [...match[1].matchAll(/\(\{?[^)]*\}?\) => \[\n([\s\S]*?)\n\s{4}\]\.join/g)]
+      .map((m) => m[1].split('\n').map((line) => {
+        const lit = line.trim().replace(/,$/, '');
+        // eslint-disable-next-line no-new-func
+        return new Function(`const task = 'T', minutes = 'M'; return ${lit};`)() as string;
+      }).join('\n'));
+    expect(bodies).toEqual([PLAN_MY_DAY, REVIEW_WEEK, logSessionPrompt('T', 'M')]);
   });
 });

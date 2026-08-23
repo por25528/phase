@@ -38,3 +38,58 @@ describe('handleAgentRead', () => {
     expect((res as { data: { advice: { kind: string } } }).data.advice.kind).toBe('clear');
   });
 });
+
+describe('get_note / time_log', () => {
+  const state = (): FullState => ({
+    ...emptyState(),
+    goals: [{
+      id: 'g1', title: 'Thesis', notes: 'project note',
+      nodes: [{ id: 'n1', title: 'Draft' }, { id: 'n2', title: 'Edit', notes: '# plan' }],
+    }],
+    tasks: [{ id: 't1', title: 'Taxes' }],
+    sessions: [
+      { id: 's1', goalId: 'g1', date: '2026-08-20', minutes: 30, note: '', nodeId: 'n1' },
+      { id: 's2', goalId: 'g1', date: '2026-08-21', minutes: 15, note: 'late', nodeId: 'n1' },
+      { id: 's3', goalId: null, date: '2026-08-21', minutes: 10, note: '', taskId: 't1' },
+      // Both ids: counted for the NODE only, the rule loggedForTask states.
+      { id: 's4', goalId: null, date: '2026-08-21', minutes: 99, note: '', taskId: 't1', nodeId: 'n2' },
+    ],
+  } as unknown as FullState);
+
+  it('answers an empty string for a step with no note, and the note when there is one', () => {
+    expect(handleAgentRead({ tool: 'get_note', ref: { kind: 'step', id: 'n1' } }, state()))
+      .toEqual({ ok: true, data: { title: 'Draft', markdown: '' } });
+    expect(handleAgentRead({ tool: 'get_note', ref: { kind: 'step', id: 'n2' } }, state()))
+      .toEqual({ ok: true, data: { title: 'Edit', markdown: '# plan' } });
+  });
+
+  it('reads a project note', () => {
+    expect(handleAgentRead({ tool: 'get_note', ref: { kind: 'project', id: 'g1' } }, state()))
+      .toEqual({ ok: true, data: { title: 'Thesis', markdown: 'project note' } });
+  });
+
+  it('names a missing ref', () => {
+    expect(handleAgentRead({ tool: 'get_note', ref: { kind: 'step', id: 'x' } }, state()))
+      .toEqual({ ok: false, error: 'No task with id "x".' });
+  });
+
+  it('sums a step\'s ledger the way TaskPage does and lists the entries', () => {
+    expect(handleAgentRead({ tool: 'time_log', ref: { kind: 'step', id: 'n1', goalId: 'g1' } }, state()))
+      .toEqual({ ok: true, data: { loggedMin: 45, sessions: [
+        { id: 's1', date: '2026-08-20', minutes: 30, note: '' },
+        { id: 's2', date: '2026-08-21', minutes: 15, note: 'late' },
+      ] } });
+  });
+
+  it('a session carrying both ids is charged to the node, never the task', () => {
+    expect(handleAgentRead({ tool: 'time_log', ref: { kind: 'task', id: 't1', goalId: null } }, state()))
+      .toEqual({ ok: true, data: { loggedMin: 10, sessions: [
+        { id: 's3', date: '2026-08-21', minutes: 10, note: '' },
+      ] } });
+  });
+
+  it('names a task it cannot find rather than answering zero', () => {
+    expect(handleAgentRead({ tool: 'time_log', ref: { kind: 'task', id: 'zz', goalId: null } }, state()))
+      .toEqual({ ok: false, error: 'No task with id "zz".' });
+  });
+});

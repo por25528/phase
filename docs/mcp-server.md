@@ -53,6 +53,8 @@ where `goalId` is the project holding a step and `null` for a loose task.
 | `backlog` | — | Queued work, grouped by project |
 | `list_projects` | — | Every project with its horizon, percentage, remaining minutes and health sentence |
 | `get_project` | `goalId` | The full step tree for one project: statuses, estimates and scheduled sittings |
+| `get_note` | `ref` (`{ kind: 'step' \| 'project', id }`) | The markdown note on a step or project, with its title; `''` when there is none |
+| `time_log` | `ref` | Minutes logged against a task or step — the same total `TaskPage` prints — and the entries behind it |
 
 Every read **spends the lib function its view spends and re-derives nothing** —
 `today` is `executionAdvice`, `week` is `weekCapacity`, `backlog` is
@@ -91,6 +93,10 @@ and persistence come for free.
 | `schedule` | `ref`, `day`, `startMin?` | `scheduleNode` / `scheduleTask` | Books a sitting; see the length limit below |
 | `delete` | `ref` | `removeNodes` / `removeTask` | Reversible — see `undo_last` |
 | `undo_last` | — | `undoLastDelete` | Names what it reversed, or says nothing was pending |
+| `set_note` | `ref`, `markdown` | `setNodeNotes` / `setGoalNotes` | Replaces; `''` clears. See the editor caveat below |
+| `append_note` | `ref`, `markdown` | `setNodeNotes` / `setGoalNotes` | Adds a paragraph at the end — ONE write, so nothing typed between a read and a write is lost |
+| `log_time` | `ref`, `minutes`, `date?` | `logSession` | After the fact, never a running timer; `date` defaults to today and may not be in the future |
+| `clear_time` | `ref` | `clearSessionsFor` | Discards every entry on the item; refuses when there was none |
 
 Two things a write will never do:
 
@@ -143,10 +149,38 @@ Which writes arm an undo entry at all:
 
 | Arms one | Arms nothing |
 |---|---|
-| `delete` (15s), `complete_task`, `set_status` → `done`, `set_horizon`, `estimate`, `schedule` | `create_project`, `add_task`, `rename`, `set_life`, `set_status` → `todo`/`doing`/`blocked` |
+| `delete` (15s), `complete_task`, `set_status` → `done`, `set_horizon`, `estimate`, `schedule`, `log_time`, `clear_time` | `create_project`, `add_task`, `rename`, `set_life`, `set_status` → `todo`/`doing`/`blocked`, `set_note`, `append_note` |
 
 `schedule` arms one because it has no `blockId`: a booking made from a distance
 is not direct manipulation, and a press you did not watch land needs a way back.
+
+### Notes and an open editor
+
+Before answering ANY request the renderer flushes the one mounted note editor
+(`actions.flushNote`), so `get_note` sees what was typed a second ago and a
+`set_note`/`append_note` is built on the current document, not the last
+autosave. What it cannot do is reach INTO that editor: if the note you write
+from a terminal is the one open on screen, the editor keeps its own buffer and
+its next save wins. Same rule an import already lives with. Loose tasks have
+no notes field and get no note verb.
+
+### There is no running timer
+
+`log_time` writes the ledger after the fact. The shelf's live session
+(`startFocus`/`completeFocus`) is deliberately not exposed: a terminal cannot
+watch a timer, a session it started would run unattended, and the shelf's
+"was that real work?" question would have no one to answer it.
+
+### Prompts and resources
+
+The four no-argument reads are also resources — `phase://today`,
+`phase://week`, `phase://backlog`, `phase://projects` — for clients that want
+the day as context without a tool call. Three prompts open a conversation:
+`plan-my-day` (proposes ≤3 placements and books nothing until told),
+`review-week` (reads the week; suggests, never acts) and
+`log-session(task, minutes)` (finds the work by title, logs, reads back the
+total). The text lives in `src/lib/agentPrompts.ts`; `server.js` carries a
+copy, pinned line for line by `agentProtocol.test.ts`.
 
 ### `schedule` takes no length
 
@@ -210,6 +244,7 @@ crash does not need cleaning up by hand.
 | `src/lib/agentBridge.ts` | The renderer's wrapper, inert outside Electron |
 | `src/lib/agentReads.ts` | Read handlers. Spends the views' own lib functions |
 | `src/lib/agentWrites.ts` | Write handlers. One `actions` call each, and the honesty rules above |
+| `src/lib/agentPrompts.ts` | The prompt texts — the one place this surface states policy, kept where it can be tested |
 
 The design argument is in
 [`docs/superpowers/specs/2026-08-14-phase-mcp-server-design.md`](superpowers/specs/2026-08-14-phase-mcp-server-design.md).

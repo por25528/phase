@@ -1839,6 +1839,16 @@ export const actions = {
     setAndPersist({ goals });
   },
 
+  /**
+   * Persist whatever the one mounted note editor is holding. The agent
+   * dispatcher calls this before answering ANY request, so a note read from
+   * outside the app sees what was typed a second ago rather than what was
+   * last autosaved. Harmless when no editor is mounted.
+   */
+  flushNote(): void {
+    flushPendingNote();
+  },
+
   setGoalNotes(goalId: string, notes: string) {
     if (!state.goals.some((g) => g.id === goalId)) return;
     const goals = state.goals.map((g) => (g.id === goalId ? { ...g, notes } : g));
