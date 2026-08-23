@@ -39,11 +39,16 @@ describe('validAgentRequest', () => {
     expect(validAgentRequest({ tool: 'complete_task' })).toBe(false);
   });
 
-  it('accepts only the four statuses on set_status', () => {
-    for (const status of ['todo', 'doing', 'blocked', 'done']) {
+  it('accepts only the five statuses on set_status', () => {
+    for (const status of ['todo', 'doing', 'blocked', 'parked', 'done']) {
       expect(validAgentRequest({ tool: 'set_status', nodeId: 'n1', status })).toBe(true);
     }
     expect(validAgentRequest({ tool: 'set_status', nodeId: 'n1', status: 'maybe' })).toBe(false);
+  });
+
+  it('refuses blockedOn on a parked request at the write, not the shape', () => {
+    // Shape-valid: blockedOn is an optional string. agentWrites refuses it.
+    expect(validAgentRequest({ tool: 'set_status', nodeId: 'n1', status: 'parked', blockedOn: 'x' })).toBe(true);
   });
 
   it('rejects a negative or absurd estimate', () => {

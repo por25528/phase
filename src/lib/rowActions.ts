@@ -22,6 +22,7 @@ export type RowActionId =
   | 'schedule'
   | 'estimate'
   | 'milestone'
+  | 'park'
   | 'demand'
   | 'breakdown'
   | 'indent'
@@ -47,6 +48,8 @@ export interface RowActionContext {
   isContainer: boolean;
   isDone: boolean;
   isMilestone: boolean;
+  /** A leaf set aside. A container derives it and never sets it. */
+  isParked: boolean;
   /** False for the first child in a sibling run — there is nothing to nest under. */
   canIndent: boolean;
   /** False at the root — there is nowhere to go. */
@@ -87,6 +90,9 @@ export function rowActions(ctx: RowActionContext): RowAction[] {
       label: ctx.isMilestone ? 'Not a milestone' : 'Make a milestone',
       group: 1,
     });
+    // Parking is a deliberate verb and not a step in the `S` cycle: cycling
+    // through "not now" on the way to "blocked" would park things by accident.
+    out.push({ id: 'park', label: ctx.isParked ? 'Unpark' : 'Park', hint: 'P', group: 1 });
   }
 
   // The first verb offered on BOTH a leaf and a container. Schedule and Estimate
@@ -149,16 +155,22 @@ export function rowActionGroups(ctx: RowActionContext): RowAction[][] {
  * `open` is absent because a leaf has nothing behind it, which is exactly the
  * rule `rowActions` already applies.
  *
- * Takes only `canIndent`/`canOutdent` — a leaf's page always passes
- * `isContainer: false`, and `isDone`/`isMilestone` don't gate anything here
- * (see the docstring above: Schedule/Estimate/Milestone are absent regardless,
- * because the page already shows them as chips). The full `RowActionContext`
+ * Takes only `canIndent`/`canOutdent`/`isParked` — a leaf's page always
+ * passes `isContainer: false`, and `isDone`/`isMilestone` don't gate anything
+ * here (see the docstring above: Schedule/Estimate/Milestone are absent
+ * regardless, because the page already shows them as chips). `isParked` is
+ * the exception: the page has no park chip, so — unlike Schedule/Estimate/
+ * Milestone — the menu is the only route to it and it stays in, beside
+ * Break into smaller steps in the same group. The full `RowActionContext`
  * would let a caller satisfy the type with values that are never read.
  */
-export function taskPageActions(ctx: Pick<RowActionContext, 'canIndent' | 'canOutdent'>): RowAction[] {
+export function taskPageActions(
+  ctx: Pick<RowActionContext, 'canIndent' | 'canOutdent' | 'isParked'>,
+): RowAction[] {
   const out: RowAction[] = [];
   out.push({ id: 'rename', label: 'Rename', hint: '↵', group: 0 });
   out.push({ id: 'breakdown', label: 'Break into smaller steps', group: 1 });
+  out.push({ id: 'park', label: ctx.isParked ? 'Unpark' : 'Park', hint: 'P', group: 1 });
   if (ctx.canIndent) out.push({ id: 'indent', label: 'Indent', hint: '⌘]', group: 2 });
   if (ctx.canOutdent) out.push({ id: 'outdent', label: 'Outdent', hint: '⌘[', group: 2 });
   out.push({ id: 'delete', label: 'Delete', hint: '⌫', tone: 'danger', group: 3 });
@@ -166,6 +178,8 @@ export function taskPageActions(ctx: Pick<RowActionContext, 'canIndent' | 'canOu
 }
 
 /** The same list, split into the runs a separator falls between. */
-export function taskPageActionGroups(ctx: Pick<RowActionContext, 'canIndent' | 'canOutdent'>): RowAction[][] {
+export function taskPageActionGroups(
+  ctx: Pick<RowActionContext, 'canIndent' | 'canOutdent' | 'isParked'>,
+): RowAction[][] {
   return groupByRun(taskPageActions(ctx));
 }

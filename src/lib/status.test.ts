@@ -55,6 +55,15 @@ describe('containerStatus', () => {
   it('calls an empty container todo rather than done', () => {
     expect(containerStatus(group())).toBe('todo');
   });
+
+  it('is parked only when EVERY open leaf is parked', () => {
+    expect(containerStatus(group(leaf({ status: 'parked' }), leaf({ status: 'done' })))).toBe('parked');
+    expect(containerStatus(group(leaf({ status: 'parked' }), leaf()))).toBe('todo');
+  });
+
+  it('reads a mix of blocked and parked as todo — neither rule is met', () => {
+    expect(containerStatus(group(leaf({ status: 'parked' }), leaf({ status: 'blocked' })))).toBe('todo');
+  });
 });
 
 describe('cycleStatus', () => {
@@ -101,5 +110,14 @@ describe('applyStatus', () => {
     applyStatus(before, 'done', '2026-08-07');
     expect(before.status).toBe('doing');
     expect(before.doneAt).toBeUndefined();
+  });
+});
+
+describe('applyStatus → parked', () => {
+  it('clears blockedOn and stores parked', () => {
+    const n = applyStatus(leaf({ status: 'blocked', blockedOn: 'TA' }), 'parked', '2026-08-23');
+    expect(n.status).toBe('parked');
+    expect(n.blockedOn).toBeUndefined();
+    expect(n.doneAt).toBeUndefined();
   });
 });

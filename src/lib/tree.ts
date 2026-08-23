@@ -50,14 +50,18 @@ export function removeNode(nodes: GoalNode[], id: string): boolean {
 
 /**
  * The next leaf worth working: a step already in progress if there is one,
- * otherwise the first untouched one. Blocked leaves are skipped entirely.
+ * otherwise the first untouched one. Blocked and parked leaves are skipped
+ * entirely.
  *
  * Two passes rather than one, because "already started" beats "earlier in the
  * document" — resuming is what a person means by "next step", and a single
  * depth-first pass cannot express a preference that spans the whole tree.
  *
- * Returns null when open work exists but ALL of it is blocked. Callers must
- * treat that as "unblock something", not as "nothing to do".
+ * Returns null when open work exists but ALL of it is blocked or parked.
+ * Callers must not treat that as "nothing to do". They must not name the
+ * remedy either: unblocking is the answer for a stuck step and the wrong word
+ * for one set aside on purpose, and this function cannot tell the caller
+ * which it found.
  */
 export function firstOpenLeaf(nodes: GoalNode[]): GoalNode | null {
   return firstLeafMatching(nodes, (n) => stepStatus(n) === 'doing')

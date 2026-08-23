@@ -506,6 +506,65 @@ describe('store actions', () => {
     });
   });
 
+  describe('toggleParked', () => {
+    it('parks an open leaf and toggles it back to open', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'leaf');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.toggleParked(nid);
+      expect(getState().goals[0].nodes[0].status).toBe('parked');
+
+      actions.toggleParked(nid);
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
+    });
+
+    /*
+     * Parking from the rail makes the row VANISH from the only surface it was
+     * on — the same disappearance `toggleLeaf`'s completion arms an undo for.
+     * `setNodeStatus` stays silent (its callers are the tree row and the task
+     * page, where the row you changed is still in front of you); this one
+     * cannot.
+     */
+    it('arms an undo naming the park, and the unpark', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'Estimate time');
+      const nid = getState().goals[0].nodes[0].id;
+
+      actions.toggleParked(nid);
+      expect(getState().pendingUndo?.label).toBe('Parked "Estimate time"');
+
+      actions.undoLastDelete();
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
+
+      actions.toggleParked(nid);
+      actions.toggleParked(nid);
+      expect(getState().pendingUndo?.label).toBe('Unparked "Estimate time"');
+
+      actions.undoLastDelete();
+      expect(getState().goals[0].nodes[0].status).toBe('parked');
+    });
+
+    it('refuses to toggle a container and does not write', async () => {
+      const { actions, getState } = await freshStore();
+      actions.addGoal('G');
+      const gid = getState().goals[0].id;
+      actions.addRootNode(gid, 'container');
+      const nid = getState().goals[0].nodes[0].id;
+      actions.addChild(nid, 'child');
+      dbMocks.persist.mockClear();
+
+      actions.toggleParked(nid);
+
+      expect(getState().goals[0].nodes[0].status).toBeUndefined();
+      expect(dbMocks.persist).not.toHaveBeenCalled();
+    });
+  });
+
   it('addChild clears a completed leaf completion timestamp', async () => {
     vi.setSystemTime(new Date(2026, 6, 23, 12));
     const { actions, getState } = await freshStore();

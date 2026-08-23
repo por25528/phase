@@ -37,6 +37,10 @@ export function containerStatus(n: GoalNode): StepStatus {
   if (open.length === 0) return 'done';
   if (open.some((l) => stepStatus(l) === 'doing')) return 'doing';
   if (open.every((l) => stepStatus(l) === 'blocked')) return 'blocked';
+  // Parked is "not now" rather than "waiting": a container whose every open
+  // leaf is set aside is set aside. Checked AFTER blocked and as strictly —
+  // one parked child beside a workable one is a workable container.
+  if (open.every((l) => stepStatus(l) === 'parked')) return 'parked';
   return 'todo';
 }
 
@@ -49,6 +53,7 @@ export const STATUS_WORD: Record<StepStatus, string> = {
   todo: 'to do',
   doing: 'in progress',
   blocked: 'blocked',
+  parked: 'parked',
   done: 'done',
 };
 
@@ -60,7 +65,7 @@ export function cycleStatus(s: StepStatus): StepStatus {
   switch (s) {
     case 'todo': return 'doing';
     case 'doing': return 'blocked';
-    default: return 'todo'; // 'blocked' and 'done' both land back on todo
+    default: return 'todo'; // 'blocked', 'parked' and 'done' all land back on todo
   }
 }
 

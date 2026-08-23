@@ -70,6 +70,7 @@ type Store = typeof import('../../../state/store');
 
 async function mountRail(
   seed: { goals: Goal[]; tasks: Task[] },
+  reveal: { kind: 'step' | 'task'; id: string; nonce: number } | null = null,
 ): Promise<{ store: Store; user: ReturnType<typeof userEvent.setup> }> {
   vi.resetModules();
   dbMocks.loadState.mockResolvedValueOnce({
@@ -83,7 +84,7 @@ async function mountRail(
       DndContext,
       null,
       createElement(Backlog, {
-        weekStart: WEEK, today: TODAY, onFocusItem: () => {}, reveal: null,
+        weekStart: WEEK, today: TODAY, onFocusItem: () => {}, reveal,
       }),
     ),
   );
@@ -134,5 +135,45 @@ describe('the backlog rail', () => {
   it('offers no delete on a goal leaf — it is deleted where its tree is visible', async () => {
     await mountRail({ goals: [PROJECT], tasks: [] });
     expect(screen.queryByRole('button', { name: /^Delete "/ })).toBeNull();
+  });
+
+  it('parks a step from its row, and offers no park on a loose task', async () => {
+    const { store, user } = await mountRail({ goals: [PROJECT], tasks: [LOOSE] });
+    await user.click(screen.getByRole('button', { name: 'Park "Estimate time for each study goal"' }));
+    const node = store.getState().goals[0].nodes.find((n) => n.id === 'n2');
+    expect(node?.status).toBe('parked');
+    expect(screen.queryByRole('button', { name: 'Park "Estimate time for each study goal"' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Park "Buy a new keyboard"' })).toBeNull();
+  });
+
+  /*
+   * A parked step still carrying a `plannedWeek` stays in the rail — the
+   * committed-work exception — so the row that parked it is the only place it
+   * can be unparked from. The button is a TOGGLE, not a one-way trip.
+   */
+  it('offers Unpark on a parked-but-committed step, and clears the status', async () => {
+    const parked: Goal = {
+      ...PROJECT,
+      nodes: [{ id: 'n1', title: 'Break each topic into daily study goals', status: 'parked', plannedWeek: WEEK }],
+    };
+    const { store, user } = await mountRail({ goals: [parked], tasks: [] });
+    await user.click(
+      screen.getByRole('button', { name: 'Unpark "Break each topic into daily study goals"' }),
+    );
+    expect(store.getState().goals[0].nodes[0].status).toBeUndefined();
+  });
+
+  it('marks exactly one head row per group', async () => {
+    await mountRail({ goals: [PROJECT], tasks: [LOOSE] });
+    const heads = document.querySelectorAll('[data-backlog-head]');
+    expect(heads.length).toBe(2);
+    expect(heads[0].textContent).toContain('Break each topic into daily study goals');
+  });
+
+  it('a revealed head row keeps the reveal tint', async () => {
+    await mountRail({ goals: [PROJECT], tasks: [] }, { kind: 'step', id: 'n1', nonce: 1 });
+    const head = document.querySelector('[data-backlog-head]');
+    expect(head?.className).toContain('bg-accent-tint');
+    expect(head?.className).not.toContain('bg-panel');
   });
 });

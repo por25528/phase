@@ -10,7 +10,7 @@ import { stepStatus } from './status';
  * that owned its own array of cards would be a second source of truth for the
  * same work, which is the failure mode the spec names explicitly.
  *
- * The columns are the four states the model actually stores. The spec asks for
+ * The columns are the five states the model actually stores. The spec asks for
  * `Backlog → Ready → In progress → Done`, and Ready is a genuinely useful
  * distinction — but Phase has never recorded it, so a Backlog column would be
  * either always empty or a lie about where work sits. Splitting `todo` in two
@@ -23,6 +23,7 @@ export const BOARD_COLUMNS: { status: StepStatus; title: string; hint: string }[
   { status: 'todo', title: 'To do', hint: 'Open, not started' },
   { status: 'doing', title: 'In progress', hint: 'Actively being worked on' },
   { status: 'blocked', title: 'Blocked', hint: 'Waiting on something else' },
+  { status: 'parked', title: 'Parked', hint: 'Set aside, not now' },
   { status: 'done', title: 'Done', hint: 'Finished' },
 ];
 

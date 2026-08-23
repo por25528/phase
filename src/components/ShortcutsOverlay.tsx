@@ -79,6 +79,7 @@ const TREE_KEYS: { keys: string[]; label: string }[] = [
   // commonest keystroke here would change what it means without warning.
   { keys: ['⇧', 'S'], label: 'Schedule the focused task' },
   { keys: ['E'], label: 'Estimate the focused task' },
+  { keys: ['P'], label: 'Park or unpark the focused task' },
   { keys: ['O'], label: 'Open a milestone as its own workspace' },
   { keys: ['⌘', '↵'], label: 'Add a task below this one' },
   { keys: ['⌘', ']'], label: 'Indent — make it a subtask' },

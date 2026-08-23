@@ -162,23 +162,23 @@ describe('backlogGroups', () => {
       it('counts parked projects holding uncommitted open work', () => {
         const later = goal({ id: 'g3', column: 2, nodes: [step()] });
         const someday = goal({ id: 'g4', column: 3, nodes: [step({ id: 'n2' })] });
-        expect(hiddenProjectCounts([later, someday], TODAY)).toEqual({ parked: 2, blocked: 0 });
+        expect(hiddenProjectCounts([later, someday], TODAY)).toEqual({ parked: 2, blocked: 0, setAside: 0 });
       });
 
       it('does not count Now/Next projects as parked — those are already in the rail', () => {
         expect(hiddenProjectCounts([goal({ column: 1, nodes: [step()] })], TODAY))
-          .toEqual({ parked: 0, blocked: 0 });
+          .toEqual({ parked: 0, blocked: 0, setAside: 0 });
       });
 
       it('ignores a parked project whose work is done, or already committed', () => {
         const finished = goal({ id: 'g3', column: 2, nodes: [step({ status: 'done' })] });
         const committed = goal({ id: 'g4', column: 3, nodes: [step({ id: 'n2', plannedWeek: WEEK })] });
-        expect(hiddenProjectCounts([finished, committed], TODAY)).toEqual({ parked: 0, blocked: 0 });
+        expect(hiddenProjectCounts([finished, committed], TODAY)).toEqual({ parked: 0, blocked: 0, setAside: 0 });
       });
 
       it('ignores archived projects, matching what the rail drops', () => {
         const archived = goal({ id: 'g3', column: 2, completedAt: '2026-07-01', nodes: [step()] });
-        expect(hiddenProjectCounts([archived], TODAY)).toEqual({ parked: 0, blocked: 0 });
+        expect(hiddenProjectCounts([archived], TODAY)).toEqual({ parked: 0, blocked: 0, setAside: 0 });
       });
 
       /**
@@ -193,7 +193,7 @@ describe('backlogGroups', () => {
           step({ id: 'b', status: 'blocked' }),
         ] });
         expect(backlogGroups([g], [], WEEK, TODAY)).toEqual([]);
-        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 1 });
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 1, setAside: 0 });
       });
 
       /**
@@ -210,14 +210,14 @@ describe('backlogGroups', () => {
           step({ id: 'b' }),
         ] });
         expect(backlogGroups([g], [], WEEK, TODAY)).not.toEqual([]);
-        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 1 });
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 1, setAside: 0 });
       });
 
       it('does not count a Now project whose blocked leaf is committed to a week', () => {
         const g = goal({ id: 'g5', column: 0, nodes: [
           step({ id: 'a', status: 'blocked', plannedWeek: WEEK }),
         ] });
-        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 0 });
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 0, setAside: 0 });
       });
 
       /**
@@ -229,9 +229,33 @@ describe('backlogGroups', () => {
        * already claimed ("A project can land in both buckets"); the code did
        * not match it until now.
        */
+      /*
+       * The third reason the rail can be empty: a Now project every one of
+       * whose open leaves has been set aside. `parked` names a deferred
+       * PROJECT and `blocked` names a stuck one; neither covers this, so the
+       * empty state read "Nothing left to plan" over work the user had only
+       * put down.
+       */
+      it('counts a Now project whose every open leaf is parked and uncommitted', () => {
+        const g = goal({ id: 'g5', column: 0, nodes: [
+          step({ id: 'a', status: 'parked' }),
+          step({ id: 'b', status: 'parked' }),
+        ] });
+        expect(backlogGroups([g], [], WEEK, TODAY)).toEqual([]);
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 0, setAside: 1 });
+      });
+
+      it('does not count a Now project with one parked leaf beside a workable one', () => {
+        const g = goal({ id: 'g5', column: 0, nodes: [
+          step({ id: 'a', status: 'parked' }),
+          step({ id: 'b' }),
+        ] });
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 0, blocked: 0, setAside: 0 });
+      });
+
       it('counts a parked-and-blocked project in BOTH buckets', () => {
         const g = goal({ id: 'g6', column: 2, nodes: [step({ status: 'blocked' })] });
-        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 1, blocked: 1 });
+        expect(hiddenProjectCounts([g], TODAY)).toEqual({ parked: 1, blocked: 1, setAside: 0 });
       });
     });
   });
@@ -263,6 +287,17 @@ describe('backlogGroups', () => {
     const empty = goal({ id: 'g2', title: 'Empty', nodes: [] });
     const g = goal({ nodes: [{ id: 'n1', title: 'Draft' }] });
     expect(backlogGroups([g, empty], [], WEEK, TODAY).map((x) => x.goalId)).toEqual(['g1']);
+  });
+
+  it('drops a parked leaf, unless it carries a plannedWeek', () => {
+    const g: Goal = { id: 'g', title: 'G', column: 0, nodes: [
+      { id: 'p', title: 'Parked', status: 'parked' },
+      { id: 'c', title: 'Committed', status: 'parked', plannedWeek: WEEK },
+      { id: 'o', title: 'Open' },
+    ] };
+    const ids = backlogGroups([g], [], WEEK, TODAY).flatMap((grp) => grp.items.map((i) => i.id));
+    expect(ids).toEqual(expect.arrayContaining(['c', 'o']));
+    expect(ids).not.toContain('p');
   });
 });
 

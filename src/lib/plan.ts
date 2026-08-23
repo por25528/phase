@@ -392,10 +392,10 @@ export interface NextAction {
   kind: 'planned' | 'open' | 'needs-breakdown' | 'complete';
   title: string;
   /**
-   * The leaf this names, when it names one. Absent for the three sentences
+   * The leaf this names, when it names one. Absent for the four sentences
    * that describe a STATE rather than a task — no tasks yet, all complete,
-   * everything blocked — which is what lets a caller show the line only when
-   * there is something to point at.
+   * everything blocked, everything blocked or parked — which is what lets a
+   * caller show the line only when there is something to point at.
    */
   nodeId?: string;
 }
@@ -403,7 +403,8 @@ export interface NextAction {
 // The single "what's next" line: a leaf already planned for this week wins, then
 // the first workable leaf (a 'doing' one preferred over 'todo'), then the
 // breakdown/complete prompts. Preference order mirrors how the planner surfaces
-// work. Both functions exclude blocked leaves, so neither will name one, but
+// work. Both functions exclude blocked and parked leaves, so neither will name
+// one, but
 // their preferences diverge: `nextOpenAction` additionally prefers a leaf
 // committed to this week, while `firstOpenLeaf` stays doing-then-todo in tree
 // order.
@@ -427,6 +428,13 @@ export function nextOpenAction(g: Goal, today: string): NextAction {
     // worse. 'open' is the least dishonest kind left — the real "unblock this"
     // verdict is a later task's job, not this one's to invent.
     return { kind: 'open', title: 'All open tasks are blocked' };
+  }
+  if (workable.length === 0) {
+    // Open work exists and is not all blocked, yet nothing is doing/todo —
+    // so something is parked. Same 'open' verdict as above, one word longer:
+    // "unblock" is not the instruction when the thing set aside was set aside
+    // on purpose.
+    return { kind: 'open', title: 'All open tasks are blocked or parked' };
   }
   const planned = workable.find((n) => n.plannedWeek === week);
   const pick = planned ?? doing[0] ?? todo[0];

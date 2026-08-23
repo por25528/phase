@@ -157,6 +157,10 @@ describe('executionAdvice', () => {
       id: 'gp', title: 'Someday reading', column: 3,
       nodes: [{ id: 'np', title: 'Read the dragon book' }],
     });
+    const parkedLeaf = goal({
+      id: 'gpl', title: 'Parked leaf', column: 0,
+      nodes: [{ id: 'npl', title: 'Set aside', status: 'parked', deadline: today, start: today }],
+    });
     const fine = goal({
       id: 'gf', title: 'Algorithms',
       nodes: [
@@ -164,14 +168,30 @@ describe('executionAdvice', () => {
         { id: 'nd', title: 'Done already', status: 'done', doneAt: today },
       ],
     });
-    const advice = executionAdvice(input({ goals: [blocked, archived, parked, fine] }));
+    const advice = executionAdvice(input({ goals: [blocked, archived, parked, parkedLeaf, fine] }));
     expect(advice.kind).toBe('work');
     if (advice.kind !== 'work') return;
     const keys = [advice.primary.key, ...advice.alternatives.map((a) => a.key)];
     expect(keys).toContain('step:nf');
-    for (const bad of ['step:nb', 'step:nx', 'step:np', 'step:nd']) {
+    for (const bad of ['step:nb', 'step:nx', 'step:np', 'step:nd', 'step:npl']) {
       expect(keys).not.toContain(bad);
     }
+  });
+
+  it('drops committed blocked and parked work too — the advisor answers "now", not "this week"', () => {
+    const committed = goal({
+      id: 'gc', title: 'Committed but not now', column: 0,
+      nodes: [
+        { id: 'ncp', title: 'Parked but scheduled', status: 'parked', plannedWeek: week, estimateMin: 30 },
+        { id: 'ncb', title: 'Blocked but scheduled', status: 'blocked', blockedOn: 'review', plannedWeek: week, estimateMin: 30 },
+      ],
+    });
+    const advice = executionAdvice(input({ goals: [committed] }));
+    const keys = advice.kind === 'work'
+      ? [advice.primary.key, ...advice.alternatives.map((a) => a.key)]
+      : [];
+    expect(keys).not.toContain('step:ncp');
+    expect(keys).not.toContain('step:ncb');
   });
 
   it('returns the same primary key as nowFocus or proposalRows for the same input', () => {

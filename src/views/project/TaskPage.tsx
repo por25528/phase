@@ -44,7 +44,7 @@ import { findNode, findNodePath, findParentList } from '../../lib/tree';
 import { nextFreeDay } from '../../lib/todayPlan';
 import { spansOn } from '../../lib/scheduled';
 
-const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
+const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'parked', 'done'];
 
 /**
  * One task, as its own page.
@@ -178,12 +178,14 @@ export function TaskPage({
   const menuGroups = taskPageActionGroups({
     canIndent: parent !== null && parent.index > 0,
     canOutdent: path !== null && path.length > 1,
+    isParked: node.status === 'parked',
   });
 
   function runAction(id: RowActionId): void {
     switch (id) {
       case 'rename': setEditingTitle(true); return;
       case 'breakdown': setProposing(true); return;
+      case 'park': actions.toggleParked(node.id); return;
       case 'indent': actions.indentNode(node.id); return;
       case 'outdent': actions.outdentNode(node.id); return;
       // `removeNode` nulls `openStepId` when the open node is inside what it

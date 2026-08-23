@@ -9,7 +9,9 @@ import { durationOf } from '../../../lib/slot';
 import { useAppStore, actions } from '../../../state/store';
 import type { PlanDragData } from '../dropTarget';
 import { EstimateControl } from '../../../components/EstimateControl';
-import { IconArrowUpRight, IconCheck, IconX } from '../../../components/Icons';
+import {
+  IconArrowUpRight, IconCheck, IconX,
+} from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 import { sectionLabel } from '../../../components/sectionLabel';
 import { projectSpineClass } from '../../../lib/projectColour';
@@ -17,8 +19,9 @@ import { projectSpineClass } from '../../../lib/projectColour';
 /**
  * One draggable row.
  *
- * No border, no fill, no radius at rest — the rail holds dozens of these and
- * every border is a decision the eye has to process for nothing.
+ * No border, no fill, no radius at rest — except the head row, below — and the
+ * rail holds dozens of these, where every border is a decision the eye has to
+ * process for nothing.
  *
  * It carries NO grip, which reverses the reversal recorded here before it. The
  * argument for the glyph was that `cursor-grab` "only says it once the pointer
@@ -35,7 +38,7 @@ import { projectSpineClass } from '../../../lib/projectColour';
  * is gone, so they cannot be hover-only in the pointer sense —
  * `focus-visible:opacity-100` keeps them reachable by keyboard.
  *
- * Both buttons stop the pointer-down from reaching the row: `listeners` is
+ * All three buttons stop the pointer-down from reaching the row: `listeners` is
  * spread onto the row itself, so an un-stopped press would arm the drag sensor
  * and a 5px twitch would turn the click into a drag instead of an action.
  *
@@ -44,15 +47,22 @@ import { projectSpineClass } from '../../../lib/projectColour';
  * that was the whole problem: the rail lists only unplaced work from Now/Next
  * projects, so being the sole host made `estimateMin` unreachable for most of
  * the data the capacity engine reads.
+ *
+ * The HEAD of each group — its first shown row — is drawn as a card: more
+ * padding, the body size, a bordered panel. It is the row most worth dragging
+ * (the cap sorts by due, so it is the project's most urgent work) and the one
+ * a 249px rail made no easier to grab than the rest. One per group, never
+ * one per rail: each project has its own next thing.
  */
 function BacklogRow({
-  item, onFocusItem, revealed, today,
+  item, onFocusItem, revealed, today, head,
 }: {
   item: BacklogItem;
   onFocusItem: (item: BacklogItem | null) => void;
   /** The palette sent the user to this row — mark it so the search has a visible answer. */
   revealed: boolean;
   today: string;
+  head: boolean;
 }) {
   const due = dueChip(item.due, today);
   const data: PlanDragData = {
@@ -69,6 +79,7 @@ function BacklogRow({
       ref={setNodeRef}
       id={revealDomId(item.kind, item.id)}
       data-backlog-row=""
+      {...(head ? { 'data-backlog-head': '' } : {})}
       {...containerDragAttributes(attributes, { keyboardDraggable: true })}
       {...listeners}
       aria-label={`${item.title} — drag onto a day, or press 1–7`}
@@ -83,9 +94,16 @@ function BacklogRow({
       // switching to Goals. That arms an undo now, but a mode still has to be
       // visible for as long as it is active — an undo is a way back, not a
       // warning, and it expires.
-      className={`group flex items-center gap-[6px] text-ui text-ink-soft px-[6px] py-[3px] rounded-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint ${
-        isDragging ? 'opacity-40' : 'hover:bg-hover'
-      } ${revealed ? 'ring-2 ring-accent bg-accent-tint' : ''}`}
+      className={`group flex items-center gap-[6px] text-ink-soft px-[6px] cursor-grab touch-none focus:outline-none focus:ring-2 focus:ring-accent-tint rounded-[6px] ${
+        head ? 'py-[8px] text-body border border-line-2' : 'py-[3px] text-ui'
+      } ${isDragging ? 'opacity-40' : 'hover:bg-hover'} ${
+        // One precedence chain, not two independent ternaries: Tailwind emits
+        // .bg-accent-tint before .bg-panel in the stylesheet (alphabetical),
+        // same specificity, so on a row that is both `head` and `revealed`,
+        // stylesheet order — not class-string order — would let bg-panel win
+        // and swallow the reveal tint. Chaining makes `revealed` win outright.
+        revealed ? 'ring-2 ring-accent bg-accent-tint' : head ? 'bg-panel' : ''
+      }`}
     >
       {/* The rail is 249px, so a title shares the row with a due chip and the
           estimate. Wrapping to a SECOND line rather than truncating on the
@@ -93,7 +111,7 @@ function BacklogRow({
           `6.006 Proble…` named nothing and named the same nothing. Two lines is
           the cap — past that it clips — and `title` still carries the full
           string for the rare overflow. */}
-      <span title={item.title} className="flex-1 min-w-0 line-clamp-2 break-words">{item.title}</span>
+      <span title={item.title} className={`flex-1 min-w-0 break-words ${head ? 'line-clamp-3' : 'line-clamp-2'}`}>{item.title}</span>
       {/* Only inside the next week, and always for anything overdue. Printing a
           date on every row would make the urgent ones harder to find, not
           easier — the sort already put them on top; this says why. */}
@@ -127,6 +145,34 @@ function BacklogRow({
       >
         <IconCheck size={13} />
       </button>
+      {/*
+        Steps only: a loose Task has no status to park.
+
+        A TOGGLE, not a one-way trip. A parked step carrying a `plannedWeek`
+        stays in the rail (the committed-work exception), so this row is the
+        only place it can be unparked from; `toggleParked` also arms the undo,
+        because parking an UNcommitted step makes its row vanish from the one
+        surface it was on.
+
+        The glyph is the bar `LeafStatusBox` draws inside a parked box and
+        `StatusMark` draws beside the word — not a circle, which is what the
+        untouched state already looks like everywhere else in the app.
+      */}
+      {item.kind === 'step' && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            actions.toggleParked(item.id);
+          }}
+          aria-label={item.parked ? `Unpark "${item.title}"` : `Park "${item.title}"`}
+          title={item.parked ? 'Unpark — put it back in the queue' : 'Park — set aside, not now'}
+          className="quiet-control flex-none text-muted hover:text-ink rounded-[4px] hover:bg-hover"
+        >
+          <span aria-hidden className="block w-[9px] h-[1.5px] rounded-full bg-current" />
+        </button>
+      )}
       {/*
         Loose tasks only. A goal's task belongs to its structure — it is deleted in
         the Goals view, where the tree it lives in is visible; offering that
@@ -188,10 +234,11 @@ export function Backlog({
   );
   // Only when there is nothing to show: an empty rail must not read as "you
   // are finished" while hidden projects hold the work — deferred to Later/
-  // Someday, or blocked with nothing committed. Guarded on `groups.length` so
-  // the extra tree walk never runs in the normal case.
+  // Someday, blocked with nothing committed, or parked a step at a time until
+  // nothing workable is left. Guarded on `groups.length` so the extra tree
+  // walk never runs in the normal case.
   const hidden = useMemo(
-    () => (groups.length === 0 ? hiddenProjectCounts(goals, today) : { parked: 0, blocked: 0 }),
+    () => (groups.length === 0 ? hiddenProjectCounts(goals, today) : { parked: 0, blocked: 0, setAside: 0 }),
     [groups, goals, today],
   );
   const isCurrentWeek = weekStart === weekOf(today);
@@ -264,7 +311,7 @@ export function Backlog({
 
       {capped.length === 0 ? (
         <div className="text-muted text-body italic px-[6px]">
-          {hidden.parked === 0 && hidden.blocked === 0 ? (
+          {hidden.parked === 0 && hidden.blocked === 0 && hidden.setAside === 0 ? (
             'Nothing left to plan.'
           ) : (
             <>
@@ -281,6 +328,13 @@ export function Backlog({
                 <span className="not-italic">
                   {hidden.blocked} goal{hidden.blocked === 1 ? ' has' : 's have'} blocked tasks
                   not shown — unblock one to plan it.
+                </span>
+              )}
+              {hidden.setAside > 0 && (hidden.parked > 0 || hidden.blocked > 0) && ' '}
+              {hidden.setAside > 0 && (
+                <span className="not-italic">
+                  {hidden.setAside} goal{hidden.setAside === 1 ? ' has' : 's have'} only parked
+                  tasks — unpark one to plan it.
                 </span>
               )}
             </>
@@ -326,13 +380,14 @@ export function Backlog({
                 </span>
               )}
             </div>
-            {group.shown.map((item) => (
+            {group.shown.map((item, idx) => (
               <BacklogRow
                 key={`${item.kind}:${item.id}`}
                 item={item}
                 onFocusItem={onFocusItem}
                 revealed={reveal?.kind === item.kind && reveal.id === item.id}
                 today={today}
+                head={idx === 0}
               />
             ))}
             {group.expandable && (

@@ -242,13 +242,13 @@ describe('TaskPage', () => {
     expect(store.getState().goals[0].nodes[0].status).toBe('done');
   });
 
-  it('lists the four statuses in order, with the current one checked', async () => {
+  it('lists the five statuses in order, with the current one checked', async () => {
     await mountTask('n1');
 
     fireEvent.click(screen.getByRole('button', { name: /^Status: / }));
     const items = within(screen.getByRole('menu')).getAllByRole('menuitemradio');
 
-    expect(items.map((r) => r.textContent)).toEqual(['to do', 'in progress', 'blocked', 'done']);
+    expect(items.map((r) => r.textContent)).toEqual(['to do', 'in progress', 'blocked', 'parked', 'done']);
     expect(items[0].getAttribute('aria-checked')).toBe('true');
   });
 

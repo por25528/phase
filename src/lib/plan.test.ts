@@ -579,6 +579,14 @@ describe('nextOpenAction', () => {
     expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'All open tasks are blocked' });
   });
 
+  it('names parked work when it is why nothing is workable', () => {
+    const g = goal({ nodes: [
+      { id: 'a', title: 'A', status: 'parked' },
+      { id: 'b', title: 'B', status: 'blocked' },
+    ]});
+    expect(nextOpenAction(g, TODAY)).toEqual({ kind: 'open', title: 'All open tasks are blocked or parked' });
+  });
+
   it('still prefers a leaf planned for this week even when a doing leaf exists', () => {
     const g = goal({ nodes: [
       { id: 'a', title: 'A', status: 'doing' },

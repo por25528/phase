@@ -723,6 +723,7 @@ const STATUS_LABEL: Record<StepStatus, (n: number) => string> = {
   todo: (n) => `Reset ${n} task${n === 1 ? '' : 's'}`,
   doing: (n) => `Marked ${n} task${n === 1 ? '' : 's'} in progress`,
   blocked: (n) => `Blocked ${n} task${n === 1 ? '' : 's'}`,
+  parked: (n) => `Parked ${n} task${n === 1 ? '' : 's'}`,
   done: (n) => `Completed ${n} task${n === 1 ? '' : 's'}`,
 };
 
@@ -1292,6 +1293,30 @@ export const actions = {
     if (node.checkpoint) delete node.checkpoint;
     else node.checkpoint = true;
     setAndPersist({ goals });
+  },
+
+  /**
+   * The toggle lives here, not in the three callers that used to compute it
+   * themselves, for the same reason `toggleCheckpoint`'s does: one seam for
+   * one decision.
+   *
+   * It arms an undo where `setNodeStatus` does not, and the rail is why.
+   * Parking from a backlog row makes that row VANISH from the only surface it
+   * was on — the same disappearance `toggleLeaf` arms an undo for when a leaf
+   * is completed, and the distance-booking rule restated: a write whose effect
+   * is that you can no longer see the thing you wrote to needs a way back.
+   * `setNodeStatus`'s own callers are the tree row, the task page and the
+   * project Board tab's drag — in all three the step you changed is still in
+   * front of you (the board card simply moves column), so it stays silent.
+   */
+  toggleParked(nodeId: string): void {
+    if (!isActiveNode(nodeId)) return; // frozen on a completed project
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
+    if (!node || node.children?.length) return;
+    const wasParked = stepStatus(node) === 'parked';
+    writeStatus(node, wasParked ? 'todo' : 'parked', todayStr());
+    withUndo(`${wasParked ? 'Unparked' : 'Parked'} "${node.title}"`, 'goals', goals);
   },
 
   toggleExpand(nodeId: string) {
