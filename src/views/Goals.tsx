@@ -19,7 +19,7 @@ import { RuleHeader } from '../components/RuleHeader';
 import { groupByColumn } from '../lib/board';
 import { columnTracks } from '../lib/boardTracks';
 import { boardCollision } from '../lib/boardCollision';
-import { bayFace } from '../lib/boardBay';
+import { bayFace, FULL_FACE, type BayFace } from '../lib/boardBay';
 import { focusSummary } from '../lib/plan';
 import { fmtDY } from '../lib/dates';
 import { useLocalDate } from '../hooks/useLocalDate';
@@ -103,6 +103,41 @@ export function Goals() {
     [columns, activeId],
   );
 
+  /*
+   * What each bay's cards have already said to each other — one face per
+   * horizon, per BAY because a bay is what a person reads down, and computed
+   * from the ids actually drawn so it follows a life-tab filter without a
+   * second rule. See lib/boardBay.ts.
+   *
+   * FROZEN while something is in the air, for the same reason `columnTracks`
+   * takes a `dragging` flag: `handleDragOver` moves ids between columns LIVE,
+   * so a face recomputed from them changes UNDER THE CURSOR. Drag the third
+   * `Midterm — ` card out of a bay of three and the two survivors share a
+   * LONGER prefix — a prefix over fewer titles can only grow — so both titles
+   * re-cut, and if the longer prefix leaves either remainder under
+   * `MIN_REMAINDER` the lens refuses outright and both titles grow back by the
+   * whole head. Drag one out of a bay of two and the survivor falls to
+   * `FULL_FACE`, so its title grows back AND its life tag reappears — a
+   * re-wrap under `line-clamp-3` plus another ~20px of chip row, shifting
+   * every card below it while the pointer is aiming at one of them.
+   *
+   * It is the VALUE at drag start that is held, not merely the recompute that
+   * is skipped: `columns` is what the face is derived from and `columns` is
+   * exactly what moves, so anything short of a captured snapshot would still
+   * track the drag. It settles once, on drop.
+   */
+  const liveFaces = useMemo(
+    () => columns.map((ids) => bayFace(
+      ids.map((id) => goalById.get(id)).filter((g): g is Goal => g != null),
+      lives,
+    )),
+    [columns, goalById, lives],
+  );
+  const facesRef = useRef(liveFaces);
+  facesRef.current = liveFaces;
+  const frozenFaces = useRef<BayFace[] | null>(null);
+  const faces = activeId !== null && frozenFaces.current ? frozenFaces.current : liveFaces;
+
   // Re-sync from the store whenever goals change and we're NOT mid-drag
   // (covers add / delete / complete / drawer edits from elsewhere).
   useEffect(() => {
@@ -122,6 +157,9 @@ export function Goals() {
   }
 
   function handleDragStart(e: DragStartEvent) {
+    // Captured BEFORE the first `dragOver` can move an id, so the whole drag
+    // reads the board as it looked when it was picked up.
+    frozenFaces.current = facesRef.current;
     setActiveId(String(e.active.id));
   }
 
@@ -168,12 +206,14 @@ export function Goals() {
       }
     }
 
+    frozenFaces.current = null;
     setActiveId(null);
     setColumns(next);
     actions.setGoalBoard(next);
   }
 
   function handleDragCancel() {
+    frozenFaces.current = null;
     setActiveId(null);
     setColumns(groupByColumn(active, COL_COUNT));
   }
@@ -544,14 +584,8 @@ export function Goals() {
           >
             {COLUMNS.map((col, i) => {
               if (!wide && i !== activeHorizon) return null;
-              /* What this horizon's cards have already said to each other. Per
-                 BAY, because a bay is what a person reads down — and computed
-                 from the ids actually drawn, so it follows a life-tab filter
-                 and a live drag without a second rule. */
-              const face = bayFace(
-                (columns[i] ?? []).map((id) => goalById.get(id)).filter((g): g is Goal => g != null),
-                lives,
-              );
+              // Frozen while something is in the air — see `liveFaces` above.
+              const face = faces[i] ?? FULL_FACE;
               return (
               <Column key={col.id} col={col} index={i} ids={columns[i] ?? []} solo={!wide} slim={wide && (columns[i] ?? []).length === 0} nowLimit={summary.slots.limit}>
                 {(columns[i] ?? []).map((id) => {
