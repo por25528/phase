@@ -108,9 +108,6 @@ describe('a fully blocked goal', () => {
       store.getState().goals,
       { commitments: [], carryOvers: [], completedToday: [] },
       '2026-06-01',
-      [{ dow: 0, startMin: 540, endMin: 1020 }],
-      [],
-      true,
     );
 
     expect(exception).toMatchObject({ kind: 'blocked', goalId: 'g1', nodeId: 'n1' });

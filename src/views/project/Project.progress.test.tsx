@@ -402,12 +402,19 @@ describe('a project with no schedule', () => {
     expect(screen.getByText(/~3\.5h of work/)).toBeTruthy();
   });
 
-  it('says there is nothing to forecast when the goal has no tasks at all', async () => {
+  /*
+   * The cluster used to lead with a verdict word, and an empty goal got
+   * "No forecast" plus a sentence explaining it. Both came from `goalHealth`.
+   * What an empty goal states now is nothing at all — no deadline, no effort,
+   * no percentage — which is the honest reading of a goal nobody has broken
+   * down yet, and the Tasks tab's own offer is what points at the next move.
+   */
+  it('states nothing about a goal with no tasks at all', async () => {
     await mountGoal({ id: 'g', title: 'Empty', nodes: [] });
     expect(screen.getByRole('button', { name: 'Goal status and dates' }).textContent)
-      .toContain('No forecast');
+      .not.toContain('No forecast');
     openStatus();
-    expect(screen.getByText(/No tasks yet — break the goal into actions/)).toBeTruthy();
+    expect(screen.queryByText(/No tasks yet — break the goal into actions/)).toBeNull();
   });
 });
 
@@ -501,12 +508,14 @@ describe('the compact goal header', () => {
   /** Mon–Fri 09:00–17:00, so the forecast has real hours to divide into. */
   const WORKING_HOURS = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 }));
 
-  it('states health, deadline and remaining effort, and nothing else', async () => {
+  it('states the deadline and remaining effort, and nothing else', async () => {
     dbMocks.loadAvailability.mockResolvedValueOnce(WORKING_HOURS);
     await mountGoal(await withDeadline());
     const cluster = screen.getByRole('button', { name: 'Goal status and dates' });
 
-    expect(cluster.textContent).toContain('On track');
+    // No verdict word: `goalHealth` priced the work against the free hours
+    // before the deadline, and there are none.
+    expect(cluster.textContent).not.toContain('On track');
     expect(cluster.textContent).toMatch(/Due/);
     expect(cluster.textContent).toContain('1h left');
   });
@@ -521,11 +530,12 @@ describe('the compact goal header', () => {
     expect(screen.getByRole('button', { name: 'Clear dates' })).toBeTruthy();
   });
 
-  it('explains the verdict rather than just labelling it', async () => {
+  it('opens the panel on the dates, with no verdict sentence above them', async () => {
     dbMocks.loadAvailability.mockResolvedValueOnce(WORKING_HOURS);
     await mountGoal(await withDeadline());
     openStatus();
-    expect(screen.getByText(/of work fits in/)).toBeTruthy();
+    expect(screen.queryByText(/of work fits in/)).toBeNull();
+    expect(screen.getByLabelText('Start date')).toBeTruthy();
   });
 
   /**

@@ -58,7 +58,6 @@ async function renderPopover(goal: Goal) {
   await store.initStore();
   const { GoalMetaPopover } = await import('./GoalMetaPopover');
   const { goalEffort } = await import('../../lib/effort');
-  const { goalHealth } = await import('../../lib/health');
   const onClose = vi.fn();
   const effort = goalEffort(goal);
   const Host = () => {
@@ -68,7 +67,6 @@ async function renderPopover(goal: Goal) {
       goal: g,
       actions: store.actions,
       effort,
-      verdict: goalHealth({ goal: g, effort, today: '2026-08-16', windows: [], blocks: [], allDayBlocks: true }),
       draftStart: '', draftDeadline: '',
       onDraftChange: () => {}, onClose,
     });

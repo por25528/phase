@@ -6,7 +6,6 @@ import { executionAdvice, type ExecutionAdviceInput } from './executionAdvisor';
 import { weekCapacity, type CapacityInput, type Now } from './capacity';
 import { backlogGroups } from './backlog';
 import { goalEffort } from './effort';
-import { goalHealth } from './health';
 import { goalPct } from './pct';
 import { todayStr } from './dates';
 import { HORIZON_LABELS } from './horizons';
@@ -73,7 +72,7 @@ function capacityInput(state: FullState, now: Now): CapacityInput {
  * `remainingMin` never travels without `unestimated`: the first is a FLOOR
  * while the second is above zero, and "8h left" alone is a number that grows.
  */
-function projectSummary(goal: Goal, state: FullState, today: string) {
+function projectSummary(goal: Goal) {
   const effort = goalEffort(goal);
   return {
     id: goal.id,
@@ -85,16 +84,6 @@ function projectSummary(goal: Goal, state: FullState, today: string) {
     pct: goalPct(goal),
     remainingMin: effort.remainingMin,
     unestimated: effort.unestimated,
-    // `effort` is passed rather than recomputed: `goalEffort` walks the whole
-    // leaf tree, and asking it twice per project would double the walk.
-    health: goalHealth({
-      goal,
-      effort,
-      today,
-      windows: state.availability,
-      blocks: [],
-      allDayBlocks: state.allDayBlocks,
-    }),
   };
 }
 
@@ -124,9 +113,8 @@ export function handleAgentRead(
       });
     }
     case 'list_projects': {
-      const today = todayStr();
       return okResponse({
-        projects: state.goals.map((goal) => projectSummary(goal, state, today)),
+        projects: state.goals.map((goal) => projectSummary(goal)),
       });
     }
     case 'get_project': {

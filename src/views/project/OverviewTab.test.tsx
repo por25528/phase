@@ -3,9 +3,8 @@ import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AvailabilityWindow, Goal, GoalNode, Session } from '../../db/types';
-import { goalEffort, fmtMinutes } from '../../lib/effort';
+import { fmtMinutes } from '../../lib/effort';
 import { addDays, fmtD, todayStr } from '../../lib/dates';
-import { goalHealth, HEALTH_WORD } from '../../lib/health';
 import { weekOf } from '../../lib/plan';
 import { MIN_VELOCITY_SAMPLES, VELOCITY_WINDOW_DAYS } from '../../lib/velocity';
 
@@ -174,24 +173,22 @@ describe('OverviewTab forecast and week load', () => {
     }
   });
 
-  it('states the health verdict with its reason sentence', async () => {
+  /*
+   * The Forecast section used to open with a verdict word and its reason
+   * sentence. Both came from `goalHealth`, which compared remaining work
+   * against free hours before the deadline; with no free hours there is
+   * nothing to compare, and what survives is the MEASURED rate.
+   */
+  it('reports the observed rate and no verdict', async () => {
     vi.setSystemTime(new Date(2026, 7, 11, 12));
     try {
       const goal = datedGoal([leaf('a', { estimateMin: 60 })]);
       await mountOverview(goal, WORKING_HOURS);
 
-      const expected = goalHealth({
-        goal,
-        effort: goalEffort(goal),
-        today: todayStr(),
-        windows: WORKING_HOURS,
-        blocks: [],
-        allDayBlocks: true,
-      });
       const forecast = section('Forecast');
-      expect(expected.health).toBe('on-track');
-      expect(forecast.textContent).toContain(HEALTH_WORD[expected.health]);
-      expect(forecast.textContent).toContain(expected.reason);
+      expect(forecast.textContent).not.toContain('On track');
+      expect(forecast.textContent).not.toContain('At risk');
+      expect(forecast.textContent).toContain('nothing finished in');
     } finally {
       vi.useRealTimers();
     }
@@ -227,9 +224,12 @@ describe('OverviewTab forecast and week load', () => {
       expect(thisWeek.textContent).toContain('Nothing committed to this week yet.');
       expect(thisWeek.textContent).not.toContain('0 tasks');
       expect(thisWeek.textContent).not.toContain('0m');
+      // The Forecast section carries the MEASURED rate and no verdict — there
+      // is nothing left that could say "No forecast", because nothing prices a
+      // goal against hours any more.
       const forecast = section('Forecast');
-      expect(forecast.textContent).toContain('No forecast · No working hours set — set them in Plan to forecast against real time');
-      expect(forecast.querySelector('span')?.className).toContain('text-muted');
+      expect(forecast.textContent).not.toContain('No forecast');
+      expect(forecast.textContent).toContain('nothing finished in');
     } finally {
       vi.useRealTimers();
     }

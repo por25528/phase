@@ -6,7 +6,6 @@ import { ProgressBar } from '../../components/ProgressBar';
 import { ScheduleMenu } from '../../components/SchedulePopover';
 import { IconCircle, IconDiamond, IconWarning } from '../../components/Icons';
 import { goalOverview, overviewIsEmpty, goalWeekLoad } from '../../lib/overview';
-import { goalHealth, HEALTH_TONE, HEALTH_WORD } from '../../lib/health';
 import { describeVelocity, projectVelocity } from '../../lib/velocity';
 import { weekOf } from '../../lib/plan';
 import { fmtMinutes } from '../../lib/effort';
@@ -28,7 +27,7 @@ import { findNode } from '../../lib/tree';
  * delegates scheduling to the shared ScheduleMenu and store action.
  */
 export function OverviewTab({ goal: g }: { goal: Goal }) {
-  const { availability, allDayBlocks, actions } = useAppStore();
+  const { actions } = useAppStore();
   const today = todayStr();
   const o = goalOverview(g, today);
 
@@ -44,15 +43,6 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
 
   const pct = Math.round(goalPct(g));
 
-  /*
-   * `blocks` is empty because no calendar is connected in this build — the same
-   * argument `ProjectHeader` passes, for the same reason: when one lands the
-   * figure only shrinks, which is the direction `goalHealth` is already
-   * conservative in.
-   */
-  const verdict = goalHealth({
-    goal: g, effort: o.effort, today, windows: availability, blocks: [], allDayBlocks,
-  });
   const pace = describeVelocity(projectVelocity(g, today));
   const week = goalWeekLoad(g, weekOf(today));
 
@@ -166,19 +156,22 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
 
       <section>
         <h3 className={`m-0 mb-[6px] ${sectionLabel}`}>Forecast</h3>
-        <p className="m-0 px-[6px] text-ui text-ink-soft">
-          <span
-            className={`font-semibold ${HEALTH_TONE[verdict.health]}`}
-          >
-            {HEALTH_WORD[verdict.health]}
-          </span>
-          {' · '}
-          <span className="text-muted">{verdict.reason}</span>
-        </p>
         {/* The observed rate and runway, never a predicted finish date:
             `describeVelocity` refuses to name one from a trailing average, and
-            this surface is not the place to overrule it. */}
-        {pace && <p className="m-0 mt-[4px] px-[6px] text-meta text-muted">{pace}</p>}
+            this surface is not the place to overrule it.
+
+            A verdict used to sit above this line — "At risk · 6h of work
+            against 4h free before the deadline". It compared the work
+            remaining against the free hours before the deadline, and there
+            are no free hours to compare against. What is left is the rate,
+            which is measured rather than forecast. */}
+        {pace
+          ? <p className="m-0 px-[6px] text-meta text-muted">{pace}</p>
+          : (
+            // `describeVelocity` returns null on exactly one condition: no open
+            // tasks. Saying so is the whole forecast a finished goal needs.
+            <p className="m-0 px-[6px] text-ui text-muted">Every task is done.</p>
+          )}
       </section>
 
       <section>

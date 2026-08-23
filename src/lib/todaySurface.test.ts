@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { AvailabilityWindow, Goal, GoalNode } from '../db/types';
+import type { Goal, GoalNode } from '../db/types';
 import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
 import {
   MAX_ATTENTION, MAX_CARRY_OVER, attentionItems, carriedFrom, carryOverRows, nowFocus, surfaceReason,
 } from './todaySurface';
 
 const TODAY = '2026-08-12';
-
-const HOURS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1020 }));
 
 const item = (over: Partial<DailyWorkItem>): DailyWorkItem => ({
   key: over.id ?? 'k',
@@ -88,8 +86,7 @@ describe('attentionItems', () => {
     ...over,
   });
 
-  const attention = (goals: Goal[], s = sections()) =>
-    attentionItems(goals, s, TODAY, HOURS, [], true);
+  const attention = (goals: Goal[], s = sections()) => attentionItems(goals, s, TODAY);
 
   it('says nothing at all on a quiet day', () => {
     expect(attention([goal('fine')])).toEqual([]);
@@ -106,33 +103,37 @@ describe('attentionItems', () => {
   });
 
   it('gives every exception a goal to open', () => {
-    const doomed = goal('Physics Final', { nodes: [leaf('a', { estimateMin: 100_000 })] });
-    expect(attention([doomed]).every((a) => a.goalId !== undefined)).toBe(true);
-  });
-
-  it('names a goal that cannot fit before its deadline', () => {
-    const doomed = goal('Physics Final', { nodes: [leaf('a', { estimateMin: 100_000 })] });
-    expect(attention([doomed])[0]).toMatchObject({
-      kind: 'at-risk',
-      goalId: 'Physics Final',
-    });
-  });
-
-  it('names a goal with nothing that can be started', () => {
     const stuck = goal('Stuck', {
       nodes: [leaf('a', { status: 'blocked', blockedOn: 'waiting on the TA' })],
     });
-    expect(attention([stuck])[0]).toMatchObject({ kind: 'blocked' });
+    expect(attention([stuck]).every((a) => a.goalId !== undefined)).toBe(true);
+  });
+
+  it('reports a fully-blocked goal and nothing else', () => {
+    const stuck = goal('Stuck', {
+      nodes: [leaf('a', { status: 'blocked', blockedOn: 'waiting on the TA' })],
+    });
+    const out = attention([stuck]);
+    expect(out.map((a) => a.kind)).toEqual(['blocked']);
+    expect(out[0]!.text).toBe('Stuck has nothing that can be started');
   });
 
   /**
-   * Tight is a state to notice when you open a goal, not one to interrupt a
-   * Tuesday morning with. Only the two that need acting on reach Today.
+   * `at-risk` came from `goalHealth`, which compared the work remaining against
+   * the free hours before a deadline. There are no free hours, so there is no
+   * arithmetic left that could call a goal doomed — and a surface that guessed
+   * would be inventing the forecast the app deliberately stopped making.
    */
-  it('leaves Tight and No forecast off the list entirely', () => {
-    const tight = goal('Tight', { nodes: [leaf('a', { estimateMin: 60 }), leaf('b')] });
-    const unknown = goal('Unknown', { deadline: undefined, datesConfirmed: undefined });
-    expect(attention([tight, unknown])).toEqual([]);
+  it('says nothing about a goal that will not fit before its deadline', () => {
+    const doomed = goal('Physics Final', { nodes: [leaf('a', { estimateMin: 100_000 })] });
+    expect(attention([doomed])).toEqual([]);
+  });
+
+  it('lands the row on the first blocked task, so opening it goes somewhere', () => {
+    const stuck = goal('Stuck', {
+      nodes: [leaf('a', { status: 'blocked', blockedOn: 'waiting on the TA' })],
+    });
+    expect(attention([stuck])[0]).toMatchObject({ kind: 'blocked', nodeId: 'a' });
   });
 
   it('ignores a completed goal, which has no exceptions left', () => {
@@ -148,10 +149,10 @@ describe('attentionItems', () => {
    * region people learn to skip, which is worse than not having one.
    */
   it('never shows more than three, however bad the week is', () => {
-    const doomed = (id: string) => goal(id, { nodes: [leaf('a', { estimateMin: 100_000 })] });
-    const out = attention([doomed('a'), doomed('b'), doomed('c'), doomed('d')]);
+    const stuck = (id: string) => goal(id, { nodes: [leaf('a', { status: 'blocked' })] });
+    const out = attention([stuck('a'), stuck('b'), stuck('c'), stuck('d')]);
     expect(out).toHaveLength(MAX_ATTENTION);
-    expect(out[0].kind).toBe('at-risk');
+    expect(out[0].kind).toBe('blocked');
   });
 });
 

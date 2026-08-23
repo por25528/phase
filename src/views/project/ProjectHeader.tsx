@@ -5,14 +5,13 @@ import { HeaderMenu, HeaderMenuItem } from '../../components/HeaderMenu';
 import { IconCheck, IconRotate } from '../../components/Icons';
 import { InlineEdit } from '../../components/InlineEdit';
 import { goalPct } from '../../lib/pct';
-import { todayStr, fmtD } from '../../lib/dates';
+import { fmtD } from '../../lib/dates';
 import { fmtMinutes, goalEffort } from '../../lib/effort';
-import { goalHealth, HEALTH_TONE, HEALTH_WORD } from '../../lib/health';
 import { GoalMetaPopover } from './GoalMetaPopover';
 
 // ── Header ────────────────────────────────────────────────────────────────────
 /**
- * One compact line: the title, then health, deadline and remaining effort.
+ * One compact line: the title, then the deadline and remaining effort.
  *
  * What this replaced led with a display-serif title, two date fields, Confirm,
  * Clear dates, a days-left chip, a large percentage, a page-wide progress bar,
@@ -37,7 +36,6 @@ export function ProjectHeader({
   backLabel: string;
   onBack: () => void;
 }) {
-  const { availability, allDayBlocks } = useAppStore();
   const [editingTitle, setEditingTitle] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -48,24 +46,9 @@ export function ProjectHeader({
     setDraftDeadline(g.deadline ?? '');
   }, [g.id, g.start, g.deadline]);
 
-  const today = todayStr();
   const pct = Math.round(goalPct(g));
   const effort = goalEffort(g);
   const isCompleted = !!g.completedAt;
-
-  /*
-   * `blocks` is empty because no calendar is connected in this build. When one
-   * is, the same call deducts its meetings and the figure only shrinks, which
-   * is the direction `goalHealth` is already conservative in.
-   */
-  const verdict = goalHealth({
-    goal: g,
-    effort,
-    today,
-    windows: availability,
-    blocks: [],
-    allDayBlocks,
-  });
 
   return (
     <div className="flex items-center gap-[10px] py-[8px] min-h-[48px]">
@@ -116,19 +99,13 @@ export function ProjectHeader({
           onClick={() => setMetaOpen((was) => !was)}
           className="flex items-center gap-[6px] max-w-[420px] px-[8px] py-[5px] rounded-field text-meta tabular-nums hover:bg-hover"
         >
-          {/* One object, not the first link in a four-fact chain. It earns the
-              eye through weight and ground — never hue: HEALTH_TONE already
-              reserves colour for at-risk and blocked, so a healthy goal's
-              header stays entirely neutral and colour means something when it
-              finally arrives. */}
-          <span
-            data-testid="health-pill"
-            className={`font-semibold whitespace-nowrap px-[7px] py-[2px] rounded-[4px] bg-hover-deep ${HEALTH_TONE[verdict.health]}`}
-          >
-            {HEALTH_WORD[verdict.health]}
-          </span>
+          {/* A verdict pill used to lead this chain — "On track", "At risk" —
+              and it went with `goalHealth`, which priced the work remaining
+              against the free hours before the deadline. The deadline itself
+              is the fact that survives, so it takes the front of the row and
+              loses the leading separator it wore behind the pill. */}
           {g.deadline && (
-            <span className="text-muted whitespace-nowrap">· Due {fmtD(g.deadline)}</span>
+            <span className="text-muted whitespace-nowrap">Due {fmtD(g.deadline)}</span>
           )}
           {/* Silent when nothing has been estimated: `0m left` is the absence
               of a measurement wearing the clothes of one, and on a goal with
@@ -152,7 +129,6 @@ export function ProjectHeader({
             goal={g}
             actions={actions}
             effort={effort}
-            verdict={verdict}
             draftStart={draftStart}
             draftDeadline={draftDeadline}
             onDraftChange={(start, deadline) => { setDraftStart(start); setDraftDeadline(deadline); }}

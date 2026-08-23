@@ -84,8 +84,8 @@ export function Today({
   );
   const primary = advice.kind === 'work' ? advice.primary : null;
   const attention = useMemo(
-    () => attentionItems(goals, sections, today, availability, [], allDayBlocks),
-    [goals, sections, today, availability, allDayBlocks],
+    () => attentionItems(goals, sections, today),
+    [goals, sections, today],
   );
   const [replanOpen, setReplanOpen] = useState(false);
   const slipped = useMemo(() => slippedWork(goals, tasks, today), [goals, tasks, today]);
