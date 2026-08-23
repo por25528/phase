@@ -55,16 +55,27 @@ describe('the footer rule', () => {
     expect(screen.getByTitle(/Problem set 4 · 9am–10:30am · 1h 30m/)).toBeTruthy();
   });
 
-  it('states the START, and the end is drawn rather than written', () => {
+  it('renders BOTH readouts and lets the container query pick one', () => {
     /*
-     * `9am – 10:30am` needs 86px and a block in a real week column has 84.
-     * A start alone needs 46 at its widest and never clips — and the end is
-     * where the bar's bottom edge meets the hour axis, which is what a
-     * calendar is FOR.
+     * `9am – 10:30am` needs 86px of mono and `10:15am – 11:45am` needs 113. A
+     * block on an ordinary window has ~119px inside it and one at the grid's
+     * `min-w-[780px]` floor has 84 — so a fixed choice is wrong whichever way
+     * you make it, and only the block knows its own width (two overlapping
+     * bars halve it with no change to the column). Both forms are in the DOM;
+     * `.blk-span` / `.blk-start` and the `@container` rule in index.css decide.
+     *
+     * jsdom applies no container queries, so this asserts the MECHANISM — that
+     * both forms exist and carry the switch classes — rather than which one
+     * paints, which only a real engine can answer. The Electron screenshot is
+     * what checks that.
      */
-    mount();
-    expect(screen.getByText('9am')).toBeTruthy();
-    expect(screen.queryByText(/10:30am/)).toBeNull();
+    const { container } = render(createElement(EventBlock, {
+      block: block(), lane: 0, laneCount: 1,
+    } as never));
+    expect(container.querySelector('.blk-span')!.textContent).toMatch(/9am\s*[–-]\s*10:30am/);
+    expect(container.querySelector('.blk-start')!.textContent).toBe('9am');
+    // The block itself has to BE the container, or the query has nothing to ask.
+    expect(container.querySelector('.blk-cq')).toBeTruthy();
   });
 
   it('is withheld below the threshold, where it would sit on the title', () => {
@@ -92,10 +103,14 @@ describe('every time on a block is mono', () => {
     const { container } = render(createElement(EventBlock, {
       block: block(), lane: 0, laneCount: 1,
     } as never));
-    const start = screen.getByText('9am');
-    expect(start.className).toContain('font-mono');
-    expect(start.className).toContain('tabular-nums');
-    expect(container).toBeTruthy();
+    // One wrapper carries the voice for both forms.
+    const readout = container.querySelector('.blk-span')!.parentElement!;
+    expect(readout.className).toContain('font-mono');
+    expect(readout.className).toContain('tabular-nums');
+    // And it is aria-hidden, because the block's own aria-label already states
+    // the span AND the length — otherwise BOTH forms would be announced, since
+    // hiding one with CSS does not remove it from the accessible tree.
+    expect(readout.getAttribute('aria-hidden')).toBe('true');
   });
 });
 

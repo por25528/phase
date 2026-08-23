@@ -3,7 +3,7 @@ import { clockLabel } from '../../lib/clock';
 import { fmtMinutes } from '../../lib/effort';
 import { projectFillClass, projectTintClass } from '../../lib/projectColour';
 import {
-  BlockSpine, blockFootCls, blockPadCls, blockTimeCls,
+  BlockSpine, BlockTime, blockFootCls, blockPadCls, blockTimeCls,
   MIN_BLOCK_PX, COMPACT_BLOCK_PX, FOOTER_BLOCK_PX,
 } from './blockChrome';
 
@@ -50,6 +50,7 @@ export function BlockGhost({
    * a truer thing to say than a time it may not get.
    */
   const label = startMin === null ? fmtMinutes(durationMin) : clockLabel(startMin);
+  const endLabel = startMin === null ? null : clockLabel(startMin + durationMin);
 
   return (
     <div
@@ -63,7 +64,7 @@ export function BlockGhost({
        * applied on mount rather than declared statically, so it animates FROM
        * rest — a ghost that appears already lifted has no lift.
        */
-      className={`relative w-full rounded-[6px] overflow-hidden ${blockPadCls} border border-accent bg-panel text-badge leading-[1.2] text-ink cursor-grabbing shadow-today motion-safe:animate-[block-lift_130ms_cubic-bezier(.2,.9,.3,1)_both]`}
+      className={`relative blk-cq w-full rounded-[6px] overflow-hidden ${blockPadCls} border border-accent bg-panel text-badge leading-[1.2] text-ink cursor-grabbing shadow-today motion-safe:animate-[block-lift_130ms_cubic-bezier(.2,.9,.3,1)_both]`}
       style={{ height: `${heightPx}px` }}
       aria-hidden="true"
     >
@@ -86,10 +87,16 @@ export function BlockGhost({
                   the ghost is never empty, and "90m in the air over nowhere"
                   is more useful than a blank rule. See EventBlock's note on
                   why the length is not a standing cell. */}
-              <span className={`${blockTimeCls} text-ink-soft truncate`}>{label}</span>
+              {endLabel === null
+                ? <span className={`${blockTimeCls} text-ink-soft truncate`}>{label}</span>
+                : <BlockTime start={label} end={endLabel} />}
             </div>
           ) : (
-            <div className={`${blockTimeCls} text-ink-soft truncate flex-none`}>{label}</div>
+            <div className="flex-none">
+              {endLabel === null
+                ? <span className={`${blockTimeCls} text-ink-soft truncate`}>{label}</span>
+                : <BlockTime start={label} end={endLabel} />}
+            </div>
           )}
         </div>
       )}

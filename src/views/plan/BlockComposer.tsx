@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { minuteToPx, PX_PER_MINUTE, Z_BLOCK_REVEALED } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
-import { blockFootCls, blockPadCls, blockTimeCls, MIN_BLOCK_PX, FOOTER_BLOCK_PX } from './blockChrome';
+import { BlockTime, blockFootCls, blockPadCls, blockTimeCls, MIN_BLOCK_PX, FOOTER_BLOCK_PX } from './blockChrome';
 
 /**
  * The inline title field for a block being drawn.
@@ -65,23 +65,25 @@ export function BlockComposer({
   const stacked = !isBar && heightPx >= FOOTER_BLOCK_PX;
 
   /*
-   * The block variant prints the START, the same fact the bar it becomes
-   * prints, for the same measured reason — see the footer note in
-   * `EventBlock`. What you drew is confirmed by the composer's HEIGHT, which is
-   * the span, drawn.
+   * The block variant prints what the BAR prints — the full span where the
+   * column can hold one, the start alone where it cannot (`BlockTime`, and the
+   * `@container` note in index.css). The composer's whole argument is that it
+   * is the bar it is about to become, and a readout that changed on commit
+   * would be the one place that stopped being true.
    *
    * The `bar` variant is a full-width row on the month grid, where there is no
    * time axis and therefore no drawn span at all — so it keeps the `label` its
-   * caller hands it.
+   * caller hands it, whole.
    */
-  const span = label ?? clockLabel(startMin);
+  const startLabel = clockLabel(startMin);
+  const endLabel = clockLabel(startMin + durationMin);
 
   return (
     <div
       className={`rounded-[6px] border border-accent bg-panel overflow-hidden text-badge leading-[1.2] ${
         isBar
           ? 'mb-[6px] flex items-baseline gap-[8px] px-[5px] py-[2px]'
-          : `absolute left-[2px] right-[2px] ${blockPadCls}`
+          : `blk-cq absolute left-[2px] right-[2px] ${blockPadCls}`
       }`}
       style={isBar ? undefined : {
         top: `${minuteToPx(startMin)}px`,
@@ -171,17 +173,17 @@ export function BlockComposer({
               under the title and moving it on commit.
             */}
             <div className={blockFootCls}>
-              <span data-testid="composer-span" className={`${blockTimeCls} text-ink-soft truncate`}>
-                {span}
+              <span data-testid="composer-span">
+                <BlockTime start={startLabel} end={endLabel} />
               </span>
             </div>
           </>
         ) : (
           <div
             data-testid="composer-span"
-            className={`${blockTimeCls} text-ink-soft truncate ${isBar ? 'flex-none order-first' : 'flex-none'}`}
+            className={`flex-none ${isBar ? `${blockTimeCls} text-ink-soft truncate order-first` : ''}`}
           >
-            {span}
+            {isBar ? (label ?? startLabel) : <BlockTime start={startLabel} end={endLabel} />}
           </div>
         )}
       </div>

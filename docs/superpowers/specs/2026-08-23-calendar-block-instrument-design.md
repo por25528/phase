@@ -60,8 +60,8 @@ title must stay the loudest thing in the block.
 
 | Height | Layout |
 | --- | --- |
-| `≥ FOOTER_BLOCK_PX` (56) | Title (`line-clamp-3`), then a `border-t border-line-soft` **footer rule** carrying the start, `9am`, in mono |
-| 40–56 | Title + the same mono start. No rule |
+| `≥ FOOTER_BLOCK_PX` (56) | Title (`line-clamp-3`), then a `border-t border-line-soft` **footer rule** carrying the time in mono |
+| 40–56 | Title + the same mono time. No rule |
 | `< COMPACT_BLOCK_PX` (40) | One line: `9am · Title` |
 
 The footer's negative margins pull the rule out to the block's own edges, so it reads as
@@ -85,19 +85,20 @@ in Electron against the real stylesheet:
 | `9am` alone | 20px | fits |
 | `12:45pm` alone | 46px | fits |
 
-So both richer forms lost, and the two facts they carried are both **drawn rather than
-written**: the end is where the bar's bottom edge meets the hour axis, and the length is
-the bar's height, at one pixel per minute. Spending the narrowest cell on the screen to
-restate the geometry badly is the trade this surface must not make. The start is the one
-fact the drawing states imprecisely — you can see roughly where a bar begins, but `9:15`
-versus `9:20` needs the number.
+**And then screenshotting the real app corrected the correction.** 105px is the grid's
+`min-w-[780px]` FLOOR, reached only when the window is narrow enough to scroll sideways.
+On an ordinary 1440px window the same column is **146px**, where every span fits with room
+to spare — so dropping the end time fixed the rare case by regressing the common one.
 
-The end and the length went to the **tooltip and the accessible name**, where there is
-room and they cost nothing.
+`BlockTime` renders both forms and an `@container` query on the block keeps whichever fits
+(`.blk-cq` / `.blk-span` / `.blk-start`, threshold 113px on the content box — the widest
+span the app can render, so below it *some* span would clip and a readout exact at 10am
+and elided at 10:15 is worse than one consistently short). Only the block can answer
+this: two overlapping bars halve its width with no change to the column at all.
 
-This also made the block uniform: the compact layout has always printed the start alone,
-so the taller layouts moved *to* that vocabulary rather than away from it, and the block
-now reads one way at every height instead of switching at 56px.
+The **length** is printed at neither width. It is the one fact here that is drawn — one
+pixel per minute — and a cell restating it took 46px from a span that needed all of them.
+It lives in the tooltip and the accessible name.
 
 The left padding is **8px, measured**: at 10px the start still fit but nothing else did,
 and 8 clears the 3px spine by five. `blockPadCls` and `blockFootCls` in `blockChrome.tsx`
@@ -308,9 +309,12 @@ instrument voice. It stays `pointer-events-none` under a live 8px strip — the 
 Everything here was found by measuring or screenshotting, not by review, and each one
 overturned something argued for above.
 
-1. **The duration cell, and then the end time, came off the footer.** See the width
-   budget above. The spec asked for two cells; the column has room for one, and the
-   honest occupant is the start.
+1. **The duration cell came off the footer, the end time came off and then went back.**
+   The spec asked for two cells; the column has room for one. Measuring a *specimen* said
+   drop the end too — and screenshotting the *real app* showed that measurement was
+   against the grid's narrow floor, not the width anyone actually uses. The answer is a
+   container query, which is the only thing that can know. Two lessons: measure at the
+   real width, and prefer the surface that can answer over a constant that guesses.
 2. **The composer's spine came off**, and its hint moved off the rule. Both for the same
    two reasons: colour stacking, and the one-cell budget.
 3. **The spine's caps went from 1px to 2px, and 8px to 9px wide.** At a hairline they

@@ -9,7 +9,7 @@ import type { PlanDragData } from './dropTarget';
 import { containerDragAttributes } from '../../lib/dragAttributes';
 import { IconCheck, IconX } from '../../components/Icons';
 import {
-  BlockSpine, blockFootCls, blockPadCls, blockTimeCls,
+  BlockSpine, BlockTime, blockFootCls, blockPadCls, blockTimeCls,
   MIN_BLOCK_PX, COMPACT_BLOCK_PX, FOOTER_BLOCK_PX,
 } from './blockChrome';
 
@@ -131,31 +131,28 @@ export function EventBlock({
    */
   const hasFooter = heightPx >= FOOTER_BLOCK_PX;
   /*
-   * What the footer prints: the START, and nothing else.
+   * What the footer prints depends on how wide the block IS, and that is not
+   * knowable here — see the `@container` note in index.css.
    *
-   * Measured against a real week column, twice, and both richer forms lost.
-   * The grid is `min-w-[780px]`, less the 46px axis, over seven days — ~105px a
-   * column, 84px inside a block after the insets, borders and padding. A span
-   * (`9am – 10:30am`) needs 86 and an afternoon one (`10:15am – 11:45am`) needs
-   * 113, so the shipped design already clipped every pm block to `12:45pm – 2:…`
-   * and a duration cell beside it would have clipped every block at all.
+   * The short version: `9am – 10:30am` needs 86px of mono and
+   * `10:15am – 11:45am` needs 113, a block on an ordinary 1440px window has
+   * ~119px inside it, and a block at the grid's `min-w-[780px]` floor has 84.
+   * So the span fits at the width almost everyone uses and clips at the one
+   * the grid falls back to — and two overlapping bars halve it again with no
+   * change to the column at all. `BlockTime` renders both forms and CSS keeps
+   * the one that fits.
    *
-   * A start alone needs 46 at its widest and therefore never clips — and the
-   * two facts it drops are both DRAWN rather than written. The end is where the
-   * bar's bottom edge meets the hour axis; the length is the bar's height, at
-   * one pixel per minute. Writing either one into the narrowest cell on the
-   * screen, badly, to restate what the geometry already states exactly, is the
-   * trade this surface should never make.
+   * The LENGTH is not printed at either width. It is the one fact here that is
+   * DRAWN — the grid is one pixel per minute, so a 90-minute bar is 90 pixels
+   * tall — and a cell restating it took 46px from a span that needed all of
+   * them. It lives in the tooltip and the accessible name instead.
    *
-   * It is also what the compact layout below has always done — so the block now
-   * reads the same way at every height, rather than switching vocabularies at
-   * 40 pixels. Both dropped facts are in the tooltip and the accessible name.
-   *
-   * While resizing it states the PREVIEW's start (unchanged) and the badge on
-   * the grip states the new end and length — the two readouts of one gesture,
-   * neither of them guessing.
+   * While resizing, this states the PREVIEW's span and the badge on the grip
+   * states the new end and length — two readouts of one gesture, neither
+   * guessing.
    */
   const startLabel = clockLabel(block.startMin);
+  const endLabel = clockLabel(block.startMin + minutes);
 
   return (
     <div
@@ -193,7 +190,7 @@ export function EventBlock({
        * border cannot carry the end caps that make a block read as a measured
        * span rather than as a card with a coloured edge.
        */
-      className={`group absolute rounded-[6px] overflow-hidden text-badge leading-[1.2] border ${
+      className={`group blk-cq absolute rounded-[6px] overflow-hidden text-badge leading-[1.2] border ${
         isBusy
           // The same left inset as a work block, though it carries no spine:
           // the footer rule's negative margin is written against that inset,
@@ -290,16 +287,16 @@ export function EventBlock({
              * there is room for it and it costs nothing.
              */
             <div className={blockFootCls}>
-              <span className={`${blockTimeCls} text-ink-soft truncate`}>{startLabel}</span>
+              <BlockTime start={startLabel} end={endLabel} />
             </div>
           ) : (
             /* The full span, not just the start. A calendar's job is to say how
                long something takes; the end time was already in the aria-label
                and the tooltip, so it was known and simply not shown. */
-            /* The same start, for the same reason — so the block reads one
+            /* The same readout, for the same reason — so the block reads one
                way at every height instead of switching vocabularies at 56px.
                This layout has no rule, only the height for a second line. */
-            <div className={`${blockTimeCls} text-ink-soft truncate flex-none`}>{startLabel}</div>
+            <div className="flex-none"><BlockTime start={startLabel} end={endLabel} /></div>
           )}
         </div>
       )}

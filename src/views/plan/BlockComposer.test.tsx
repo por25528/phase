@@ -58,19 +58,21 @@ describe('naming a new block', () => {
     expect(onCancel).not.toHaveBeenCalled();
   });
 
-  it('shows the START it is about to create, not the span', () => {
+  it('prints what the BAR prints — both forms, for the container query', () => {
     /*
-     * It used to print `10am–11:30am`. A week column is ~105px, which leaves
-     * 84px inside the composer, and that span needs 86 — so it clipped, and an
-     * afternoon one (`12:45pm – 2:15pm`, 113px) clipped badly. The bar this
-     * becomes prints its start for the same measured reason, and the extent is
-     * DRAWN: the composer's own height is the span you just dragged out.
+     * The composer's whole argument is that it is the bar it is about to
+     * become, so a readout that changed shape on commit would be the one place
+     * that stopped being true. See the `@container` note in index.css for why
+     * there are two forms at all.
      */
-    mount();
+    const { container } = render(createElement(BlockComposer, {
+      startMin: 600, durationMin: 90, onCommit: vi.fn(), onCancel: vi.fn(),
+    }));
     // clockLabel honours the locale's hour cycle, so match on the digits
     // rather than pinning a 12h/24h rendering.
-    expect(screen.getByTestId('composer-span').textContent).toMatch(/10/);
-    expect(screen.getByTestId('composer-span').textContent).not.toMatch(/11/);
+    expect(container.querySelector('.blk-span')!.textContent).toMatch(/10.*11/);
+    expect(container.querySelector('.blk-start')!.textContent).toMatch(/10/);
+    expect(container.querySelector('.blk-cq')).toBeTruthy();
   });
 });
 
@@ -107,9 +109,11 @@ describe('the composer measures like the grid', () => {
     expect(screen.queryByText('↵ add · esc')).toBeNull();
   });
 
-  it('puts the span in the block\'s own mono voice', () => {
-    mount();
-    expect(screen.getByTestId('composer-span').className).toContain('font-mono');
+  it('puts the readout in the block\'s own mono voice', () => {
+    const { container } = render(createElement(BlockComposer, {
+      startMin: 600, durationMin: 90, onCommit: vi.fn(), onCancel: vi.fn(),
+    }));
+    expect(container.querySelector('.blk-span')!.parentElement!.className).toContain('font-mono');
   });
 });
 

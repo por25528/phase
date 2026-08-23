@@ -126,16 +126,25 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   cap is invisible at 1x, and the caps are the entire difference between the two
   readings. Every time on the grid is `blockTimeCls` (mono, `text-micro`,
   tabular) because a start is a MEASURED FIGURE and mono is already this app's
-  voice for those. **What a block prints is the START, and that was measured
-  rather than chosen**: the grid is `min-w-[780px]` less the 46px axis over
-  seven days, so a column is ~105px and a block has 84px inside it — against 86
-  for `9am – 10:30am` and 113 for `10:15am – 11:45am`, which is why the shipped
-  design already clipped every afternoon bar. A duration cell beside the span
-  left it 39px. Both dropped facts are DRAWN: the end is where the bar's bottom
-  edge meets the hour axis and the length is its height at one pixel per minute,
-  so they went to the tooltip and the accessible name, where there is room. The
-  compact layout had always printed the start alone, so the taller ones moved TO
-  that vocabulary and the block now reads one way at every height. `blockChrome.tsx`
+  voice for those. **What a block prints is decided by the BLOCK, not
+  by us** — `BlockTime` renders the full span AND the bare start, and the
+  `@container` query in `index.css` (`.blk-cq`, `.blk-span`/`.blk-start`, 113px
+  on the content box) keeps whichever fits. That is not fence-sitting: a fixed
+  choice is wrong in both directions, and this was very nearly got wrong twice.
+  `9am – 10:30am` needs 86px of mono and `10:15am – 11:45am` needs 113. At the
+  grid's `min-w-[780px]` FLOOR a column is ~105px and a block has 84 inside it,
+  where nothing but a start fits — but that floor is reached only when the
+  window is narrow enough to scroll sideways, and on an ordinary 1440px window
+  the same column is ~146px and every span fits with room to spare. Only the
+  block knows which it is, because two overlapping bars halve its width with no
+  change to the column at all. 113px is the widest span the app can render and
+  not a round number: below it SOME span clips, and a readout exact at 10am and
+  elided at 10:15 is worse than one consistently short. Both forms are
+  `aria-hidden` — the block's `aria-label` states the span and the length, and
+  CSS hiding one does not remove it from the accessible tree, so without that
+  BOTH would be announced. The LENGTH is printed at neither width: it is the one
+  fact here that is DRAWN, and a cell restating it took 46px from a span that
+  needed all of them. `blockChrome.tsx`
   holds `blockPadCls` (8px left — clears the 3px spine by five; 10px clipped)
   and `blockFootCls` (the rule's negative margins mirror that padding, or it
   reads as an underline), because `EventBlock`, `BlockGhost` and `BlockComposer`

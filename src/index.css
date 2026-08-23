@@ -547,3 +547,36 @@
 @container (max-width: 200px) {
   .hb-stat { display: none; }
 }
+
+/* A block states its full span when its column can hold one, and its start
+   alone when it cannot.
+   ---------------------------------------------------------------------------
+   This was very nearly got wrong in both directions. `9am – 10:30am` needs
+   86px of mono and `10:15am – 11:45am` needs 113, so the answer depends
+   entirely on which column you measure. The week grid is `min-w-[780px]`, less
+   the 46px axis, over seven days — 105px a column and 84px inside a block, at
+   which nothing but a start fits. But that is the FLOOR, reached only when the
+   window is narrow enough that the grid starts scrolling sideways. On an
+   ordinary 1440px window the same column is ~138px and every span fits with
+   room to spare.
+
+   So a fixed choice is wrong whichever one you pick: the span clips at the
+   floor, and the start alone throws away the end time at the width almost
+   everyone actually uses. `@container` asks the BLOCK, which is the only thing
+   that knows — it is also the only thing that knows how many lanes a cluster
+   split it into, since two overlapping bars halve the width with no change to
+   the column at all.
+
+   113px is the content-box threshold and it is the widest span the app can
+   render, not a round number: below it SOME span would clip, and a readout
+   that is exact at 10am and elided at 10:15 is worse than one that is
+   consistently short. Both forms are `aria-hidden` because the block's own
+   `aria-label` already states the span AND the length — see EventBlock. */
+.blk-cq { container-type: inline-size; }
+.blk-span { display: none; }
+.blk-start { display: inline; }
+
+@container (min-width: 113px) {
+  .blk-span { display: inline; }
+  .blk-start { display: none; }
+}

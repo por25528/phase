@@ -106,3 +106,26 @@ export function BlockSpine({ className }: { className: string }) {
     </div>
   );
 }
+
+/**
+ * The time a block prints: its full span where there is room, its start alone
+ * where there is not.
+ *
+ * Both are rendered and CSS picks one (`.blk-span` / `.blk-start`, with the
+ * `@container` query in index.css), because the answer depends on the block's
+ * own width — which is the column's width divided by however many lanes an
+ * overlap split it into, and neither of those is knowable here.
+ *
+ * `aria-hidden` on both: the block's `aria-label` already states the span and
+ * the length, so announcing the visible readout would say the time twice and,
+ * worse, would announce BOTH forms — the CSS hides one visually and hiding
+ * something visually does not remove it from the accessible tree.
+ */
+export function BlockTime({ start, end }: { start: string; end: string }) {
+  return (
+    <span aria-hidden="true" className={`${blockTimeCls} text-ink-soft truncate`}>
+      <span className="blk-span">{start} – {end}</span>
+      <span className="blk-start">{start}</span>
+    </span>
+  );
+}
