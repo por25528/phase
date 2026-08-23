@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  DEFAULT_TIME_LEVEL, TIME_CAP, TIME_LEVELS, TIME_WORD, admits, fitsWindow, timeLevelFor,
+  DEFAULT_TIME_LEVEL, TIME_CAP, TIME_CAP_SLACK_MIN, TIME_LEVELS, TIME_WORD, admits, fitsWindow, timeLevelFor,
   isCommitment, isTimeLevel, parseStoredTimeLevel, serializeTimeLevel,
 } from './timeLens';
 import type { AdviceReason } from './executionAdvisor';
@@ -22,10 +22,18 @@ describe('the caps', () => {
     }
   });
 
-  it('caps low at 30 and medium at 60, and leaves high uncapped', () => {
+  it('caps low at 30 and medium at an hour plus its slack, and leaves high uncapped', () => {
     expect(TIME_CAP.low).toBe(30);
-    expect(TIME_CAP.medium).toBe(60);
+    expect(TIME_CAP.medium).toBe(60 + TIME_CAP_SLACK_MIN);
+    expect(TIME_CAP.medium).toBe(75);
     expect(TIME_CAP.high).toBe(Infinity);
+  });
+
+  it('1h admits a 75-minute estimate and refuses 76', () => {
+    expect(fitsWindow('medium', estimate(75))).toBe(true);
+    expect(fitsWindow('medium', estimate(76))).toBe(false);
+    // The slack is the middle setting's alone.
+    expect(fitsWindow('low', estimate(31))).toBe(false);
   });
 });
 

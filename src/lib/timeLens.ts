@@ -31,10 +31,22 @@ export const TIME_LEVELS: readonly TimeLevel[] = ['low', 'medium', 'high'];
 /** What a new day starts at. Nobody has to remember to put the dial back. */
 export const DEFAULT_TIME_LEVEL: TimeLevel = 'medium';
 
-/** The longest piece of DISCRETIONARY work each level will offer, in minutes. */
+/**
+ * The longest piece of DISCRETIONARY work each level will offer, in minutes.
+ *
+ * `medium` reads `1h` and admits 75: a quarter-hour of slack, because an
+ * estimate is a round guess and a 75-minute task is an hour's work that was
+ * priced honestly rather than rounded down to pass. The slack is on the MIDDLE
+ * setting only — `low` stays exact at 30, since that is the level whose whole
+ * promise is a short sitting, and `high` has nothing to be slack about.
+ * `TIME_CAP_SLACK_MIN` is that allowance, so the chip word and the cap can be
+ * checked against each other in `timeLens.test.ts`.
+ */
+export const TIME_CAP_SLACK_MIN = 15;
+
 export const TIME_CAP: Record<TimeLevel, number> = {
   low: 30,
-  medium: 60,
+  medium: 60 + TIME_CAP_SLACK_MIN,
   high: Infinity,
 };
 
