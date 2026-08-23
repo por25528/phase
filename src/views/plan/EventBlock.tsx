@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDraggable } from '@dnd-kit/core';
 import { minuteToPx, PX_PER_MINUTE, Z_BLOCK, Z_BLOCK_REVEALED } from '../../lib/grid';
 import { clockLabel } from '../../lib/clock';
@@ -70,8 +71,33 @@ export function EventBlock({
   // `containerDragAttributes`: this element holds real buttons, so it must not
   // claim `role="button"` itself. That fix used to live here as "don't spread
   // it for busy blocks"; it now applies to work blocks too.
+  /*
+   * KEYED BY THE SITTING, exactly as `DayBlocks` keys the React element —
+   * `${drag.kind}:${drag.id}` was keyed by the TASK, and a task sat on Tuesday
+   * and again on Thursday is two bars.
+   *
+   * dnd-kit keeps ONE `draggableNodes` map keyed by id, so those two bars
+   * registered under one key and only one entry survived. Every consequence
+   * was real: `active.data.current` was the survivor's `PlanDragData`, so the
+   * drop moved the sitting you were not touching; `active.rect` was the other
+   * bar's geometry, so the aim and the landing outline resolved from the wrong
+   * day; and `isDragging` was true for BOTH, so lifting one bar drew the hole
+   * under two. `scheduleNode(..., { mode: 'add' })` from `SchedulePopover` and
+   * `TaskPage` is how a second sitting gets made, so this was reachable today.
+   *
+   * `blockId` is always set for a bar on the grid (`DayBlocks` passes
+   * `item.blockId!`); it is optional on `PlanDragData` only because the
+   * backlog rail's rows carry none. With it absent the id degrades to the
+   * rail's own `${kind}:${id}` — which is the right answer, because a task
+   * with no sitting has exactly one identity.
+   *
+   * Nothing downstream parses this string: `Plan.tsx` reads `blockId` off
+   * `active.data.current` and only ever looks at `over.id`.
+   */
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: drag ? `${drag.kind}:${drag.id}` : `busy:${block.key}`,
+    id: drag
+      ? `${drag.kind}:${drag.id}${drag.blockId ? `:${drag.blockId}` : ''}`
+      : `busy:${block.key}`,
     data: drag,
     disabled: !drag,
   });
@@ -151,6 +177,24 @@ export function EventBlock({
    * states the new end and length — two readouts of one gesture, neither
    * guessing.
    */
+  /*
+   * ONE border colour, decided once and printed in one slot.
+   *
+   * Tailwind emits `.border-line-2` BEFORE `.border-line-soft` — theme key
+   * order, same specificity — so a `border-line-2` APPENDED to a string that
+   * already carries `border-line-soft` does not win, whatever the order inside
+   * the className. Two branches did exactly that and both drew the softer
+   * line: the unestimated block, and the dragging hole. In light mode that is
+   * #F0EFEB where #D8D6D0 was meant, and a dashed outline in #F0EFEB on `bg-bg`
+   * is not there at all — which is the entire job of the hole.
+   *
+   * So the branches decide the VALUE and one interpolation prints it. A rule
+   * about stylesheet order is a rule the next edit can break by accident; a
+   * single slot cannot be lost to one.
+   */
+  const borderColourCls =
+    !isBusy && block.estimated && !isDragging ? 'border-line-soft' : 'border-line-2';
+
   const startLabel = clockLabel(block.startMin);
   const endLabel = clockLabel(block.startMin + minutes);
 
@@ -185,21 +229,22 @@ export function EventBlock({
        * Painting the ground first also puts the hue on exactly the background
        * `projectColour.test.ts` measures its contrast against.
        *
-       * `border-line-soft` on ALL FOUR sides now. The left edge used to carry
-       * the project hue as a 3px border; it is a drawn SPINE below, because a
-       * border cannot carry the end caps that make a block read as a measured
-       * span rather than as a card with a coloured edge.
+       * A border on ALL FOUR sides now, its colour from `borderColourCls`
+       * above — one slot, never restated by an appended class. The left edge
+       * used to carry the project hue as a 3px border; it is a drawn SPINE
+       * below, because a border cannot carry the end caps that make a block
+       * read as a measured span rather than as a card with a coloured edge.
        */
-      className={`group blk-cq absolute rounded-[6px] overflow-hidden text-badge leading-[1.2] border ${
+      className={`group blk-cq absolute rounded-[6px] overflow-hidden text-badge leading-[1.2] border ${borderColourCls} ${
         isBusy
           // The same left inset as a work block, though it carries no spine:
           // the footer rule's negative margin is written against that inset,
           // and a calendar event's title belongs at the same x as every bar
           // beside it rather than 5px to their left.
-          ? `bg-hover border-line-2 text-muted italic ${blockPadCls}`
-          : `bg-panel border-line-soft text-ink touch-none ${blockPadCls} ${
+          ? `bg-hover text-muted italic ${blockPadCls}`
+          : `bg-panel text-ink touch-none ${blockPadCls} ${
             block.done ? 'opacity-55 line-through' : ''
-          } ${block.estimated ? 'border-solid' : 'border-dashed border-line-2'} cursor-grab ${
+          } ${block.estimated ? 'border-solid' : 'border-dashed'} cursor-grab ${
             // The press and the lift. `motion-safe` rather than a hand-rolled
             // media query: the whole app's reduced-motion escape hatch is the
             // block in index.css, and this is one more thing it must reach.
@@ -211,9 +256,12 @@ export function EventBlock({
          * it came from keeps its outline until the drop spends it — and a
          * dashed outline is exactly what this app already spells a pending
          * placement with. `opacity-40` (what this replaces) left a ghost of the
-         * bar behind the ghost of the bar.
+         * bar behind the ghost of the bar. The outline's COLOUR is not stated
+         * here — `borderColourCls` reads `isDragging` and prints it, because a
+         * `border-line-2` appended at this point loses to the base string's
+         * `border-line-soft` on stylesheet order alone.
          */
-        isDragging ? 'bg-transparent border-dashed border-line-2 [&>*]:opacity-0' : ''
+        isDragging ? 'bg-transparent border-dashed [&>*]:opacity-0' : ''
       } ${revealed ? 'ring-2 ring-inset ring-accent' : ''}`}
       style={{
         top: `${top}px`,
@@ -379,6 +427,29 @@ function ResizeHandle({
   const [startY, setStartY] = useState<number | null>(null);
   /** The live figure, for the badge. Null while the grip is not held. */
   const [held, setHeld] = useState<number | null>(null);
+  /*
+   * Where the badge is drawn, in VIEWPORT coordinates — the grip's own bottom
+   * -right corner, measured after the block has been laid out at the previewed
+   * height.
+   *
+   * Measured rather than derived: the block's bottom edge moves as the preview
+   * grows, and arithmetic against `startY` would drift the moment the grid
+   * scrolls under a captured pointer. `useLayoutEffect` keyed on `held` runs
+   * after the commit that resized the block, so the corner it reads is the one
+   * the user is looking at. `held` only changes at `SLOT_GRANULARITY_MIN`
+   * grain, so this is a handful of measurements per drag, not one per frame.
+   */
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [corner, setCorner] = useState<{ x: number; y: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (held === null) {
+      setCorner(null);
+      return;
+    }
+    const r = wrapRef.current?.getBoundingClientRect();
+    if (r) setCorner({ x: r.right, y: r.bottom });
+  }, [held]);
 
   /**
    * Snapped to `SLOT_GRANULARITY_MIN`, which is the grain `resolveSlot`
@@ -406,6 +477,7 @@ function ResizeHandle({
 
   return (
     <div
+      ref={wrapRef}
       data-testid="resize-handle"
       onPointerDown={(e) => {
         if (e.button !== 0) return;
@@ -448,20 +520,50 @@ function ResizeHandle({
         className="absolute left-1/2 -translate-x-1/2 bottom-[2px] h-[2px] w-[22px] bg-ink-soft opacity-0 transition-opacity duration-150 group-hover:opacity-70 pointer-events-none"
       />
       {/*
-        What the release will commit, stated BEFORE the release.
-        `role="status"` so it is announced rather than merely drawn — the
-        figure is the whole point of holding the grip, and a sighted user reads
-        it off the badge while everyone else was previously told nothing until
-        the toast that follows a refusal.
+        What the release will commit, stated BEFORE the release — and PORTALLED,
+        because it is the one thing on this block that has to be drawn outside
+        it.
+
+        The badge hangs below the block's bottom edge, and the block root is
+        `overflow-hidden` — load-bearing, since it is what clips the spine's
+        caps to the corner radius and cuts a long title off cleanly. So an
+        absolutely positioned badge inside it had 0% of itself in the padding
+        box and never painted at all: the readout that is the whole reason for
+        the grip was invisible in the real app, and jsdom (which clips nothing)
+        reported it present. The enclosing `DayColumn` is `overflow-hidden`
+        too, so hoisting it one level would only move the clip.
+
+        `document.body` and `position: fixed`, placed from the measured corner:
+        no ancestor of the badge can clip it, and nothing here has to know the
+        block's lane geometry to find its own bottom-right. `z-40` is the
+        app's transient-overlay tier (popovers, menus) — above the page, below
+        `Modal`'s 50, which is right: no dialog can be open while a pointer is
+        captured on this grip, and a badge that outranked one would be a bug
+        waiting for the case that proves it.
+
+        `aria-hidden`, and NOT `role="status"`. `setHeld` fires on every
+        pointermove, so a polite live region would queue every intermediate
+        figure — the same thing `LandingOutline` refuses three files away
+        ("A live region announcing a new time on every pointer move would be
+        unusable"), and for the same reason. Worse, a region mounted in the
+        same tick as its text is the one announcement most readers drop, so the
+        only useful value was also the least likely to be heard. The figure is
+        stated on RELEASE instead, by the block's own `aria-label`, which
+        `onResize` rewrites the moment the store commits the new span — and a
+        resize the store refuses toasts, as it already did. Do not re-add the
+        role: a badge that changes 60 times a second is a drawing, not an
+        announcement.
       */}
-      {held !== null && (
+      {held !== null && corner && createPortal(
         <span
-          role="status"
+          aria-hidden="true"
           data-testid="resize-badge"
-          className="absolute right-0 bottom-[-2px] translate-y-full rounded-[4px] bg-ink text-paper px-[6px] py-[2px] font-mono text-micro tabular-nums whitespace-nowrap shadow-today pointer-events-none"
+          className="fixed -translate-x-full translate-y-[2px] rounded-[4px] bg-ink text-paper px-[6px] py-[2px] font-mono text-micro tabular-nums whitespace-nowrap shadow-today pointer-events-none z-40"
+          style={{ left: `${corner.x}px`, top: `${corner.y}px` }}
         >
           → {clockLabel(startMin + held)} · {fmtMinutes(held)}
-        </span>
+        </span>,
+        document.body,
       )}
     </div>
   );
