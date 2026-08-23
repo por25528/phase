@@ -2022,7 +2022,7 @@ describe('store actions', () => {
 
         expect(store.getState().hydration).toBe('ready');
         const node = store.getState().goals[0].nodes[0];
-        expect(node.blocks?.[0].startMin).toBe(540);
+        expect(node.blocks?.[0].startMin).toBe(480);
         expect(node.blocks?.[0].date).toBe('2026-07-15');
       });
 
@@ -2033,10 +2033,10 @@ describe('store actions', () => {
       // `plannedStartMin` absent and this test would catch it.
       //
       // Expected minute derived from the real implementation, not guessed:
-      // '2026-07-15' is a Wednesday (dow 2), whose mocked availability window
-      // is [540, 1080) with nothing else occupying the day. `migrateSlots`
-      // places at `aimMin: window.startMin` (see lib/migrateSlots.ts +
-      // lib/slot.ts resolveSlot), so the leaf lands at minute 540 exactly.
+      // nothing else occupies '2026-07-15', and `migrateSlots` places at
+      // `aimMin: ORDINARY_DAY.startMin` (see lib/migrateSlots.ts +
+      // lib/slot.ts resolveSlot), so the leaf lands at minute 480 exactly.
+      // It was 540 while the day's window came from availability.
       it('hands persist the migrated node, and the store state reflects it too', async () => {
         const store = await freshStore();
         const dbMod = await import('../db/db');
@@ -2066,12 +2066,12 @@ describe('store actions', () => {
                * up on the next ordinary write; the store state below is the
                * shape the app actually uses.
                */
-              nodes: [expect.objectContaining({ id: 'leaf1', plannedStartMin: 540 })],
+              nodes: [expect.objectContaining({ id: 'leaf1', plannedStartMin: 480 })],
             })],
           }),
         );
         const node = store.getState().goals[0].nodes[0];
-        expect(node.blocks?.[0].startMin).toBe(540);
+        expect(node.blocks?.[0].startMin).toBe(480);
         expect(node.blocks?.[0].date).toBe('2026-07-15');
       });
 

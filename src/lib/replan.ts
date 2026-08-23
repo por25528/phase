@@ -1,8 +1,7 @@
-import type { AvailabilityWindow, BusyBlock, Goal, Task } from '../db/types';
+import type { BusyBlock, Goal, Task } from '../db/types';
 import { addDays } from './dates';
 import { isDone } from './status';
-import { resolveSlot, type PlacedSpan } from './slot';
-import { windowForDate } from './availability';
+import { ORDINARY_DAY, resolveSlot, type PlacedSpan } from './slot';
 import { blocksOf } from './blocks';
 import { scheduledOn } from './scheduled';
 import type { Now } from './capacity';
@@ -120,7 +119,6 @@ export interface ReplanInput {
   goals: Goal[];
   tasks: Task[];
   today: string;
-  windows: AvailabilityWindow[];
   blocks: BusyBlock[];
   allDayBlocks: boolean;
   now: Now;
@@ -136,7 +134,7 @@ export interface ReplanInput {
  * silently" rule broken by the flow that exists to enforce it.
  */
 export function proposeReplan(input: ReplanInput): ReplanProposal {
-  const { goals, tasks, today, windows, blocks, allDayBlocks, now } = input;
+  const { goals, tasks, today, blocks, allDayBlocks, now } = input;
   const slipped = slippedWork(goals, tasks, today);
   const moves: ReplanMove[] = [];
   const unplaceable: SlippedItem[] = [];
@@ -159,21 +157,18 @@ export function proposeReplan(input: ReplanInput): ReplanProposal {
       const date = addDays(today, i);
       const startMin = resolveSlot({
         date,
-        aimMin: 0, // the earliest gap that fits, inside the window below
+        aimMin: 0, // the earliest gap that fits, inside the span below
         durationMin: item.minutes,
         /*
-         * The availability window, deliberately — this is the one placement
-         * path Job 1 does NOT open up. A replan PROPOSES hours on your behalf,
-         * and the same reasoning that keeps it out of the past ("proposing you
-         * do something yesterday is nonsense") keeps it out of 03:00: a
-         * proposal that ignores when you said you work is not a recovery, it is
-         * a shuffle. A person placing a block by hand is not proposing
-         * anything, which is why every manual route now searches `WHOLE_DAY`.
-         *
-         * A day with no window is skipped, exactly as before — `resolveSlot`
-         * returns null on a null span and the loop moves to the next day.
+         * `ORDINARY_DAY`, deliberately — this is the one placement path that
+         * is NOT opened up. A replan PROPOSES hours on your behalf, and the
+         * same reasoning that keeps it out of the past ("proposing you do
+         * something yesterday is nonsense") keeps it out of 03:00: a proposal
+         * that ignores the shape of a day is not a recovery, it is a shuffle.
+         * A person placing a block by hand is not proposing anything, which is
+         * why every manual route searches `WHOLE_DAY`.
          */
-        span: windowForDate(date, windows),
+        span: ORDINARY_DAY,
         blocks,
         placed: spansFor(date),
         now,

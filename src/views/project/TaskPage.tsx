@@ -92,12 +92,12 @@ export function TaskPage({
   const { goals, sessions, availability, allDayBlocks, actions } = useAppStore();
   /*
    * Where "Sit again today" points. It was a literal `0`, which only ever
-   * landed sensibly because the availability window fenced `resolveSlot`;
-   * with the fence gone (Job 1) a bare 0 is midnight, so the window becomes
-   * the aim. Recomputed per render rather than memoised — it reads the clock,
-   * and a render is the only moment it is spent.
+   * landed sensibly because a window fenced `resolveSlot`; with the fence gone
+   * a bare 0 is midnight, so `ORDINARY_DAY` is the aim instead. Recomputed per
+   * render rather than memoised — it reads the clock, and a render is the only
+   * moment it is spent.
    */
-  const sitAgainAim = aimFor(todayStr(), availability, {
+  const sitAgainAim = aimFor(todayStr(), {
     date: todayStr(),
     minute: new Date().getHours() * 60 + new Date().getMinutes(),
   });

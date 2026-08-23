@@ -1,4 +1,4 @@
-import type { AvailabilityWindow, Goal, GoalNode, Task } from '../db/types';
+import type { Goal, GoalNode, Task } from '../db/types';
 
 /**
  * The pre-`WorkBlock` shape, spelled out.
@@ -13,8 +13,7 @@ export type LegacyNode = GoalNode & { plannedDay?: string; plannedStartMin?: num
 export type LegacyTask = Task & { startMin?: number };
 
 import { walkLeaves, weekOf } from './plan';
-import { durationOf, resolveSlot, NO_PAST_LIMIT, type PlacedSpan } from './slot';
-import { windowForDate } from './availability';
+import { durationOf, resolveSlot, NO_PAST_LIMIT, ORDINARY_DAY, type PlacedSpan } from './slot';
 import { cloneGoals } from './tree';
 import { isDone } from './status';
 
@@ -49,7 +48,6 @@ function clearNodePlan(n: LegacyNode): void {
 export function migrateSlots(
   goals: Goal[],
   tasks: Task[],
-  windows: AvailabilityWindow[],
   allDayBlocks: boolean,
 ): { goals: Goal[]; tasks: Task[]; report: MigrationReport } {
   const report: MigrationReport = {
@@ -78,24 +76,21 @@ export function migrateSlots(
   }
 
   function place(map: Map<string, PlacedSpan[]>, date: string, durationMin: number): number | null {
-    const window = windowForDate(date, windows);
-    if (!window) return null;
     return resolveSlot({
       date,
-      aimMin: window.startMin, // "earliest gap that fits" falls out of the normal search
+      aimMin: ORDINARY_DAY.startMin, // "earliest gap that fits" falls out of the normal search
       durationMin,
       /*
-       * The availability window, not `WHOLE_DAY` — the same side of Job 1's
-       * split the two replan paths are on, and for the same reason. Nobody
-       * aimed at anything here: legacy data carries a DAY and an estimate, and
-       * the hour is being chosen for the user, which is the definition of the
-       * automatic case. Searching the whole day instead would stack a second
-       * leaf backwards into the small hours whenever that gap sat nearer the
-       * aim than the one after the first leaf, and would quietly retire the
-       * "did not fit — go and look at it" report this migration exists to
-       * produce.
+       * `ORDINARY_DAY`, not `WHOLE_DAY` — the same side of the split the
+       * replan paths are on, and for the same reason. Nobody aimed at anything
+       * here: legacy data carries a DAY and an estimate, and the hour is being
+       * chosen for the user, which is the definition of the automatic case.
+       * Searching the whole day instead would stack a second leaf backwards
+       * into the small hours whenever that gap sat nearer the aim than the one
+       * after the first leaf, and would quietly retire the "did not fit — go
+       * and look at it" report this migration exists to produce.
        */
-      span: window,
+      span: ORDINARY_DAY,
       blocks: [],
       placed: spansFrom(map, date),
       now: NO_PAST_LIMIT,

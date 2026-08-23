@@ -625,7 +625,7 @@ export async function initStore(): Promise<void> {
     const ownsMigrationLock = await tabLock;
     if (ownsMigrationLock && !(await isSlotMigrationDone())) {
       await saveSlotMigrationSnapshot(appState.goals, appState.tasks);
-      const result = migrateSlots(appState.goals, appState.tasks, availability, allDayBlocks);
+      const result = migrateSlots(appState.goals, appState.tasks, allDayBlocks);
       migrated = { ...appState, goals: result.goals, tasks: result.tasks };
       await persist(migrated);
       // A failure to record the flag is non-fatal: the data above is already

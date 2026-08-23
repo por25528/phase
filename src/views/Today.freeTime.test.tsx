@@ -195,7 +195,7 @@ describe('the free-time offer', () => {
     });
 
     expect(blocksOf(store.getState().goals[0].nodes[0])[0]).toMatchObject({
-      date: '2026-07-16', startMin: 9 * 60,
+      date: '2026-07-16', startMin: 8 * 60, // ORDINARY_DAY.startMin
     });
   });
 

@@ -306,7 +306,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
     const date = monthDraft;
     setMonthDraft(null);
     if (!date) return;
-    actions.createTaskAt(title, date, aimFor(date, availability, liveNow()), DEFAULT_SLOT_MIN);
+    actions.createTaskAt(title, date, aimFor(date, liveNow()), DEFAULT_SLOT_MIN);
   }
 
   /**
@@ -433,7 +433,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
        * refusing: the column is droppable now, so a keypress that refused
        * where a drag succeeded would be the two gestures disagreeing.
        */
-      const aim = aimFor(date, availability, liveNow());
+      const aim = aimFor(date, liveNow());
       const placed = focusedItem.kind === 'task'
         ? actions.scheduleTask(focusedItem.id, date, aim)
         : focusedItem.goalId
@@ -577,7 +577,7 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
      * still takes the drop at its first free gap.
      */
     if (planMode === 'month') {
-      const aim = aimFor(date, availability, liveNow());
+      const aim = aimFor(date, liveNow());
       if (data.kind === 'task') actions.scheduleTask(data.id, date, aim, { blockId: data.blockId });
       else if (data.goalId) actions.scheduleNode(data.goalId, data.id, date, aim, { blockId: data.blockId });
       return;

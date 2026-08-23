@@ -91,11 +91,11 @@ export function Today({
   const proposal = useMemo(
     () => (replanOpen
       ? proposeReplan({
-        goals, tasks, today, windows: availability, blocks: [], allDayBlocks,
+        goals, tasks, today, blocks: [], allDayBlocks,
         now: { date: today, minute: nowMinute },
       })
       : { moves: [], unplaceable: [] }),
-    [replanOpen, goals, tasks, today, availability, allDayBlocks, nowMinute],
+    [replanOpen, goals, tasks, today, allDayBlocks, nowMinute],
   );
 
   const open = useMemo(() => sections.commitments.filter((i) => !i.done), [sections]);
@@ -176,7 +176,7 @@ export function Today({
      * AIM instead — which is what `aimFor` is, and which also folds in the
      * today clamp this line used to spell out.
      */
-    const aim = aimFor(date, availability, { date: today, minute: nowMinute });
+    const aim = aimFor(date, { date: today, minute: nowMinute });
     if (row.kind === 'task') actions.scheduleTask(row.id, date, aim);
     else if (row.goalId) actions.scheduleNode(row.goalId, row.id, date, aim);
   }

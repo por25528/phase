@@ -158,7 +158,10 @@ describe('recovering a day that slipped', () => {
     const store = await mount([{
       id: 'g',
       title: 'Big',
-      nodes: [leaf('marathon', { title: 'Marathon', plannedWeek: '2026-08-10', estimateMin: 600, blocks: [makeBlock('2026-08-10', 540, 600)] })],
+      // 13 hours, against the ordinary day's 12 — nothing inside the horizon
+      // can hold it. It was 600 minutes when a replan proposed inside a
+      // configurable window; the fixed span is wider, so the figure grew.
+      nodes: [leaf('marathon', { title: 'Marathon', plannedWeek: '2026-08-10', estimateMin: 780, blocks: [makeBlock('2026-08-10', 540, 780)] })],
     }]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Replan' }));
