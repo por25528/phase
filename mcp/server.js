@@ -135,10 +135,10 @@ const WRITES = {
     { nodeId: z.string(), minutes: z.number().nullable() },
   ],
   set_status: [
-    'Set a step to todo, doing, blocked or done. Pass blockedOn to say what it is blocked by.',
+    'Set a step to todo, doing, blocked, parked or done. Pass blockedOn to say what it is blocked by. Parked means set aside on purpose — it leaves the backlog and the day plan until unparked.',
     {
       nodeId: z.string(),
-      status: z.enum(['todo', 'doing', 'blocked', 'done']),
+      status: z.enum(['todo', 'doing', 'blocked', 'parked', 'done']),
       blockedOn: z.string().optional(),
     },
   ],

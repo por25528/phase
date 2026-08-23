@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode } from '../db/types';
 import {
+  BOARD_COLUMNS,
   BOARD_MIN_OPEN_TASKS,
   boardAreas,
   boardCards,
@@ -58,18 +59,25 @@ describe('goalBoard', () => {
       todo: ['launch-post'],
       doing: ['auth'],
       blocked: ['webhooks'],
+      parked: [],
       done: ['pick-name'],
     });
   });
 
   it('narrows to one area without losing the column shape', () => {
     const columns = goalBoard(GOAL, 'eng');
-    expect(columns.map((c) => c.status)).toEqual(['todo', 'doing', 'blocked', 'done']);
+    expect(columns.map((c) => c.status)).toEqual(['todo', 'doing', 'blocked', 'parked', 'done']);
     expect(columns.flatMap((c) => c.cards).map((c) => c.node.id)).toEqual(['auth', 'webhooks']);
   });
 
   it('shows every card when no area is chosen', () => {
     expect(goalBoard(GOAL, null).flatMap((c) => c.cards)).toHaveLength(4);
+  });
+});
+
+describe('BOARD_COLUMNS', () => {
+  it('shows every stored state — parked between blocked and done', () => {
+    expect(BOARD_COLUMNS.map((c) => c.status)).toEqual(['todo', 'doing', 'blocked', 'parked', 'done']);
   });
 });
 

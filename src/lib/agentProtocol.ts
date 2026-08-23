@@ -180,8 +180,8 @@ export function validAgentRequest(value: unknown): value is AgentRequest {
       return id(req.nodeId) && (req.minutes === null || minutes(req.minutes));
     case 'set_status':
       return id(req.nodeId)
-        && (req.status === 'todo' || req.status === 'doing'
-          || req.status === 'blocked' || req.status === 'done')
+        && (req.status === 'todo' || req.status === 'doing' || req.status === 'blocked'
+          || req.status === 'parked' || req.status === 'done')
         && (req.blockedOn === undefined || title(req.blockedOn));
     case 'set_life':
       // A life is named, not id'd: an id is invisible from outside the app, so

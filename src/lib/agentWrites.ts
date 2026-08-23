@@ -214,7 +214,8 @@ export function handleAgentWrite(
       );
       if (failed(target)) return errorResponse(target.error);
       // `blockedOn` is present only while the status is 'blocked' — every other
-      // transition clears it. Accepting one here would store nothing.
+      // transition, including 'parked', clears it. Accepting one here would
+      // store nothing.
       if (request.blockedOn !== undefined && request.status !== 'blocked') {
         return errorResponse('A reason belongs to "blocked" — set the status to blocked to give one.');
       }
