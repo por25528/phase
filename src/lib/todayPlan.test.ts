@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { AvailabilityWindow, Goal, Task } from '../db/types';
-import { PLAN_DAY_HORIZON, PROPOSAL_MAX, dayLabel, dayVerb, nextFreeDay, offerHeading, proposalRows, todayPlan } from './todayPlan';
+import type { Goal, Task } from '../db/types';
+import { MIN_SITTING_MIN, PLAN_DAY_HORIZON, PROPOSAL_MAX, dayLabel, dayVerb, nextFreeDay, offerHeading, proposalRows, todayPlan } from './todayPlan';
+import type { PlacedSpan } from './slot';
 import { backlogGroups } from './backlog';
 import { makeBlock } from './blocks';
 
@@ -8,15 +9,15 @@ import { makeBlock } from './blocks';
 const TODAY = '2026-07-15';
 const WEEK = '2026-07-13';
 
-/** 09:00–17:00, every day, so the calendar is not the thing under test. */
-const ALWAYS: AvailabilityWindow[] = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({
-  dow, startMin: 9 * 60, endMin: 17 * 60,
-}));
-
-/** Weekdays only — the shape that makes a Sunday evening roll to Monday. */
-const WEEKDAYS: AvailabilityWindow[] = [0, 1, 2, 3, 4].map((dow) => ({
-  dow, startMin: 9 * 60, endMin: 17 * 60,
-}));
+/**
+ * The ordinary day is 08:00–20:00, every date, and nothing configures it. A
+ * day has room unless something is ON it, so these fixtures are placements
+ * rather than windows.
+ */
+const CLEAR = () => [];
+const SOLID = () => [{ startMin: 0, endMin: 1440 }];
+const solidExcept = (open: string) => (date: string): PlacedSpan[] =>
+  (date === open ? [] : [{ startMin: 0, endMin: 1440 }]);
 
 function goal(over: Partial<Goal> = {}): Goal {
   return { id: 'g1', title: 'Thesis', nodes: [], ...over };
@@ -28,15 +29,15 @@ function task(over: Partial<Task> = {}): Task {
 function plan(over: {
   goals?: Goal[];
   tasks?: Task[];
-  availability?: AvailabilityWindow[];
+  placedOn?: (date: string) => PlacedSpan[];
   today?: string;
   minute?: number;
 } = {}) {
   return todayPlan({
     goals: over.goals ?? [goal({ nodes: [{ id: 'n1', title: 'Draft' }] })],
     tasks: over.tasks ?? [],
-    availability: over.availability ?? ALWAYS,
     blocks: [],
+    placedOn: over.placedOn ?? CLEAR,
     allDayBlocks: false,
     today: over.today ?? TODAY,
     week: WEEK,
@@ -45,77 +46,91 @@ function plan(over: {
 }
 
 describe('nextFreeDay', () => {
-  it('is today while today still has time left', () => {
-    expect(nextFreeDay(TODAY, ALWAYS, [], false, { date: TODAY, minute: 10 * 60 }))
-      .toEqual({ date: TODAY, freeMin: 7 * 60 });
+  it('is today while today still has a run left in it', () => {
+    // 10:00 on a clear day: 10:00–20:00 of the ordinary day is unbooked.
+    expect(nextFreeDay(TODAY, [], CLEAR, false, { date: TODAY, minute: 10 * 60 }))
+      .toEqual({ date: TODAY, gapMin: 10 * 60 });
   });
 
   /**
-   * The Sunday-evening case, which is what the surface was silent through.
-   * `remainingWindow` already returns null for a window that has closed, so
-   * rolling forward needs no special case — only the scan.
+   * The evening case, which is what the surface was silent through.
+   * `remainingSpan` inside `longestFreeGap` already returns nothing once the
+   * ordinary day has closed, so rolling forward needs no special case — only
+   * the scan.
    */
-  it('rolls to tomorrow once today’s window has closed', () => {
-    expect(nextFreeDay(TODAY, ALWAYS, [], false, { date: TODAY, minute: 19 * 60 }))
-      .toEqual({ date: '2026-07-16', freeMin: 8 * 60 });
+  it('rolls to tomorrow once the ordinary day has closed', () => {
+    expect(nextFreeDay(TODAY, [], CLEAR, false, { date: TODAY, minute: 21 * 60 }))
+      .toEqual({ date: '2026-07-16', gapMin: 12 * 60 });
   });
 
-  it('skips days with no working hours at all', () => {
-    // Friday 19:00 → Saturday and Sunday are off → Monday.
-    const friday = '2026-07-17';
-    expect(nextFreeDay(friday, WEEKDAYS, [], false, { date: friday, minute: 19 * 60 }))
-      .toEqual({ date: '2026-07-20', freeMin: 8 * 60 });
-  });
-
-  it('subtracts busy time from the day it reports', () => {
-    const busy = [{ date: TODAY, startMin: 11 * 60, endMin: 12 * 60, title: 'Standup', allDay: false }];
-    expect(nextFreeDay(TODAY, ALWAYS, busy, false, { date: TODAY, minute: 10 * 60 }))
-      .toEqual({ date: TODAY, freeMin: 6 * 60 });
-  });
-
-  it('is null when nothing inside the horizon is free', () => {
-    expect(nextFreeDay(TODAY, [], [], false, { date: TODAY, minute: 10 * 60 })).toBeNull();
+  it('rolls past a day booked solid', () => {
+    expect(nextFreeDay(TODAY, [], solidExcept('2026-07-17'), false,
+      { date: TODAY, minute: 10 * 60 })).toEqual({ date: '2026-07-17', gapMin: 12 * 60 });
   });
 
   /**
-   * Today is a Wednesday and the only window is Wednesdays, so the next one
-   * lands exactly `PLAN_DAY_HORIZON` days out — one day past the last day the
-   * scan looks at. A week booked solid is not an empty page; it does not need
-   * an offer.
+   * A RUN, never a sum. Two clear hours either side of a middle-of-the-day
+   * meeting is not four hours you can sit down for, and an offer priced on the
+   * total would name a day whose room it cannot actually deliver.
+   */
+  it('reports the widest run rather than the total free time', () => {
+    const busy = [{ date: TODAY, startMin: 11 * 60, endMin: 12 * 60, title: 'Standup', allDay: false }];
+    expect(nextFreeDay(TODAY, busy, CLEAR, false, { date: TODAY, minute: 10 * 60 }))
+      .toEqual({ date: TODAY, gapMin: 8 * 60 }); // 12:00–20:00 beats 10:00–11:00
+  });
+
+  /**
+   * A fifteen-minute crack between two meetings is not somewhere to start a
+   * project task. An offer you cannot act on is worse than no offer.
+   */
+  it('refuses a run too short to sit down in', () => {
+    const nearlyFull = (): PlacedSpan[] => [
+      { startMin: 0, endMin: 12 * 60 },
+      { startMin: 12 * 60 + MIN_SITTING_MIN - 1, endMin: 1440 },
+    ];
+    expect(nextFreeDay(TODAY, [], nearlyFull, false, { date: TODAY, minute: 0 })).toBeNull();
+  });
+
+  it('is null when nothing inside the horizon has room', () => {
+    expect(nextFreeDay(TODAY, [], SOLID, false, { date: TODAY, minute: 10 * 60 })).toBeNull();
+  });
+
+  /**
+   * The only clear day lands exactly `PLAN_DAY_HORIZON` days out — one past the
+   * last day the scan looks at. A week booked solid is not an empty page; it
+   * does not need an offer.
    */
   it('does not look past the horizon', () => {
     expect(PLAN_DAY_HORIZON).toBe(7);
-    expect(nextFreeDay(TODAY, [{ dow: 2, startMin: 9 * 60, endMin: 17 * 60 }], [], false,
-      { date: TODAY, minute: 19 * 60 })).toBeNull();
+    expect(nextFreeDay(TODAY, [], solidExcept('2026-07-22'), false,
+      { date: TODAY, minute: 10 * 60 })).toBeNull();
   });
 });
 
 describe('todayPlan', () => {
-  it('refuses to guess when working hours were never set', () => {
-    expect(plan({ availability: [] })).toEqual({ kind: 'no-hours' });
-  });
-
-  /**
-   * `no-hours` outranks having nothing to offer: "Phase does not know when you
-   * work" is actionable and "nothing to do" is not, and only one of them is
-   * true when availability is empty.
+  /*
+   * There used to be a `no-hours` verdict here, checked before the candidates.
+   * "Phase does not know when you work" was actionable where "nothing to do"
+   * is not — but nothing is ever asked when you work, so the state is
+   * unreachable and the only refusal left is a horizon with no room in it.
    */
-  it('reports no-hours even with no candidates', () => {
-    expect(plan({ availability: [], goals: [] })).toEqual({ kind: 'no-hours' });
+  it('has no no-hours verdict left to reach', () => {
+    expect(plan().kind).toBe('offer');
+    expect(plan({ goals: [] })).toEqual({ kind: 'none' });
   });
 
-  it('offers today’s free time when the day is still open', () => {
+  it('offers today’s room when the day still has a run in it', () => {
     const p = plan();
     expect(p.kind).toBe('offer');
     if (p.kind !== 'offer') return;
     expect(p.date).toBe(TODAY);
     expect(p.today).toBe(true);
-    expect(p.freeMin).toBe(7 * 60);
+    expect(p.gapMin).toBe(10 * 60); // 10:00 to the ordinary day's 20:00
     expect(p.rows.map((r) => r.id)).toEqual(['n1']);
   });
 
   it('offers the next open day once today has closed', () => {
-    const p = plan({ minute: 19 * 60 });
+    const p = plan({ minute: 21 * 60 });
     expect(p.kind).toBe('offer');
     if (p.kind !== 'offer') return;
     expect(p.date).toBe('2026-07-16');
@@ -126,8 +141,8 @@ describe('todayPlan', () => {
     expect(plan({ goals: [] })).toEqual({ kind: 'none' });
   });
 
-  it('offers nothing when the horizon holds no free time', () => {
-    expect(plan({ availability: [{ dow: 2, startMin: 9 * 60, endMin: 17 * 60 }], minute: 19 * 60 }))
+  it('offers nothing when the horizon holds no room', () => {
+    expect(plan({ placedOn: SOLID }))
       .toEqual({ kind: 'none' });
   });
 
@@ -248,8 +263,8 @@ describe('todayPlan exclusions', () => {
   const baseInput = {
     goals: [goal({ nodes: [{ id: 'n1', title: 'Draft' }] })],
     tasks: [],
-    availability: ALWAYS,
     blocks: [],
+    placedOn: CLEAR,
     allDayBlocks: false,
     today: TODAY,
     week: WEEK,
@@ -306,18 +321,18 @@ describe('todayPlan exclusions', () => {
 });
 
 describe('offerHeading', () => {
-  it('names today’s free time', () => {
-    expect(offerHeading({ date: TODAY, today: true, freeMin: 200 }, TODAY)).toBe('3h 20m free today');
+  it('names the run it found on today', () => {
+    expect(offerHeading({ date: TODAY, today: true, gapMin: 200 }, TODAY)).toBe('3h 20m open today');
   });
 
   it('says tomorrow by name', () => {
-    expect(offerHeading({ date: '2026-07-16', today: false, freeMin: 480 }, TODAY))
-      .toBe('No time left today — tomorrow has 8h free');
+    expect(offerHeading({ date: '2026-07-16', today: false, gapMin: 480 }, TODAY))
+      .toBe('Today is booked — tomorrow has 8h open');
   });
 
   it('dates anything further out', () => {
-    expect(offerHeading({ date: '2026-07-20', today: false, freeMin: 480 }, TODAY))
-      .toBe('No time left today — Jul 20 has 8h free');
+    expect(offerHeading({ date: '2026-07-20', today: false, gapMin: 480 }, TODAY))
+      .toBe('Today is booked — Jul 20 has 8h open');
   });
 });
 

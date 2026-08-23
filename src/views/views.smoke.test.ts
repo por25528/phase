@@ -164,7 +164,7 @@ describe('the three views render against a populated store', () => {
   it('Today leads with one thing and stays out of the way otherwise', async () => {
     await readyStore();
     const { Today } = await import('./Today');
-    const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+    const html = renderToStaticMarkup(createElement(Today, {}));
 
     expect(html).not.toContain('Loading…');
     /*
@@ -285,14 +285,14 @@ describe('the three views render against a populated store', () => {
       // there is nothing to do.
       await emptyStore();
       const { Today } = await import('./Today');
-      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+      const html = renderToStaticMarkup(createElement(Today, {}));
       expect(html).toContain('Nothing committed to today');
     });
 
     it('offers work to place when projects exist but the day is empty', async () => {
       await readyStore();
       const { Today } = await import('./Today');
-      const html = renderToStaticMarkup(createElement(Today, { onOpenSettings: () => {} }));
+      const html = renderToStaticMarkup(createElement(Today, {}));
 
       expect(html).toContain('aria-label="Free time"');
       expect(html).toContain('Investor deck');       // one project's next action

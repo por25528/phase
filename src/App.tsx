@@ -601,7 +601,7 @@ export function App() {
              would sit outside the frame as a band of nothing, and the hatched
              tail under the last row needs a height to grow into. */
           <div className="w-full flex-1 min-h-0 flex flex-col">
-            <Today onOpenSettings={actions.openSettings} onCapture={openTaskCapture} />
+            <Today onCapture={openTaskCapture} />
           </div>
         ) : view === 'plan' ? (
           <div className="w-full px-[16px] sm:px-[36px] py-[18px]">

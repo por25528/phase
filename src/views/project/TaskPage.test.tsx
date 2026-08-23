@@ -394,7 +394,10 @@ describe('TaskPage', () => {
       const line = screen.queryByText((_, element) =>
         element?.tagName === 'P' && (element.textContent ?? '').includes(`${day} has`));
       expect(line).not.toBeNull();
-      expect(line?.textContent).toContain(`${day} has ${fmtMinutes(480)} free`);
+      // The ordinary day is 08:00–20:00 and tomorrow is clear, so its widest
+      // unbooked run is the whole twelve hours. It read 480 against a
+      // configurable 09:00–17:00 window.
+      expect(line?.textContent).toContain(`${day} has ${fmtMinutes(12 * 60)} open`);
     } finally {
       vi.useRealTimers();
     }

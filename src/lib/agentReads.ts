@@ -11,6 +11,7 @@ import { todayStr } from './dates';
 import { HORIZON_LABELS } from './horizons';
 import { plannedLeaves, weekOf } from './plan';
 import { tasksForWeek } from './dailyWork';
+import { spansOn } from './scheduled';
 
 /**
  * The read half of the agent surface.
@@ -42,8 +43,8 @@ function adviceInput(state: FullState, now: Now): ExecutionAdviceInput {
     goals: state.goals,
     tasks: state.tasks,
     sessions: state.sessions,
-    availability: state.availability,
     blocks: [],
+    placedOn: (date: string) => spansOn(state.goals, state.tasks, date),
     allDayBlocks: state.allDayBlocks,
     today: now.date,
     week: weekOf(now.date),

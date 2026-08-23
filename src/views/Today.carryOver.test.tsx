@@ -89,7 +89,7 @@ async function mountToday(over: {
   const store = await import('../state/store');
   await store.initStore();
   const { Today } = await import('./Today');
-  render(createElement(Today, { onOpenSettings: over.onOpenSettings ?? (() => {}) }));
+  render(createElement(Today, {}));
   return store;
 }
 

@@ -10,6 +10,7 @@ import type {
 import { elapsedFocusMinutes } from '../../lib/focusSession';
 import { weekOf } from '../../lib/plan';
 import { todayStr } from '../../lib/dates';
+import { spansOn } from '../../lib/scheduled';
 
 /**
  * The sole adapter between `AssistantAction` and the store.
@@ -47,7 +48,7 @@ export function AssistantHost({ open, onClose, theme }: {
   theme: 'light' | 'dark';
 }) {
   const {
-    goals, tasks, sessions, availability, allDayBlocks, activeFocusSession,
+    goals, tasks, sessions, allDayBlocks, activeFocusSession,
     assistantAccelerator, timeLevel, focusLevel, hydration, actions,
   } = useAppStore();
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -70,7 +71,9 @@ export function AssistantHost({ open, onClose, theme }: {
     if (hydration !== 'ready') return { status: 'loading' };
     const today = todayStr();
     const advice = executionAdvice({
-      goals, tasks, sessions, availability, blocks: [], allDayBlocks,
+      goals, tasks, sessions, blocks: [],
+      placedOn: (date: string) => spansOn(goals, tasks, date),
+      allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute() },
       timeLevel,
       focusLevel,
@@ -95,7 +98,7 @@ export function AssistantHost({ open, onClose, theme }: {
       theme,
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, availability, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, notice]);
+  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, notice]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {

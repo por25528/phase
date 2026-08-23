@@ -38,10 +38,11 @@ export function ProposalPanel({
   node: GoalNode;
   actions: ReturnType<typeof useAppStore>['actions'];
   /**
-   * The next day with unbooked time, for pricing the breakdown against reality.
-   * Absent when no availability is set — say nothing rather than guess.
+   * The next day with a run long enough to sit down in, for pricing the
+   * breakdown against reality. Absent when no day inside the horizon has one —
+   * say nothing rather than guess.
    */
-  freeDay?: { date: string; freeMin: number };
+  freeDay?: { date: string; gapMin: number };
   onClose: () => void;
 }) {
   const [raw, setRaw] = useState('');
@@ -221,7 +222,7 @@ export function ProposalPanel({
               {freeDay && (
                 <>
                   {dayLabel(freeDay.date, todayStr())} has{' '}
-                  <span className="tabular-nums">{fmtMinutes(freeDay.freeMin)}</span> free
+                  <span className="tabular-nums">{fmtMinutes(freeDay.gapMin)}</span> open
                 </>
               )}
             </p>

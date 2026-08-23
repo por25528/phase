@@ -789,17 +789,11 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
   // nothing, so the text sat at x=0, flush against the card's own rounded
   // corner.
   //
-  // `needs-hours` is no longer what a new install shows on its first summon —
-  // every install now starts on DEFAULT_AVAILABILITY — but it is still
-  // reachable by switching every day off in Settings, and it is still a
-  // different sentence from "nothing needs you". See PlanNotice.tsx.
-  if (advice.kind === 'needs-hours') {
-    return (
-      <p className={`${bandCls(shelf)} text-body text-ink`}>
-        Every day is switched off in Settings, so Phase can&apos;t say what fits. Give it some hours back.
-      </p>
-    );
-  }
+  // A `needs-hours` state used to sit above `clear` — "every day is switched
+  // off in Settings". Nothing asks when you work any more, so the state is
+  // unreachable and the sentence would be a lie. `beyondFocus` below carries
+  // what it was really for: a missing model and a zero are different
+  // sentences, and the shelf still says which one it means.
   if (advice.kind === 'clear') {
     return <p className={`${bandCls(shelf)} text-body text-ink`}>Nothing needs you right now.</p>;
   }

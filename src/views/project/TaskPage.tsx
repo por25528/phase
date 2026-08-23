@@ -42,6 +42,7 @@ import { taskPageActionGroups, type RowActionId } from '../../lib/rowActions';
 import { dayLabel, nextSitting } from '../../lib/rowSchedule';
 import { findNode, findNodePath, findParentList } from '../../lib/tree';
 import { nextFreeDay } from '../../lib/todayPlan';
+import { spansOn } from '../../lib/scheduled';
 
 const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
 
@@ -89,7 +90,7 @@ export function TaskPage({
   backLabel: string;
   onBack: () => void;
 }): JSX.Element {
-  const { goals, sessions, availability, allDayBlocks, actions } = useAppStore();
+  const { goals, tasks, sessions, allDayBlocks, actions } = useAppStore();
   /*
    * Where "Sit again today" points. It was a literal `0`, which only ever
    * landed sensibly because a window fenced `resolveSlot`; with the fence gone
@@ -200,11 +201,13 @@ export function TaskPage({
   // same fact twice under two different labels.
   const today = todayStr();
   // Priced against the first day that actually has room, so "add four steps"
-  // can be weighed against somewhere to put them. Null when no availability is
-  // set — the panel then says nothing rather than inventing a day.
+  // can be weighed against somewhere to put them. Null when no day inside the
+  // horizon has a run long enough — the panel then says nothing rather than
+  // inventing a day.
   const freeDay = useMemo(
-    () => nextFreeDay(today, availability, [], allDayBlocks, { date: today, minute: nowMinute }),
-    [today, availability, allDayBlocks, nowMinute],
+    () => nextFreeDay(today, [], (date) => spansOn(goals, tasks, date), allDayBlocks,
+      { date: today, minute: nowMinute }),
+    [today, goals, tasks, allDayBlocks, nowMinute],
   );
   const next = nextSitting(node, today);
   const whenValue = next

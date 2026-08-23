@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
 import { stampLabel } from '../components/sectionLabel';
@@ -8,6 +8,7 @@ import { NowDivider } from './today/NowDivider';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
 import { attentionItems, carriedFrom, carryOverRows, surfaceReason } from '../lib/todaySurface';
+import { spansOn } from '../lib/scheduled';
 import { executionAdvice } from '../lib/executionAdvisor';
 import { expectedTimeFor, type WorkRef } from '../lib/expectedTime';
 import { expectedTimeLabel } from '../lib/assistantProtocol';
@@ -40,10 +41,8 @@ import { primaryBtn, rowBtn, rowBtnPrimary } from '../components/dialogStyles';
  * also answers nine others.
  */
 export function Today({
-  onOpenSettings,
   onCapture,
 }: {
-  onOpenSettings: () => void;
   /**
    * Open task capture. Optional because only the empty state spends it: the
    * shell owns the ⌘N host, and a page that renders rows has no business
@@ -51,7 +50,7 @@ export function Today({
    */
   onCapture?: () => void;
 }) {
-  const { goals, tasks, sessions, availability, allDayBlocks, actions } = useAppStore();
+  const { goals, tasks, sessions, allDayBlocks, actions } = useAppStore();
   const today = useLocalDate();
   const [nowMinute, setNowMinute] = useState(() => {
     const d = new Date();
@@ -66,6 +65,16 @@ export function Today({
   }, []);
 
   const sections = useMemo(() => buildDailyWork(goals, tasks, today), [goals, tasks, today]);
+  /*
+   * The sittings already on a date, curried once for the two consumers that
+   * ask. Both the advisor and the offer below it scan forward for a day with
+   * room, and handing them the same accessor is what stops them measuring the
+   * day two different ways.
+   */
+  const placedOn = useCallback(
+    (date: string) => spansOn(goals, tasks, date),
+    [goals, tasks],
+  );
   /**
    * The one recommendation authority. Today used to choose its own top row
    * with `nowFocus` directly; routing through the advisor keeps this page and
@@ -74,10 +83,10 @@ export function Today({
    */
   const advice = useMemo(
     () => executionAdvice({
-      goals, tasks, sessions, availability, blocks: [], allDayBlocks,
+      goals, tasks, sessions, blocks: [], placedOn, allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute },
     }),
-    [goals, tasks, sessions, availability, allDayBlocks, today, nowMinute],
+    [goals, tasks, sessions, placedOn, allDayBlocks, today, nowMinute],
   );
   const primary = advice.kind === 'work' ? advice.primary : null;
   const attention = useMemo(
@@ -140,11 +149,11 @@ export function Today({
   // to withhold on exactly the day it mattered most.
   const offer = useMemo(
     () => todayPlan({
-      goals, tasks, availability, blocks: [], allDayBlocks,
+      goals, tasks, blocks: [], placedOn, allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute },
       exclude: shown,
     }),
-    [goals, tasks, availability, allDayBlocks, today, nowMinute, shown],
+    [goals, tasks, placedOn, allDayBlocks, today, nowMinute, shown],
   );
 
   // The work the page used to name and refuse to show. Below the day's own
@@ -168,13 +177,14 @@ export function Today({
    */
   function place(row: ProposalRow, date: string): void {
     /*
-     * Aim at the day's working start, clamped forward to the clock on today.
+     * Aim at the start of the ordinary day, clamped forward to the clock on
+     * today.
      *
      * This was `isToday ? nowMinute : 0`, and the `0` only ever worked because
-     * the availability window fenced `resolveSlot` and swallowed it. With the
-     * fence gone (Job 1) a bare 0 books midnight, so the window has to be the
-     * AIM instead — which is what `aimFor` is, and which also folds in the
-     * today clamp this line used to spell out.
+     * a window fenced `resolveSlot` and swallowed it. With the fence gone a
+     * bare 0 books midnight, so `ORDINARY_DAY` is the AIM instead — which is
+     * what `aimFor` is, and which also folds in the today clamp this line used
+     * to spell out.
      */
     const aim = aimFor(date, { date: today, minute: nowMinute });
     if (row.kind === 'task') actions.scheduleTask(row.id, date, aim);
@@ -505,28 +515,6 @@ export function Today({
           One row per project, never a project's whole queue: this is a choice
           between commitments, and the moment it lists everything open it is a
           second backlog rail on a page that is not the backlog. */}
-      {offer.kind === 'no-hours' && (
-        <section aria-label="Free time" className="px-[18px] py-[14px]">
-          <div className="px-[10px] py-[8px] rounded-field border border-line-2 bg-panel text-body text-ink-soft">
-            {/* "Nobody told me when you work" and "you are out of time" are
-                different sentences, and only one of them is true here. Kept
-                after Job 1 removed the fence: placing work needs no window any
-                more, but OFFERING a time does — the offer has to name a day
-                with room on it, and with no windows every day prices at zero.
-                See the note in PlanNotice.tsx. */}
-            No working hours set, so Phase can’t offer you a time — though you
-            can still put work on any day yourself.{' '}
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="font-semibold text-accent hover:text-accent-deep"
-            >
-              Set your working hours
-            </button>
-          </div>
-        </section>
-      )}
-
       {offerInfo && restOffers.length > 0 && (
         <section aria-label="Free time" className="pb-[10px]">
           {/* When the primary above already carries the free-time heading,
