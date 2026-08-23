@@ -194,6 +194,11 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[] } {
       if (!node || !goal) return false;
       if (goal.completedAt) return false;
       if (!isPlanningHorizon(goal.column)) return false;
+      // The advisor answers "what now"; blocked and parked mean "not now" —
+      // dropped here even when the leaf carries a `plannedWeek` for this
+      // week. `backlogGroups` keeps that same row because `weekCapacity`
+      // bills it: a number you plan against and a thing to do now are
+      // different questions.
       const s = stepStatus(node);
       if (s === 'blocked' || s === 'parked') return false;
     }
@@ -224,6 +229,15 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[] } {
   });
   if (plan.kind === 'offer') {
     for (const row of plan.rows) {
+      // The offer is sourced from `backlogGroups`, which keeps a committed
+      // blocked/parked step for the capacity figure billing it — the same
+      // exception `allowed` above refuses. The advisor still answers "now",
+      // so that row is not something to hand back as free-time work either.
+      if (row.kind === 'step') {
+        const node = nodeByid.get(row.id);
+        const s = node ? stepStatus(node) : undefined;
+        if (s === 'blocked' || s === 'parked') continue;
+      }
       const ref: WorkRef = row.kind === 'step'
         ? { kind: 'step', id: row.id, goalId: row.goalId ?? '' }
         : { kind: 'task', id: row.id, goalId: row.goalId ?? null };

@@ -178,6 +178,22 @@ describe('executionAdvice', () => {
     }
   });
 
+  it('drops committed blocked and parked work too — the advisor answers "now", not "this week"', () => {
+    const committed = goal({
+      id: 'gc', title: 'Committed but not now', column: 0,
+      nodes: [
+        { id: 'ncp', title: 'Parked but scheduled', status: 'parked', plannedWeek: week, estimateMin: 30 },
+        { id: 'ncb', title: 'Blocked but scheduled', status: 'blocked', blockedOn: 'review', plannedWeek: week, estimateMin: 30 },
+      ],
+    });
+    const advice = executionAdvice(input({ goals: [committed] }));
+    const keys = advice.kind === 'work'
+      ? [advice.primary.key, ...advice.alternatives.map((a) => a.key)]
+      : [];
+    expect(keys).not.toContain('step:ncp');
+    expect(keys).not.toContain('step:ncb');
+  });
+
   it('returns the same primary key as nowFocus or proposalRows for the same input', () => {
     // With commitments: agree with nowFocus.
     const t = task({ id: 't1', title: 'Email advisor', date: today });
