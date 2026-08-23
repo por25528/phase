@@ -22,8 +22,8 @@ import { initialScrollWindow } from '../lib/grid';
  */
 import { boardCollision } from '../lib/boardCollision';
 
-import { scheduledByDate } from '../lib/scheduled';
-import { aimFor, DEFAULT_SLOT_MIN } from '../lib/slot';
+import { scheduledByDate, spansOn } from '../lib/scheduled';
+import { aimFor, longestFreeGap, DEFAULT_SLOT_MIN, WHOLE_DAY, NO_PAST_LIMIT } from '../lib/slot';
 import { weekCapacity, type Now } from '../lib/capacity';
 import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
@@ -269,6 +269,29 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
    * the cost `handleDragMove`'s identity check already exists to avoid. See
    * `plan/previewCache.ts` for what the walk costs and what the memo saves.
    */
+  /*
+   * The longest unbooked run on each day, for the heading's `fits` / `full`
+   * chip. Computed only while something is in the air — it is seven passes
+   * over the week's placements, and at rest nothing reads it.
+   *
+   * `WHOLE_DAY`, not `ORDINARY_DAY`: this answers a question about a MANUAL
+   * drop, and a manual drop lands wherever it is aimed. Measuring it against
+   * the region the app aims at on its own would call a day full while 21:00
+   * sat empty under the cursor.
+   *
+   * `NO_PAST_LIMIT` for the same reason every manual path passes it: dropping
+   * onto this morning is allowed, so the elapsed part of today is not clipped
+   * away before the gaps are measured.
+   */
+  const dayGapMin = useMemo(
+    () => (drag
+      ? days.map((date) => longestFreeGap(
+        date, WHOLE_DAY, [], spansOn(goals, tasks, date), NO_PAST_LIMIT, allDayBlocks,
+      ))
+      : undefined),
+    [drag, days, goals, tasks, allDayBlocks],
+  );
+
   const previewCache = useRef(makePreviewCache());
   const [focusedItem, setFocusedItem] = useState<BacklogItem | null>(null);
   const [showUnestimated, setShowUnestimated] = useState(false);
@@ -644,7 +667,6 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
         <div className="min-w-0 md:pl-[18px]">
           <WeekHeader
             weekStart={weekStart}
-            today={today}
             isPast={isPast}
             capacity={capacity}
             mode={planMode}
@@ -700,11 +722,11 @@ export function Plan({ onOpenSettings }: { onOpenSettings: () => void }) {
             days={days}
             today={today}
             nowMinute={nowMinute}
-            windows={availability}
             scrollWindow={scrollWindow}
             readOnly={isPast}
             dayCapacity={capacity.days}
             dragDurationMin={drag?.data.durationMin ?? null}
+            dayGapMin={dayGapMin}
             onCreate={(date, span) => setDraft({ date, span })}
             scrollerRef={scrollerRef}
             gridRef={gridRef}

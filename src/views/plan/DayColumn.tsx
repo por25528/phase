@@ -1,41 +1,39 @@
 import { useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import type { AvailabilityWindow } from '../../db/types';
-import { minuteToPx, DAY_HEIGHT_PX, PX_PER_MINUTE, Z_NOW_LINE, Z_RULES } from '../../lib/grid';
+import { minuteToPx, PX_PER_MINUTE, Z_NOW_LINE, Z_RULES } from '../../lib/grid';
 import { canvasSpan, type CanvasSpan } from '../../lib/canvasCreate';
 import { fmtD } from '../../lib/dates';
 
 /**
- * One day. Draws the hours outside the working window, the now-line, and
- * nothing else — the blocks themselves arrive as `children` so this file stays
- * about geometry.
+ * One day. Draws the now-line and nothing else — the blocks themselves arrive
+ * as `children` so this file stays about geometry.
  *
- * A day with no window is hatched end to end and ACCEPTS drops like any other.
- * That is Job 1 on this surface: the window used to disable the droppable, so
- * a Saturday you had switched off was a column you could not use. It is now a
- * MARKING — `.hatch`, the same 45° stripe Today's frame uses for the margin of
- * a sheet — which says "you don't usually work here" and refuses nothing. The
- * heavy `bg-hover/60` wash it replaces read as disabled chrome, which is
- * exactly what it no longer is.
+ * There is no working-hours marking any more, and that is the point: every
+ * hour of every day is the same ground. The column went through three
+ * readings of the same idea and has now lost all of them — a `bg-hover/60`
+ * wash that read as disabled chrome, then a `.hatch` marking that said "you
+ * don't usually work here", and finally nothing, because there is no longer a
+ * fact for either to state.
  *
- * The availability window prop is named `availabilityWindow` rather than
- * `window` because the latter shadows the global `window` object — a
- * neighbouring component adds `window.addEventListener` calls.
+ * `.hatch` still means "unclaimed space" on Today's frame and the Goals board,
+ * so a stray one here would be saying that about an ordinary Tuesday
+ * afternoon.
+ *
+ * A past WEEK still refuses drops. That is a different rule and deliberately
+ * untouched — it is about rescheduling history, not about working hours.
  */
 export function DayColumn({
-  date, isToday, availabilityWindow, nowMinute, isPast, readOnly, onCreate, children,
+  date, isToday, nowMinute, isPast, readOnly, onCreate, children,
 }: {
   date: string;
   isToday: boolean;
-  availabilityWindow: AvailabilityWindow | null;
   nowMinute: number | null;
   /**
    * True when this day is already behind `today` (a past day of the current
    * week, or any day of a past week). Draws a wash over the column so elapsed
-   * days do not read identically to available ones — the ambiguity that made
-   * the header's "45h free" dangerous rather than merely imprecise. Distinct
-   * from `readOnly`, which is about the WHOLE week and governs drops; a past
-   * day of the current week is dimmed but still droppable.
+   * days do not read identically to the ones still ahead. Distinct from
+   * `readOnly`, which is about the WHOLE week and governs drops; a past day of
+   * the current week is dimmed but still droppable.
    */
   isPast?: boolean;
   /** True when this column belongs to a past week — every drop is refused. */
@@ -44,11 +42,10 @@ export function DayColumn({
   onCreate?: (span: CanvasSpan) => void;
   children: ReactNode;
 }) {
-  // Only a read-only (past) WEEK refuses drops now. A day off is no longer a
-  // reason: `resolveSlot` searches the whole day, so a column that looked
-  // droppable and then refused would be the last place the fence still lived.
-  // Past-week read-only is a different rule and deliberately untouched — it is
-  // about rescheduling history, not about working hours.
+  // Only a read-only (past) WEEK refuses drops. There is no such thing as a
+  // day off to be the other reason, and `resolveSlot` searches the whole day
+  // anyway. Past-week read-only is a different rule and deliberately untouched
+  // — it is about rescheduling history.
   const { setNodeRef, isOver } = useDroppable({ id: `day:${date}`, disabled: !!readOnly });
 
   return (
@@ -59,7 +56,7 @@ export function DayColumn({
       ref={setNodeRef}
       data-date={date}
       role="group"
-      aria-label={`${fmtD(date)}${isToday ? ' — today' : ''}${availabilityWindow ? '' : ' — outside working hours'}`}
+      aria-label={`${fmtD(date)}${isToday ? ' — today' : ''}`}
       /*
        * The drop target. `bg-accent/5` alone is a wash a person has to look
        * for; the inset hairline on the leading edge is what makes the column
@@ -69,26 +66,9 @@ export function DayColumn({
        * rather than as a state the column was always in.
        */
       className={`relative min-w-0 overflow-hidden border-l border-line-soft motion-safe:transition-[background-color,box-shadow] motion-safe:duration-[120ms] motion-safe:ease-out ${
-        availabilityWindow ? '' : 'hatch'
-      } ${isToday ? 'bg-hover/40' : ''} ${isOver ? 'bg-accent/5 shadow-[inset_2px_0_0_theme(colors.accent/0.55)]' : ''}`}
+        isToday ? 'bg-hover/40' : ''
+      } ${isOver ? 'bg-accent/5 shadow-[inset_2px_0_0_theme(colors.accent/0.55)]' : ''}`}
     >
-      {/* Hours outside the working window: hatched, not dimmed. See the note
-          above — this is a marking of the day's margin, and the two bands are
-          skipped entirely on a day with no window because the column itself
-          already carries the hatch. */}
-      {availabilityWindow && (
-        <>
-          <div
-            className="hatch absolute left-0 right-0 top-0 pointer-events-none"
-            style={{ height: `${minuteToPx(availabilityWindow.startMin)}px` }}
-          />
-          <div
-            className="hatch absolute left-0 right-0 bottom-0 pointer-events-none"
-            style={{ height: `${DAY_HEIGHT_PX - minuteToPx(availabilityWindow.endMin)}px` }}
-          />
-        </>
-      )}
-
       {/* Gated on exactly what the droppable is gated on, which is now only a
           week already spent: a drawn block and a dropped one have to agree
           about which days will take them. */}

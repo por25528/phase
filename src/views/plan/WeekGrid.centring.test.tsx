@@ -56,7 +56,6 @@ function mount(week = DAYS) {
       days: week,
       today: TODAY,
       nowMinute: 600,
-      windows: [],
       scrollWindow: RANGE,
       scrollerRef,
       gridRef,
@@ -180,7 +179,6 @@ describe('changing week', () => {
           days: shifted.map((d) => d),
           today: TODAY,
           nowMinute: 601,
-          windows: [],
           scrollWindow: RANGE,
           scrollerRef,
           gridRef,
@@ -237,7 +235,6 @@ describe('changing week', () => {
           days: nextWeek,
           today: TODAY,
           nowMinute: 601,
-          windows: [],
           scrollWindow: RANGE,
           scrollerRef,
           gridRef,
@@ -262,7 +259,6 @@ describe('vertical restoration', () => {
         days={DAYS}
         today={DAYS[3]}
         nowMinute={null}
-        windows={[]}
         scrollWindow={{ startMin: 540, endMin: 1080 }}
         scrollerRef={scrollerRef}
         gridRef={gridRef}
@@ -283,20 +279,27 @@ describe('vertical restoration', () => {
  */
 describe('capacity while dragging', () => {
   const DAYS = ['2026-08-10', '2026-08-11'];
-  const cap = (freeMin: number, plannedMin = 0) => ({
-    date: '2026-08-10', freeMin, plannedMin, backlogMin: 0, unestimated: 0,
+  const cap = (plannedMin = 0) => ({
+    date: '2026-08-10', freeMin: 0, plannedMin, backlogMin: 0, unestimated: 0,
     blockedBy: [], hasData: true,
   });
 
-  function draw(dragDurationMin: number | null) {
+  /*
+   * The chip is measured against `dayGapMin` — the longest unbooked RUN on
+   * each day — rather than against free time minus what is planned. A SUM was
+   * the tempting substitution when `freeMin` went away, and it is the wrong
+   * one: three separate half-hours are not an hour of room, and the heading
+   * would promise a drop the grid then refuses.
+   */
+  function draw(dragDurationMin: number | null, dayGapMin?: number[]) {
     const { container } = render(createElement(WeekGrid, {
       days: DAYS,
       today: DAYS[0],
       nowMinute: null,
-      windows: [0, 1, 2, 3, 4].map((dow) => ({ dow, startMin: 540, endMin: 1080 })),
       scrollWindow: { startMin: 540, endMin: 1080 },
-      dayCapacity: [cap(120), cap(120, 90)],
+      dayCapacity: [cap(), cap(90)],
       dragDurationMin,
+      dayGapMin,
       scrollerRef: { current: null },
       gridRef: { current: null },
       children: () => null,
@@ -305,23 +308,30 @@ describe('capacity while dragging', () => {
   }
 
   it('says which days can take the block, and which cannot', () => {
-    const html = draw(60);
+    const html = draw(60, [120, 30]);
     expect(html).toContain('fits');
     expect(html).toContain('full');
   });
 
-  /**
-   * `freeMin` only nets off meetings, so comparing the raw figure would promise
-   * room that this week's own work has already taken.
-   */
-  it('counts what is already planned against the day, not just meetings', () => {
-    // 120 free, 90 planned, 60 needed: it does not fit, even though `freeMin`
-    // alone says it would.
-    expect(draw(60).split('full').length - 1).toBe(1);
+  it('measures the longest run, never the total free time on the day', () => {
+    // Two clear half-hours is 60 minutes of free time and no room for an
+    // hour-long sitting. The day reports its widest run — 30 — and refuses.
+    expect(draw(60, [120, 30]).split('full').length - 1).toBe(1);
   });
 
   it('goes back to the ordinary load figure once the drag ends', () => {
-    const html = draw(null);
+    const html = draw(null, [120, 30]);
+    expect(html).not.toContain('fits');
+    expect(html).not.toContain('full');
+  });
+
+  /*
+   * A surface that cannot compute the gaps hands none, and the chip withholds
+   * itself rather than inventing an answer — the same discipline `dayLoadHint`
+   * keeps when it has nothing to say.
+   */
+  it('says nothing about fit when no gaps were handed down', () => {
+    const html = draw(60);
     expect(html).not.toContain('fits');
     expect(html).not.toContain('full');
   });

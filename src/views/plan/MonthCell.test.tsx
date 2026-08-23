@@ -110,15 +110,22 @@ describe('MonthCell load figure', () => {
     expect(screen.getByText('3h')).toBeTruthy();
   });
 
-  it('warns when the day is over-committed', () => {
+  /*
+   * A cell used to turn warn when the day's committed minutes exceeded its
+   * free ones. Nothing weighs a day against available hours now, so the figure
+   * states what is on the day and passes no verdict — 9h reads exactly like
+   * 3h, because both are true and neither is a judgement.
+   */
+  it('passes no verdict, however much is on the day', () => {
     const { container } = render(
       <MonthCell
         date="2026-08-06" items={[]} inMonth isToday={false}
         capacity={dayCap(true)} onCreate={() => {}} onOpenDay={() => {}}
       />,
     );
-    expect(container.querySelector('[data-testid="month-day-load"]')?.className)
-      .toContain('text-warn');
+    const load = container.querySelector('[data-testid="month-day-load"]');
+    expect(load?.textContent).toBe('9h');
+    expect(load?.className).not.toContain('text-warn');
   });
 
   // Same silence rule dayLoadLabel already keeps: an empty day looks empty.

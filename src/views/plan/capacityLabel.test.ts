@@ -1,13 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import type { DayCapacity, WeekCapacity } from '../../lib/capacity';
 import {
-  formatMinutes, capacityParts, capacityNote, isOverCommitted, dayLoadLabel, dayLoadHint,
-  loadParts, unestimatedLabel, weekFreeSplit, weekLoadParts, capacityMeter,
+  formatMinutes, capacityParts, capacityNote, dayLoadLabel, dayLoadHint,
+  loadParts, unestimatedLabel, weekLoadCells, weekLoadParts,
 } from './capacityLabel';
 
+// `freeMin` is still on `DayCapacity` until it is stripped from `capacity.ts`;
+// nothing here reads it.
 function day(over: Partial<DayCapacity> = {}): DayCapacity {
   return {
-    date: '2026-07-28', freeMin: 195, plannedMin: 120, backlogMin: 0, unestimated: 0,
+    date: '2026-07-28', freeMin: 0, plannedMin: 120, backlogMin: 0, unestimated: 0,
     blockedBy: [], hasData: true, ...over,
   };
 }
@@ -25,10 +27,15 @@ describe('formatMinutes', () => {
   });
 });
 
+/*
+ * Every figure here is a COMMITMENT. There is no free figure any more, so
+ * nothing on this surface prices what you have taken on against what would
+ * fit — it states the first and makes no claim about the second.
+ */
 describe('capacityParts', () => {
-  it('shows free and planned', () => {
-    expect(capacityParts(day({ freeMin: 195, plannedMin: 120, backlogMin: 0 })))
-      .toEqual(['3h 15m free', '2h planned']);
+  it('states what is on the calendar', () => {
+    expect(capacityParts(day({ plannedMin: 120, backlogMin: 0 })))
+      .toEqual(['2h planned']);
   });
 
   it('appends an unestimated count, pluralised', () => {
@@ -36,16 +43,13 @@ describe('capacityParts', () => {
     expect(capacityParts(day({ unestimated: 2 }))).toContain('2 unestimated');
   });
 
-  it('omits planned when nothing is committed', () => {
-    expect(capacityParts(day({ plannedMin: 0, unestimated: 0 })))
-      .toEqual(['3h 15m free']);
+  it('says nothing at all about a day with nothing on it', () => {
+    expect(capacityParts(day({ plannedMin: 0, unestimated: 0 }))).toEqual([]);
   });
 
-  it('renders the free figure regardless of hasData', () => {
-    expect(capacityParts(day({ hasData: true, freeMin: 195, plannedMin: 120 })))
-      .toEqual(['3h 15m free', '2h planned']);
-    expect(capacityParts(day({ hasData: false, freeMin: 195, plannedMin: 120 })))
-      .toEqual(['3h 15m free', '2h planned']);
+  it('is unaffected by hasData, which is about the calendar cache', () => {
+    expect(capacityParts(day({ hasData: true, plannedMin: 120 }))).toEqual(['2h planned']);
+    expect(capacityParts(day({ hasData: false, plannedMin: 120 }))).toEqual(['2h planned']);
   });
 });
 
@@ -57,13 +61,12 @@ describe('capacityParts', () => {
  */
 describe('loadParts / unestimatedLabel', () => {
   it('leaves the unestimated count out of the priced parts', () => {
-    expect(loadParts(day({ freeMin: 195, plannedMin: 120, unestimated: 4 })))
-      .toEqual(['3h 15m free', '2h planned']);
+    expect(loadParts(day({ plannedMin: 120, unestimated: 4 }))).toEqual(['2h planned']);
   });
 
   it('includes work committed but not placed', () => {
-    expect(loadParts(day({ freeMin: 195, plannedMin: 120, backlogMin: 30 })))
-      .toEqual(['3h 15m free', '2h planned', '30m to place']);
+    expect(loadParts(day({ plannedMin: 120, backlogMin: 30 })))
+      .toEqual(['2h planned', '30m to place']);
   });
 
   it('is null when everything is priced', () => {
@@ -76,7 +79,7 @@ describe('loadParts / unestimatedLabel', () => {
   });
 
   it('still composes into capacityParts unchanged', () => {
-    const c = day({ freeMin: 195, plannedMin: 120, backlogMin: 30, unestimated: 2 });
+    const c = day({ plannedMin: 120, backlogMin: 30, unestimated: 2 });
     expect(capacityParts(c)).toEqual([...loadParts(c), unestimatedLabel(c)]);
   });
 
@@ -96,186 +99,83 @@ describe('capacityNote', () => {
   });
 });
 
-describe('isOverCommitted', () => {
-  it('is true when planned exceeds free', () => {
-    expect(isOverCommitted({ freeMin: 60, plannedMin: 120, backlogMin: 0 })).toBe(true);
-  });
-
-  it('is false when planned fits', () => {
-    expect(isOverCommitted({ freeMin: 120, plannedMin: 60, backlogMin: 0 })).toBe(false);
-  });
-
-  it('is false when planned exactly fills the day', () => {
-    expect(isOverCommitted({ freeMin: 120, plannedMin: 120, backlogMin: 0 })).toBe(false);
-  });
-
-  it('is true when planned exceeds free even without calendar data', () => {
-    expect(isOverCommitted({ freeMin: 0, plannedMin: 999, backlogMin: 0 })).toBe(true);
-  });
-});
-
 describe('capacityParts over a WeekCapacity', () => {
   // The same formatter serves the week — WeekCapacity structurally satisfies
   // CapacityFigures, so no second function is needed.
   const week: WeekCapacity = {
-    days: [], freeMin: 2700, plannedMin: 300, backlogMin: 0, unestimated: 3, hasData: true,
+    days: [], freeMin: 0, plannedMin: 300, backlogMin: 0, unestimated: 3, hasData: true,
   };
 
   it('summarises the week', () => {
-    expect(capacityParts(week)).toEqual(['45h free', '5h planned', '3 unestimated']);
+    expect(capacityParts(week)).toEqual(['5h planned', '3 unestimated']);
   });
 });
 
 /*
- * The week header's free figure is split by tense. `weekCapacity` sums a PAST
- * day's whole window into `freeMin` (NO_PAST_LIMIT, so retrospectives read
- * true), so on any day but Monday the week's `freeMin` is mostly ELAPSED. The
- * header must not spend the word "free" on hours that have already gone.
+ * `head` is spent exactly once per readout, and it is `Planned`. Two headlines
+ * is no headline, and the week is planned against what is on it now that
+ * nothing measures what would fit.
  */
-describe('weekFreeSplit / weekLoadParts', () => {
-  // A whole 9h working day, past days holding their full window; Sat/Sun off.
-  // Mirrors what weekCapacity produces: Mon–Fri hold 9h, the weekend is off.
-  const days = (): DayCapacity[] =>
-    ['2026-08-10', '2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14', '2026-08-15', '2026-08-16']
-      .map((date) => {
-        const off = ['2026-08-15', '2026-08-16'].includes(date);
-        const freeMin = off ? 0 : 540;
-        return { date, freeMin, plannedMin: 0, backlogMin: 0, unestimated: 0, blockedBy: [], hasData: true };
-      });
-
-  const week = (_today: string, over: Partial<WeekCapacity> = {}): WeekCapacity => {
-    const d = over.days ?? days();
-    return {
-      days: d,
-      freeMin: d.reduce((s, x) => s + x.freeMin, 0),
-      plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: true, ...over,
-    };
-  };
-
-  it('splits the free figure into what is left and what is spent', () => {
-    // Saturday 15 Aug: Mon–Fri (45h) all elapsed, today and Sunday are off.
-    expect(weekFreeSplit(week('2026-08-15'), '2026-08-15')).toEqual({ leftMin: 0, spentMin: 2700 });
+describe('weekLoadCells / weekLoadParts', () => {
+  it('says nothing about an untouched week', () => {
+    expect(weekLoadCells({ plannedMin: 0, backlogMin: 0 })).toEqual([]);
+    expect(weekLoadParts({ plannedMin: 0, backlogMin: 0 })).toEqual([]);
   });
 
-  it('reads "0m left · 45h spent" on that Saturday — never "45h free"', () => {
-    expect(weekLoadParts(week('2026-08-15'), '2026-08-15')).toEqual(['0m left', '45h spent']);
+  it('makes Planned the one head cell', () => {
+    const cells = weekLoadCells({ plannedMin: 720, backlogMin: 180 });
+    expect(cells).toEqual([
+      { key: 'Planned', value: '12h', tone: 'head' },
+      { key: 'To place', value: '3h', tone: 'quiet' },
+    ]);
+    expect(cells.filter((c) => c.tone === 'head')).toHaveLength(1);
   });
 
-  it('counts today\'s own remaining window as left, not spent', () => {
-    // Wednesday: Mon+Tue spent (18h), Wed–Fri still ahead (27h), weekend off.
-    expect(weekFreeSplit(week('2026-08-12'), '2026-08-12')).toEqual({ leftMin: 2700 - 1080, spentMin: 1080 });
-    expect(weekLoadParts(week('2026-08-12'), '2026-08-12')).toEqual(['27h left', '18h spent']);
+  it('heads the readout when nothing is committed either way', () => {
+    expect(weekLoadCells({ plannedMin: 720, backlogMin: 0 }))
+      .toEqual([{ key: 'Planned', value: '12h', tone: 'head' }]);
   });
 
-  it('reads a fully-future week exactly as it does today — a bare "free"', () => {
-    // Nothing before Monday, so nothing is spent and the split collapses.
-    expect(weekFreeSplit(week('2026-08-03'), '2026-08-03')).toEqual({ leftMin: 2700, spentMin: 0 });
-    expect(weekLoadParts(week('2026-08-03'), '2026-08-03')).toEqual(['45h free']);
+  /*
+   * A week whose whole commitment is unplaced still has one figure to lead
+   * with — the alternative is a readout with no head at all, which is the
+   * hierarchy this cell shape exists to establish, undone.
+   */
+  it('promotes To place when there is nothing planned above it', () => {
+    expect(weekLoadCells({ plannedMin: 0, backlogMin: 180 }))
+      .toEqual([{ key: 'To place', value: '3h', tone: 'head' }]);
   });
 
-  it('left + spent is exactly freeMin even when days is somehow empty', () => {
-    const w = week('2026-08-15', { days: [], freeMin: 2700 });
-    const { leftMin, spentMin } = weekFreeSplit(w, '2026-08-15');
-    expect(leftMin + spentMin).toBe(2700);
-    expect(weekLoadParts(w, '2026-08-15')).toEqual(['45h free']);
-  });
-
-  it('appends planned and to-place after the split, unchanged', () => {
-    expect(weekLoadParts(week('2026-08-15', { plannedMin: 300, backlogMin: 30 }), '2026-08-15'))
-      .toEqual(['0m left', '45h spent', '5h planned', '30m to place']);
-    expect(weekLoadParts(week('2026-08-03', { plannedMin: 300 }), '2026-08-03'))
-      .toEqual(['45h free', '5h planned']);
+  it('reads the cells back as sentences without a second table of words', () => {
+    expect(weekLoadParts({ plannedMin: 300, backlogMin: 30 }))
+      .toEqual(['5h planned', '30m to place']);
   });
 });
 
 describe('dayLoadLabel', () => {
-  it('reads planned over free', () => {
-    expect(dayLoadLabel({ freeMin: 360, plannedMin: 90, backlogMin: 0 })).toBe('1h 30m / 6h');
+  it('states the minutes ON the day', () => {
+    // It read `1h 30m / 6h` while free time existed. The denominator is gone.
+    expect(dayLoadLabel({ plannedMin: 90, backlogMin: 0 })).toBe('1h 30m');
   });
 
-  it('says nothing about an empty day — seven columns of "0m / 6h" is noise', () => {
-    expect(dayLoadLabel({ freeMin: 360, plannedMin: 0, backlogMin: 0 })).toBeNull();
+  it('says nothing about an empty day — seven columns of "0m" is noise', () => {
+    expect(dayLoadLabel({ plannedMin: 0, backlogMin: 0 })).toBeNull();
   });
 
-  it('speaks up for an off day that somehow has work on it', () => {
-    // plannedMin 0 but no capacity at all is not over-committed, so it stays
-    // quiet; the moment anything is planned onto it, 0m free is the whole point.
-    expect(dayLoadLabel({ freeMin: 0, plannedMin: 0, backlogMin: 0 })).toBeNull();
-    expect(dayLoadLabel({ freeMin: 0, plannedMin: 60, backlogMin: 0 })).toBe('1h / 0m');
-  });
-
-  it('still reports a day that is exactly full', () => {
-    expect(dayLoadLabel({ freeMin: 120, plannedMin: 120, backlogMin: 0 })).toBe('2h / 2h');
+  it('speaks up for a day that is committed but unplaced', () => {
+    // `0m` is the whole point here: the rail beside this is listing the work,
+    // and the column is visibly empty.
+    expect(dayLoadLabel({ plannedMin: 0, backlogMin: 60 })).toBe('0m');
   });
 });
 
 describe('dayLoadHint', () => {
-  it('spells the figures out and names over-commitment', () => {
-    expect(dayLoadHint({ freeMin: 120, plannedMin: 300, backlogMin: 0, unestimated: 2, hasData: true }))
-      .toBe('2h free · 5h planned · 2 unestimated — over-committed');
+  it('spells the figures out', () => {
+    expect(dayLoadHint({ plannedMin: 300, backlogMin: 0, unestimated: 2, hasData: true }))
+      .toBe('5h planned · 2 unestimated');
   });
 
-  it('omits the verdict when the day fits', () => {
-    expect(dayLoadHint({ freeMin: 360, plannedMin: 60, backlogMin: 0, unestimated: 0, hasData: true }))
-      .toBe('6h free · 1h planned');
-  });
-});
-
-describe('capacityMeter', () => {
-  const base = { freeMin: 600, plannedMin: 0, backlogMin: 0 };
-
-  it('spans freeMin when the week fits', () => {
-    const m = capacityMeter({ ...base, plannedMin: 300, backlogMin: 150 });
-    expect(m.over).toBe(false);
-    expect(m.plannedFrac).toBeCloseTo(0.5);
-    expect(m.backlogFrac).toBeCloseTo(0.25);
-    // 1.0 means "the mark is the bar's own right edge" — not drawn.
-    expect(m.capacityMarkFrac).toBeCloseTo(1);
-  });
-
-  it('spans the committed total when over, and marks where free ran out', () => {
-    const m = capacityMeter({ freeMin: 600, plannedMin: 700, backlogMin: 100 });
-    expect(m.over).toBe(true);
-    // D = 800. Segments fill the whole bar.
-    expect(m.plannedFrac).toBeCloseTo(0.875);
-    expect(m.backlogFrac).toBeCloseTo(0.125);
-    expect(m.plannedFrac + m.backlogFrac).toBeCloseTo(1);
-    expect(m.capacityMarkFrac).toBeCloseTo(0.75);
-  });
-
-  it('never lets the segments exceed the bar', () => {
-    for (const c of [
-      { freeMin: 0, plannedMin: 300, backlogMin: 0 },
-      { freeMin: 60, plannedMin: 0, backlogMin: 999 },
-      { freeMin: 1000, plannedMin: 1, backlogMin: 1 },
-    ]) {
-      const m = capacityMeter(c);
-      expect(m.plannedFrac + m.backlogFrac).toBeLessThanOrEqual(1.0000001);
-      expect(m.plannedFrac).toBeGreaterThanOrEqual(0);
-      expect(m.backlogFrac).toBeGreaterThanOrEqual(0);
-    }
-  });
-
-  it('returns zeros rather than NaN when there is nothing at all', () => {
-    const m = capacityMeter({ freeMin: 0, plannedMin: 0, backlogMin: 0 });
-    expect(m.plannedFrac).toBe(0);
-    expect(m.backlogFrac).toBe(0);
-    expect(m.capacityMarkFrac).toBe(1);
-    expect(m.over).toBe(false);
-  });
-
-  // The whole reason this function exists: the bar cannot contradict the text.
-  it('agrees with isOverCommitted on every input', () => {
-    const table = [
-      { freeMin: 600, plannedMin: 0, backlogMin: 0 },
-      { freeMin: 600, plannedMin: 600, backlogMin: 0 },
-      { freeMin: 600, plannedMin: 599, backlogMin: 2 },
-      { freeMin: 600, plannedMin: 0, backlogMin: 601 },
-      { freeMin: 0, plannedMin: 0, backlogMin: 0 },
-      { freeMin: 0, plannedMin: 1, backlogMin: 0 },
-    ];
-    for (const c of table) {
-      expect(capacityMeter(c).over).toBe(isOverCommitted(c));
-    }
+  it('is empty on a day with nothing on it, so the caller can withhold the tooltip', () => {
+    expect(dayLoadHint({ plannedMin: 0, backlogMin: 0, unestimated: 0, hasData: true })).toBe('');
   });
 });

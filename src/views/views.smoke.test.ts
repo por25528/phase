@@ -190,7 +190,7 @@ describe('the three views render against a populated store', () => {
     expect(html).not.toContain('Loading your plan'); // the hydration skeleton
     expect(html).toContain('To plan');          // the backlog rail
     expect(html).toContain('Investor deck');    // an unplanned step, in the rail
-    expect(html).toContain('free');             // the capacity readout
+    expect(html).toContain('planned');          // the capacity readout
     expect(html).toContain('Read a paper');     // the habits panel
   });
 
@@ -208,13 +208,13 @@ describe('the three views render against a populated store', () => {
     // The month's weekday strip, and none of the week grid's hour axis.
     expect(html).toContain('Sun');
     expect(html).not.toContain('8am');
-    // Month mode now reports a MONTH's load — but the intent of the original
+    // Month mode reports a MONTH's load, and the intent of the original
     // assertion stands: what must never appear is a WEEK's figures under a
     // month heading. The gutter is the proof of provenance. It renders one row
     // per week the grid draws, from the same `monthCapacity` the header's
     // figures come from, so its presence means the month path ran rather than
     // the week's numbers leaking through.
-    expect(html).toContain('free');
+    expect(html).toContain('planned');
     expect(html).toContain('month-gutter-row');
   });
 

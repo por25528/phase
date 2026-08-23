@@ -17,11 +17,12 @@ import { DayBlocks } from '../plan/DayBlocks';
 import { WeekHeader } from '../plan/WeekHeader';
 import { aimMinuteFor, type PlanDragData } from '../plan/dropTarget';
 import { boardCollision } from '../../lib/boardCollision';
-import { scheduledByDate, type ScheduledItem } from '../../lib/scheduled';
+import { scheduledByDate, spansOn, type ScheduledItem } from '../../lib/scheduled';
 import { weekCapacity } from '../../lib/capacity';
 import { plannedLeaves, walkLeaves, weekOf } from '../../lib/plan';
 import { tasksForWeek } from '../../lib/dailyWork';
 import { isPlaced } from '../../lib/blocks';
+import { longestFreeGap, WHOLE_DAY, NO_PAST_LIMIT } from '../../lib/slot';
 import { initialScrollWindow } from '../../lib/grid';
 import { addDays, todayStr, weekDates } from '../../lib/dates';
 import { isDone } from '../../lib/status';
@@ -55,6 +56,22 @@ export function CalendarTab({ goal }: { goal: Goal }) {
   const gridRef = useRef<HTMLDivElement>(null);
 
   const days = useMemo(() => weekDates(weekStart), [weekStart]);
+
+  /*
+   * The longest unbooked run on each day, behind the heading's `fits` / `full`
+   * chip. Same derivation as Plan's, and deliberately over the WHOLE dataset
+   * rather than this goal's own sittings: a goal-scoped notion of room would
+   * be a lie the size of everything else you committed to, which is the same
+   * argument `capacity` above it is computed under.
+   */
+  const dayGapMin = useMemo(
+    () => (dragDuration === null
+      ? undefined
+      : days.map((date) => longestFreeGap(
+        date, WHOLE_DAY, [], spansOn(goals, tasks, date), NO_PAST_LIMIT, allDayBlocks,
+      ))),
+    [dragDuration, days, goals, tasks, allDayBlocks],
+  );
   const scheduled = useMemo(() => scheduledByDate(goals, tasks, days), [goals, tasks, days]);
 
   // The whole dataset, not this goal's slice: free time is free time.
@@ -175,7 +192,6 @@ export function CalendarTab({ goal }: { goal: Goal }) {
           <div className="min-w-0">
             <WeekHeader
               weekStart={weekStart}
-              today={today}
               isPast={false}
               capacity={capacity}
               onPrev={() => setWeekStart(addDays(weekStart, -7))}
@@ -186,10 +202,10 @@ export function CalendarTab({ goal }: { goal: Goal }) {
               days={days}
               today={today}
               nowMinute={null}
-              windows={availability}
               scrollWindow={initialScrollWindow(days, availability)}
               dayCapacity={capacity.days}
               dragDurationMin={dragDuration}
+              dayGapMin={dayGapMin}
               scrollerRef={scrollerRef}
               gridRef={gridRef}
             >

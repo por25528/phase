@@ -1,8 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
-import type { AvailabilityWindow } from '../../db/types';
 import type { DayCapacity, Interval } from '../../lib/capacity';
-import { dayLoadLabel, dayLoadHint, isOverCommitted } from './capacityLabel';
-import { windowForDate } from '../../lib/availability';
+import { dayLoadLabel, dayLoadHint } from './capacityLabel';
 import { minuteToPx, hourMarks, halfHourMarks, DAY_HEIGHT_PX, GRID_VIEWPORT_PX, Z_RULES, Z_AXIS, Z_HEADINGS, Z_CORNER, Z_NOW_LINE } from '../../lib/grid';
 import { parseD } from '../../lib/dates';
 import type { CanvasSpan } from '../../lib/canvasCreate';
@@ -15,33 +13,47 @@ import { clockLabel } from '../../lib/clock';
 const AXIS_WIDTH_PX = 46;
 
 /**
- * `WeekGrid` draws the chrome of the week calendar — hour axis, day columns,
- * availability shading, off-day hatching, now-line. It renders no content
- * blocks itself; `children` is handed the date for each column so the caller
- * can render whatever belongs there.
+ * `WeekGrid` draws the chrome of the week calendar — hour axis, day headings,
+ * day columns, now-line. It renders no content blocks itself; `children` is
+ * handed the date for each column so the caller can render whatever belongs
+ * there.
+ *
+ * It used to shade the availability window and hatch a day that was off. There
+ * is no window and there are no days off: every hour of every column is the
+ * same ground.
  *
  * The grid is a full day tall (`DAY_HEIGHT_PX`) inside a `GRID_VIEWPORT_PX`
- * scroller — every minute is reachable by scrolling, not just the window
+ * scroller — every minute is reachable by scrolling, not just the span
  * `scrollWindow` opens on.
  */
 export function WeekGrid({
-  days, today, nowMinute, windows, scrollWindow, readOnly, dayCapacity, dragDurationMin,
+  days, today, nowMinute, scrollWindow, readOnly, dayCapacity, dragDurationMin, dayGapMin,
   onCreate, scrollerRef, gridRef, children,
 }: {
   days: string[];
   today: string;
   nowMinute: number | null;
-  windows: AvailabilityWindow[];
   /** Where to scroll on mount. Nothing positions against it — see initialScrollWindow. */
   scrollWindow: Interval;
   /** True when the whole week is past — forwarded to every DayColumn. */
   readOnly?: boolean;
   /**
-   * Per-day free/planned, in `days` order. `weekCapacity` has always produced
-   * this and nothing consumed it, so the only load figure on screen was the
-   * week total — which cannot tell you that Tuesday is full.
+   * Per-day planned/to-place, in `days` order. `weekCapacity` has always
+   * produced this and nothing consumed it, so the only load figure on screen
+   * was the week total — which cannot tell you that Tuesday is busy.
    */
   dayCapacity?: DayCapacity[];
+  /**
+   * The longest unbooked RUN on each day, in `days` order. Present only while
+   * something is being dragged, and only on a surface that can compute it.
+   *
+   * It replaces `freeMin` behind the `fits` / `full` chip. A SUM would have
+   * been the easy substitution and the wrong one — three separate half-hours
+   * are not an hour of room, and the chip would then promise a drop the grid
+   * goes on to refuse. `longestFreeGap` is the same measure Today's offer
+   * spends, so the two surfaces cannot disagree about whether a day has room.
+   */
+  dayGapMin?: number[];
   /**
    * How long the block currently being dragged is, or null when nothing is.
    *
@@ -232,7 +244,8 @@ export function WeekGrid({
           {days.map((iso, i) => {
             const cap = dayCapacity?.[i];
             const load = cap ? dayLoadLabel(cap) : null;
-            const over = cap ? isOverCommitted(cap) : false;
+            const hint = cap ? dayLoadHint(cap) : '';
+            const gap = dayGapMin?.[i];
             return (
               <div key={iso} className="text-center">
                 <div className={`font-mono text-tiny tracking-[.12em] uppercase ${iso === today ? 'text-accent' : 'text-muted'}`}>
@@ -245,20 +258,18 @@ export function WeekGrid({
                     busy day cannot shove the header row down relative to its
                     neighbours. */}
                 <div className="h-[12px] leading-[12px]">
-                  {dragDurationMin != null && cap ? (
+                  {dragDurationMin != null && gap != null ? (
                     (() => {
-                      // Free time LESS what is already committed to the day.
-                      // `freeMin` only nets off meetings, so comparing the raw
-                      // figure would promise room that this week's own work has
-                      // already taken.
-                      const left = cap.freeMin - cap.plannedMin - cap.backlogMin;
-                      const fits = left >= dragDurationMin;
+                      // The widest unbooked RUN on the day, which is the only
+                      // figure a bar of this length can actually be checked
+                      // against — see `dayGapMin` above.
+                      const fits = gap >= dragDurationMin;
                       return (
                         <span
                           role="status"
                           title={fits
-                            ? `${left}m free after what is already planned`
-                            : `Only ${Math.max(0, left)}m free — this needs ${dragDurationMin}m`}
+                            ? `${gap}m clear in the longest gap`
+                            : `Longest gap is ${gap}m — this needs ${dragDurationMin}m`}
                           className={`font-mono text-eyebrow tabular-nums font-semibold ${fits ? 'text-accent' : 'text-warn'}`}
                         >
                           {fits ? 'fits' : 'full'}
@@ -267,8 +278,8 @@ export function WeekGrid({
                     })()
                   ) : load ? (
                     <span
-                      title={cap ? dayLoadHint(cap) : undefined}
-                      className={`font-mono text-eyebrow tabular-nums ${over ? 'text-warn font-semibold' : 'text-muted'}`}
+                      title={hint || undefined}
+                      className="font-mono text-eyebrow tabular-nums text-muted"
                     >
                       {load}
                     </span>
@@ -354,7 +365,6 @@ export function WeekGrid({
               // current week, or every day of a past week. Dimmed so it cannot
               // be mistaken for available; still droppable unless `readOnly`.
               isPast={iso < today}
-              availabilityWindow={windowForDate(iso, windows)}
               nowMinute={iso === today ? nowMinute : null}
               readOnly={readOnly}
               onCreate={onCreate ? (span) => onCreate(iso, span) : undefined}
