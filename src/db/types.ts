@@ -1,6 +1,6 @@
 import type { Demand } from '../lib/demand';
 
-export type StepStatus = 'todo' | 'doing' | 'blocked' | 'done';
+export type StepStatus = 'todo' | 'doing' | 'blocked' | 'parked' | 'done';
 
 /**
  * One sitting: a span of calendar time allocated to a task.

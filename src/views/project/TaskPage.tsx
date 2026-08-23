@@ -44,7 +44,7 @@ import { findNode, findNodePath, findParentList } from '../../lib/tree';
 import { nextFreeDay } from '../../lib/todayPlan';
 import { spansOn } from '../../lib/scheduled';
 
-const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'done'];
+const STATUS_ORDER: readonly StepStatus[] = ['todo', 'doing', 'blocked', 'parked', 'done'];
 
 /**
  * One task, as its own page.

@@ -60,6 +60,7 @@ const STATUS_BOX: Record<StepStatus, string> = {
   todo: 'border-check group-hover/cb:border-muted',
   doing: 'border-accent',
   blocked: 'border-warn bg-warn-tint',
+  parked: 'border-faint',
   done: 'bg-accent border-accent',
 };
 

@@ -723,6 +723,7 @@ const STATUS_LABEL: Record<StepStatus, (n: number) => string> = {
   todo: (n) => `Reset ${n} task${n === 1 ? '' : 's'}`,
   doing: (n) => `Marked ${n} task${n === 1 ? '' : 's'} in progress`,
   blocked: (n) => `Blocked ${n} task${n === 1 ? '' : 's'}`,
+  parked: (n) => `Parked ${n} task${n === 1 ? '' : 's'}`,
   done: (n) => `Completed ${n} task${n === 1 ? '' : 's'}`,
 };
 
