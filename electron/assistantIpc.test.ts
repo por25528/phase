@@ -474,3 +474,65 @@ describe('main composition', () => {
     expect(main).toContain('shellIpc.dispose(ipcMain)');
   });
 });
+
+/**
+ * The seam's standing hazard: `AssistantAction` is declared in TypeScript and
+ * `validAction` is hand-written CommonJS that imports nothing from `src/` by
+ * design. They are two lists that must agree, and a verb present in one and
+ * missing from the other does not fail to compile, does not throw and does not
+ * log — the relay drops it at `default` and the control in the OVERLAY silently
+ * does nothing while the identical control in the embedded panel, which never
+ * crosses this seam, works perfectly.
+ *
+ * That is exactly how `complete-work` shipped: the checkbox on the shelf card
+ * looked live, did nothing under ⌘Space, and worked in the app window.
+ */
+describe('the relay accepts every verb the protocol declares', () => {
+  const protocol = readFileSync(
+    new URL('../src/lib/assistantProtocol.ts', import.meta.url), 'utf8',
+  );
+
+  /** The `AssistantAction` union's `type` literals, read from the source. */
+  function declaredVerbs(): string[] {
+    const start = protocol.indexOf('export type AssistantAction');
+    expect(start).toBeGreaterThan(-1);
+    // `};` and not `;`: each member ends `{ type: 'x'; ref: WorkRef }`, so the
+    // first bare semicolon is a MEMBER separator and slicing there finds one
+    // verb. Only the union's last member is followed by `};`.
+    const body = protocol.slice(start, protocol.indexOf('};', start));
+    return [...body.matchAll(/type:\s*'([a-z-]+)'/g)].map((m) => m[1]);
+  }
+
+  /** One well-formed example per verb. Adding a verb means adding a row. */
+  const SAMPLES: Record<string, unknown> = {
+    'start-focus': { type: 'start-focus', ref: { kind: 'task', id: 't1', goalId: null } },
+    'switch-focus': { type: 'switch-focus', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
+    'complete-work': { type: 'complete-work', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
+    'set-time-level': { type: 'set-time-level', level: 'low' },
+    'set-focus-level': { type: 'set-focus-level', level: 'high' },
+    'pause-focus': { type: 'pause-focus' },
+    'resume-focus': { type: 'resume-focus' },
+    'complete-focus': { type: 'complete-focus' },
+    'confirm-focus': { type: 'confirm-focus', minutes: null },
+    close: { type: 'close' },
+  };
+
+  it('has a sample for every declared verb, and no stale ones', () => {
+    // This half is what makes the next verb impossible to forget: add one to
+    // the union and this fails until you write its sample below, at which
+    // point the forwarding test fails until you add it to `validAction`.
+    expect([...declaredVerbs()].sort()).toEqual(Object.keys(SAMPLES).sort());
+  });
+
+  it('forwards each one to the main window', () => {
+    for (const verb of declaredVerbs()) {
+      const { ipcMain, main } = relay();
+      ipcMain.emit('phase-assistant:act', OVERLAY_ID, SAMPLES[verb]);
+      // `close` is handled by the relay itself and is deliberately not
+      // forwarded — every other verb is the main renderer's to run.
+      if (verb === 'close') continue;
+      expect(main.webContents.send, `"${verb}" was dropped by validAction`)
+        .toHaveBeenCalledWith('phase-assistant:action', SAMPLES[verb]);
+    }
+  });
+});
