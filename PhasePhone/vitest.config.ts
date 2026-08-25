@@ -17,6 +17,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // See the file: Node's own `localStorage` global shadows jsdom's, so the
+    // runner needs the polyfill the browser does not.
+    setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 });
