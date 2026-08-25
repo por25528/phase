@@ -25,7 +25,7 @@ import { EstimateControl } from './EstimateControl';
 import { Popover } from './Popover';
 import { RowActions } from './RowActions';
 import { ScheduleMenu } from './SchedulePopover';
-import { pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
+import { allParked, pruneSelection, rangeBetween, visibleRowIds } from '../lib/selection';
 import { foldDone, foldSummary, type DoneRun } from '../lib/doneFold';
 import { RuleHeader } from './RuleHeader';
 import { isDone, stepStatus, containerStatus, cycleStatus, STATUS_WORD, type StepStatus } from '../lib/status';
@@ -165,8 +165,15 @@ interface SharedProps {
   selected: Set<string>;
   /** How a row reports a click or a shift-arrow to the tree that owns the set. */
   onSelect: (id: string, mode: SelectMode) => void;
-  /** Runs the selection's bulk action from a row's keyboard handler. */
-  onBulk: (action: 'complete' | 'delete') => void;
+  /**
+   * Runs the selection's bulk action from a row's keyboard handler.
+   *
+   * `park` joins `complete` and `delete` because `P` joined `X` and `⌫`: all
+   * three are row keys that mean "the selection if there is one, otherwise
+   * this row", and a key that stayed single-row while its neighbours went
+   * plural was the one inconsistency in this grammar.
+   */
+  onBulk: (action: 'complete' | 'delete' | 'park') => void;
   /**
    * The goal every row in this tree belongs to.
    *
@@ -214,6 +221,8 @@ export type SelectMode = 'toggle' | 'range' | 'clear';
 function SelectionBar({
   count,
   onComplete,
+  parked,
+  onPark,
   onSetStatus,
   onSetDemand,
   onDelete,
@@ -221,6 +230,9 @@ function SelectionBar({
 }: {
   count: number;
   onComplete: () => void;
+  /** Every open leaf under the selection is already parked — see `allParked`. */
+  parked: boolean;
+  onPark: () => void;
   onSetStatus: (next: StepStatus) => void;
   onSetDemand: (next: Demand) => void;
   onDelete: () => void;
@@ -258,6 +270,23 @@ function SelectionBar({
               className="text-compact font-semibold text-accent-deep px-[8px] py-[4px] min-h-[24px] inline-flex items-center rounded-field hover:bg-accent-tint"
             >
               Complete
+            </button>
+            {/* Park is one of the five statuses the select below already
+                offers, and it is here as a BUTTON as well because it is the
+                verb this bar is reached for. It stays in the select too: that
+                control holds the whole vocabulary, and pulling one member out
+                of it would leave a list that no longer means "the statuses".
+
+                It toggles, wording itself off `parked` — the same call the
+                write reads, so the label cannot promise the opposite of what
+                the click does. `text-ink-soft` rather than Complete's
+                `text-accent-deep`: this bar gets exactly one headline verb. */}
+            <button
+              type="button"
+              onClick={onPark}
+              className="text-compact font-semibold text-ink-soft px-[8px] py-[4px] min-h-[24px] inline-flex items-center rounded-field hover:bg-hover hover:text-ink"
+            >
+              {parked ? 'Unpark' : 'Park'}
             </button>
             {/* Native <select> — no outside-click/Escape wiring to duplicate,
                 and it applies the moment a status is picked. Resets to the
@@ -385,9 +414,29 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
     setSelected(new Set(run.length > 0 ? run : [id]));
   }
 
-  function onBulk(action: 'complete' | 'delete'): void {
+  /**
+   * What the selection is currently pointed at, for the Park verb's DIRECTION.
+   *
+   * Computed here rather than in the bar so the button's LABEL and the write
+   * `onBulk('park')` performs come off ONE call over ONE population — the
+   * rule this codebase states as "two numbers that get compared have to be one
+   * derivation". A bar that decided its own wording from a second traversal
+   * could say Unpark and then park.
+   */
+  const selectionParked = allParked(nodes, selected);
+
+  function onBulk(action: 'complete' | 'delete' | 'park'): void {
     const ids = [...selected];
     if (ids.length === 0) return;
+    if (action === 'park') {
+      // ONE write, ONE undo entry — never a loop over `toggleParked`, which
+      // would arm N undos and let each write's sweep discard the one before.
+      // Unparking lands on `'todo'`, matching `toggleParked`'s own transition;
+      // the toast therefore reads `Reset N tasks`, which is accurate and flat
+      // and deliberately not fixed by branching `STATUS_LABEL` on its caller.
+      if (actions.setNodesStatus(ids, selectionParked ? 'todo' : 'parked')) clearSelection();
+      return;
+    }
     const wrote = action === 'complete' ? actions.completeNodes(ids) : actions.removeNodes(ids);
     // Only clear if something actually happened. Both actions refuse silently —
     // a frozen (completed) project, or a selection whose leaves are all done
@@ -437,6 +486,8 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
       <SelectionBar
         count={selected.size}
         onComplete={() => onBulk('complete')}
+        parked={selectionParked}
+        onPark={() => onBulk('park')}
         onSetStatus={onSetStatus}
         onSetDemand={onSetDemand}
         onDelete={() => onBulk('delete')}
@@ -837,12 +888,20 @@ function GoalTreeNode({
       actions.setNodeStatus(n.id, cycleStatus(stepStatus(n)));
       return;
     }
-    // P parks a leaf, or unparks one. Its own key rather than a stop on S's
-    // cycle, for the reason rowActions.ts gives.
+    // P parks — the selection if there is one, otherwise this leaf. Its own key
+    // rather than a stop on S's cycle, for the reason rowActions.ts gives.
+    //
+    // The `hasKids` guard moved INSIDE the else. `toggleParked` refuses a
+    // container because a container carries no stored status; the bulk path
+    // has no such problem — `setNodesStatus` expands a selected container
+    // through `allLeavesUnder`, exactly as this bar's own status select
+    // already did. Keeping the guard outside would have made P the one bulk
+    // key that silently did nothing when the focused row happened to be a
+    // group.
     if (plain && (e.key === 'p' || e.key === 'P') && !editing) {
       e.preventDefault();
-      if (hasKids) return;
-      actions.toggleParked(n.id);
+      if (selected.size > 0) onBulk('park');
+      else if (!hasKids) actions.toggleParked(n.id);
       return;
     }
     // E opens the estimate editor — the row's own control, not a second one.

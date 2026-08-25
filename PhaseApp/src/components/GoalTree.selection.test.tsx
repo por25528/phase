@@ -492,9 +492,126 @@ describe('the selection bar itself', () => {
 
     const bar = () => screen.getByRole('status', { name: 'Selection' }).parentElement as HTMLElement;
     expect(within(bar()).getAllByRole('button').map((b) => b.textContent))
-      .toEqual(['Complete', 'Delete', 'Clear']);
+      .toEqual(['Complete', 'Park', 'Delete', 'Clear']);
 
     await user.click(within(bar()).getByRole('button', { name: 'Clear' }));
     expect(within(bar()).queryAllByRole('button')).toEqual([]);
+  });
+});
+
+describe('parking a selection', () => {
+  /**
+   * `P` was the only row key that ignored a selection: `X` completes it and
+   * `⌫` deletes it, and `P` parked the focused row alone. A key that means
+   * "this one" while its two neighbours mean "all of these" is the kind of
+   * inconsistency that gets found by parking twelve rows one at a time.
+   */
+  it('parks the whole selection from P, not just the focused row', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 6'));
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+    expect(selectedIds()).toEqual(['a', 'b']);
+
+    row('Pset 6').focus();
+    await user.keyboard('p');
+
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('parked');
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('parked');
+    // A write that landed clears the bar, exactly as complete and delete do.
+    expect(selectedIds()).toEqual([]);
+  });
+
+  it('still toggles only the focused row when nothing is selected', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    row('Pset 6').focus();
+    await user.keyboard('p');
+
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('parked');
+    expect(findInAll(store.getState().goals, 'b')?.status).toBeUndefined();
+  });
+
+  it('parks a selected container through its leaves', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 8'));
+    await user.keyboard('{/Meta}');
+
+    row('Pset 8').focus();
+    await user.keyboard('p');
+
+    expect(findInAll(store.getState().goals, 'c1')?.status).toBe('parked');
+    expect(findInAll(store.getState().goals, 'c2')?.status).toBe('parked');
+    // A container carries no stored status of its own — `containerStatus`
+    // derives one. Writing one here would be a new fact about the model.
+    expect(findInAll(store.getState().goals, 'grp')?.status).toBeUndefined();
+  });
+
+  it('offers a Park button in the bar, beside Complete', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+
+    await user.click(screen.getByRole('button', { name: 'Park' }));
+
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('parked');
+    expect(selectedIds()).toEqual([]);
+  });
+
+  /**
+   * The button TOGGLES, matching `toggleParked`'s single-row semantics, and
+   * its label is computed from the same population the write touches — so it
+   * can never read "Unpark" and then park something.
+   */
+  it('reads Unpark and resets to todo once every selected leaf is parked', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+    await user.click(screen.getByRole('button', { name: 'Park' }));
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('parked');
+
+    // Pick it again — now the one selected leaf is parked, so the verb flips.
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+    expect(screen.queryByRole('button', { name: 'Park' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Unpark' }));
+    expect(findInAll(store.getState().goals, 'b')?.status).toBeUndefined();
+  });
+
+  it('parks a mixed selection rather than unparking it', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+    await user.click(screen.getByRole('button', { name: 'Park' }));
+
+    // One parked, one untouched — the button must read Park, and both end
+    // parked. "Park what isn't parked" is the intent behind a mixed pick.
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 6'));
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+    expect(screen.getByRole('button', { name: 'Park' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Park' }));
+    expect(findInAll(store.getState().goals, 'a')?.status).toBe('parked');
+    expect(findInAll(store.getState().goals, 'b')?.status).toBe('parked');
   });
 });
