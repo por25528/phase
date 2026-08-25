@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens copied from PhaseApp/src/index.css — `R G B` channel triples
+   consumed by tailwind.config.js as `rgb(var(--c-*) / <alpha-value>)`.
+   The site follows the visitor's system theme; dark lives under the media
+   query rather than a class because there is no in-page toggle. */
+:root {
+  --c-bg: 247 247 245;            /* #F7F7F5 */
+  --c-panel: 255 255 255;         /* #FFFFFF */
+  --c-ink: 26 26 24;              /* #1A1A18 */
+  --c-ink-soft: 70 68 62;         /* #46443E */
+  --c-muted: 110 108 102;         /* #6E6C66 */
+  --c-faint: 146 143 136;         /* #928F88 */
+  --c-line: 233 232 228;          /* #E9E8E4 */
+  --c-line-2: 216 214 208;        /* #D8D6D0 */
+  --c-hover: 242 241 238;         /* #F2F1EE */
+  --c-chip: 241 240 236;          /* #F1F0EC */
+  --c-chip-ink: 102 100 94;       /* #66645E */
+  --c-paper: 247 247 245;         /* #F7F7F5 */
+  --c-accent: 58 74 92;           /* #3A4A5C */
+  --c-accent-contrast: 255 255 255;
+  --c-warn: 161 84 31;            /* #A1541F */
+
+  --shadow-card: 0 1px 2px rgba(26, 26, 24, 0.05);
+  --shadow-shot: 0 12px 40px rgba(26, 26, 24, 0.10), 0 2px 8px rgba(26, 26, 24, 0.06);
+
+  /* The hatch that fills the margins — same discipline as the app: near the
+     floor of visibility, a surface and never a pattern. */
+  --hatch: rgba(26, 26, 24, 0.055);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-bg: 20 19 17;               /* #141311 */
+    --c-panel: 30 29 27;            /* #1E1D1B */
+    --c-ink: 235 231 222;           /* #EBE7DE */
+    --c-ink-soft: 181 176 165;      /* #B5B0A5 */
+    --c-muted: 142 137 126;         /* #8E897E */
+    --c-faint: 114 109 98;          /* #726D62 */
+    --c-line: 44 42 38;             /* #2C2A26 */
+    --c-line-2: 59 56 49;           /* #3B3831 */
+    --c-hover: 38 36 33;            /* #262421 */
+    --c-chip: 38 36 33;             /* #262421 */
+    --c-chip-ink: 154 149 138;      /* #9A958A */
+    --c-paper: 16 15 14;            /* #100F0E */
+    --c-accent: 159 178 198;        /* #9FB2C6 */
+    --c-accent-contrast: 20 24 29;  /* #14181D */
+    --c-warn: 201 136 75;           /* #C9884B */
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-shot: 0 12px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+    --hatch: rgba(235, 231, 222, 0.045);
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-bg text-ink font-ui antialiased;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    background: none;
+    color: inherit;
+  }
+}
+
+@layer components {
+  .hatch {
+    background-image: repeating-linear-gradient(
+      45deg, var(--hatch) 0 1px, transparent 1px 7px);
+  }
+
+  /* The app's section-label voice: mono, uppercase, tracked. */
+  .section-label {
+    @apply font-mono uppercase text-micro tracking-[.11em];
+  }
+
+  /* Entry reveal — transform/opacity only, gated on reduced motion. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    animation: reveal 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .reveal-2 { animation-delay: 0.1s; }
+  .reveal-3 { animation-delay: 0.2s; }
+  .reveal-4 { animation-delay: 0.3s; }
+  @keyframes reveal {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; animation: none; }
+  }
+}
