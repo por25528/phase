@@ -228,7 +228,7 @@ describe('building a selection', () => {
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
 
     const status = screen.getByRole('status', { name: 'Selection' });
-    expect(status.textContent).toBe('2 tasks selected');
+    expect(status.textContent).toContain('2 tasks selected');
   });
 });
 
@@ -287,7 +287,7 @@ describe('acting on a selection', () => {
     row('Pset 8').focus();
     await user.keyboard(' ');
 
-    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('1 task selected');
+    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toContain('1 task selected');
     expect(store.getState().expanded.has('grp')).toBe(true);
     expect(findInAll(store.getState().goals, 'grp')?.status).toBeUndefined();
   });
@@ -405,7 +405,7 @@ describe('getting out of a selection', () => {
     const { store, user } = await mountTree();
     row('Pset 6').focus();
     await user.keyboard('{Shift>}{ArrowDown}{/Shift}');
-    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toBe('2 tasks selected');
+    expect(screen.getByRole('status', { name: 'Selection' }).textContent).toContain('2 tasks selected');
 
     // Something else removes one of them out from under the selection.
     store.actions.removeNode('b');
@@ -678,5 +678,33 @@ describe('the pick circle', () => {
     await mountTree();
     const pick = within(row('Pset 7')).getByRole('checkbox', { name: 'Select "Pset 7"' });
     expect(pick.getAttribute('tabindex')).toBe('-1');
+  });
+});
+
+describe('the bar teaching its own extension', () => {
+  /**
+   * The hint sits OUTSIDE the live region's announced text. A polite region
+   * that re-reads a static instruction every time you pick a row is noise —
+   * the count is the only part that changes and the only part worth hearing.
+   */
+  it('announces the count alone, with the hint hidden from it', async () => {
+    const { user } = await mountTree();
+
+    await user.keyboard('{Meta>}');
+    await user.click(row('Pset 6'));
+    await user.click(row('Pset 7'));
+    await user.keyboard('{/Meta}');
+
+    const live = screen.getByRole('status', { name: 'Selection' });
+    expect(live.textContent).toContain('2 tasks selected');
+    const hint = live.querySelector('[aria-hidden="true"]');
+    expect(hint?.textContent).toContain('⌘-click to add');
+    expect(hint?.textContent).toContain('⇧-click for a range');
+  });
+
+  it('says nothing at all before a row is picked', async () => {
+    await mountTree();
+    const live = screen.getByRole('status', { name: 'Selection' });
+    expect(live.textContent).toBe('');
   });
 });

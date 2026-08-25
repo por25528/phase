@@ -255,6 +255,16 @@ function SelectionBar({
           className="text-ui text-ink-soft flex-1 min-w-0"
         >
           {count > 0 && `${count} task${count === 1 ? '' : 's'} selected`}
+          {/* How to GROW the selection, stated at the one moment it is useful
+              and costing nothing when the bar is collapsed. `aria-hidden`
+              because the region around it is `aria-live`: a polite region that
+              re-reads a fixed instruction on every pick is noise, and the
+              count is the only part that ever changes. */}
+          {count > 0 && (
+            <span aria-hidden="true" className="text-meta text-muted">
+              {' · ⌘-click to add · ⇧-click for a range'}
+            </span>
+          )}
         </span>
         {/* Conditionally rendered, not just untabbable. `max-h-0 opacity-0`
             clips the bar visually and hides it from nobody: a screen reader in
