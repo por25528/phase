@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens copied from PhaseApp/src/index.css — `R G B` channel triples
+   consumed by tailwind.config.js as `rgb(var(--c-*) / <alpha-value>)`.
+   The companion follows the phone's system appearance; dark lives under the
+   media query rather than a `.dark` class because there is no in-page toggle
+   — the same convention PhaseWeb follows, and the reason the app needs the
+   class (a toggle written from JS) does not exist here. */
+:root {
+  --c-bg: 247 247 245;            /* #F7F7F5 */
+  --c-panel: 255 255 255;         /* #FFFFFF */
+  --c-panel-bright: 255 255 255;  /* #FFFFFF */
+  --c-field: 255 255 255;         /* #FFFFFF */
+  --c-ink: 26 26 24;              /* #1A1A18 */
+  --c-ink-hover: 51 50 46;        /* #33322E */
+  --c-ink-soft: 70 68 62;         /* #46443E */
+  --c-muted: 110 108 102;         /* #6E6C66 */
+  --c-faint: 146 143 136;         /* #928F88 */
+  --c-faint-2: 200 197 190;       /* #C8C5BE */
+  --c-line: 233 232 228;          /* #E9E8E4 */
+  --c-line-2: 216 214 208;        /* #D8D6D0 */
+  --c-line-soft: 240 239 235;     /* #F0EFEB */
+  /* Unchecked checkbox border — deliberately stronger than --c-line-2, which
+     failed WCAG 1.4.11 and made the app's primary action invisible. */
+  --c-check: 139 136 127;         /* #8B887F */
+  --c-hover: 242 241 238;         /* #F2F1EE */
+  --c-hover-deep: 233 232 227;    /* #E9E8E3 */
+  --c-fill: 26 26 24;             /* #1A1A18 */
+  --c-track: 237 236 232;         /* #EDECE8 */
+  --c-accent: 58 74 92;           /* #3A4A5C */
+  --c-accent-deep: 44 58 73;      /* #2C3A49 */
+  --c-accent-soft: 139 154 170;   /* #8B9AAA */
+  --c-accent-contrast: 255 255 255;
+  --c-accent-tint: 232 236 240;   /* #E8ECF0 */
+  --c-paper: 247 247 245;         /* #F7F7F5 */
+  --c-chip: 241 240 236;          /* #F1F0EC */
+  --c-chip-ink: 102 100 94;       /* #66645E */
+  --c-raised: 255 255 255;        /* #FFFFFF */
+  --c-warn: 161 84 31;            /* #A1541F */
+  --c-warn-tint: 246 237 228;     /* #F6EDE4 */
+
+  --shadow-card: 0 1px 2px rgba(26, 26, 24, 0.05);
+  --shadow-today: 0 2px 6px rgba(26, 26, 24, 0.07);
+
+  /* The hatch that fills the frame's margins — same discipline as the app:
+     near the floor of visibility, a surface and never a pattern. */
+  --hatch: rgba(26, 26, 24, 0.055);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-bg: 20 19 17;               /* #141311 */
+    --c-panel: 30 29 27;            /* #1E1D1B */
+    --c-panel-bright: 38 36 33;     /* #262421 */
+    --c-field: 30 29 27;            /* #1E1D1B */
+    --c-ink: 235 231 222;           /* #EBE7DE */
+    --c-ink-hover: 214 210 201;     /* #D6D2C9 */
+    --c-ink-soft: 181 176 165;      /* #B5B0A5 */
+    --c-muted: 142 137 126;         /* #8E897E */
+    --c-faint: 114 109 98;          /* #726D62 */
+    --c-faint-2: 74 70 62;          /* #4A463E */
+    --c-line: 44 42 38;             /* #2C2A26 */
+    --c-line-2: 59 56 49;           /* #3B3831 */
+    --c-line-soft: 35 34 32;        /* #232220 */
+    --c-check: 110 106 96;          /* #6E6A60 */
+    --c-hover: 38 36 33;            /* #262421 */
+    --c-hover-deep: 50 47 42;       /* #322F2A */
+    --c-fill: 235 231 222;          /* #EBE7DE */
+    --c-track: 42 40 36;            /* #2A2824 */
+    --c-accent: 159 178 198;        /* #9FB2C6 */
+    --c-accent-deep: 184 199 214;   /* #B8C7D6 */
+    --c-accent-soft: 74 87 104;     /* #4A5768 */
+    --c-accent-contrast: 20 24 29;  /* #14181D */
+    --c-accent-tint: 34 40 47;      /* #22282F */
+    --c-paper: 16 15 14;            /* #100F0E */
+    --c-chip: 38 36 33;             /* #262421 */
+    --c-chip-ink: 154 149 138;      /* #9A958A */
+    --c-raised: 58 55 48;           /* #3A3730 */
+    --c-warn: 201 136 75;           /* #C9884B */
+    --c-warn-tint: 42 32 24;        /* #2A2018 */
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-today: 0 2px 8px rgba(0, 0, 0, 0.55);
+    --hatch: rgba(235, 231, 222, 0.045);
+  }
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-ink font-ui antialiased;
+    font-size: 16px;
+    line-height: 1.5;
+    /* The phone is a touch surface: a text-selection drag on a row that also
+       ticks is the gesture fighting itself. Inputs opt back in below. */
+    -webkit-user-select: none;
+    user-select: none;
+    /* The home-indicator gutter and the notch. `viewport-fit=cover` in
+       index.html is what makes these non-zero. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    background: none;
+    color: inherit;
+    /* No grey flash on tap — the row draws its own pressed state. */
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .hatch {
+    background-image: repeating-linear-gradient(
+      45deg, var(--hatch) 0 1px, transparent 1px 7px);
+  }
+
+  /* The app's section-label voice: mono, uppercase, tracked. */
+  .section-label {
+    @apply font-mono uppercase text-micro tracking-[.11em];
+  }
+}
