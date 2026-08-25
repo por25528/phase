@@ -615,3 +615,68 @@ describe('parking a selection', () => {
     expect(findInAll(store.getState().goals, 'b')?.status).toBe('parked');
   });
 });
+
+describe('the pick circle', () => {
+  /**
+   * The tree's multi-selection shipped behind ⌘-click and nothing on screen
+   * said so, which is how a user came to park twelve tasks one at a time. The
+   * circle is the pointer affordance; it is drawn as a circle, not a box,
+   * because the box beside it already means "done".
+   */
+  it('adds the row to the selection without completing it', async () => {
+    const { store, user } = await mountTree();
+    const { findInAll } = await import('../lib/tree');
+
+    await user.click(within(row('Pset 7')).getByRole('checkbox', { name: 'Select "Pset 7"' }));
+
+    expect(selectedIds()).toEqual(['b']);
+    expect(findInAll(store.getState().goals, 'b')?.status).toBeUndefined();
+  });
+
+  it('removes the row again on a second click', async () => {
+    const { user } = await mountTree();
+    const pick = () => within(row('Pset 7')).getByRole('checkbox', { name: 'Select "Pset 7"' });
+
+    await user.click(pick());
+    expect(selectedIds()).toEqual(['b']);
+    await user.click(pick());
+    expect(selectedIds()).toEqual([]);
+  });
+
+  it('reports its own picked state', async () => {
+    const { user } = await mountTree();
+    const pick = () => within(row('Pset 7')).getByRole('checkbox', { name: 'Select "Pset 7"' });
+
+    expect(pick().getAttribute('aria-checked')).toBe('false');
+    await user.click(pick());
+    expect(pick().getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('is offered on a container too, which the selection accepts', async () => {
+    const { user } = await mountTree();
+    await user.click(within(row('Pset 8')).getByRole('checkbox', { name: 'Select "Pset 8"' }));
+    expect(selectedIds()).toEqual(['grp']);
+  });
+
+  /**
+   * Once anything is picked, EVERY row's circle comes out of hiding — the
+   * extent of a selection has to be readable without hovering each row in
+   * turn. `data-selecting` is what the stylesheet gates that on.
+   */
+  it('stops hiding on every row once a selection exists', async () => {
+    const { user } = await mountTree();
+    const pick = (title: string) =>
+      within(row(title)).getByRole('checkbox', { name: `Select "${title}"` });
+
+    expect(pick('Pset 6').hasAttribute('data-selecting')).toBe(false);
+    await user.click(pick('Pset 7'));
+    // The row that was NOT picked shows its circle too.
+    expect(pick('Pset 6').hasAttribute('data-selecting')).toBe(true);
+  });
+
+  it('does not tab into the row, which owns the keyboard grammar', async () => {
+    await mountTree();
+    const pick = within(row('Pset 7')).getByRole('checkbox', { name: 'Select "Pset 7"' });
+    expect(pick.getAttribute('tabindex')).toBe('-1');
+  });
+});

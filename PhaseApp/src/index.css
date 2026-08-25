@@ -277,6 +277,27 @@
     .group:not(:hover) .quiet-control:not(:focus-visible) { opacity: 0; }
   }
 
+  /* The row's SELECT circle. A sibling of `.quiet-control` rather than a use
+     of it, because it models one state that class does not: once a selection
+     exists anywhere in the tree, every row's circle must stay out — the
+     extent of a selection is unreadable if you have to hover each row to see
+     whether it is in. `data-selecting` carries that, and it sits inside the
+     `:not()` chain so it beats the hiding rule on specificity rather than on
+     stylesheet order.
+
+     Everything else matches `.quiet-control`: the 24x24 minimum target
+     (WCAG 2.2 AA 2.5.8), opacity rather than `display:none` so the control
+     keeps its place in the layout and the tab order, and the
+     `@media (hover: hover)` gate so it stays permanently visible on a coarse
+     pointer where `:hover` never resolves. */
+  .pick-control {
+    opacity: 1;
+    transition: opacity .12s;
+  }
+  @media (hover: hover) {
+    .group:not(:hover) .pick-control:not(:focus-visible):not([data-selecting]) { opacity: 0; }
+  }
+
   /* The nested "+ Add task" input, gated on its SUBTREE rather than its row.
      A separate class pair because `.quiet-control` matches the literal `.group`
      the row already owns — reusing it would reveal this input on row hover,

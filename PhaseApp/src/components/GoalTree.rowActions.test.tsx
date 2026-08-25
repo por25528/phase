@@ -119,7 +119,10 @@ describe('the row at rest', () => {
     // The checkbox says done or not done; the ◐ is the only thing that tells
     // "in progress" from "untouched"; the estimate and the schedule cell each
     // display the value they set.
-    expect(within(r).getByRole('checkbox')).toBeTruthy();
+    // Named, because the row now carries TWO checkboxes: the completion box
+    // that reads out the work's state, and the pick circle that reads out
+    // whether the row is in the selection. This assertion is about the former.
+    expect(within(r).getByRole('checkbox', { name: /^Mark "First task" as done/ })).toBeTruthy();
     expect(within(r).getByRole('button', { name: /^Change status of/ })).toBeTruthy();
     expect(within(r).getByRole('button', { name: /^Set estimate for/ })).toBeTruthy();
     expect(within(r).getByRole('button', { name: /^Schedule "First task"/ })).toBeTruthy();

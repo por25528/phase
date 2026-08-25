@@ -987,6 +987,47 @@ function GoalTreeNode({
 
   // Everything the row's leading column holds for a container: the drag handle
   // and the twirl, inside the tag cell so the rule's left edge stays flush.
+  const isPicked = selected.has(n.id);
+  /*
+   * The row's SELECT control — a circle, deliberately.
+   *
+   * A leaf already carries a 17px rounded square whose fills are this app's
+   * vocabulary for what the WORK is doing: tick for done, dot for doing,
+   * slash for blocked, bar for parked. A second square in the same cluster
+   * would put two readings of "state" 9px apart and undo the one signal the
+   * row cannot afford to blur. A circle is a PICK — the radio reading — and
+   * the drag handle sits physically between the two.
+   *
+   * It is the pointer half of `Space`; the row stays the focusable unit, so
+   * this is `tabIndex={-1}` like every other control here and stops its own
+   * click so the row's bubble handler never sees it as a plain click (which
+   * would DISMISS the selection this button just added to).
+   */
+  const pickCircle = (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={isPicked}
+      aria-label={`Select "${n.title}"`}
+      tabIndex={-1}
+      data-selecting={selected.size > 0 ? '' : undefined}
+      onClick={(e) => { e.stopPropagation(); onSelect(n.id, 'toggle'); }}
+      className="pick-control w-[24px] h-[24px] -mx-[5px] flex-shrink-0 grid place-items-center rounded-[6px] hover:bg-hover"
+    >
+      <span
+        className={`w-[13px] h-[13px] rounded-full border-[1.5px] grid place-items-center transition-all duration-100 ${
+          isPicked ? 'bg-accent border-accent' : 'border-check'
+        }`}
+      >
+        {isPicked && (
+          <svg viewBox="0 0 12 12" className="w-[9px] h-[9px] stroke-accent-contrast fill-none" strokeWidth={2.6}>
+            <path d="M2 6.2 4.6 9 10 3" />
+          </svg>
+        )}
+      </span>
+    </button>
+  );
+
   const dragHandle = (
     <button
       type="button"
@@ -1085,6 +1126,7 @@ function GoalTreeNode({
             as="span"
             lead={
               <>
+                {pickCircle}
                 {/* {listeners} on the handle, NOT the whole row, to avoid
                     colliding with row-level Space/Arrow handlers. */}
                 {dragHandle}
@@ -1148,7 +1190,11 @@ function GoalTreeNode({
         ) : (
           <>
             {/* ── column 1: leading controls, pinned to line 1 ── */}
+            {/* The pick circle leads, then the grip, then the status box. That
+                ORDER is the design: the two boxes never touch, and the one
+                that means "picked" is the one furthest from the work. */}
             <div className="flex items-center gap-[9px] min-h-[26px]">
+              {pickCircle}
               {dragHandle}
               {twirl}
               <LeafStatusBox
