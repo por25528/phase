@@ -2,6 +2,20 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it, expect, vi } from 'vitest';
 
+/**
+ * The advisor's cap, read from its source the way `declaredVerbs` reads the
+ * action union — this seam's tests check hand-kept copies against the original,
+ * and an import would need the nodenext extension dance for one number.
+ */
+function advisorMaxAlternatives(): number {
+  const source = readFileSync(
+    new URL('../src/lib/executionAdvisor.ts', import.meta.url), 'utf8',
+  );
+  const match = source.match(/export const MAX_ALTERNATIVES = (\d+);/);
+  expect(match, 'MAX_ALTERNATIVES not found in executionAdvisor.ts').not.toBeNull();
+  return Number(match![1]);
+}
+
 const nativeRequire = createRequire(import.meta.url);
 const { createAssistantIpc, ASSISTANT_CHANNEL_PREFIX } =
   nativeRequire('./assistantIpc.cjs') as typeof import('./assistantIpc.cjs');
@@ -129,6 +143,27 @@ describe('publish', () => {
       ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
       expect(ipc.latest(), JSON.stringify(snapshot)?.slice(0, 60)).toBeNull();
     }
+  });
+
+  /**
+   * The snapshot-side twin of the verb-list hazard below: the relay's
+   * alternatives cap is a hand-kept copy of `MAX_ALTERNATIVES`, and when the
+   * advisor's moved 2 → 3 the copy stayed. Every snapshot holding a third
+   * alternative was then silently dropped, so the ⌘Space overlay froze on its
+   * cached one — every control on it looked live and did nothing, while the
+   * embedded panel, which never crosses this seam, worked.
+   */
+  it('accepts a snapshot carrying every alternative the advisor may send', () => {
+    const { ipcMain, ipc } = relay();
+    const full = {
+      ...SNAPSHOT,
+      advice: {
+        ...SNAPSHOT.advice,
+        alternatives: Array.from({ length: advisorMaxAlternatives() }, () => SNAPSHOT.advice.primary),
+      },
+    };
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, full);
+    expect(ipc.latest()).toEqual(full);
   });
 
   it('requires a valid work reference on an active focus projection', () => {

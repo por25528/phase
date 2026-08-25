@@ -11,7 +11,11 @@ const ASSISTANT_CHANNEL_PREFIX = 'phase-assistant';
 
 // Generous for real titles, hostile to payload smuggling.
 const MAX_TEXT = 500;
-const MAX_ALTERNATIVES = 2;
+// A hand-kept copy of `MAX_ALTERNATIVES` in src/lib/executionAdvisor.ts (this
+// module imports nothing from src/ by design). The two must agree: a snapshot
+// with more alternatives than this is DROPPED, and the overlay silently
+// freezes on its cached one. assistantIpc.test.ts pins the agreement.
+const MAX_ALTERNATIVES = 3;
 const MAX_MINUTES = 24 * 60 * 7; // a week of minutes bounds every duration
 
 function shortString(value, max = MAX_TEXT) {
