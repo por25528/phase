@@ -1,6 +1,6 @@
 import type { GoalNode } from '../db/types';
 import { foldDone } from './doneFold';
-import { isDone } from './status';
+import { isDone, stepStatus } from './status';
 
 /**
  * Pure set-arithmetic for multi-selecting steps in a project tree.
@@ -188,4 +188,35 @@ export function pruneSelection(nodes: GoalNode[], ids: Set<string>): Set<string>
   // Same-size means nothing was lost; returning the original set keeps the
   // identity stable so React does not re-render for a no-op.
   return alive.size === ids.size ? ids : alive;
+}
+
+/**
+ * Whether every leaf a bulk status write would touch is already parked.
+ *
+ * This exists so the bulk bar's Park button and the write it performs cannot
+ * describe different populations. The button reads `Unpark` off this and then
+ * calls `setNodesStatus(ids, 'todo')`; if the predicate counted a different
+ * set of rows than the action writes — done leaves, say — the button would
+ * offer to unpark a selection and park it instead.
+ *
+ * It spends `openLeavesUnder`, so it inherits both rules that population
+ * already has: a container is read through its leaves, and a finished leaf is
+ * out. A done step is not something `Unpark` was ever going to move, so it
+ * must not get a vote on the label either.
+ *
+ * An empty selection is FALSE, never vacuously true. `Unpark` over nothing is
+ * a button that describes a state the user is not in.
+ */
+export function allParked(nodes: GoalNode[], ids: Set<string>): boolean {
+  const open = new Set(openLeavesUnder(nodes, ids));
+  if (open.size === 0) return false;
+  let every = true;
+  const walk = (list: GoalNode[]): void => {
+    for (const n of list) {
+      if (open.has(n.id) && stepStatus(n) !== 'parked') every = false;
+      if (n.children?.length) walk(n.children);
+    }
+  };
+  walk(nodes);
+  return every;
 }

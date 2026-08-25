@@ -6,6 +6,7 @@ import {
   topLevelSelection,
   openLeavesUnder,
   allLeavesUnder,
+  allParked,
   selectionRemovalCount,
   pruneSelection,
 } from './selection';
@@ -230,5 +231,64 @@ describe('pruneSelection', () => {
 
   it('keeps ids inside collapsed containers — collapsed is not gone', () => {
     expect([...pruneSelection(TREE, new Set(['g2b']))]).toEqual(['g2b']);
+  });
+});
+
+describe('allParked', () => {
+  // Its own fixture, deliberately: `TREE` above is shaped for range/removal
+  // arithmetic, and a predicate about status should not silently inherit
+  // whatever statuses that tree happens to carry.
+  const PARKED_TREE: GoalNode[] = [
+    { id: 'p1', title: 'Parked one', status: 'parked' },
+    { id: 'p2', title: 'Parked two', status: 'parked' },
+    { id: 'open', title: 'Untouched' },
+    { id: 'fin', title: 'Finished', status: 'done', doneAt: '2026-08-01' },
+    {
+      id: 'grp',
+      title: 'A group',
+      children: [
+        { id: 'k1', title: 'Kid one', status: 'parked' },
+        { id: 'k2', title: 'Kid two', status: 'parked' },
+      ],
+    },
+    {
+      id: 'mixed',
+      title: 'Mixed group',
+      children: [
+        { id: 'm1', title: 'Kid one', status: 'parked' },
+        { id: 'm2', title: 'Kid two' },
+      ],
+    },
+  ];
+
+  it('is true when every open leaf in the selection is parked', () => {
+    expect(allParked(PARKED_TREE, new Set(['p1', 'p2']))).toBe(true);
+  });
+
+  it('is false when one open leaf is not parked', () => {
+    expect(allParked(PARKED_TREE, new Set(['p1', 'open']))).toBe(false);
+  });
+
+  it('reads a container through its leaves', () => {
+    expect(allParked(PARKED_TREE, new Set(['grp']))).toBe(true);
+    expect(allParked(PARKED_TREE, new Set(['mixed']))).toBe(false);
+  });
+
+  /**
+   * A done leaf is not part of the population `setNodesStatus` would move
+   * here, so it must not veto the label. Selecting a parked step and a
+   * finished one still reads "Unpark" — which is what the one row you can
+   * actually act on needs it to say.
+   */
+  it('ignores done leaves, which the write would not touch either', () => {
+    expect(allParked(PARKED_TREE, new Set(['p1', 'fin']))).toBe(true);
+  });
+
+  it('is false for an empty selection — there is nothing to unpark', () => {
+    expect(allParked(PARKED_TREE, new Set())).toBe(false);
+  });
+
+  it('is false for a selection holding only finished work', () => {
+    expect(allParked(PARKED_TREE, new Set(['fin']))).toBe(false);
   });
 });
