@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "PhasePhone — the iPhone companion to Phase",
+  "description": "PhasePhone \u2014 the iPhone companion to Phase",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -15,7 +15,9 @@
     "@fontsource-variable/public-sans": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "@capacitor/core": "^7.6.8",
+    "phase-icloud": "file:./plugin-icloud"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",
@@ -29,6 +31,8 @@
     "tailwindcss": "^3.4.17",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@capacitor/cli": "^7.6.8",
+    "@capacitor/ios": "^7.6.8"
   }
 }

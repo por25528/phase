@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { createLocalBridge } from './bridge/localBridge';
+import { createICloudBridge } from './bridge/icloudBridge';
 import { createPhoneStore, type PhoneStore } from './state/phoneStore';
 import { Today } from './views/Today';
 import { Capture } from './views/Capture';
@@ -20,12 +22,14 @@ const TABS: { id: Tab; label: string }[] = [
  * you unlock the phone already asking. Capture and Week are destinations you
  * go to on purpose.
  *
- * The bridge is chosen HERE and nowhere else — `localBridge` today, the iCloud
- * plugin once the native shell exists — because every screen below takes the
- * store, not the bridge, and none of them can tell the difference.
+ * The bridge is chosen HERE and nowhere else — the iCloud plugin on device,
+ * `localBridge` in a browser — because every screen below takes the store,
+ * not the bridge, and none of them can tell the difference.
  */
 export function App({ store: injected }: { store?: PhoneStore } = {}) {
-  const [store] = useState(() => injected ?? createPhoneStore(createLocalBridge()));
+  const [store] = useState(
+    () => injected ?? createPhoneStore(Capacitor.isNativePlatform() ? createICloudBridge() : createLocalBridge()),
+  );
   const [tab, setTab] = useState<Tab>('today');
 
   useEffect(() => {
