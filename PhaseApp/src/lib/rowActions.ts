@@ -17,6 +17,7 @@
 
 export type RowActionId =
   | 'open'
+  | 'select'
   | 'add-task'
   | 'rename'
   | 'schedule'
@@ -79,6 +80,12 @@ export function rowActions(ctx: RowActionContext): RowAction[] {
   const out: RowAction[] = [];
 
   if (ctx.isContainer) out.push({ id: 'open', label: 'Open', hint: 'O', group: 0 });
+  // Offered on BOTH kinds of row, because the selection takes both — the bulk
+  // bar expands a container through `allLeavesUnder` and always has. This is
+  // the only pointer route to a selection that does not require knowing to
+  // hold ⌘, and the `hint` is what teaches the key for next time; the same
+  // trade that makes `⌘]` findable without opening the shortcuts overlay.
+  out.push({ id: 'select', label: 'Select', hint: 'Space', group: 0 });
   out.push({ id: 'add-task', label: 'Add task', hint: '⌘↵', group: 0 });
   out.push({ id: 'rename', label: 'Rename', hint: '↵', group: 0 });
 

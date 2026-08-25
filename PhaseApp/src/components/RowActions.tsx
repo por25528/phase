@@ -26,6 +26,7 @@ export function RowActions({
   onRename,
   onEstimate,
   onSchedule,
+  onSelect,
 }: {
   node: GoalNode;
   isFirstSibling: boolean;
@@ -36,6 +37,12 @@ export function RowActions({
   onEstimate: () => void;
   /** Opens the row's own schedule popover. */
   onSchedule: () => void;
+  /**
+   * Adds this row to the tree's selection. Like `onRename`, this is not a
+   * store call — the set lives in `GoalTree`, so the menu reports upward
+   * rather than writing anything.
+   */
+  onSelect: () => void;
 }) {
   const { actions } = useAppStore();
   const isContainer = Boolean(node.children && node.children.length > 0);
@@ -53,6 +60,7 @@ export function RowActions({
   function run(id: RowActionId): void {
     switch (id) {
       case 'open': actions.openArea(node.id); return;
+      case 'select': onSelect(); return;
       case 'add-task': actions.addChild(node.id); return;
       case 'rename': onRename(); return;
       case 'schedule': onSchedule(); return;

@@ -98,6 +98,29 @@ describe('rowActions', () => {
       expect(new Set(list).size).toBe(list.length);
     }
   });
+
+  /**
+   * The selection is the tree's least discoverable capability: it has existed
+   * for a long time behind ⌘-click and nothing on screen said so. The menu is
+   * where a verb goes to be found, and its `hint` is what teaches the key.
+   */
+  it('offers Select on a leaf AND a container, since the selection takes both', () => {
+    expect(ids(ctx())).toContain('select');
+    expect(ids(ctx({ isContainer: true }))).toContain('select');
+  });
+
+  it('teaches Space beside Select', () => {
+    const found = rowActions(ctx()).find((a) => a.id === 'select');
+    expect(found?.label).toBe('Select');
+    expect(found?.hint).toBe('Space');
+  });
+
+  it('groups Select with the navigational verbs, not the destructive ones', () => {
+    // Group 0 is Open/Add task/Rename — the run that does not mutate the
+    // subtree. Picking a row belongs there and nowhere near Delete.
+    const found = rowActions(ctx()).find((a) => a.id === 'select');
+    expect(found?.group).toBe(0);
+  });
 });
 
 describe('rowActionGroups', () => {
@@ -171,6 +194,10 @@ describe('taskPageActions', () => {
 
   it('omits add-task: converting a task into a group would eject the page', () => {
     expect(taskPageActions(leaf).map((a) => a.id)).not.toContain('add-task');
+  });
+
+  it('keeps Select off the task page, which has no selection to join', () => {
+    expect(taskPageActions(leaf).map((a) => a.id)).not.toContain('select');
   });
 
   it('offers park, worded by its current state — the page has no park chip', () => {

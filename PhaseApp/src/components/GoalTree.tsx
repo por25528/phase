@@ -1080,6 +1080,7 @@ function GoalTreeNode({
                     onRename={() => setEditing(true)}
                     onEstimate={() => setEstimateOpen((c) => c + 1)}
                     onSchedule={() => scheduleRef.current?.click()}
+                    onSelect={() => onSelect(n.id, 'toggle')}
                   />
                 </span>
               </span>
@@ -1147,6 +1148,7 @@ function GoalTreeNode({
                     onRename={() => setEditing(true)}
                     onEstimate={() => setEstimateOpen((c) => c + 1)}
                     onSchedule={() => scheduleRef.current?.click()}
+                    onSelect={() => onSelect(n.id, 'toggle')}
                   />
                 </span>
 
