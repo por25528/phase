@@ -1,14 +1,7 @@
-node_modules
-.worktrees/
-dist
-release
-build/icon.png
 .DS_Store
 *.local
-
-# Brainstorming visual companion mockups
-.superpowers/
-
-# Claude Code workspace settings — machine-local
 .claude/
-shelf-shots/
+.worktrees/
+.superpowers/
+.vite/
+.parallel/
