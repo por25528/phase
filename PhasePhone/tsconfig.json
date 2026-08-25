@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    /* The one door into the desktop app — `src/lib/**` and `src/db/types.ts`
+       only. Mirrored in vite.config.ts and vitest.config.ts; all three have to
+       agree or a build resolves what a typecheck cannot. No `baseUrl`: it is
+       deprecated in TS 6, and `paths` resolves relative to this file without
+       one. */
+    "paths": {
+      "@app/*": ["../PhaseApp/src/*"]
+    }
+  },
+  "include": ["src"]
+}
