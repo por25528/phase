@@ -1,0 +1,38 @@
+{
+  "name": "phase-icloud",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Capacitor plugin giving PhasePhone coordinated access to the Phase sync files in iCloud Drive.",
+  "type": "module",
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "ios/Plugin/",
+    "PhaseICloud.podspec"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "verify": "tsc -b"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^7.6.8",
+    "typescript": "~6.0.2"
+  }
+}
