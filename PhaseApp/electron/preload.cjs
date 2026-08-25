@@ -90,3 +90,25 @@ contextBridge.exposeInMainWorld('phaseAgent', {
   /** Answer exactly one request. */
   reply: (id, response) => ipcRenderer.invoke('phase-agent:reply', { id, response }),
 });
+
+// The MAIN renderer's door to the PhasePhone sync container. Three fixed
+// channels, none of which accepts a channel name or a path: the folder is
+// resolved in main (syncFiles.cjs) and the renderer never learns where it is,
+// so this door can write exactly one file and read exactly one other.
+//
+// `requestJournal` exists because the push races the page: main starts polling
+// the moment the app is ready, and a `send` to a webContents that has not
+// finished loading is dropped. The renderer therefore PULLS once when it
+// mounts and listens for pushes thereafter.
+contextBridge.exposeInMainWorld('phaseSync', {
+  /** Replace `state.json` in the container. Resolves when the bytes landed. */
+  writeState: (text) => ipcRenderer.invoke('phase-sync:write-state', text),
+  /** The journal as it stands right now, or null when there is none. */
+  requestJournal: () => ipcRenderer.invoke('phase-sync:request-journal'),
+  /** Fires with the whole journal text whenever it changed. Returns unsubscribe. */
+  onJournal: (fn) => {
+    const listener = (_event, text) => fn(text);
+    ipcRenderer.on('phase-sync:journal', listener);
+    return () => ipcRenderer.removeListener('phase-sync:journal', listener);
+  },
+});

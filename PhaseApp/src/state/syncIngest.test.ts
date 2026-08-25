@@ -158,6 +158,21 @@ describe('ingestJournal', () => {
     expect(h.mark()).toBe('op-x');
   });
 
+  it('counts a handler throw as skipped and still ingests the ops after it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const h = harness({ tasks: [task('t1')] });
+    // Right verb, wrong payload: `parseOpsJournal` checks the envelope, and
+    // nothing checks what is inside the request.
+    const text = journal(
+      op({ tool: 'complete_task' } as never, 'op-bad'),
+      op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, 'op-good'),
+    );
+    expect(ingestJournal(text, h.deps)).toEqual({ applied: 1, skipped: 1 });
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1');
+    expect(h.mark()).toBe('op-good');
+    expect(warn).toHaveBeenCalled();
+  });
+
   it('counts an already-done tick as skipped rather than un-ticking it', () => {
     const h = harness({ tasks: [task('t1', true)] });
     const result = ingestJournal(

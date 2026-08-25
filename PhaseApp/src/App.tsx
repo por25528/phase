@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAppStore, initStore, getState, actions as storeActions, VIEW_LABELS } from './state/store';
+import { useAppStore, initStore, getState, subscribe, ownsSingleWriterLock, actions as storeActions, VIEW_LABELS } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
 import { Plan } from './views/Plan';
@@ -44,6 +44,9 @@ import { createAgentBridge } from './lib/agentBridge';
 import { validAgentRequest, errorResponse } from './lib/agentProtocol';
 import { handleAgentRead } from './lib/agentReads';
 import { handleAgentWrite } from './lib/agentWrites';
+import { ingestJournal } from './state/syncIngest';
+import { createSyncExporter } from './state/syncExport';
+import { loadSyncMeta, saveSyncMeta } from './db/db';
 import {
   type Theme,
   resolveTheme,
@@ -87,6 +90,38 @@ export function openAssistantForEnvironment(
     return;
   }
   openEmbedded();
+}
+
+/**
+ * The preload's sync door (`electron/preload.cjs`). Absent in the plain
+ * browser — Vite dev and the test suite both run without a preload — which is
+ * what the `phaseSync !== undefined` gate below reads.
+ */
+interface PhaseSyncBridge {
+  writeState(text: string): Promise<void>;
+  requestJournal(): Promise<string | null>;
+  onJournal(fn: (text: string) => void): () => void;
+}
+
+function syncBridge(): PhaseSyncBridge | null {
+  if (typeof window === 'undefined') return null;
+  return (window as unknown as { phaseSync?: PhaseSyncBridge }).phaseSync ?? null;
+}
+
+/**
+ * What an ingest is allowed to say.
+ *
+ * A round that applied NOTHING states the failure alone — "0 changes applied,
+ * 2 couldn't" leads with a zero and buries the sentence, and the design's own
+ * wording for that case is "2 phone changes couldn't apply". A round that
+ * applied something leads with that and appends the shortfall.
+ */
+export function ingestToast(applied: number, skipped: number): string | null {
+  if (applied === 0 && skipped === 0) return null;
+  const plural = (n: number) => (n === 1 ? 'change' : 'changes');
+  if (applied === 0) return `${skipped} phone ${plural(skipped)} couldn\u2019t apply`;
+  const head = `Phone: ${applied} ${plural(applied)} applied`;
+  return skipped === 0 ? head : `${head}, ${skipped} couldn\u2019t`;
 }
 
 export function App() {
@@ -200,6 +235,115 @@ export function App() {
       }));
     });
   }, []);
+
+  /**
+   * The renderer's half of the PhasePhone bridge — ingest the journal, export
+   * the canonical file.
+   *
+   * It lives HERE for the same reason the agent bridge does: this renderer is
+   * the single writer, so it is the only side of the process seam that may
+   * touch the store. `syncFiles.cjs` moves bytes and knows nothing about what
+   * a line means; this effect maps every line onto the actions the UI calls
+   * and lets undo, toasts and the persist latch happen exactly as they always
+   * do.
+   *
+   * THREE gates, and each closes a different door. `hydration === 'ready'`,
+   * because ingesting into a half-loaded store would write against goals that
+   * are not there yet. `phaseSync !== undefined`, because a plain browser has
+   * no preload. And `ownsSingleWriterLock()`, because ingest and export are
+   * both WRITES — a second window doing either would rewrite the owner's
+   * database and stamp its own generation over the owner's file, which is the
+   * whole reason `ifOwner` exists.
+   *
+   * The high-water mark is mirrored in a local so `IngestDeps` can stay
+   * synchronous, and written back to Dexie AFTER the round rather than per op:
+   * `ingestJournal` already advances its own copy per op, so a crash mid-round
+   * costs at most a replay of ticks that are idempotent anyway, and one
+   * settings write per round beats one per tick.
+   *
+   * The export is scheduled off `subscribe` and compared by REFERENCE on the
+   * five entity slices — the store notifies for every UI flicker (a hovered
+   * row, an open popover), and a file the phone polls must not be rewritten
+   * because a menu opened. The flush after an ingest is immediate, not
+   * debounced: the phone is waiting to learn its ops landed.
+   */
+  useEffect(() => {
+    if (hydration !== 'ready') return;
+    const sync = syncBridge();
+    if (!sync || !ownsSingleWriterLock()) return;
+
+    let stopped = false;
+    let mark: string | null = null;
+    let advanced = false;
+
+    const slices = () => {
+      const s = getState();
+      return { goals: s.goals, habits: s.habits, tasks: s.tasks, sessions: s.sessions, lives: s.lives };
+    };
+
+    const exporter = createSyncExporter({
+      getSlices: slices,
+      loadMeta: loadSyncMeta,
+      saveMeta: saveSyncMeta,
+      writeState: (text) => sync.writeState(text),
+      now: () => new Date().toISOString(),
+    });
+
+    const ingest = async (text: string | null) => {
+      if (stopped || text === null) return;
+      advanced = false;
+      const { applied, skipped } = ingestJournal(text, {
+        actions: storeActions,
+        getState,
+        getIngestedThrough: () => mark,
+        setIngestedThrough: (id) => {
+          mark = id;
+          advanced = true;
+        },
+      });
+      if (!advanced) return;
+      // Re-read rather than reuse the meta loaded at mount: the exporter has
+      // been bumping `generation` in the same row all along.
+      const meta = await loadSyncMeta();
+      await saveSyncMeta({ ...meta, ingestedThroughOpId: mark });
+      const notice = ingestToast(applied, skipped);
+      if (notice) storeActions.showToast(notice);
+      // Immediate, so the file the phone reads next carries the op id it is
+      // waiting to see.
+      await exporter.flush();
+    };
+
+    void (async () => {
+      mark = (await loadSyncMeta()).ingestedThroughOpId;
+      if (stopped) return;
+      // Pull once: main starts watching before this page finished loading, so
+      // its first push was dropped before anything was listening.
+      await ingest(await sync.requestJournal().catch(() => null));
+      if (stopped) return;
+      // A container with no `state.json` leaves the phone with nothing to
+      // render, so one export at launch rather than waiting for an edit.
+      await exporter.flush();
+    })();
+
+    const unsubscribeJournal = sync.onJournal((text) => void ingest(text));
+
+    let last = slices();
+    const unsubscribeStore = subscribe(() => {
+      const next = slices();
+      if (
+        next.goals === last.goals && next.habits === last.habits && next.tasks === last.tasks &&
+        next.sessions === last.sessions && next.lives === last.lives
+      ) return;
+      last = next;
+      exporter.schedule();
+    });
+
+    return () => {
+      stopped = true;
+      unsubscribeJournal();
+      unsubscribeStore();
+    };
+  }, [hydration]);
 
   // Live-follow the OS theme: keep the effective-icon in sync, and when the
   // preference is `system` re-apply so the palette flips without a reload.

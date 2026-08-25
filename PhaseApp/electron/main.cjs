@@ -24,6 +24,7 @@ const { createShellIpc } = require('./shellIpc.cjs')
 const { createMenuBar } = require('./menuBar.cjs')
 const { createAgentIpc } = require('./agentIpc.cjs')
 const { createAgentSocket } = require('./agentSocket.cjs')
+const { createSyncFiles } = require('./syncFiles.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
@@ -86,6 +87,11 @@ const lifecycle = createAppLifecycle({
     // a door that answers nothing. dispose() also settles anything in flight.
     agentIpc.dispose(ipcMain)
     agentSocket.close()
+    // Same reason the socket closes: a poller left running would keep reading
+    // a folder for an app that is gone.
+    syncFiles.stop()
+    ipcMain.removeHandler('phase-sync:write-state')
+    ipcMain.removeHandler('phase-sync:request-journal')
     assistantController = null
     menuBar = null
   },
@@ -192,6 +198,23 @@ const agentSocket = createAgentSocket({
   net,
   fs,
 })
+
+// The PhasePhone sync container. The renderer is still the one writer of the
+// database — this only moves two files in a folder — so the whole bridge is
+// three fixed channels and no path ever crosses to the renderer.
+//
+// Journal text is pushed rather than polled from the renderer, and it is also
+// PULLABLE: main starts watching the moment the app is ready, long before the
+// page has finished loading, and a `send` to a webContents that is not ready
+// is dropped on the floor. Without the pull, an op sitting in the journal at
+// launch would wait for the next external change to be noticed.
+const syncFiles = createSyncFiles({})
+
+function pushJournal(text) {
+  if (typeof text !== 'string') return
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('phase-sync:journal', text)
+}
 
 // The encrypted store lives beside the app's other user data, NOT in the
 // bundle: an .app is read-only and is replaced wholesale on every update.
@@ -321,6 +344,19 @@ app.whenReady().then(() => {
     // reached from a terminal, and a planner that refused to open because a
     // socket could not bind would be the tail wagging the dog.
     console.error('[phase-agent] socket registration failed', err)
+  }
+  try {
+    ipcMain.handle('phase-sync:write-state', (_event, text) => syncFiles.writeState(text))
+    ipcMain.handle('phase-sync:request-journal', () => syncFiles.readJournal())
+    syncFiles.start(pushJournal)
+    // iCloud may deliver the file while Phase was in the background, and the
+    // poll only reports a CHANGE — a re-read on focus is what makes coming
+    // back to the Mac feel like the phone's edits were waiting.
+    app.on('browser-window-focus', () => pushJournal(syncFiles.readJournal()))
+  } catch (err) {
+    // Same rule as every bridge above, and it applies hardest to a companion
+    // feature: an unreachable iCloud folder must not keep the planner shut.
+    console.error('[phase-sync] file bridge unavailable', err)
   }
 
   lifecycle.register()

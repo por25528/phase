@@ -708,6 +708,37 @@ export function getState(): FullState {
   return state;
 }
 
+/**
+ * The non-React reader of the same listener set `useAppStore` subscribes to.
+ *
+ * It exists for the sync exporter, which has to notice edits from OUTSIDE a
+ * render — a write that arrives over the agent socket, or an ingest of the
+ * phone's journal, moves the store without any component asking. It hands out
+ * NO state: the caller reads through `getState()` at the moment it acts, the
+ * same discipline `App.tsx`'s agent bridge follows, so a subscriber can never
+ * be shaped from a snapshot that has since gone stale.
+ */
+export function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/**
+ * Whether this tab holds the single-writer lock.
+ *
+ * `secondTab` in state answers a NARROWER question — it is the banner's flag,
+ * and it is set only once the lock request has come back refused. This answers
+ * the one `ifOwner` asks, so a caller outside the store gates on exactly what
+ * every settings write gates on. The sync bridge needs it because ingesting
+ * and exporting are writes: a second window doing either would rewrite the
+ * owner's database and stamp its own generation over the owner's file.
+ */
+export function ownsSingleWriterLock(): boolean {
+  return ownsTabLock;
+}
+
 // ---- undo helper ----
 
 /** A cheap toggle is reversible by repeating it; a structural delete is not. */

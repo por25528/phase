@@ -41,14 +41,26 @@ export interface IngestResult {
 }
 
 function apply(op: CompanionOp, deps: IngestDeps): boolean {
-  if (op.request.tool === 'add_loose_task') {
-    // The store's own default is null, and it is passed explicitly so an
-    // absent date can never read as today: capture and commitment are
-    // different acts, exactly as `addTask`'s own comment argues.
-    deps.actions.addTask(op.request.title, op.request.date ?? null, null);
-    return true;
+  try {
+    if (op.request.tool === 'add_loose_task') {
+      // The store's own default is null, and it is passed explicitly so an
+      // absent date can never read as today: capture and commitment are
+      // different acts, exactly as `addTask`'s own comment argues.
+      deps.actions.addTask(op.request.title, op.request.date ?? null, null);
+      return true;
+    }
+    return handleAgentWrite(op.request, deps).ok;
+  } catch (err) {
+    // `parseOpsJournal` checks the ENVELOPE and the verb; nothing checks the
+    // payload, and `validAgentRequest` cannot be spent here without rejecting
+    // `add_loose_task`, which is not one of its verbs. So a line with the
+    // right verb and the wrong shape can throw inside a handler, and a throw
+    // that escaped would abandon every op after it — the exact "never fatal"
+    // rule the parser already keeps for a truncated line, restated one layer
+    // in. It counts as skipped, which is what the toast then reports.
+    console.warn('[sync] op could not be applied', op.id, err);
+    return false;
   }
-  return handleAgentWrite(op.request, deps).ok;
 }
 
 export function ingestJournal(journalText: string, deps: IngestDeps): IngestResult {

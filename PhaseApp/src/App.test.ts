@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { App, openAssistantForEnvironment } from './App';
+import { App, openAssistantForEnvironment, ingestToast } from './App';
 import { actions } from './state/store';
 import type { PhaseShellBridge } from './lib/shellBridge';
 
@@ -131,5 +131,25 @@ describe('desktop entry-point routing', () => {
     } finally {
       process.removeListener('unhandledRejection', onUnhandled);
     }
+  });
+});
+
+describe('ingestToast', () => {
+  it('says nothing when the round did nothing', () => {
+    expect(ingestToast(0, 0)).toBeNull();
+  });
+
+  it('leads with what applied', () => {
+    expect(ingestToast(1, 0)).toBe('Phone: 1 change applied');
+    expect(ingestToast(3, 0)).toBe('Phone: 3 changes applied');
+  });
+
+  it('appends the shortfall rather than hiding it', () => {
+    expect(ingestToast(2, 1)).toBe('Phone: 2 changes applied, 1 couldn\u2019t');
+  });
+
+  it('states the failure alone when nothing applied — never "0 changes applied"', () => {
+    expect(ingestToast(0, 2)).toBe('2 phone changes couldn\u2019t apply');
+    expect(ingestToast(0, 1)).toBe('1 phone change couldn\u2019t apply');
   });
 });
