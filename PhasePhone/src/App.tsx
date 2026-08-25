@@ -1,25 +1,61 @@
-import { todayStr } from '@app/lib/dates';
-import { dayStamp } from '@app/lib/today';
+import { useEffect, useState } from 'react';
+import { createLocalBridge } from './bridge/localBridge';
+import { createPhoneStore, type PhoneStore } from './state/phoneStore';
+import { Today } from './views/Today';
+
+type Tab = 'today' | 'capture' | 'week';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'capture', label: 'Capture' },
+  { id: 'week', label: 'Week' },
+];
 
 /**
- * The scaffold's whole job for now: prove the `@app/*` alias reaches the
- * desktop app's pure library, so the companion spends the same derivations the
- * Mac does rather than a copy of them. `dayStamp` is the app's own date
- * vocabulary, and the phone's header is the same stamp at a smaller measure.
+ * The shell: three screens, one bottom bar, Today first.
+ *
+ * Today is the default because it is the only screen that answers the question
+ * you unlock the phone already asking. Capture and Week are destinations you
+ * go to on purpose.
+ *
+ * The bridge is chosen HERE and nowhere else — `localBridge` today, the iCloud
+ * plugin once the native shell exists — because every screen below takes the
+ * store, not the bridge, and none of them can tell the difference.
  */
-export function App() {
-  const stamp = dayStamp(todayStr());
+export function App({ store: injected }: { store?: PhoneStore } = {}) {
+  const [store] = useState(() => injected ?? createPhoneStore(createLocalBridge()));
+  const [tab, setTab] = useState<Tab>('today');
+
+  useEffect(() => {
+    void store.refresh();
+  }, [store]);
+
   return (
-    <div className="min-h-full flex flex-col items-start gap-[14px] px-[18px] pt-[22px]">
-      <span className="inline-flex items-stretch rounded-[4px] border border-line-2 overflow-hidden">
-        <span className="section-label px-[8px] py-[3px] bg-fill text-paper font-semibold">
-          {stamp.dow}
-        </span>
-        <span className="section-label px-[8px] py-[3px] border-l border-line-2 text-muted">
-          {stamp.span}
-        </span>
-      </span>
-      <h1 className="text-page font-semibold tracking-[-0.028em] leading-[1.05]">Phase</h1>
+    <div className="min-h-full flex flex-col">
+      <main className="flex-1 min-h-0 overflow-y-auto pb-[12px]">
+        {tab === 'today' && <Today store={store} />}
+        {tab !== 'today' && (
+          <p className="px-[18px] py-[22px] text-body text-muted">Coming next.</p>
+        )}
+      </main>
+
+      {/* The bar is a rule with cells on it, the same object every other
+          heading in this product is — not a floating pill. */}
+      <nav className="flex-none flex border-t border-line bg-panel" aria-label="Screens">
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            aria-current={tab === id ? 'page' : undefined}
+            className={`flex-1 h-[52px] text-ui ${
+              tab === id ? 'text-ink font-semibold' : 'text-muted'
+            }`}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
