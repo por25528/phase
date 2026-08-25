@@ -72,7 +72,7 @@ describe('ingestJournal', () => {
   it('applies a complete_task op through handleAgentWrite', () => {
     const h = harness({ tasks: [task('t1')] });
     const result = ingestJournal(
-      journal(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1' } })),
+      journal(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } })),
       h.deps,
     );
     expect(result).toEqual({ applied: 1, skipped: 0 });
@@ -99,8 +99,8 @@ describe('ingestJournal', () => {
     const h = harness({ tasks: [task('t2')] });
     const result = ingestJournal(
       journal(
-        op({ tool: 'complete_task', ref: { kind: 'task', id: 'ghost' } }, 'op-a'),
-        op({ tool: 'complete_task', ref: { kind: 'task', id: 't2' } }, 'op-b'),
+        op({ tool: 'complete_task', ref: { kind: 'task', id: 'ghost', goalId: null } }, 'op-a'),
+        op({ tool: 'complete_task', ref: { kind: 'task', id: 't2', goalId: null } }, 'op-b'),
       ),
       h.deps,
     );
@@ -122,8 +122,8 @@ describe('ingestJournal', () => {
     };
     ingestJournal(
       journal(
-        op({ tool: 'complete_task', ref: { kind: 'task', id: 't1' } }, 'op-1'),
-        op({ tool: 'complete_task', ref: { kind: 'task', id: 't2' } }, 'op-2'),
+        op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, 'op-1'),
+        op({ tool: 'complete_task', ref: { kind: 'task', id: 't2', goalId: null } }, 'op-2'),
       ),
       deps,
     );
@@ -134,8 +134,8 @@ describe('ingestJournal', () => {
     const h = harness({ tasks: [task('t1'), task('t2')], ingestedThrough: 'op-1' });
     const result = ingestJournal(
       journal(
-        op({ tool: 'complete_task', ref: { kind: 'task', id: 't1' } }, 'op-1'),
-        op({ tool: 'complete_task', ref: { kind: 'task', id: 't2' } }, 'op-2'),
+        op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, 'op-1'),
+        op({ tool: 'complete_task', ref: { kind: 'task', id: 't2', goalId: null } }, 'op-2'),
       ),
       h.deps,
     );
@@ -153,7 +153,7 @@ describe('ingestJournal', () => {
 
   it('ingests the good lines around a truncated one', () => {
     const h = harness({ tasks: [task('t1')] });
-    const text = `${serializeOp(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1' } }, 'op-x'))}\n{"id":"op-y","ts":`;
+    const text = `${serializeOp(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, 'op-x'))}\n{"id":"op-y","ts":`;
     expect(ingestJournal(text, h.deps)).toEqual({ applied: 1, skipped: 0 });
     expect(h.mark()).toBe('op-x');
   });
@@ -161,7 +161,7 @@ describe('ingestJournal', () => {
   it('counts an already-done tick as skipped rather than un-ticking it', () => {
     const h = harness({ tasks: [task('t1', true)] });
     const result = ingestJournal(
-      journal(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1' } })),
+      journal(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } })),
       h.deps,
     );
     expect(result).toEqual({ applied: 0, skipped: 1 });
