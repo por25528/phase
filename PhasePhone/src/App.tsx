@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { createLocalBridge } from './bridge/localBridge';
 import { createPhoneStore, type PhoneStore } from './state/phoneStore';
 import { Today } from './views/Today';
+import { Capture } from './views/Capture';
+import { Week } from './views/Week';
 
 type Tab = 'today' | 'capture' | 'week';
 
@@ -34,9 +36,8 @@ export function App({ store: injected }: { store?: PhoneStore } = {}) {
     <div className="min-h-full flex flex-col">
       <main className="flex-1 min-h-0 overflow-y-auto pb-[12px]">
         {tab === 'today' && <Today store={store} />}
-        {tab !== 'today' && (
-          <p className="px-[18px] py-[22px] text-body text-muted">Coming next.</p>
-        )}
+        {tab === 'capture' && <Capture store={store} />}
+        {tab === 'week' && <Week store={store} />}
       </main>
 
       {/* The bar is a rule with cells on it, the same object every other
