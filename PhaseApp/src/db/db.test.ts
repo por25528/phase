@@ -769,3 +769,30 @@ describe('assistant accelerator setting', () => {
     expect(await loadAssistantAccelerator()).toBe('Control+Alt+K');
   });
 });
+
+describe('sync meta', () => {
+  it('defaults to generation 0 with nothing ingested', async () => {
+    const { loadSyncMeta } = await import('./db');
+    expect(await loadSyncMeta()).toEqual({ generation: 0, ingestedThroughOpId: null });
+  });
+
+  it('round-trips a saved meta', async () => {
+    const { loadSyncMeta, saveSyncMeta } = await import('./db');
+    await saveSyncMeta({ generation: 7, ingestedThroughOpId: 'op-3' });
+    expect(await loadSyncMeta()).toEqual({ generation: 7, ingestedThroughOpId: 'op-3' });
+  });
+
+  it('reads a malformed row as the default rather than throwing', async () => {
+    const { loadSyncMeta } = await import('./db');
+    await db.settings.put({ key: 'syncMeta', value: 'not json' });
+    expect(await loadSyncMeta()).toEqual({ generation: 0, ingestedThroughOpId: null });
+    await db.settings.put({ key: 'syncMeta', value: JSON.stringify({ generation: 'x' }) });
+    expect(await loadSyncMeta()).toEqual({ generation: 0, ingestedThroughOpId: null });
+  });
+
+  it('keeps a valid generation when the op id is missing', async () => {
+    const { loadSyncMeta } = await import('./db');
+    await db.settings.put({ key: 'syncMeta', value: JSON.stringify({ generation: 4 }) });
+    expect(await loadSyncMeta()).toEqual({ generation: 4, ingestedThroughOpId: null });
+  });
+});

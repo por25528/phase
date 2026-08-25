@@ -342,6 +342,56 @@ export async function saveGoalsMode(mode: GoalsMode): Promise<void> {
   await db.settings.put({ key: GOALS_MODE_KEY, value: mode });
 }
 
+/**
+ * The PhasePhone sync high-water marks — one settings row.
+ *
+ * `generation` is the counter stamped into every `state.json` the Mac exports;
+ * `ingestedThroughOpId` is the last companion op ingested, and it — never
+ * generation arithmetic — is what tells the phone which of its ops have landed
+ * (the Mac exports for its own edits too). Both are DEVICE facts about this
+ * machine's sync relationship with the container, not user work, so they live
+ * in `settings` beside the assistant accelerator and stay out of backup
+ * export/import: restoring a backup onto another Mac must not claim that
+ * Mac ingested ops it has never seen.
+ *
+ * The read is total, like `loadPlanMode`: a malformed row reads as the
+ * default, because a corrupt meta that threw would take hydration with it, and
+ * re-exporting from generation 0 is a phone re-read, not data loss.
+ */
+export interface SyncMeta {
+  generation: number;
+  ingestedThroughOpId: string | null;
+}
+
+const SYNC_META_KEY = 'syncMeta';
+
+const DEFAULT_SYNC_META: SyncMeta = { generation: 0, ingestedThroughOpId: null };
+
+function parseSyncMeta(value: string | undefined): SyncMeta {
+  if (!value) return DEFAULT_SYNC_META;
+  try {
+    const raw: unknown = JSON.parse(value);
+    if (!raw || typeof raw !== 'object') return DEFAULT_SYNC_META;
+    const meta = raw as Partial<SyncMeta>;
+    if (typeof meta.generation !== 'number' || !Number.isFinite(meta.generation)) return DEFAULT_SYNC_META;
+    return {
+      generation: meta.generation,
+      ingestedThroughOpId: typeof meta.ingestedThroughOpId === 'string' ? meta.ingestedThroughOpId : null,
+    };
+  } catch {
+    return DEFAULT_SYNC_META;
+  }
+}
+
+export async function loadSyncMeta(): Promise<SyncMeta> {
+  const row = await db.settings.get(SYNC_META_KEY);
+  return parseSyncMeta(row?.value);
+}
+
+export async function saveSyncMeta(meta: SyncMeta): Promise<void> {
+  await db.settings.put({ key: SYNC_META_KEY, value: JSON.stringify(meta) });
+}
+
 // One-shot flag for the calendar-slot migration (see lib/migrateSlots.ts).
 // Not a Dexie version: the migration adds optional fields to existing objects,
 // which changes no store and no index.
