@@ -29,6 +29,24 @@
   /* The hatch that fills the margins — same discipline as the app: near the
      floor of visibility, a surface and never a pattern. */
   --hatch: rgba(26, 26, 24, 0.055);
+
+  /* ── Motion palette ──────────────────────────────────────────────────
+     Personality: SURGICAL. Phase states what it measures and forecasts
+     nothing; motion that overshoots would contradict the product. Three
+     curves, no more — a fourth is a sign one of the three was chosen wrong. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);      /* entries, scroll reveals */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);  /* state, background shifts */
+  --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);    /* hover, press, focus     */
+
+  /* One distance, one blur, one lift, one stagger — reused everywhere, so
+     the whole page reads as a single hand. */
+  --m-rise: 20px;
+  --m-blur: 6px;
+  --m-lift: -2px;
+  --m-press: 0.97;
+  --m-step: 70ms;
+  --m-enter: 520ms;   /* above the fold: the whole sequence lands under 800ms */
+  --m-scroll: 640ms;  /* below the fold: reading pace, never a curtain call   */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -56,8 +74,8 @@
 }
 
 @layer base {
-  html {
-    scroll-behavior: smooth;
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
   }
   body {
     @apply bg-bg text-ink font-ui antialiased;
@@ -83,19 +101,183 @@
     @apply font-mono uppercase text-micro tracking-[.11em];
   }
 
-  /* Entry reveal — transform/opacity only, gated on reduced motion. */
-  .reveal {
-    opacity: 0;
-    transform: translateY(22px);
-    animation: reveal 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MOTION
+   Every rule below is gated on `.js` — without JavaScript nothing is
+   hidden, so the page degrades to the static sheet it already was.
+   Only transform / opacity / filter animate; nothing here can trigger
+   layout. Hover is gated on real pointers so a tap never fires it.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Scroll & entry reveals ───────────────────────────────────────────
+   One vocabulary, four variants. "up" is the default and carries the
+   whole page; the others exist because a nav arrives from above, an
+   image should not be blurred (expensive, and it reads as a bad JPEG),
+   and a rule is drawn rather than faded. */
+
+/* will-change is a promise to the compositor, not a speed switch. Applying
+   it to every reveal target would hand the browser 30-odd layers at load and
+   hold them for as long as the reader takes to scroll. Only the hero animates
+   immediately, so only the hero gets promoted — and it is released the moment
+   it lands. Below the fold, a plain transform/opacity transition is composited
+   for its duration anyway. */
+.js [data-enter] { will-change: opacity, transform; }
+.js [data-enter].is-in { will-change: auto; }
+
+.js [data-reveal='up'],
+.js [data-reveal='down'] {
+  opacity: 0;
+  filter: blur(var(--m-blur));
+  transition:
+    opacity var(--m-scroll) var(--ease-out) var(--m-d, 0ms),
+    transform var(--m-scroll) var(--ease-out) var(--m-d, 0ms),
+    filter var(--m-scroll) var(--ease-out) var(--m-d, 0ms);
+}
+.js [data-reveal='up'] { transform: translateY(var(--m-rise)); }
+.js [data-reveal='down'] { transform: translateY(calc(-1 * var(--m-rise))); }
+
+.js [data-reveal='up'].is-in,
+.js [data-reveal='down'].is-in {
+  opacity: 1;
+  transform: none;
+  filter: blur(0);
+}
+
+/* Above the fold everything runs at the faster entry duration so the
+   opening sequence finishes before the reader can resent it. */
+.js [data-enter] { --m-scroll: var(--m-enter); }
+
+/* Screenshots settle rather than rise: a shorter travel and a hair of
+   scale, no blur. Nothing in the physical world appears from scale(0). */
+.js [data-reveal='shot'] {
+  opacity: 0;
+  transform: translateY(12px) scale(0.985);
+  transition:
+    opacity var(--m-scroll) var(--ease-out) var(--m-d, 0ms),
+    transform var(--m-scroll) var(--ease-out) var(--m-d, 0ms);
+}
+.js [data-reveal='shot'].is-in { opacity: 1; transform: none; }
+
+/* ── Signature 1: the rule draws itself ───────────────────────────────
+   The page's argument is a ruled sheet. So the rules rule themselves —
+   a hairline scaling from the left edge like a pen crossing the page,
+   with the mono cells settling into it once the line has arrived. */
+.js [data-reveal='rule'] .rule-line {
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 700ms var(--ease-out);
+}
+.js [data-reveal='rule'].is-in .rule-line { transform: scaleX(1); }
+
+.js [data-reveal='rule'] .rule-cell {
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 380ms var(--ease-out) var(--m-cell, 240ms),
+    transform 380ms var(--ease-out) var(--m-cell, 240ms);
+}
+.js [data-reveal='rule'].is-in .rule-cell { opacity: 1; transform: none; }
+.rule-cell-2 { --m-cell: 340ms; }
+
+/* ── Signature 2: the masthead, word by word ──────────────────────────
+   Exactly one heading on the page splits. Each word sits in its own
+   overflow-hidden slot and rises into it — the type is set, not
+   assembled. The <h1> keeps an aria-label so the string stays whole. */
+.w-mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  padding-bottom: 0.16em;
+  margin-bottom: -0.16em;
+}
+.js [data-reveal='words'] .w-inner {
+  display: inline-block;
+  transform: translateY(112%);
+  transition: transform 560ms var(--ease-out) var(--m-d, 0ms);
+}
+.js [data-reveal='words'].is-in .w-inner { transform: none; }
+
+/* ── Interaction ──────────────────────────────────────────────────────
+   Hover only where there is a real pointer; press feedback everywhere,
+   because a surface that does not compress reads as unresponsive no
+   matter how fast the click actually is. */
+
+.act {
+  transition:
+    transform 220ms var(--ease-snap),
+    box-shadow 220ms var(--ease-snap),
+    background-color 220ms var(--ease-snap),
+    border-color 220ms var(--ease-snap),
+    color 220ms var(--ease-snap);
+}
+.act:active { transform: translateY(0) scale(var(--m-press)); transition-duration: 130ms; }
+
+@media (hover: hover) and (pointer: fine) {
+  .act:hover { transform: translateY(var(--m-lift)); }
+}
+
+/* A visible focus ring that no animation is allowed to obscure. */
+.act:focus-visible,
+.shot-frame:focus-visible {
+  outline: 2px solid rgb(var(--c-accent));
+  outline-offset: 3px;
+}
+
+/* Screenshots lift like a sheet being picked up off the desk. */
+.shot-frame img {
+  transition: transform 320ms var(--ease-snap), box-shadow 320ms var(--ease-snap);
+}
+@media (hover: hover) and (pointer: fine) {
+  .shot-frame:hover img { transform: translateY(var(--m-lift)); }
+}
+
+/* Ledger rows and principle cells warm under the cursor; the mono label
+   comes up to full ink. Both share the utility curve. */
+.ledger-row,
+.tenet {
+  transition: background-color 220ms var(--ease-snap);
+}
+.ledger-row .section-label,
+.tenet .section-label {
+  transition: color 220ms var(--ease-snap);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ledger-row:hover,
+  .tenet:hover { background-color: rgb(var(--c-hover)); }
+  .ledger-row:hover .section-label,
+  .tenet:hover .section-label { color: rgb(var(--c-ink)); }
+}
+
+/* The wordmark's period is the one piece of punctuation that answers. */
+.wordmark-dot {
+  display: inline-block;
+  transition: transform 260ms var(--ease-snap), color 260ms var(--ease-snap);
+}
+@media (hover: hover) and (pointer: fine) {
+  .wordmark:hover .wordmark-dot {
+    transform: translateY(-0.14em);
+    color: rgb(var(--c-accent));
   }
-  .reveal-2 { animation-delay: 0.1s; }
-  .reveal-3 { animation-delay: 0.2s; }
-  .reveal-4 { animation-delay: 0.3s; }
-  @keyframes reveal {
-    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────
+   Not "no animation" — no translation, no scale, no blur. Content still
+   arrives, it just arrives by opacity alone, and faster. */
+@media (prefers-reduced-motion: reduce) {
+  .js [data-reveal='up'],
+  .js [data-reveal='down'],
+  .js [data-reveal='shot'] {
+    transform: none;
+    filter: none;
+    transition-duration: 220ms;
+    transition-delay: 0ms;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity: 1; transform: none; animation: none; }
-  }
+  .js [data-reveal='rule'] .rule-line { transform: none; transition: none; }
+  .js [data-reveal='rule'] .rule-cell { transform: none; transition-duration: 220ms; transition-delay: 0ms; }
+  .js [data-reveal='words'] .w-inner { transform: none; transition: none; }
+  .w-mask { overflow: visible; }
+  .act:hover, .act:active, .shot-frame:hover img, .wordmark:hover .wordmark-dot { transform: none; }
+  .act, .shot-frame img, .ledger-row, .tenet { transition-duration: 120ms; }
 }

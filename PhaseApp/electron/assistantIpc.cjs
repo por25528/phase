@@ -149,6 +149,8 @@ function validAction(action) {
     case 'switch-focus':
     // Ends the WORK, not the sitting — the shelf card's checkbox.
     case 'complete-work':
+    // Parks the WORK — set aside / skip for now.
+    case 'park-work':
       return validRef(action.ref);
     case 'pause-focus':
     case 'resume-focus':

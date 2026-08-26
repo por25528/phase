@@ -206,4 +206,28 @@ describe('AssistantHost', () => {
     expect(store.getState().tasks[0].done).toBe(true);
     expect(screen.getByText('Completed "Draft essay"')).toBeTruthy();
   });
+
+  it('parks the offered step, sets notice, and advances to the next recommendation', async () => {
+    const goals: Goal[] = [{
+      id: 'g1',
+      title: 'Course',
+      nodes: [
+        { id: 's1', title: 'Problem set 1', status: 'todo' },
+        { id: 's2', title: 'Problem set 2', status: 'todo' },
+      ],
+    }];
+    const store = await mountHost({ goals });
+
+    expect(screen.getByRole('heading', { name: 'Problem set 1' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Park' })).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Park' }));
+    });
+
+    expect(store.getState().goals[0].nodes[0].status).toBe('parked');
+    expect(screen.getByText('Parked "Problem set 1"')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Problem set 2' })).toBeTruthy();
+  });
 });
+

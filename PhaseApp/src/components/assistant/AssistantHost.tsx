@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAppStore } from '../../state/store';
+import { useAppStore, getState } from '../../state/store';
 import { AssistantSurface } from './AssistantSurface';
 import { assistantMainBridge } from '../../lib/assistantBridge';
 import { executionAdvice } from '../../lib/executionAdvisor';
-import { promoteWork } from '../../lib/pickWork';
+import { promoteWork, sameRef } from '../../lib/pickWork';
 import type { WorkRef } from '../../lib/expectedTime';
 import { expectedTimeFor } from '../../lib/expectedTime';
 import type {
@@ -138,6 +138,16 @@ export function AssistantHost({ open, onClose, theme }: {
         // The label the write actually armed, so this line and the undo toast
         // cannot drift apart.
         setNotice({ tone: 'neutral', text: result.label });
+        return;
+      }
+      case 'park-work': {
+        if (action.ref.kind !== 'step') return;
+        actions.toggleParked(action.ref.id);
+        setChosen((current) => (current && sameRef(current, action.ref) ? null : current));
+        const armedUndo = getState().pendingUndo?.label;
+        if (armedUndo) {
+          setNotice({ tone: 'neutral', text: armedUndo });
+        }
         return;
       }
       case 'confirm-focus': actions.confirmFocus(action.minutes); return;

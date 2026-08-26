@@ -9,6 +9,10 @@
       content="Phase is a local-first planner for macOS. Goals, weeks and days as one measured instrument — on your machine, with no account and no forecasts."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Motion opts in, it does not opt out: the reveal styles are all scoped
+         to `.js`, so a visitor without JavaScript gets the static sheet with
+         nothing hidden. Set before first paint to avoid a flash. -->
+    <script>document.documentElement.classList.add('js');</script>
   </head>
   <body>
     <div id="root"></div>

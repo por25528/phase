@@ -78,6 +78,8 @@ export type AssistantAction =
   | { type: 'switch-focus'; ref: WorkRef }
   /** End the WORK, not the sitting. `complete-focus` is the sitting. */
   | { type: 'complete-work'; ref: WorkRef }
+  /** Park the WORK (set aside / skip for now). */
+  | { type: 'park-work'; ref: WorkRef }
   | { type: 'close' };
 
 /**

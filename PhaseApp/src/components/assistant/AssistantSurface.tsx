@@ -843,9 +843,21 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
           </p>
         )}
         actions={
-          <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
-            Start session
-          </button>
+          <>
+            {primary.ref.kind === 'step' && (
+              <button
+                type="button"
+                disabled={pending}
+                className={secondaryBtn}
+                onClick={() => onAction({ type: 'park-work', ref: primary.ref })}
+              >
+                Park
+              </button>
+            )}
+            <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
+              Start session
+            </button>
+          </>
         }
       />
       <AlternativesBand
@@ -897,11 +909,25 @@ export function AssistantSurface({
         return;
       }
       const focus = KEY_TO_FOCUS_LEVEL[event.key];
-      if (focus) onAction({ type: 'set-focus-level', level: focus });
+      if (focus) {
+        onAction({ type: 'set-focus-level', level: focus });
+        return;
+      }
+      if ((event.key === 'p' || event.key === 'P') && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (
+          snapshot.status === 'ready'
+          && !snapshot.activeFocus
+          && snapshot.advice.kind === 'work'
+          && snapshot.advice.primary.ref.kind === 'step'
+          && !sendoff.pending
+        ) {
+          onAction({ type: 'park-work', ref: snapshot.advice.primary.ref });
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onAction]);
+  }, [onAction, snapshot, sendoff.pending]);
 
   if (snapshot.status === 'loading') return <Skeleton shelf={shelf} />;
 

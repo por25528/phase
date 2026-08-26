@@ -48,6 +48,16 @@ export default {
         ui: ['Public Sans Variable', 'Public Sans', '-apple-system', 'system-ui', 'sans-serif'],
         mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
+      /* The motion palette, wired into Tailwind's own utilities. Overriding
+         DEFAULT means a stray `transition-colors` cannot smuggle Tailwind's
+         cubic-bezier(.4,0,.2,1) onto the page as a fourth curve. Three is
+         the budget; see the MOTION block in src/index.css. */
+      transitionTimingFunction: {
+        DEFAULT: 'var(--ease-out)',
+        out: 'var(--ease-out)',
+        'in-out': 'var(--ease-in-out)',
+        snap: 'var(--ease-snap)',
+      },
       boxShadow: {
         card: 'var(--shadow-card)',
         shot: 'var(--shadow-shot)',

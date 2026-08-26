@@ -1266,3 +1266,54 @@ describe('marking the offered work done', () => {
     expect(screen.queryByRole('checkbox', { name: 'Complete "Read chapter 3"' })).toBeNull();
   });
 });
+
+describe('parking offered work', () => {
+  it('offers a Park button for a step recommendation', () => {
+    render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Park' })).toBeTruthy();
+  });
+
+  it('dispatches park-work when Park button is clicked', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Park' }));
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'park-work',
+      ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+    });
+  });
+
+  it('dispatches park-work when P key is pressed', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+
+    fireEvent.keyDown(window, { key: 'p' });
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'park-work',
+      ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+    });
+  });
+
+  it('withholds the Park button when primary recommendation is a loose task', () => {
+    render(<AssistantSurface
+      snapshot={ready({
+        advice: {
+          kind: 'work',
+          primary: work({ ref: { kind: 'task', id: 't1', goalId: null } }),
+          alternatives: [],
+        },
+      })}
+      onAction={() => {}}
+    />);
+    expect(screen.queryByRole('button', { name: 'Park' })).toBeNull();
+  });
+
+  it('withholds the Park button during an active focus session', () => {
+    render(<AssistantSurface snapshot={ready({ activeFocus: focusView() })} onAction={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Park' })).toBeNull();
+  });
+});
+

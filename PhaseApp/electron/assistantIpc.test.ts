@@ -543,6 +543,7 @@ describe('the relay accepts every verb the protocol declares', () => {
     'start-focus': { type: 'start-focus', ref: { kind: 'task', id: 't1', goalId: null } },
     'switch-focus': { type: 'switch-focus', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
     'complete-work': { type: 'complete-work', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
+    'park-work': { type: 'park-work', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
     'set-time-level': { type: 'set-time-level', level: 'low' },
     'set-focus-level': { type: 'set-focus-level', level: 'high' },
     'pause-focus': { type: 'pause-focus' },
