@@ -1,7 +1,7 @@
 {
   "name": "phase",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Local goal, habit and task planner",
   "author": "secoandhood <secoandhood@gmail.com>",
@@ -28,10 +28,11 @@
       "electron/**/*"
     ],
     "mac": {
-      "target": "dmg",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
       "category": "public.app-category.productivity",
-      "icon": "build/icon.icns",
-      "identity": null
+      "icon": "build/icon.icns"
     }
   },
   "dependencies": {

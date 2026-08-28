@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: PhaseApp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: PhaseApp/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx electron-builder --mac --arm64 --x64 --publish never
+      - name: Verify ad-hoc signature
+        run: codesign -dv release/mac-arm64/Phase.app 2>&1 | grep -q 'Signature=adhoc'
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PhaseApp/release/*.dmg
+          body_path: .github/release-notes.md
