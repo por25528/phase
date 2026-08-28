@@ -40,6 +40,8 @@ import {
   type TaskCaptureHostState,
 } from './lib/taskCapture';
 import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
+import { updateBridge } from './lib/updateBridge';
+import { UpdateBanner } from './components/UpdateBanner';
 import { createAgentBridge } from './lib/agentBridge';
 import { validAgentRequest, errorResponse } from './lib/agentProtocol';
 import { handleAgentRead } from './lib/agentReads';
@@ -145,6 +147,9 @@ export function App() {
   // The one shell bridge, created once: subscribing and re-subscribing on every
   // render would make the desktop shell fire duplicate settings opens.
   const shell = useMemo(() => shellBridge(), []);
+  // Likewise created once: the banner asks on mount, and a new bridge object
+  // every render would re-fire that effect on every render.
+  const updates = useMemo(() => updateBridge(), []);
   // Held between "a file was picked" and "the user typed REPLACE". The File is
   // captured here, so the input can be reset immediately and stay re-pickable.
   const [pendingImport, setPendingImport] = useState<File | null>(null);
@@ -818,6 +823,7 @@ export function App() {
           setPendingImport(null);
         }}
       />
+      <UpdateBanner bridge={updates} />
       <SettingsModal open={settingsOpen} onClose={actions.closeSettings} />
       {/* `effectiveTheme` and not `theme`: the overlay is a second renderer
           with no `.dark` class of its own, and `'system'` means nothing to it.
