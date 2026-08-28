@@ -126,8 +126,7 @@ describe('createUpdateCheck', () => {
 // written out by hand there. This pin stops the two from drifting — same
 // pattern as calendarIpc.test.ts.
 describe('preload contract', () => {
-  // Task 5 adds the line this asserts on; un-todo it there.
-  it.todo('preload.cjs invokes the channel main registers', () => {
+  it('preload.cjs invokes the channel main registers', () => {
     const preload = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
     expect(preload).toContain("ipcRenderer.invoke('phase-updates:check')");
   });
