@@ -112,3 +112,11 @@ contextBridge.exposeInMainWorld('phaseSync', {
     return () => ipcRenderer.removeListener('phase-sync:journal', listener);
   },
 });
+
+// The MAIN renderer's door to the release update check. One fixed channel,
+// pull-only: the renderer asks once on mount, so no push can race page load.
+// updateCheck.test.ts reads this file to stop the channel names drifting.
+contextBridge.exposeInMainWorld('phaseUpdates', {
+  /** Resolves { version, url } when a newer release exists, else null. */
+  check: () => ipcRenderer.invoke('phase-updates:check'),
+});

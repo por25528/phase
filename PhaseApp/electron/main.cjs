@@ -25,6 +25,7 @@ const { createMenuBar } = require('./menuBar.cjs')
 const { createAgentIpc } = require('./agentIpc.cjs')
 const { createAgentSocket } = require('./agentSocket.cjs')
 const { createSyncFiles } = require('./syncFiles.cjs')
+const { createUpdateCheck } = require('./updateCheck.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
@@ -92,6 +93,7 @@ const lifecycle = createAppLifecycle({
     syncFiles.stop()
     ipcMain.removeHandler('phase-sync:write-state')
     ipcMain.removeHandler('phase-sync:request-journal')
+    ipcMain.removeHandler('phase-updates:check')
     assistantController = null
     menuBar = null
   },
@@ -357,6 +359,32 @@ app.whenReady().then(() => {
     // Same rule as every bridge above, and it applies hardest to a companion
     // feature: an unreachable iCloud folder must not keep the planner shut.
     console.error('[phase-sync] file bridge unavailable', err)
+  }
+
+  try {
+    // The stamp lives beside the app's other user data; the .app bundle is
+    // read-only and replaced wholesale on every update.
+    const updateStatePath = path.join(app.getPath('userData'), 'update-check.json')
+    const updateCheck = createUpdateCheck({
+      currentVersion: app.getVersion(),
+      fetchLatest: async () => {
+        const res = await fetch('https://api.github.com/repos/por25528/phase/releases/latest', {
+          headers: { Accept: 'application/vnd.github+json' },
+        })
+        if (!res.ok) throw new Error(`releases/latest answered ${res.status}`)
+        return res.json()
+      },
+      readState: () => (fs.existsSync(updateStatePath)
+        ? JSON.parse(fs.readFileSync(updateStatePath, 'utf8'))
+        : null),
+      writeState: (state) => fs.writeFileSync(updateStatePath, JSON.stringify(state)),
+      now: () => Date.now(),
+      logError: (...args) => console.error(...args),
+    })
+    ipcMain.handle('phase-updates:check', () => updateCheck.check())
+  } catch (err) {
+    // Same rule as every bridge above: the planner opens even if this cannot.
+    console.error('[phase-updates] IPC registration failed', err)
   }
 
   lifecycle.register()
