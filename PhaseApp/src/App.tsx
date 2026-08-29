@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore, initStore, getState, subscribe, ownsSingleWriterLock, actions as storeActions, VIEW_LABELS } from './state/store';
 import { Today } from './views/Today';
 import { Goals } from './views/Goals';
@@ -48,7 +48,12 @@ import { handleAgentRead } from './lib/agentReads';
 import { handleAgentWrite } from './lib/agentWrites';
 import { ingestJournal } from './state/syncIngest';
 import { createSyncExporter } from './state/syncExport';
-import { loadSyncMeta, saveSyncMeta } from './db/db';
+import {
+  loadSyncMeta, saveSyncMeta, buildBackupText,
+  loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot,
+} from './db/db';
+import { backupBridge, stampToLocalMs } from './lib/backupBridge';
+import { createAutoBackup, type AutoBackup } from './state/autoBackup';
 import {
   type Theme,
   resolveTheme,
@@ -126,6 +131,36 @@ export function ingestToast(applied: number, skipped: number): string | null {
   return skipped === 0 ? head : `${head}, ${skipped} couldn\u2019t`;
 }
 
+/**
+ * The backup document for the state the app is holding RIGHT NOW.
+ *
+ * Read through `getState()` at the moment it is called, never from a captured
+ * snapshot — the same discipline the sync exporter follows, and for the same
+ * reason: a coalesced burst has to record where the burst ENDED.
+ *
+ * It spends `buildBackupText`, the one derivation the Export menu item and the
+ * fatal error screen also spend, so a snapshot Phase took by itself is byte-for-
+ * byte the kind of file Import already accepts. The migration snapshots degrade
+ * to null on a rejected read for the reason `exportBackup` gives: they are a
+ * nicety, and must never be why no backup is written.
+ */
+async function buildCurrentBackupText(): Promise<string> {
+  const s = getState();
+  const [preSlot, preCheckpoint] = await Promise.all([
+    loadSlotMigrationSnapshot().catch(() => null),
+    loadCheckpointMigrationSnapshot().catch(() => null),
+  ]);
+  return buildBackupText(
+    { goals: s.goals, habits: s.habits, tasks: s.tasks, sessions: s.sessions, lives: s.lives },
+    s.pxPerDay,
+    s.planReview,
+    s.allDayBlocks,
+    s.sidebarPanels,
+    preSlot,
+    preCheckpoint,
+  );
+}
+
 export function App() {
   const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, settingsOpen, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
@@ -150,9 +185,93 @@ export function App() {
   // Likewise created once: the banner asks on mount, and a new bridge object
   // every render would re-fire that effect on every render.
   const updates = useMemo(() => updateBridge(), []);
+  // Likewise created once. `available` is false in the browser, which is what
+  // gates the whole automatic-backup effect below and the Settings section.
+  const backups = useMemo(() => backupBridge(), []);
+  // The live scheduler, held in a ref rather than in state: nothing renders
+  // from it, and the two surfaces that reach it — the import confirmation and
+  // the Settings section — need whatever instance is current at the moment
+  // they are pressed, not the one a closure captured on some earlier render.
+  const autoBackupRef = useRef<AutoBackup | null>(null);
   // Held between "a file was picked" and "the user typed REPLACE". The File is
   // captured here, so the input can be reset immediately and stay re-pickable.
   const [pendingImport, setPendingImport] = useState<File | null>(null);
+
+  /**
+   * A manual snapshot, and the one taken before an import replaces everything.
+   *
+   * Both go through the SCHEDULER rather than straight at the bridge, so a
+   * snapshot written by hand restarts the interval — writing past it would
+   * leave the automatic pass believing nothing had been saved, and land a
+   * duplicate a minute later. The direct write is the fallback for the window
+   * before the effect below has run; it spends the same builder, so the two
+   * paths cannot produce different files.
+   */
+  const writeBackup = useCallback(async (reason: 'manual' | 'pre-import'): Promise<boolean> => {
+    const scheduler = autoBackupRef.current;
+    if (scheduler) return (await scheduler.flush(reason)) !== null;
+    return (await backups.write(await buildCurrentBackupText(), reason)) !== null;
+  }, [backups]);
+
+  /**
+   * Versioned local snapshots, on the desktop, in the tab that owns the data.
+   *
+   * THREE gates, and each closes a different door — the same three the sync
+   * bridge takes, for the same reasons. `hydration === 'ready'`, because a
+   * backup of a half-loaded store would record goals that are not there yet.
+   * `backups.available`, because the plain browser has no folder to write to.
+   * And `ownsSingleWriterLock()`, because a second window would be snapshotting
+   * the owner's data from its own stale view.
+   *
+   * The subscription compares the five entity slices BY REFERENCE, exactly as
+   * the sync exporter does: the store notifies for every hovered row and open
+   * popover, and a backup written because a menu opened is a file that says
+   * nothing.
+   *
+   * Teardown STOPS rather than flushes. A flush here would fire on every
+   * StrictMode remount and on every hydration change, writing snapshots of
+   * data nobody edited; the interval, the manual button and the pre-import
+   * snapshot are the three honest write points.
+   */
+  useEffect(() => {
+    if (hydration !== 'ready') return;
+    if (!backups.available || !ownsSingleWriterLock()) return;
+
+    const slices = () => {
+      const s = getState();
+      return { goals: s.goals, habits: s.habits, tasks: s.tasks, sessions: s.sessions, lives: s.lives };
+    };
+
+    const scheduler = createAutoBackup({
+      buildText: buildCurrentBackupText,
+      write: (text, reason) => backups.write(text, reason),
+      lastBackupAt: async () => {
+        const [newest] = await backups.list();
+        return newest ? stampToLocalMs(newest.stamp) : null;
+      },
+      now: () => Date.now(),
+      logError: (message, err) => console.warn(message, err),
+    });
+    autoBackupRef.current = scheduler;
+    void scheduler.start();
+
+    let last = slices();
+    const unsubscribe = subscribe(() => {
+      const next = slices();
+      if (
+        next.goals === last.goals && next.habits === last.habits && next.tasks === last.tasks &&
+        next.sessions === last.sessions && next.lives === last.lives
+      ) return;
+      last = next;
+      scheduler.schedule();
+    });
+
+    return () => {
+      unsubscribe();
+      scheduler.stop();
+      autoBackupRef.current = null;
+    };
+  }, [hydration, backups]);
 
   // The menu bar's Settings item asks for this surface over the shell bridge.
   useEffect(() => shell.onOpenSettings(actions.openSettings), [shell]);
@@ -817,14 +936,37 @@ export function App() {
       <ConfirmImportModal
         open={pendingImport !== null}
         fileName={pendingImport?.name ?? ''}
+        // The dialog's copy has to match what actually happens. On desktop a
+        // snapshot of the current data is written first, so "it cannot be
+        // undone" is no longer the whole truth; in the browser it still is.
+        snapshotFirst={backups.available}
         onCancel={() => setPendingImport(null)}
         onConfirm={() => {
-          if (pendingImport) actions.importBackup(pendingImport);
+          // `undefined` in the browser, deliberately: there is no folder to put
+          // a safety snapshot in, and refusing every import there would be a
+          // regression wearing a safety belt. The store owns the ordering.
+          if (pendingImport) {
+            actions.importBackup(
+              pendingImport,
+              backups.available ? () => writeBackup('pre-import') : undefined,
+            );
+          }
           setPendingImport(null);
         }}
       />
       <UpdateBanner bridge={updates} />
-      <SettingsModal open={settingsOpen} onClose={actions.closeSettings} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={actions.closeSettings}
+        // Close first, then arm the confirmation: the typed REPLACE gate is a
+        // dialog of its own, and stacking it over Settings would put two
+        // panels and two Escape owners on one screen.
+        onRestoreBackup={(file) => {
+          actions.closeSettings();
+          setPendingImport(file);
+        }}
+        onBackupNow={() => writeBackup('manual')}
+      />
       {/* `effectiveTheme` and not `theme`: the overlay is a second renderer
           with no `.dark` class of its own, and `'system'` means nothing to it.
           This is the one place that resolves the preference against the OS —

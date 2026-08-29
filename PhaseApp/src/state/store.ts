@@ -3388,12 +3388,36 @@ export const actions = {
     }
   },
 
-  async importBackup(file: File) {
+  /**
+   * Replace everything with the contents of a backup file.
+   *
+   * `safetyBackup` is the snapshot of what is about to be destroyed, and it is
+   * INJECTED rather than reached for because the store is platform-free — every
+   * preload bridge lives in `App.tsx`. What lives here is the ORDERING, which is
+   * the part that has to be right: snapshot, check, and only then replace.
+   *
+   * A snapshot that could not be written REFUSES the import. This is the one
+   * action in Phase with no undo behind it — `applyImportedBackup` clears the
+   * undo stack by design — so "the safety net is missing" and "go ahead anyway"
+   * cannot both be true. Absent altogether is a different case and proceeds:
+   * the plain browser has no backup folder, and refusing every import there
+   * would be a regression wearing a safety belt.
+   */
+  async importBackup(file: File, safetyBackup?: () => Promise<boolean>) {
     // `importStateFromFile` writes all four tables plus every settings row
-    // itself, so it has to be gated here rather than downstream.
+    // itself, so it has to be gated here rather than downstream. Before the
+    // snapshot, too: a refused import must not leave a file behind for a
+    // replacement that never happened.
     if (!ownsTabLock) {
       actions.showToast('Phase is open in another tab — close it before importing.');
       return;
+    }
+    if (safetyBackup) {
+      const saved = await safetyBackup().catch(() => false);
+      if (!saved) {
+        actions.showToast('Couldn’t save a safety backup — import cancelled. Check free disk space.');
+        return;
+      }
     }
     try {
       const appState = await importStateFromFile(file);

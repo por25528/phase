@@ -3596,6 +3596,100 @@ describe('a tab that does not own the lock', () => {
 });
 
 /**
+ * The safety snapshot before the app's one irreversible action.
+ *
+ * `importBackup` replaces every table and clears the undo stack — that is the
+ * generation boundary, and it is exactly why a confirmation dialog guards it.
+ * The snapshot is the other half: a typed REPLACE is a decision, and a
+ * decision you can walk back from is a different thing from one you cannot.
+ *
+ * The capability is INJECTED rather than reached for, because the store is
+ * platform-free (App.tsx owns every preload bridge). What lives here is the
+ * ORDERING — snapshot, then check, then replace — because a caller that got it
+ * the other way round would still look like it worked.
+ */
+describe('importBackup safety snapshot', () => {
+  it('takes the snapshot BEFORE anything is replaced', async () => {
+    const { importStateFromFile } = await import('../db/db');
+    const order: string[] = [];
+    vi.mocked(importStateFromFile).mockImplementationOnce(async () => {
+      order.push('import');
+      return {
+        goals: [], habits: [], tasks: [], sessions: [], lives: [],
+        pxPerDay: 13, allDayBlocks: true, sidebarPanels: [],
+      };
+    });
+
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.importBackup(new File([], 'backup.json'), async () => {
+      order.push('snapshot');
+      return true;
+    });
+
+    expect(order).toEqual(['snapshot', 'import']);
+    expect(store.getState().toast).toBe('Backup imported');
+  });
+
+  it('refuses the import outright when the snapshot could not be written', async () => {
+    const { importStateFromFile } = await import('../db/db');
+    const store = await freshStore();
+    await store.initStore();
+
+    vi.mocked(importStateFromFile).mockClear();
+    await store.actions.importBackup(new File([], 'backup.json'), async () => false);
+
+    // Nothing was replaced, and the refusal says why rather than going quiet.
+    expect(vi.mocked(importStateFromFile)).not.toHaveBeenCalled();
+    expect(store.getState().toast).toContain('safety backup');
+  });
+
+  it('treats a thrown snapshot as a failed one', async () => {
+    const { importStateFromFile } = await import('../db/db');
+    const store = await freshStore();
+    await store.initStore();
+
+    vi.mocked(importStateFromFile).mockClear();
+    await store.actions.importBackup(new File([], 'backup.json'), async () => {
+      throw new Error('ENOSPC');
+    });
+
+    expect(vi.mocked(importStateFromFile)).not.toHaveBeenCalled();
+    expect(store.getState().toast).toContain('safety backup');
+  });
+
+  it('imports without one where there is no place to put it — the plain browser', async () => {
+    const { importStateFromFile } = await import('../db/db');
+    vi.mocked(importStateFromFile).mockResolvedValueOnce({
+      goals: [], habits: [], tasks: [], sessions: [], lives: [],
+      pxPerDay: 13, allDayBlocks: true, sidebarPanels: [],
+    });
+
+    const store = await freshStore();
+    await store.initStore();
+    // No capability passed at all: the web build has no backup folder, and
+    // refusing every import there would be a regression wearing a safety belt.
+    await store.actions.importBackup(new File([], 'backup.json'));
+
+    expect(vi.mocked(importStateFromFile)).toHaveBeenCalled();
+    expect(store.getState().toast).toBe('Backup imported');
+  });
+
+  it('does not spend a snapshot on an import a second tab was going to refuse', async () => {
+    const { acquireTabLock } = await import('../lib/tabLock');
+    vi.mocked(acquireTabLock).mockResolvedValueOnce(false);
+    const snapshot = vi.fn(async () => true);
+
+    const store = await freshStore();
+    await store.initStore();
+    await new Promise((r) => setTimeout(r, 0));
+    await store.actions.importBackup(new File([], 'backup.json'), snapshot);
+
+    expect(snapshot).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * The board card computed exactly which step "Plan next step" meant, passed the
  * goalId to `onPlan`, and `onPlan` ignored it and called `setView('plan')`.
  * Since `cardPrimaryAction` returns 'plan' for nearly every healthy project,

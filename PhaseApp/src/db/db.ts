@@ -570,7 +570,18 @@ function referencedAssetIds(state: AppState): string[] {
   return ids;
 }
 
-export async function exportState(
+/**
+ * The backup document, as text. ONE derivation, spent by three callers.
+ *
+ * `exportState` hands it to a download, the automatic backup writes it to the
+ * local Backups folder, and the fatal error screen writes it from whatever it
+ * can still read. Building the object in each of them would be three opinions
+ * about what a backup contains, and the two that were not the download would
+ * be the ones nobody notices going stale — which is precisely the failure a
+ * backup exists to survive. `importStateFromFile` is the only reader, so what
+ * this produces has to stay exactly what that accepts.
+ */
+export async function buildBackupText(
   state: AppState,
   pxPerDay: number,
   planReview: PlanReview | null,
@@ -582,7 +593,7 @@ export async function exportState(
   sidebarPanels: SidebarPanel[],
   preSlotMigrationSnapshot?: { goals: Goal[]; tasks: Task[] } | null,
   preCheckpointMigrationSnapshot?: { goals: Goal[] } | null,
-): Promise<void> {
+): Promise<string> {
   const ids = referencedAssetIds(state);
   const storedAssets = await db.assets.bulkGet(ids);
   const assets = await encodeAssets(storedAssets.filter((asset): asset is Asset => asset !== undefined));
@@ -596,11 +607,58 @@ export async function exportState(
     ...(preCheckpointMigrationSnapshot ? { preCheckpointMigrationSnapshot } : {}),
     assets,
   };
-  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  return JSON.stringify(backup, null, 2);
+}
+
+/** Hand a built backup to the browser as a file. */
+export function downloadBackupText(text: string, fileName: string): void {
+  const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `phase-goals-${todayStr()}.json`;
+  a.download = fileName;
   a.click();
+}
+
+export async function exportState(
+  state: AppState,
+  pxPerDay: number,
+  planReview: PlanReview | null,
+  allDayBlocks: boolean,
+  sidebarPanels: SidebarPanel[],
+  preSlotMigrationSnapshot?: { goals: Goal[]; tasks: Task[] } | null,
+  preCheckpointMigrationSnapshot?: { goals: Goal[] } | null,
+): Promise<void> {
+  downloadBackupText(
+    await buildBackupText(
+      state, pxPerDay, planReview, allDayBlocks, sidebarPanels,
+      preSlotMigrationSnapshot, preCheckpointMigrationSnapshot,
+    ),
+    `phase-goals-${todayStr()}.json`,
+  );
+}
+
+/**
+ * A backup built from the DATABASE, owing nothing to the running app.
+ *
+ * The fatal error screen is the one caller. By the time it renders, the store
+ * is the thing that just crashed — reading state through it would be asking
+ * the broken component for the data it is trying to rescue. Every value here
+ * comes straight out of Dexie instead, through the same loaders hydration
+ * uses, so the emergency export works in exactly the case it exists for.
+ *
+ * The migration snapshots are read with `.catch(() => null)` for the reason
+ * `exportBackup` gives: they are a nicety, and a rejected read of one must
+ * never be the reason no file is written.
+ */
+export async function emergencyBackupText(): Promise<string> {
+  const [state, pxPerDay, planReview, allDayBlocks, sidebarPanels] = await Promise.all([
+    loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(),
+  ]);
+  const [preSlot, preCheckpoint] = await Promise.all([
+    loadSlotMigrationSnapshot().catch(() => null),
+    loadCheckpointMigrationSnapshot().catch(() => null),
+  ]);
+  return buildBackupText(state, pxPerDay, planReview, allDayBlocks, sidebarPanels, preSlot, preCheckpoint);
 }
 
 export type ImportedBackupState = AppState & {

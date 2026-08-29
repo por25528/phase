@@ -113,6 +113,21 @@ contextBridge.exposeInMainWorld('phaseSync', {
   },
 });
 
+// The MAIN renderer's door to the local backup folder. Three fixed channels,
+// none of which accepts a channel name or a path: the folder is resolved in
+// main (backupStore.cjs) and the renderer never learns where it is, so this
+// door can write one snapshot, list what is there, and read one back by the
+// name the list gave it. backupIpc.test.ts reads this file to stop the two
+// lists drifting, exactly as calendarIpc.test.ts does for the calendar door.
+contextBridge.exposeInMainWorld('phaseBackups', {
+  /** Newest first. Empty when the folder is missing or unreadable. */
+  list: () => ipcRenderer.invoke('phase-backups:list'),
+  /** Write one snapshot; resolves the entry written, or null when refused. */
+  write: (text, reason) => ipcRenderer.invoke('phase-backups:write', { text, reason }),
+  /** The JSON of one snapshot, by the name `list` gave. Null when refused. */
+  read: (name) => ipcRenderer.invoke('phase-backups:read', name),
+});
+
 // The MAIN renderer's door to the release update check. One fixed channel,
 // pull-only: the renderer asks once on mount, so no push can race page load.
 // updateCheck.test.ts reads this file to stop the channel names drifting.
