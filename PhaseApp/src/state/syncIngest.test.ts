@@ -56,15 +56,28 @@ function harness(opts: { goals?: Goal[]; tasks?: Task[]; ingestedThrough?: strin
 }
 
 let n = 0;
-/** The day `op()`'s timestamp falls on — the same in every zone this repo runs in. */
+/**
+ * The day `op()` CARRIES. A literal on the op rather than a day derived from
+ * its timestamp, so every `toHaveBeenCalledWith(id, OP_DAY)` below is exact in
+ * whatever zone the suite is run in — `09:00Z` is the 24th in Honolulu and the
+ * 25th in Kiritimati, and neither is a fact about ingest. The undated fallback
+ * is exercised on purpose, in a pinned zone, at the bottom of this file.
+ */
 const OP_DAY = '2026-08-25';
 function op(request: CompanionRequest, id = `op-${++n}`): CompanionOp {
-  return { id, ts: '2026-08-25T09:00:00.000Z', baseGeneration: 1, request };
+  return { id, ts: '2026-08-25T09:00:00.000Z', day: OP_DAY, baseGeneration: 1, request };
 }
 
-/** The same op, carrying the local day the phone made it on. */
+/** The same op, carrying a different day — the phone's, when it differs. */
 function opOn(day: string, request: CompanionRequest, id = `op-${++n}`): CompanionOp {
   return { ...op(request, id), day };
+}
+
+/** An op from a journal written before `day` existed. */
+function undated(request: CompanionRequest, id = `op-${++n}`): CompanionOp {
+  const older = op(request, id);
+  delete older.day;
+  return older;
 }
 
 function journal(...ops: CompanionOp[]): string {
@@ -271,12 +284,21 @@ describe('the day an ingested op is stamped with', () => {
   });
 
   it('falls back to the op’s timestamp when an older journal carries no day', () => {
-    const h = harness({ tasks: [task('t1')] });
-    ingestJournal(
-      journal(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } })),
-      h.deps,
-    );
-    // '2026-08-25T09:00:00.000Z' — the same day in every zone this repo runs in.
-    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1', OP_DAY);
+    const ORIGINAL_TZ = process.env.TZ;
+    try {
+      // Pinned, because the whole claim is about how a bare instant is read:
+      // 09:00Z on the 25th is 23:00 on the 24th here, and that is the answer
+      // an undated op has to produce.
+      process.env.TZ = 'Pacific/Honolulu';
+      const h = harness({ tasks: [task('t1')] });
+      ingestJournal(
+        journal(undated({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } })),
+        h.deps,
+      );
+      expect(h.spies.toggleTask).toHaveBeenCalledWith('t1', '2026-08-24');
+    } finally {
+      if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+      else process.env.TZ = ORIGINAL_TZ;
+    }
   });
 });

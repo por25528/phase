@@ -5,6 +5,16 @@ import type { CompanionOp, CompanionRequest } from './ops';
 import type { SyncSlices } from './stateFile';
 
 const TS = '2026-08-25T09:30:00.000Z';
+/**
+ * The day `op()` CARRIES, and therefore the day every stamp below reads.
+ *
+ * It is on the op rather than derived from `TS`, so these assertions are exact
+ * literals in every timezone the suite is ever run in. Deriving it would make
+ * them agree with `opDay` by construction and prove nothing; leaving the op
+ * undated would make `DAY` a different string in Honolulu than in Kiritimati.
+ * The fallback for an op with no `day` is exercised deliberately, by `undated`
+ * inside a pinned zone.
+ */
 const DAY = '2026-08-25';
 
 function slices(): SyncSlices {
@@ -31,7 +41,14 @@ function slices(): SyncSlices {
 }
 
 function op(request: CompanionRequest, over: Partial<CompanionOp> = {}): CompanionOp {
-  return { id: 'op-1', ts: TS, baseGeneration: 3, request, ...over };
+  return { id: 'op-1', ts: TS, day: DAY, baseGeneration: 3, request, ...over };
+}
+
+/** An op from a journal written before `day` existed — the fallback path. */
+function undated(request: CompanionRequest, over: Partial<CompanionOp> = {}): CompanionOp {
+  const older = op(request, over);
+  delete older.day;
+  return older;
 }
 
 /** The node with `id` in the projection's first goal, wherever it sits. */
@@ -222,7 +239,7 @@ describe('the day an op is stamped with', () => {
   it('is the local day east of Greenwich, where UTC is still yesterday', () => {
     // 00:30 on the 30th in Bangkok; 17:30 on the 29th in UTC.
     const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
-      op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: '2026-08-29T17:30:00.000Z' }),
+      undated({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: '2026-08-29T17:30:00.000Z' }),
     ]));
     expect(out.tasks[0].doneAt).toBe('2026-08-30');
   });
@@ -230,21 +247,22 @@ describe('the day an op is stamped with', () => {
   it('is the local day west of Greenwich, where UTC is already tomorrow', () => {
     // 21:30 on the 29th in Los Angeles; 04:30 on the 30th in UTC.
     const out = inZone('America/Los_Angeles', () => replayOps(slices(), [
-      op({ tool: 'complete_task', ref: { kind: 'step', id: 'n1', goalId: 'g1' } }, { ts: '2026-08-30T04:30:00.000Z' }),
+      undated({ tool: 'complete_task', ref: { kind: 'step', id: 'n1', goalId: 'g1' } }, { ts: '2026-08-30T04:30:00.000Z' }),
     ]));
     expect(node(out, 'n1')).toMatchObject({ status: 'done', doneAt: '2026-08-29' });
   });
 
   it('dates an unstated log_time session the same way', () => {
     const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
-      op({ tool: 'log_time', ref: { kind: 'task', id: 't1', goalId: null }, minutes: 30 }, { ts: '2026-08-29T17:30:00.000Z' }),
+      undated({ tool: 'log_time', ref: { kind: 'task', id: 't1', goalId: null }, minutes: 30 }, { ts: '2026-08-29T17:30:00.000Z' }),
     ]));
     expect(out.sessions[0].date).toBe('2026-08-30');
   });
 
-  it('is the day the OP carries, when it carries one', () => {
-    // The phone recorded the 29th; this reader's zone would make the same
-    // instant the 30th. The phone is where the tap happened, so it wins.
+  it('is the day the OP carries, and beats the reader’s own clock', () => {
+    // The phone recorded the 29th; in this reader's zone the SAME instant is
+    // the 30th, and the case above proves an undated op would read it that
+    // way. The phone is where the tap happened, so its answer wins.
     const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
       op(
         { tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } },
@@ -256,7 +274,7 @@ describe('the day an op is stamped with', () => {
 
   it('falls back to today when the timestamp is unreadable, rather than stamping NaN', () => {
     const out = replayOps(slices(), [
-      op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: 'not-a-timestamp' }),
+      undated({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: 'not-a-timestamp' }),
     ]);
     expect(out.tasks[0].doneAt).toBe(todayStr());
   });

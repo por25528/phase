@@ -158,8 +158,17 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
       // good projection stands untouched and only the error is published. This
       // never rethrows: the callers are an effect and the bridge's own change
       // callback, neither of which can catch.
-      error = { kind: 'read', message: messageOf(err) };
-      publish({ ...snapshot, error });
+      //
+      // An outstanding WRITE error outranks it and is left alone. The two are
+      // not the same news: a stale projection is still true, just old, while a
+      // tick that never reached the journal is the person's own gesture gone.
+      // Demoting the second to the first would replace the only notice that
+      // anything was lost with one saying the screen is a little behind —
+      // and the demotion would usually come from a refresh nobody asked for.
+      if (error?.kind !== 'write') {
+        error = { kind: 'read', message: messageOf(err) };
+        publish({ ...snapshot, error });
+      }
       return;
     }
     journal = parseOpsJournal(journalText);
@@ -168,12 +177,13 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
     // would otherwise blank out mid-sync and read as data loss.
     const parsed = stateText === null ? null : parseStateFile(stateText);
     if (parsed) canonical = parsed;
-    // A read that worked clears a READ error and nothing else. A tick that
-    // failed to reach the journal is still a tick that did not happen, and
-    // this refresh is very often one nobody asked for — `onChange` fires
-    // whenever iCloud lands any file at all. Letting it clear the write notice
-    // would make the failure vanish on a timer the person does not control,
-    // leaving them looking at a screen that never mentions their tap again.
+    // A read that worked clears a READ error and nothing else — the same rule
+    // the catch above holds from the other side. A tick that failed to reach
+    // the journal is still a tick that did not happen, and this refresh is
+    // very often one nobody asked for: `onChange` fires whenever iCloud lands
+    // any file at all. Letting it clear the write notice would make the
+    // failure vanish on a timer the person does not control, leaving them
+    // looking at a screen that never mentions their tap again.
     if (error?.kind === 'read') error = null;
     recompute();
   }

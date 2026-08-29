@@ -381,6 +381,58 @@ describe('when the bridge fails', () => {
     expect(store.getState().error).toBeNull();
   });
 
+  it('a read that fails does not demote an outstanding write error', async () => {
+    const bridge = fakeBridge(buildStateFile(slices(), META));
+    const store = createPhoneStore(bridge);
+    await store.refresh();
+
+    bridge.writeFails = 'the container is read-only';
+    await store.ops.completeTask({ kind: 'task', id: 't1', goalId: null });
+
+    bridge.readFails = 'iCloud is not available';
+    await store.refresh();
+
+    // Work that is GONE outranks work that may merely be stale — the same
+    // severity order `SyncBar` draws in. A tick that never landed is the
+    // person's own lost gesture; a stale read is the screen still being true,
+    // just old. Overwriting the first with the second loses the only notice
+    // that anything was lost.
+    expect(store.getState().error).toEqual({ kind: 'write', message: 'the container is read-only' });
+
+    // Reads recovering does not clear it either; a write still has to land.
+    bridge.readFails = null;
+    await store.refresh();
+    expect(store.getState().error).toEqual({ kind: 'write', message: 'the container is read-only' });
+
+    bridge.writeFails = null;
+    expect(await store.ops.completeTask({ kind: 'task', id: 't1', goalId: null })).toBe(true);
+    expect(store.getState().error).toBeNull();
+  });
+
+  it('survives the refresh the bridge fires on its own', async () => {
+    const bridge = fakeBridge(buildStateFile(slices(), META));
+    const store = createPhoneStore(bridge);
+    await store.refresh();
+
+    bridge.writeFails = 'the container is read-only';
+    await store.ops.addLooseTask('Call the bank');
+
+    // `onChange` is not a refresh anybody asked for — iCloud landing anything
+    // at all fires it — and here it fires while the container is still
+    // failing. Neither the success path nor the failure path may take the
+    // write notice away.
+    bridge.readFails = 'iCloud is not available';
+    bridge.fire();
+    await vi.waitFor(() =>
+      expect(store.getState().error).toEqual({ kind: 'write', message: 'the container is read-only' }),
+    );
+
+    bridge.readFails = null;
+    bridge.fire();
+    await vi.waitFor(() => expect(store.getState().projected).not.toBeNull());
+    expect(store.getState().error).toEqual({ kind: 'write', message: 'the container is read-only' });
+  });
+
   it('a failed compaction leaves the journal exactly as it was', async () => {
     const ingested: CompanionOp = {
       id: 'op-old',

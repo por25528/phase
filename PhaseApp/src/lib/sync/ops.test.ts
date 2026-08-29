@@ -83,10 +83,14 @@ describe('opDay', () => {
   });
 
   it('ignores a day that is not a date, rather than stamping nonsense', () => {
+    // Pinned: the fallback reads the instant in the READER's zone, and
+    // `10:00Z` on the 25th is already the 26th at UTC+14.
+    process.env.TZ = 'UTC';
     expect(opDay({ ...op('a'), day: 'yesterday', ts: '2026-08-25T10:00:00.000Z' })).toBe('2026-08-25');
   });
 
   it('falls back to today when neither field is readable', () => {
+    process.env.TZ = 'UTC';
     expect(opDay({ ...op('a'), ts: 'not-a-timestamp' })).toBe(todayStr());
   });
 
