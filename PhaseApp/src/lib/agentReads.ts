@@ -10,6 +10,7 @@ import { goalPct } from './pct';
 import { todayStr } from './dates';
 import { HORIZON_LABELS } from './horizons';
 import { plannedLeaves, weekOf } from './plan';
+import { coversWeek } from './calendarRange';
 import { tasksForWeek } from './dailyWork';
 import { spansOn } from './scheduled';
 import { findNode } from './tree';
@@ -48,7 +49,7 @@ function adviceInput(state: FullState, now: Now): ExecutionAdviceInput {
     goals: state.goals,
     tasks: state.tasks,
     sessions: state.sessions,
-    blocks: [],
+    blocks: state.busyBlocks,
     placedOn: (date: string) => spansOn(state.goals, state.tasks, date),
     allDayBlocks: state.allDayBlocks,
     today: now.date,
@@ -62,12 +63,17 @@ function capacityInput(state: FullState, now: Now): CapacityInput {
   const week = weekOf(now.date);
   return {
     week,
-    blocks: [],
+    blocks: state.busyBlocks,
     leaves: plannedLeaves(state.goals, week),
     tasks: tasksForWeek(state.tasks, week),
     now,
     allDayBlocks: state.allDayBlocks,
-    hasData: false, // no calendar cache reaches this module — see `nowOf`
+    // Derived from the range the store actually holds, exactly as `Plan.tsx`
+    // does it. It was hardcoded `false`, which said "nobody has fetched this
+    // week" about a week every block was already in hand for — the more
+    // damaging of the two errors, because it invites a caveat on an answer
+    // that needs none.
+    hasData: !!state.calendarRange && coversWeek(state.calendarRange, week),
   };
 }
 
@@ -170,15 +176,16 @@ export function handleAgentRead(
       return okResponse({ project: goal });
     }
     case 'propose_replan': {
-      // `Today.tsx`'s call, verbatim: `blocks: []` for the reason `nowOf`
-      // gives. Proposes only — `apply_replan` is the write, and it takes
-      // these moves back rather than recomputing them.
+      // `Today.tsx`'s call, verbatim — the store's cached busy time included,
+      // so the assistant never proposes an hour the planner would refuse.
+      // Proposes only: `apply_replan` is the write, and it takes these moves
+      // back rather than recomputing them.
       const now = nowOf();
       return okResponse(proposeReplan({
         goals: state.goals,
         tasks: state.tasks,
         today: now.date,
-        blocks: [],
+        blocks: state.busyBlocks,
         allDayBlocks: state.allDayBlocks,
         now,
       }));

@@ -1,13 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { handleAgentRead } from './agentReads';
 import type { FullState } from '../state/store';
+import { addDays, todayStr } from './dates';
+import { weekOf } from './plan';
 
 /** The smallest state a read can be asked about: nothing planned, nothing due. */
 function emptyState(): FullState {
   return {
     goals: [], tasks: [], habits: [], sessions: [], lives: [],
     availability: [], hydration: 'ready', persistFailed: false,
-    pendingUndo: null,
+    pendingUndo: null, busyBlocks: [], calendarRange: null,
   } as unknown as FullState;
 }
 
@@ -112,5 +114,66 @@ describe('propose_replan', () => {
     expect(data.moves).toHaveLength(1);
     expect(data.moves[0]).toMatchObject({ blockId: 'b1', from: '2000-01-03' });
     expect(data.moves[0].to > '2000-01-03').toBe(true);
+  });
+});
+
+/**
+ * The assistant answers out of the SAME state the planner does, cached busy
+ * time included. An assistant that proposed an hour the planner would refuse
+ * would be worse than one that proposed nothing.
+ *
+ * Anchored on the real clock rather than a fixed date: `week` answers about
+ * the week it is asked in, so a hardcoded August would fall outside it.
+ */
+describe('the calendar reaches the assistant', () => {
+  const today = todayStr();
+  const week = weekOf(today);
+
+  const booked = (over: Partial<FullState> = {}): FullState => ({
+    ...emptyState(),
+    busyBlocks: [
+      { date: today, startMin: 540, endMin: 600, title: 'conference', allDay: false },
+    ],
+    calendarRange: { rangeStart: addDays(week, -7), rangeEnd: addDays(week, 56) },
+    ...over,
+  } as unknown as FullState);
+
+  it("names the day's meetings in the week readout", () => {
+    const res = handleAgentRead({ tool: 'week' }, booked());
+    expect(JSON.stringify(res)).toContain('conference');
+  });
+
+  // The discriminating half: without the wiring the same call answers with an
+  // empty `blockedBy`, which reads as a clear day.
+  it('says nothing about meetings when the cache holds none', () => {
+    const res = handleAgentRead({ tool: 'week' }, emptyState());
+    expect(JSON.stringify(res)).not.toContain('conference');
+  });
+
+  /**
+   * `hasData` is the assistant's only way to tell "this week has no meetings"
+   * from "nobody has fetched this week". Hardcoding it false said the second
+   * about a week it had every block for, which is the more damaging error:
+   * it invites a caveat on an answer that needs none.
+   */
+  it('reports coverage from the range it actually holds', () => {
+    const res = handleAgentRead({ tool: 'week' }, booked()) as {
+      ok: true; data: { capacity: { hasData: boolean } };
+    };
+    expect(res.data.capacity.hasData).toBe(true);
+  });
+
+  it('does not claim coverage for a week the range stops short of', () => {
+    const res = handleAgentRead({ tool: 'week' }, booked({
+      calendarRange: { rangeStart: addDays(week, -70), rangeEnd: addDays(week, -14) },
+    })) as { ok: true; data: { capacity: { hasData: boolean } } };
+    expect(res.data.capacity.hasData).toBe(false);
+  });
+
+  it('claims no coverage at all with nothing cached', () => {
+    const res = handleAgentRead({ tool: 'week' }, emptyState()) as {
+      ok: true; data: { capacity: { hasData: boolean } };
+    };
+    expect(res.data.capacity.hasData).toBe(false);
   });
 });

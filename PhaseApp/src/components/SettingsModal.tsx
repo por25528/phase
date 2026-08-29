@@ -5,6 +5,7 @@ import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings
 import { LaunchAtLoginSettings } from './assistant/LaunchAtLoginSettings';
 import { BackupsSettings } from './BackupsSettings';
 import type { BackupNowResult } from '../state/autoBackup';
+import { CalendarSettings } from './CalendarSettings';
 import { useAppStore } from '../state/store';
 
 /**
@@ -42,6 +43,14 @@ export function SettingsModal({
         them, or to none — an errand is nobody's project.
       </p>
       <LivesSettings />
+
+      <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Calendar</h3>
+      <p className="text-ui text-muted mb-[12px] leading-[1.5]">
+        Phase reads your Google Calendar so it stops putting work on top of
+        time you have already committed. Read-only and one-way — it never
+        writes to Google, and the events stay on this Mac.
+      </p>
+      <CalendarSettings />
 
       <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Assistant shortcut</h3>
       <p className="text-ui text-muted mb-[12px] leading-[1.5]">

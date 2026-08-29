@@ -18,6 +18,12 @@ export interface LoopbackServer {
 
 export interface OAuthDeps {
   secrets: SecretStore;
+  /**
+   * The OAuth client this build ships, consulted only when the user has saved
+   * none of their own. Absent in tests that do not care; `null` when the build
+   * manages no credentials.
+   */
+  managedClient?: () => { clientId: string; clientSecret: string } | null;
   httpPost(url: string, body: URLSearchParams): Promise<HttpResponse>;
   createServer(): LoopbackServer;
   openExternal(url: string): Promise<void>;
@@ -37,6 +43,16 @@ export interface Tokens {
   accessToken: string;
   /** Absolute epoch-ms expiry, derived from `now()` + `expires_in`. */
   expiresAt: number;
+  /**
+   * The OAuth client id this token was issued for. Not a secret — the id is
+   * public in every consent URL — and it is what lets a ROTATED client be told
+   * from a revoked grant, so the user is asked to reconnect rather than shown
+   * an opaque refresh failure that never clears.
+   *
+   * Absent on a token stored before this field existed; such a token is
+   * trusted and stamped on its next refresh.
+   */
+  clientId?: string;
 }
 
 export interface OAuth {
@@ -45,7 +61,19 @@ export interface OAuth {
   connect(): Promise<void>;
   /** Revoke with Google and forget the token locally even when revocation fails. */
   disconnect(): Promise<void>;
-  /** Returns a valid access token, refreshing when stale, and throws `NotConnectedError` when none is stored, `ReauthRequiredError` when Google rejects the refresh token, and plain `Error` for other failures. */
+  /**
+   * Returns a valid access token, refreshing when stale.
+   *
+   * Throws `NotConnectedError` when none is stored. Throws
+   * `ReauthRequiredError` in three cases, all of which mean a reconnect is the
+   * only cure: the stored token belongs to a different OAuth client (caught
+   * before the request), Google answers `invalid_grant` (the grant is revoked
+   * or expired), or Google answers `invalid_client` / `unauthorized_client` /
+   * a bare 401 (the client is gone or its secret was rotated). The last of
+   * those is the only way to discover a rotation under a token stored before
+   * `Tokens.clientId` existed. Plain `Error` for everything else, which is
+   * transient by elimination and must not prompt for reauth.
+   */
   getAccessToken(): Promise<string>;
   isConnected(): boolean;
   /**

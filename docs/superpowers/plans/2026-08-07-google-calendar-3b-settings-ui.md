@@ -1,12 +1,14 @@
 # Google Calendar — the settings UI and the honest caveat (3b of 3)
 
-> **SHELVED 2026-08-07 — do not execute this plan.** See the same notice on
-> plan 3a. One piece of this document outlives the calendar feature and is worth
-> salvaging independently: Task 1 replaces `capacityNote`'s hardcoded
-> `'calendar not connected'` with a health enum. That string is currently
-> *correct* — no calendar is connected and none can be — so there is no bug
-> today, but the comment in `capacityLabel.ts` predicting its obsolescence
-> should be read alongside this notice rather than acted on.
+> **DONE 2026-08-30.** Unshelved and executed. Task 1 (the health enum) and
+> Task 6 (the header caveat) landed as written. The rest departed from the plan
+> because the app had moved: the Plan rail no longer holds Working hours — it
+> holds Backlog and Habits and nothing else — so the settings section went into
+> `SettingsModal` instead, which is where that dialog's own comment says
+> provider-style configuration belongs. Tasks 4 and 5 (the 249px rail, the
+> restored all-day checkbox, the `'calendar'` sidebar panel) are therefore moot.
+> The credentials form is now an advanced disclosure rather than the first thing
+> on the surface, because the build can ship its own OAuth client.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

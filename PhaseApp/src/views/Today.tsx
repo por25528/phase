@@ -50,7 +50,7 @@ export function Today({
    */
   onCapture?: () => void;
 }) {
-  const { goals, tasks, sessions, allDayBlocks, actions } = useAppStore();
+  const { goals, tasks, sessions, allDayBlocks, busyBlocks, actions } = useAppStore();
   const today = useLocalDate();
   const [nowMinute, setNowMinute] = useState(() => {
     const d = new Date();
@@ -83,10 +83,10 @@ export function Today({
    */
   const advice = useMemo(
     () => executionAdvice({
-      goals, tasks, sessions, blocks: [], placedOn, allDayBlocks,
+      goals, tasks, sessions, blocks: busyBlocks, placedOn, allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute },
     }),
-    [goals, tasks, sessions, placedOn, allDayBlocks, today, nowMinute],
+    [goals, tasks, sessions, placedOn, allDayBlocks, busyBlocks, today, nowMinute],
   );
   const primary = advice.kind === 'work' ? advice.primary : null;
   const attention = useMemo(
@@ -100,11 +100,11 @@ export function Today({
   const proposal = useMemo(
     () => (replanOpen
       ? proposeReplan({
-        goals, tasks, today, blocks: [], allDayBlocks,
+        goals, tasks, today, blocks: busyBlocks, allDayBlocks,
         now: { date: today, minute: nowMinute },
       })
       : { moves: [], unplaceable: [] }),
-    [replanOpen, goals, tasks, today, allDayBlocks, nowMinute],
+    [replanOpen, goals, tasks, today, allDayBlocks, busyBlocks, nowMinute],
   );
 
   const open = useMemo(() => sections.commitments.filter((i) => !i.done), [sections]);
@@ -149,11 +149,11 @@ export function Today({
   // to withhold on exactly the day it mattered most.
   const offer = useMemo(
     () => todayPlan({
-      goals, tasks, blocks: [], placedOn, allDayBlocks,
+      goals, tasks, blocks: busyBlocks, placedOn, allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute },
       exclude: shown,
     }),
-    [goals, tasks, placedOn, allDayBlocks, today, nowMinute, shown],
+    [goals, tasks, placedOn, allDayBlocks, busyBlocks, today, nowMinute, shown],
   );
 
   // The work the page used to name and refuse to show. Below the day's own

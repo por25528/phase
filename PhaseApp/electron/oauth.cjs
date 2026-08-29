@@ -67,14 +67,26 @@ function tokenErrorDetail(res) {
 }
 
 function createOAuth(deps) {
-  const { secrets, httpPost, now, createServer, setTimer, openExternal, createPkce } = deps;
+  const { secrets, httpPost, now, createServer, setTimer, openExternal, createPkce, managedClient } = deps;
 
+  /**
+   * The OAuth client to authenticate as: the user's own if they saved one,
+   * otherwise the pair this build manages.
+   *
+   * Stored wins. Saving your own client is a deliberate act, and quietly
+   * authenticating against the shipped one instead would send the consent
+   * screen to a different Cloud project with nothing on screen to say so.
+   *
+   * The managed pair is consulted on every use rather than copied into the
+   * secret store once: it belongs to the BUILD, so a release that rotates it
+   * must take effect without a stale copy on disk overriding it.
+   */
   function client() {
     const stored = secrets.get('client');
-    if (!stored || !stored.clientId || !stored.clientSecret) {
-      throw new CredentialsNotConfiguredError();
-    }
-    return stored;
+    if (stored && stored.clientId && stored.clientSecret) return stored;
+    const managed = managedClient ? managedClient() : null;
+    if (managed && managed.clientId && managed.clientSecret) return managed;
+    throw new CredentialsNotConfiguredError();
   }
 
   async function postForTokens(body) {
@@ -111,6 +123,10 @@ function createOAuth(deps) {
       refreshToken: json.refresh_token,
       accessToken: json.access_token,
       expiresAt: now() + Number(json.expires_in) * 1000,
+      // Which OAuth client issued this. Not a secret — the id is public in
+      // every consent URL — and it is what lets a rotated client be told from
+      // a revoked grant. See `getAccessToken`.
+      clientId,
     };
   }
 
@@ -122,11 +138,36 @@ function createOAuth(deps) {
   async function getAccessToken() {
     const token = storedToken();
     if (!token) throw new NotConnectedError();
+
+    const { clientId, clientSecret } = client();
+
+    /*
+     * A token issued by a different OAuth client buys nothing.
+     *
+     * The build's own client can rotate — a new release, a revoked Cloud
+     * credential — and Google then answers the refresh with `invalid_client`
+     * or a bare 400, which reaches the renderer as `request-failed`: a
+     * transient-looking error the UI is right to shrug at and that will never
+     * clear on its own. Caught here, before the request, it becomes the one
+     * thing the user can act on.
+     *
+     * The token is dropped rather than kept, so nothing retries it and
+     * `status()` stops claiming a connection that cannot be spent.
+     *
+     * A token stored before this field existed carries no client id and is
+     * TRUSTED: forcing every existing installation to reconnect on upgrade
+     * would be a worse bug than the one this fixes. The refresh below stamps
+     * it, after which rotation is caught like any other.
+     */
+    if (token.clientId && token.clientId !== clientId) {
+      secrets.remove('token');
+      throw new ReauthRequiredError();
+    }
+
     // Refresh a minute early: a token that expires mid-flight produces a 401
     // on a request that held a valid token when it was chosen.
     if (token.accessToken && now() < token.expiresAt - REFRESH_SKEW_MS) return token.accessToken;
 
-    const { clientId, clientSecret } = client();
     const res = await httpPost(TOKEN_ENDPOINT, new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
@@ -134,10 +175,40 @@ function createOAuth(deps) {
       grant_type: 'refresh_token',
     }));
     if (!res.ok) {
-      // invalid_grant means revoked or expired — a DIFFERENT user-facing
-      // state from "never connected", per spec §10. Anything else (503,
-      // offline) is transient and must not prompt for reauth.
+      // invalid_grant means the GRANT is revoked or expired — a DIFFERENT
+      // user-facing state from "never connected", per spec §10. The token is
+      // left in place: it is the thing the user is being asked to renew.
       if (res.json?.error === 'invalid_grant') throw new ReauthRequiredError();
+
+      /*
+       * invalid_client means the CLIENT is gone or its secret was rotated in
+       * the Cloud console, and a bare 401 is the same refusal with a body that
+       * would not parse. Neither is transient, and neither used to be caught:
+       * they became a plain Error, which the renderer reads as
+       * `request-failed` — a state the UI is right to shrug at and that will
+       * never clear on its own.
+       *
+       * This is the ONLY way to discover a rotation under a token stored
+       * before `clientId` was recorded, since there is no id on it to compare.
+       * Catching it here closes that gap without forcing every existing
+       * installation to reconnect on upgrade.
+       *
+       * The token IS dropped, unlike on invalid_grant: it is bound to a client
+       * that no longer exists, so nothing can renew it and keeping it only
+       * means retrying a request that cannot succeed.
+       */
+      if (
+        res.status === 401
+        || res.json?.error === 'invalid_client'
+        || res.json?.error === 'unauthorized_client'
+      ) {
+        secrets.remove('token');
+        throw new ReauthRequiredError();
+      }
+
+      // Everything else — a 503, a captive portal, a dropped association — is
+      // transient. Prompting for a reconnect that would not fix it teaches
+      // people to reconnect at every hiccup until the prompt means nothing.
       throw new Error(`Google token refresh failed: ${tokenErrorDetail(res)}`);
     }
     if (!res.json?.access_token || !Number.isFinite(Number(res.json?.expires_in))) {
@@ -149,6 +220,9 @@ function createOAuth(deps) {
       refreshToken: res.json.refresh_token || token.refreshToken,
       accessToken: res.json.access_token,
       expiresAt: now() + Number(res.json.expires_in) * 1000,
+      // Stamped on every refresh, which is what upgrades a token stored before
+      // the field existed into one whose client can be checked.
+      clientId,
     };
     // A disconnect may have landed while this refresh was in flight. Writing
     // now would restore the credential the user just asked to delete.

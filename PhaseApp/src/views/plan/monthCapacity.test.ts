@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { monthCapacity } from './monthCapacity';
 import { makeBlock } from '../../lib/blocks';
-import type { Goal, Task } from '../../db/types';
+import type { BusyBlock, Goal, Task } from '../../db/types';
+import type { DateRange } from '../../lib/calendarRange';
 
 const input = {
   ym: '2026-08',
   goals: [] as Goal[],
   tasks: [] as Task[],
+  blocks: [] as BusyBlock[],
   now: { date: '2026-08-16', minute: 600 },
   allDayBlocks: false,
+  range: null as DateRange | null,
 };
 
 // August 2026's grid draws six Monday-first rows starting 2026-07-27, which
@@ -134,5 +137,57 @@ describe('monthCapacity', () => {
   it('numbers its rows', () => {
     const m = monthCapacity(input);
     expect(m.rows.every((r) => /^W\d{1,2}$/.test(r.isoWeekLabel))).toBe(true);
+  });
+});
+
+/**
+ * The month grid draws the same busy time the week grid does. Passing `[]`
+ * here while the week passes real blocks would make the two views disagree
+ * about the same Tuesday.
+ */
+describe('monthCapacity and the calendar', () => {
+  const MEETING: BusyBlock = {
+    date: '2026-07-28', startMin: 540, endMin: 600, title: 'standup', allDay: false,
+  };
+
+  it("names the day's meetings on the row that draws it", () => {
+    const out = monthCapacity({ ...input, blocks: [MEETING] });
+    const day = out.rows.flatMap((r) => r.capacity.days).find((d) => d.date === '2026-07-28');
+    expect(day?.blockedBy).toEqual(['standup']);
+  });
+
+  it('says it has no calendar data when it was handed no range', () => {
+    const out = monthCapacity({ ...input, blocks: [MEETING] });
+    expect(out.total.hasData).toBe(false);
+    expect(out.rows.some((r) => r.capacity.hasData)).toBe(false);
+  });
+
+  /**
+   * The discriminating test. August 2026 draws six week rows, and the cache is
+   * ONE contiguous range — so a range that stops mid-month covers some of those
+   * rows and not others. A single `hasData` flag handed down from the caller
+   * had to pick one answer for all six, and whichever it picked was wrong for
+   * the rest.
+   */
+  it('reports coverage per row, not one verdict for the whole month', () => {
+    // Covers the first three rows (from 2026-07-27) and stops before the rest.
+    const range: DateRange = { rangeStart: '2026-07-20', rangeEnd: '2026-08-17' };
+    const out = monthCapacity({ ...input, blocks: [MEETING], range });
+
+    expect(out.rows[0].capacity.hasData).toBe(true);
+    expect(out.rows[out.rows.length - 1].capacity.hasData).toBe(false);
+  });
+
+  // The month's own figure covers every row it drew, so it is only "has data"
+  // when all of them do — a total that claimed coverage its rows do not have
+  // would let the header and the gutter disagree.
+  it('claims coverage for the month only when every row has it', () => {
+    const partial: DateRange = { rangeStart: '2026-07-20', rangeEnd: '2026-08-17' };
+    expect(monthCapacity({ ...input, range: partial }).total.hasData).toBe(false);
+
+    const whole: DateRange = { rangeStart: '2026-07-20', rangeEnd: '2026-09-30' };
+    const out = monthCapacity({ ...input, range: whole });
+    expect(out.total.hasData).toBe(true);
+    expect(out.rows.every((r) => r.capacity.hasData)).toBe(true);
   });
 });

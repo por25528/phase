@@ -17,7 +17,26 @@ const MAX_INPUT_STRING_LENGTH = 1024;
 const MAX_RANGE_DAYS = 400;
 
 function createCalendarHandlers(deps) {
-  const { secrets, oauth, googleClient, normalizeEvents, timeZone, nowIso } = deps;
+  const { secrets, oauth, googleClient, normalizeEvents, timeZone, nowIso, managedClient } = deps;
+
+  /**
+   * The OAuth client the build ships, or null when it ships none.
+   *
+   * Resolved on every call rather than captured once: it is read from a file
+   * in the bundle, so a release that rotates it takes effect on next launch
+   * with nothing stale held in a closure.
+   */
+  function managed() {
+    if (!managedClient) return null;
+    try {
+      const pair = managedClient();
+      return hasClientCredentials(pair) ? pair : null;
+    } catch {
+      // A credential source that throws is the same as one that ships
+      // nothing. It must never take `status()` down at boot.
+      return null;
+    }
+  }
 
   /** Reading a corrupt store must not throw out of `status`. */
   function safeGet(key) {
@@ -80,20 +99,38 @@ function createCalendarHandlers(deps) {
 
   async function status() {
     const available = secrets.available();
+    // Reported even from the corrupt branches: a reset is only worth offering
+    // if there is a working configuration on the other side of it, and the
+    // renderer cannot know that unless this says so.
+    const hasManaged = managed() !== null;
     const client = safeGet('client');
     if (!client.ok) {
-      return { configured: false, connected: false, corrupt: true, available, accountId: null, timeZone: timeZone() };
+      return {
+        configured: false, connected: false, corrupt: true, available,
+        managed: hasManaged, custom: false, accountId: null, timeZone: timeZone(),
+      };
     }
     const account = safeGet('account');
     if (!account.ok) {
-      return { configured: false, connected: false, corrupt: true, available, accountId: null, timeZone: timeZone() };
+      return {
+        configured: false, connected: false, corrupt: true, available,
+        managed: hasManaged, custom: hasClientCredentials(client.value),
+        accountId: null, timeZone: timeZone(),
+      };
     }
-    const configured = hasClientCredentials(client.value);
+    const custom = hasClientCredentials(client.value);
+    // Either source configures the app. `custom` and `managed` are reported
+    // SEPARATELY so the settings surface can tell "you saved your own" from
+    // "the build shipped one" — the first has something to revert, the second
+    // does not.
+    const configured = custom || hasManaged;
     return {
       configured,
       connected: configured && oauth.isConnected(),
       corrupt: false,
       available,
+      managed: hasManaged,
+      custom,
       accountId: account.value ? account.value.accountId : null,
       timeZone: timeZone(),
     };
@@ -139,7 +176,7 @@ function createCalendarHandlers(deps) {
         logFailure('connect', client.error);
         return { ok: false, reason: 'request-failed' };
       }
-      if (!hasClientCredentials(client.value)) return { ok: false, reason: 'not-configured' };
+      if (!hasClientCredentials(client.value) && !managed()) return { ok: false, reason: 'not-configured' };
       await oauth.connect();
       try {
         // The account id is provenance, and the primary calendar's id IS the
@@ -202,7 +239,7 @@ function createCalendarHandlers(deps) {
       logFailure('fetch', client.error);
       return { ok: false, reason: 'corrupt' };
     }
-    if (!hasClientCredentials(client.value)) return { ok: false, reason: 'not-configured' };
+    if (!hasClientCredentials(client.value) && !managed()) return { ok: false, reason: 'not-configured' };
 
     let zone;
     try {

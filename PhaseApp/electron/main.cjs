@@ -15,6 +15,7 @@ const { createOAuth } = require('./oauth.cjs')
 const { createGoogleClient } = require('./googleClient.cjs')
 const { normalizeEvents } = require('./busyBlocks.cjs')
 const { createCalendarHandlers, registerCalendarIpc } = require('./calendarIpc.cjs')
+const { resolveManagedCredentials, CREDENTIALS_FILE } = require('./calendarCredentials.cjs')
 const { createAssistantIpc } = require('./assistantIpc.cjs')
 const { createAssistantShortcut } = require('./assistantShortcut.cjs')
 const { assistantEntry } = require('./assistantWindow.cjs')
@@ -296,6 +297,24 @@ async function httpJson(url, init) {
   return { ok: res.ok && parsed, status: res.status, json }
 }
 
+/**
+ * The OAuth client this build ships, or null when it ships none.
+ *
+ * Read from a git-ignored file written into the bundle at build time, with
+ * the two environment variables as the `npm run app:dev` path. Nothing is
+ * hardcoded, so a checkout with neither simply has no managed credentials and
+ * the app falls back to the user's own client, entered in Settings.
+ */
+function managedCalendarClient() {
+  return resolveManagedCredentials({
+    env: process.env,
+    readCredentialsFile: () => {
+      const file = path.join(__dirname, CREDENTIALS_FILE)
+      return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null
+    },
+  })
+}
+
 function buildCalendar() {
   const secrets = createSecretStore({
     readFile: () => (fs.existsSync(secretsPath()) ? fs.readFileSync(secretsPath()) : null),
@@ -314,6 +333,7 @@ function buildCalendar() {
 
   const oauth = createOAuth({
     secrets,
+    managedClient: managedCalendarClient,
     httpPost: (url, body) => httpJson(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -333,6 +353,7 @@ function buildCalendar() {
 
   return createCalendarHandlers({
     secrets,
+    managedClient: managedCalendarClient,
     oauth,
     googleClient,
     normalizeEvents,

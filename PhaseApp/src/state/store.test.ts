@@ -3,9 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { goalPct } from '../lib/pct';
 import { leafCount } from '../lib/board';
 import { resolveScope } from '../lib/lifeScope';
-import type { Asset, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
+import type { Asset, BusyBlock, CalendarCache, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
 import { makeBlock } from '../lib/blocks';
 import type { ActiveFocusSession } from '../lib/focusSession';
+import type {
+  CalendarConnectResult, CalendarFetchResult, CalendarStatus, CalendarSummary,
+} from '../lib/calendarBridge';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async () => ({ goals: [], habits: [], tasks: [], sessions: [], lives: [] })),
@@ -41,6 +44,8 @@ const dbMocks = vi.hoisted(() => ({
   saveStoredTimeLevel: vi.fn(async () => {}),
   loadStoredFocusLevel: vi.fn(async () => null),
   saveStoredFocusLevel: vi.fn(async () => {}),
+  loadCalendarIds: vi.fn(async () => ['primary']),
+  saveCalendarIds: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -59,6 +64,48 @@ const tabLockMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/tabLock', () => tabLockMocks);
+
+const calendarCacheMocks = vi.hoisted(() => ({
+  loadCalendarCache: vi.fn(async () => undefined as CalendarCache | undefined),
+  saveCalendarCache: vi.fn(async (_cache: CalendarCache): Promise<void> => {}),
+  clearCalendarCache: vi.fn(async (): Promise<void> => {}),
+}));
+
+vi.mock('../db/calendarCache', () => calendarCacheMocks);
+
+const TZ = 'America/New_York';
+
+/**
+ * A complete `window.phaseCalendar`. Complete on purpose: `calendarBridge()`
+ * rejects a partial one, so a helper that omitted a verb would make every
+ * calendar test silently exercise the browser path instead.
+ */
+function installBridge(over: Record<string, unknown> = {}) {
+  const base = {
+    status: vi.fn(async (): Promise<CalendarStatus> => ({
+      configured: true, connected: true, available: true, corrupt: false,
+      managed: true, custom: false,
+      accountId: 'me@example.com', timeZone: TZ,
+    })),
+    configure: vi.fn(async (_input: { clientId: string; clientSecret: string }): Promise<void> => {}),
+    connect: vi.fn(async (): Promise<CalendarConnectResult> => ({ ok: true })),
+    disconnect: vi.fn(async (): Promise<void> => {}),
+    listCalendars: vi.fn(async (): Promise<CalendarSummary[]> => []),
+    reset: vi.fn(async (): Promise<void> => {}),
+    fetch: vi.fn(async (
+      _input: { rangeStart: string; rangeEnd: string; calendarIds: string[] },
+    ): Promise<CalendarFetchResult> => ({ ok: false, reason: 'not-connected' })),
+  };
+  // Overrides replace a verb at runtime; the declared shape is kept so the
+  // tests can read `fetch.mock.calls[0][0]` without re-stating its type.
+  const bridge = { ...base, ...over } as typeof base;
+  (globalThis as Record<string, unknown>).phaseCalendar = bridge;
+  return bridge;
+}
+
+function removeBridge() {
+  delete (globalThis as Record<string, unknown>).phaseCalendar;
+}
 
 async function freshStore() {
   vi.resetModules();
@@ -5185,5 +5232,844 @@ describe('goal scope', () => {
     expect(order).toEqual(['s1', 'u2', 'u1']);
     // u2 is now first among the VISIBLE cards, so it refuses to go further.
     expect(s.actions.moveGoalRank('u2', -1)).toBe(false);
+  });
+});
+
+/**
+ * The calendar's device-local cache, believed only when its provenance still
+ * matches the connected account. These blocks are read-only derived state:
+ * hydrated at boot, replaced wholesale on a fetch, never edited.
+ */
+describe('calendar hydration', () => {
+  const CACHE: CalendarCache = {
+    rangeStart: '2026-07-27',
+    rangeEnd: '2026-09-28',
+    blocks: [{ date: '2026-08-03', startMin: 540, endMin: 600, title: 'standup', allDay: false }],
+    fetchedAt: '2026-08-03T13:00:00.000Z',
+    accountId: 'me@example.com',
+    calendarIds: ['primary'],
+    timeZone: TZ,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+    dbMocks.loadCalendarIds.mockResolvedValue(['primary']);
+  });
+  afterEach(removeBridge);
+
+  it('believes a cache whose provenance matches the connected account', async () => {
+    installBridge();
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(CACHE);
+    const store = await freshStore();
+    await store.initStore();
+
+    const s = store.getState();
+    expect(s.busyBlocks).toHaveLength(1);
+    expect(s.calendarRange).toEqual({ rangeStart: '2026-07-27', rangeEnd: '2026-09-28' });
+    expect(s.calendarFetchedAt).toBe('2026-08-03T13:00:00.000Z');
+    expect(s.calendarStatus?.connected).toBe(true);
+    expect(s.calendarIds).toEqual(['primary']);
+  });
+
+  it('discards a cache from another account without deleting the row', async () => {
+    installBridge({
+      status: vi.fn(async () => ({
+        configured: true, connected: true, available: true, corrupt: false,
+        managed: true, custom: false,
+        accountId: 'someone-else@example.com', timeZone: TZ,
+      })),
+    });
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(CACHE);
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(store.getState().busyBlocks).toEqual([]);
+    expect(store.getState().calendarRange).toBeNull();
+    expect(calendarCacheMocks.clearCalendarCache).not.toHaveBeenCalled();
+  });
+
+  it('discards a cache fetched for a different calendar selection', async () => {
+    installBridge();
+    dbMocks.loadCalendarIds.mockResolvedValueOnce(['primary', 'work@example.com']);
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(CACHE);
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(store.getState().busyBlocks).toEqual([]);
+  });
+
+  // The discriminating test for the "don't delete on failure" decision: a
+  // producer that cannot answer must not cost the user a fetched fortnight.
+  it('survives a producer that throws, with no blocks and no deletion', async () => {
+    installBridge({ status: vi.fn(async () => { throw new Error('keychain locked'); }) });
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(CACHE);
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(store.getState().hydration).toBe('ready');
+    expect(store.getState().busyBlocks).toEqual([]);
+    expect(store.getState().calendarStatus).toBeNull();
+    expect(calendarCacheMocks.clearCalendarCache).not.toHaveBeenCalled();
+  });
+
+  it('hydrates cleanly in a browser, where there is no bridge at all', async () => {
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(CACHE);
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(store.getState().hydration).toBe('ready');
+    expect(store.getState().calendarStatus).toBeNull();
+    expect(store.getState().busyBlocks).toEqual([]);
+  });
+
+  // The calendar is the one optional thing Phase loads. A cache row that will
+  // not read must leave the board full of goals rendering normally.
+  it('opens the app anyway when the cache cannot be read at all', async () => {
+    installBridge();
+    calendarCacheMocks.loadCalendarCache.mockRejectedValueOnce(new Error('IndexedDB blocked'));
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(store.getState().hydration).toBe('ready');
+    expect(store.getState().busyBlocks).toEqual([]);
+    expect(store.getState().calendarIds).toEqual(['primary']);
+  });
+
+  it('holds no blocks when nothing was ever cached', async () => {
+    installBridge();
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(store.getState().busyBlocks).toEqual([]);
+    expect(store.getState().calendarFetchedAt).toBeNull();
+    expect(store.getState().calendarStatus?.managed).toBe(true);
+  });
+});
+
+/**
+ * The point of the whole feature: placement must treat a meeting as time that
+ * is already spent. `capacity.ts`, `slot.ts` and `busyLayout.ts` all already
+ * take `blocks` and are tested against them — what these prove is that the
+ * store actually hands them the blocks it hydrated.
+ */
+describe('slot placement respects calendar busy time', () => {
+  function cacheWith(blocks: BusyBlock[]): CalendarCache {
+    return {
+      rangeStart: '2026-08-03',
+      rangeEnd: '2026-08-10',
+      blocks,
+      fetchedAt: '2026-08-03T13:00:00.000Z',
+      accountId: 'me@example.com',
+      calendarIds: ['primary'],
+      timeZone: TZ,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Real first: a preceding block may still hold a mocked clock, and
+    // `setSystemTime` refuses to re-mock one that is already mocked.
+    vi.useRealTimers();
+    vi.useFakeTimers();
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+    dbMocks.loadCalendarIds.mockResolvedValue(['primary']);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    removeBridge();
+  });
+
+  it('does not place a step on top of a meeting', async () => {
+    vi.setSystemTime(new Date(2026, 7, 5, 8));
+    installBridge();
+    // Booked solid until 13:00. Deliberately from midnight rather than from
+    // 09:00: a manual placement searches the WHOLE day, so an 08:00 gap is a
+    // real answer and asserting against it would test the wrong thing.
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(
+      cacheWith([{ date: '2026-08-05', startMin: 0, endMin: 780, title: 'offsite', allDay: false }]),
+    );
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().busyBlocks).toHaveLength(1);
+
+    store.actions.addGoal('G');
+    const gid = store.getState().goals[0].id;
+    store.actions.addRootNode(gid, 'leaf');
+    const nid = store.getState().goals[0].nodes[0].id;
+    store.actions.setNodeEstimate(nid, 60);
+
+    // Aim at 09:00 — squarely inside the meeting.
+    expect(store.actions.scheduleNode(gid, nid, '2026-08-05', 540)).toBe(true);
+
+    // The earliest gap that fits now starts when the offsite ends.
+    expect(store.getState().goals[0].nodes[0].blocks?.[0].startMin).toBeGreaterThanOrEqual(780);
+  });
+
+  it('refuses the day when the calendar leaves no room at all', async () => {
+    vi.setSystemTime(new Date(2026, 7, 5, 8));
+    installBridge();
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(
+      cacheWith([{ date: '2026-08-05', startMin: 0, endMin: 1440, title: 'conference', allDay: false }]),
+    );
+    const store = await freshStore();
+    await store.initStore();
+
+    store.actions.addGoal('G');
+    const gid = store.getState().goals[0].id;
+    store.actions.addRootNode(gid, 'leaf');
+    const nid = store.getState().goals[0].nodes[0].id;
+    store.actions.setNodeEstimate(nid, 60);
+
+    expect(store.actions.scheduleNode(gid, nid, '2026-08-05', 540)).toBe(false);
+    expect(store.getState().goals[0].nodes[0].blocks ?? []).toEqual([]);
+    // The refusal must describe the REAL longest stretch, which is now zero.
+    // A refusal computed against an empty calendar would offer a slot the
+    // placement itself just rejected.
+    expect(store.getState().toast).toBe('No 1h gap left that day — that day is booked solid');
+  });
+
+  it('keeps a loose task off a meeting too', async () => {
+    vi.setSystemTime(new Date(2026, 7, 5, 8));
+    installBridge();
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(
+      cacheWith([{ date: '2026-08-05', startMin: 0, endMin: 780, title: 'offsite', allDay: false }]),
+    );
+    const store = await freshStore();
+    await store.initStore();
+
+    store.actions.addTask('errand');
+    const tid = store.getState().tasks[0].id;
+    store.actions.setTaskEstimate(tid, 60);
+
+    expect(store.actions.scheduleTask(tid, '2026-08-05', 540)).toBe(true);
+    expect(store.getState().tasks[0].blocks?.[0].startMin).toBeGreaterThanOrEqual(780);
+  });
+
+  // A resize must not be allowed to grow a block into a meeting either.
+  it('clamps a resize at the start of a meeting', async () => {
+    vi.setSystemTime(new Date(2026, 7, 5, 8));
+    installBridge();
+    calendarCacheMocks.loadCalendarCache.mockResolvedValueOnce(
+      cacheWith([{ date: '2026-08-05', startMin: 600, endMin: 780, title: 'offsite', allDay: false }]),
+    );
+    const store = await freshStore();
+    await store.initStore();
+
+    store.actions.addTask('errand');
+    const tid = store.getState().tasks[0].id;
+    store.actions.setTaskEstimate(tid, 30);
+    store.actions.scheduleTask(tid, '2026-08-05', 540);
+    const blockId = store.getState().tasks[0].blocks![0].id;
+
+    // 09:00 + 3h would run to 12:00, straight through the 10:00 meeting.
+    store.actions.resizeTask(tid, blockId, 180);
+
+    expect(store.getState().tasks[0].blocks![0].minutes).toBeLessThanOrEqual(60);
+  });
+});
+
+/**
+ * Fetching. Every write is ownership-gated like the rest of the settings
+ * writes, and the fetch itself is gated too — a second tab must not spend a
+ * Google quota or race the owner's cache row.
+ */
+describe('refreshCalendar', () => {
+  const OK = {
+    ok: true as const,
+    blocks: [{ date: '2026-08-05', startMin: 540, endMin: 600, title: 'standup', allDay: false }],
+    fetchedAt: '2026-08-05T12:00:00.000Z',
+    accountId: 'me@example.com',
+    timeZone: TZ,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+    dbMocks.loadCalendarIds.mockResolvedValue(['primary']);
+  });
+  afterEach(removeBridge);
+
+  it('fetches the anchored range and stores the blocks with their provenance', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK) });
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.refreshCalendar();
+
+    expect(bridge.fetch).toHaveBeenCalledTimes(1);
+    const input = bridge.fetch.mock.calls[0][0];
+    expect(input.calendarIds).toEqual(['primary']);
+    expect(input.rangeStart < input.rangeEnd).toBe(true);
+
+    expect(store.getState().busyBlocks).toHaveLength(1);
+    expect(store.getState().calendarFetchedAt).toBe('2026-08-05T12:00:00.000Z');
+    expect(calendarCacheMocks.saveCalendarCache).toHaveBeenCalledTimes(1);
+    const saved = calendarCacheMocks.saveCalendarCache.mock.calls[0][0];
+    expect(saved.accountId).toBe('me@example.com');
+    expect(saved.timeZone).toBe(TZ);
+    expect(saved.calendarIds).toEqual(['primary']);
+    expect(saved.rangeStart).toBe(input.rangeStart);
+    expect(saved.rangeEnd).toBe(input.rangeEnd);
+  });
+
+  it('does nothing at all in a browser', async () => {
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.refreshCalendar();
+
+    expect(calendarCacheMocks.saveCalendarCache).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch when nothing is connected', async () => {
+    const bridge = installBridge({
+      status: vi.fn(async () => ({
+        configured: true, connected: false, available: true, corrupt: false,
+        managed: true, custom: false, accountId: null, timeZone: TZ,
+      })),
+    });
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.refreshCalendar();
+
+    expect(bridge.fetch).not.toHaveBeenCalled();
+    expect(store.getState().busyBlocks).toEqual([]);
+  });
+
+  // The discriminating test. A failed refresh must not present a booked week
+  // as free: freshness is worth less than not lying about the week.
+  it('keeps the blocks it already had when a refresh fails', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK) });
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.refreshCalendar();
+    expect(store.getState().busyBlocks).toHaveLength(1);
+
+    bridge.fetch.mockResolvedValueOnce({ ok: false, reason: 'request-failed' });
+    await store.actions.refreshCalendar();
+
+    expect(store.getState().busyBlocks).toHaveLength(1);
+    expect(calendarCacheMocks.saveCalendarCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops the blocks when the account went away', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK) });
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.refreshCalendar();
+
+    bridge.fetch.mockResolvedValueOnce({ ok: false, reason: 'not-connected' });
+    await store.actions.refreshCalendar();
+
+    expect(store.getState().busyBlocks).toEqual([]);
+  });
+
+  it('extends the range forward for a week beyond the base window', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK) });
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.refreshCalendar();
+    const base = bridge.fetch.mock.calls[0][0].rangeEnd;
+
+    const { weekOf } = await import('../lib/plan');
+    const { todayStr, addDays } = await import('../lib/dates');
+    await store.actions.refreshCalendar(weekOf(addDays(todayStr(), 120)));
+    const extended = bridge.fetch.mock.calls[1][0].rangeEnd;
+
+    expect(extended > base).toBe(true);
+  });
+
+  // Ownership is checked BEFORE the fetch, not merely before the write: a
+  // second tab must not spend a Google quota or race the owner's cache row.
+  it('a tab that does not own the lock never fetches', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK) });
+    tabLockMocks.acquireTabLock.mockResolvedValueOnce(false);
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().secondTab).toBe(true);
+
+    await store.actions.refreshCalendar();
+
+    expect(bridge.fetch).not.toHaveBeenCalled();
+    expect(calendarCacheMocks.saveCalendarCache).not.toHaveBeenCalled();
+  });
+
+  it('records why the last fetch failed', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => ({ ok: false, reason: 'reauth-required' })) });
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.refreshCalendar();
+
+    expect(store.getState().calendarError).toBe('reauth-required');
+    expect(bridge.fetch).toHaveBeenCalled();
+  });
+
+  it('clears the recorded error once a fetch succeeds', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => ({ ok: false, reason: 'request-failed' })) });
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.refreshCalendar();
+    expect(store.getState().calendarError).toBe('request-failed');
+
+    bridge.fetch.mockResolvedValueOnce(OK);
+    await store.actions.refreshCalendar();
+
+    expect(store.getState().calendarError).toBeNull();
+  });
+});
+
+/** Connect, disconnect, and choose calendars — everything the settings UI drives. */
+describe('calendar connection actions', () => {
+  const OK_EMPTY = {
+    ok: true as const, blocks: [], fetchedAt: '2026-08-05T12:00:00.000Z',
+    accountId: 'me@example.com', timeZone: TZ,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+    dbMocks.loadCalendarIds.mockResolvedValue(['primary']);
+  });
+  afterEach(removeBridge);
+
+  it('configures, then reports the producer now has credentials', async () => {
+    const bridge = installBridge();
+    const store = await freshStore();
+    await store.initStore();
+
+    const ok = await store.actions.configureCalendar('id-123', 'secret-456');
+
+    expect(ok).toBe(true);
+    expect(bridge.configure).toHaveBeenCalledWith({ clientId: 'id-123', clientSecret: 'secret-456' });
+  });
+
+  it('reports a refusal rather than claiming success', async () => {
+    installBridge({ configure: vi.fn(async () => { throw new Error('keychain unavailable'); }) });
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(await store.actions.configureCalendar('id', 'secret')).toBe(false);
+  });
+
+  it('refreshes immediately after a successful connect', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK_EMPTY) });
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(await store.actions.connectCalendar()).toBe(true);
+    // Connecting and then showing an empty grid until something else triggers
+    // a fetch reads as a failed connection.
+    expect(bridge.fetch).toHaveBeenCalled();
+  });
+
+  it('does not refresh after a connect the user cancelled', async () => {
+    const bridge = installBridge({ connect: vi.fn(async () => ({ ok: false, reason: 'cancelled' })) });
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(await store.actions.connectCalendar()).toBe(false);
+    expect(bridge.fetch).not.toHaveBeenCalled();
+  });
+
+  it('drops every block on disconnect', async () => {
+    const bridge = installBridge({
+      fetch: vi.fn(async () => ({
+        ok: true,
+        blocks: [{ date: '2026-08-05', startMin: 540, endMin: 600, title: 'standup', allDay: false }],
+        fetchedAt: '2026-08-05T12:00:00.000Z', accountId: 'me@example.com', timeZone: TZ,
+      })),
+    });
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.refreshCalendar();
+    expect(store.getState().busyBlocks).toHaveLength(1);
+
+    await store.actions.disconnectCalendar();
+
+    expect(bridge.disconnect).toHaveBeenCalled();
+    expect(store.getState().busyBlocks).toEqual([]);
+    expect(store.getState().calendarRange).toBeNull();
+    // The row goes too — this is a user asking to be forgotten, not a
+    // transient failure, so the "leave the row" rule does not apply.
+    expect(calendarCacheMocks.clearCalendarCache).toHaveBeenCalled();
+  });
+
+  it('clears local state even when revoking the grant failed', async () => {
+    installBridge({
+      disconnect: vi.fn(async () => { throw new Error('offline'); }),
+      fetch: vi.fn(async () => ({
+        ok: true,
+        blocks: [{ date: '2026-08-05', startMin: 540, endMin: 600, title: 'standup', allDay: false }],
+        fetchedAt: '2026-08-05T12:00:00.000Z', accountId: 'me@example.com', timeZone: TZ,
+      })),
+    });
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.refreshCalendar();
+
+    await store.actions.disconnectCalendar();
+
+    expect(store.getState().busyBlocks).toEqual([]);
+  });
+
+  it('changing the calendar selection persists it and refetches', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK_EMPTY) });
+    const store = await freshStore();
+    await store.initStore();
+
+    store.actions.setCalendarIds(['primary', 'work@example.com']);
+
+    expect(store.getState().calendarIds).toEqual(['primary', 'work@example.com']);
+    expect(dbMocks.saveCalendarIds).toHaveBeenCalledWith(['primary', 'work@example.com']);
+    // The old cache was fetched for a different selection, so it is no longer
+    // believable — provenance would reject it on the next boot anyway.
+    await vi.waitFor(() => expect(bridge.fetch).toHaveBeenCalled());
+  });
+
+  // The discriminating test. Fetching zero calendars returns zero blocks, and
+  // zero blocks render a fully-booked week as a free one.
+  it('refuses an empty selection rather than wiping the calendar', async () => {
+    installBridge();
+    const store = await freshStore();
+    await store.initStore();
+
+    store.actions.setCalendarIds([]);
+
+    expect(store.getState().calendarIds).toEqual(['primary']);
+    expect(dbMocks.saveCalendarIds).not.toHaveBeenCalled();
+  });
+
+  it('de-duplicates a selection before storing it', async () => {
+    installBridge({ fetch: vi.fn(async () => OK_EMPTY) });
+    const store = await freshStore();
+    await store.initStore();
+
+    store.actions.setCalendarIds(['primary', 'primary', 'work@example.com']);
+
+    expect(store.getState().calendarIds).toEqual(['primary', 'work@example.com']);
+  });
+
+  it('resets a secret store that cannot be decrypted', async () => {
+    const bridge = installBridge({
+      status: vi.fn(async () => ({
+        configured: false, connected: false, available: true, corrupt: true,
+        managed: true, custom: false, accountId: null, timeZone: TZ,
+      })),
+    });
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.resetCalendar();
+
+    expect(bridge.reset).toHaveBeenCalled();
+    expect(calendarCacheMocks.clearCalendarCache).toHaveBeenCalled();
+  });
+
+  it('a tab that does not own the lock connects to nothing', async () => {
+    const bridge = installBridge();
+    tabLockMocks.acquireTabLock.mockResolvedValueOnce(false);
+    const store = await freshStore();
+    await store.initStore();
+
+    expect(await store.actions.configureCalendar('id', 'secret')).toBe(false);
+    expect(await store.actions.connectCalendar()).toBe(false);
+    await store.actions.disconnectCalendar();
+
+    expect(bridge.configure).not.toHaveBeenCalled();
+    expect(bridge.connect).not.toHaveBeenCalled();
+    expect(bridge.disconnect).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The week the planner is actually looking at, and the races around fetching
+ * for it. Both are about the same failure: a view that stays caveated, or
+ * silently narrows, because a refresh answered a question nobody asked.
+ */
+describe('refreshCalendar and the week on screen', () => {
+  const okFor = (fetchedAt: string) => ({
+    ok: true as const, blocks: [], fetchedAt,
+    accountId: 'me@example.com', timeZone: TZ,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+    dbMocks.loadCalendarIds.mockResolvedValue(['primary']);
+  });
+  afterEach(removeBridge);
+
+  it('anchors a bare refresh on the week the planner published', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => okFor('2026-08-05T12:00:00.000Z')) });
+    const store = await freshStore();
+    await store.initStore();
+
+    const { weekOf } = await import('../lib/plan');
+    const { todayStr, addDays } = await import('../lib/dates');
+    const far = weekOf(addDays(todayStr(), 120));
+    store.actions.setCalendarWeek(far);
+
+    // No argument — exactly what Settings' Refresh button and connectCalendar
+    // call. It must still reach the week the user is parked on.
+    await store.actions.refreshCalendar();
+
+    const { rangeEnd } = bridge.fetch.mock.calls[0][0];
+    expect(rangeEnd > addDays(far, 6)).toBe(true);
+  });
+
+  it('a connect made on a far week fetches that week, not just the current one', async () => {
+    installBridge({ fetch: vi.fn(async () => okFor('2026-08-05T12:00:00.000Z')) });
+    const store = await freshStore();
+    await store.initStore();
+
+    const { weekOf } = await import('../lib/plan');
+    const { todayStr, addDays } = await import('../lib/dates');
+    const far = weekOf(addDays(todayStr(), 120));
+    store.actions.setCalendarWeek(far);
+
+    expect(await store.actions.connectCalendar()).toBe(true);
+
+    const { coversWeek } = await import('../lib/calendarRange');
+    expect(coversWeek(store.getState().calendarRange!, far)).toBe(true);
+  });
+
+  it('an explicit week still wins over the published one', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => okFor('2026-08-05T12:00:00.000Z')) });
+    const store = await freshStore();
+    await store.initStore();
+
+    const { weekOf } = await import('../lib/plan');
+    const { todayStr, addDays } = await import('../lib/dates');
+    store.actions.setCalendarWeek(weekOf(todayStr()));
+    const far = weekOf(addDays(todayStr(), 120));
+
+    await store.actions.refreshCalendar(far);
+
+    expect(bridge.fetch.mock.calls[0][0].rangeEnd > addDays(far, 6)).toBe(true);
+  });
+
+  /**
+   * Two refreshes in flight at once is the ordinary case, not an exotic one:
+   * Settings' Refresh and the planner's navigate-past-the-range effect fire
+   * from different places and neither waits for the other.
+   *
+   * The failure it produces is silent and bad. The second call reads
+   * `state.calendarRange` to decide how far to ask, sees the range the FIRST
+   * call has not written yet, asks for the narrow base window, and lands last —
+   * so a week that was covered a moment ago goes back to being caveated, and
+   * the blocks for it are dropped.
+   */
+  it('a second refresh in flight never asks for less than the first', async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    const bridge = installBridge({
+      fetch: vi.fn(() => new Promise((resolve) => { pending.push(resolve); })),
+    });
+    const store = await freshStore();
+    await store.initStore();
+
+    const { weekOf } = await import('../lib/plan');
+    const { todayStr, addDays } = await import('../lib/dates');
+    const far = weekOf(addDays(todayStr(), 120));
+
+    const wide = store.actions.refreshCalendar(far);   // asks far ahead
+    const narrow = store.actions.refreshCalendar();    // asks for the base window
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+
+    const first = bridge.fetch.mock.calls[0][0].rangeEnd;
+    const second = bridge.fetch.mock.calls[1][0].rangeEnd;
+    expect(second >= first).toBe(true);
+
+    // Resolve out of order — the narrow one lands last, which is the ordering
+    // that used to shrink the range.
+    pending[0]({ ...okFor('2026-08-05T12:00:00.000Z') });
+    pending[1]({ ...okFor('2026-08-05T12:00:01.000Z') });
+    await Promise.all([wide, narrow]);
+
+    const { coversWeek } = await import('../lib/calendarRange');
+    expect(coversWeek(store.getState().calendarRange!, far)).toBe(true);
+  });
+
+  it('drops a superseded result rather than letting it land last', async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    installBridge({ fetch: vi.fn(() => new Promise((resolve) => { pending.push(resolve); })) });
+    const store = await freshStore();
+    await store.initStore();
+
+    const first = store.actions.refreshCalendar();
+    const second = store.actions.refreshCalendar();
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+
+    pending[1]({
+      ok: true, blocks: [{ date: '2026-08-05', startMin: 540, endMin: 600, title: 'newer', allDay: false }],
+      fetchedAt: '2026-08-05T12:00:01.000Z', accountId: 'me@example.com', timeZone: TZ,
+    });
+    pending[0]({
+      ok: true, blocks: [{ date: '2026-08-05', startMin: 540, endMin: 600, title: 'older', allDay: false }],
+      fetchedAt: '2026-08-05T12:00:00.000Z', accountId: 'me@example.com', timeZone: TZ,
+    });
+    await Promise.all([first, second]);
+
+    expect(store.getState().busyBlocks[0].title).toBe('newer');
+  });
+
+  // Once nothing is in flight the widening memory has to be released, or a
+  // week rollover could never let the anchor move forward again.
+  it('forgets the in-flight width once the fetches have settled', async () => {
+    const bridge = installBridge({ fetch: vi.fn(async () => okFor('2026-08-05T12:00:00.000Z')) });
+    const store = await freshStore();
+    await store.initStore();
+
+    const { weekOf } = await import('../lib/plan');
+    const { todayStr, addDays } = await import('../lib/dates');
+    await store.actions.refreshCalendar(weekOf(addDays(todayStr(), 120)));
+    const wide = bridge.fetch.mock.calls[0][0].rangeEnd;
+
+    // The stored range is what should keep it wide from here — not a leftover
+    // in-flight marker, which would survive a disconnect that clears the range.
+    await store.actions.disconnectCalendar();
+    installBridge({ fetch: vi.fn(async () => okFor('2026-08-05T13:00:00.000Z')) });
+    await store.actions.refreshCalendar();
+
+    const after = store.getState().calendarRange!.rangeEnd;
+    expect(after < wide).toBe(true);
+  });
+});
+
+/**
+ * Switching OAuth clients, and giving one up. Both leave a grant behind at
+ * Google and blocks behind on disk, and both used to leave one or the other.
+ */
+describe('calendar credential changes', () => {
+  const OK_BLOCK = {
+    ok: true as const,
+    blocks: [{ date: '2026-08-05', startMin: 540, endMin: 600, title: 'standup', allDay: false }],
+    fetchedAt: '2026-08-05T12:00:00.000Z',
+    accountId: 'me@example.com',
+    timeZone: TZ,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+    dbMocks.loadCalendarIds.mockResolvedValue(['primary']);
+  });
+  afterEach(removeBridge);
+
+  async function connected() {
+    const bridge = installBridge({ fetch: vi.fn(async () => OK_BLOCK) });
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.refreshCalendar();
+    expect(store.getState().busyBlocks).toHaveLength(1);
+    return { store, bridge };
+  }
+
+  /**
+   * The discriminating test. A new client means a new Cloud project and a new
+   * grant; the blocks on screen were fetched under the old one and are now
+   * unattributable. Leaving them up shows another account's meetings as this
+   * one's, and leaving the row on disk means the next boot believes them again.
+   */
+  it('drops the old blocks and the cache row when the client changes', async () => {
+    const { store, bridge } = await connected();
+
+    expect(await store.actions.configureCalendar('new-id', 'new-secret')).toBe(true);
+
+    expect(bridge.configure).toHaveBeenCalled();
+    expect(store.getState().busyBlocks).toEqual([]);
+    expect(store.getState().calendarRange).toBeNull();
+    expect(store.getState().calendarFetchedAt).toBeNull();
+    expect(calendarCacheMocks.clearCalendarCache).toHaveBeenCalled();
+  });
+
+  it('keeps the old blocks when the client change was refused', async () => {
+    installBridge({
+      fetch: vi.fn(async () => OK_BLOCK),
+      configure: vi.fn(async () => { throw new Error('keychain unavailable'); }),
+    });
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.refreshCalendar();
+
+    expect(await store.actions.configureCalendar('new-id', 'new-secret')).toBe(false);
+
+    expect(store.getState().busyBlocks).toHaveLength(1);
+    expect(calendarCacheMocks.clearCalendarCache).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `reset` wipes the local store, which is the only copy of the refresh token
+   * — so the grant at Google survives with nothing left that can revoke it.
+   * Revoking first is the difference between giving a permission back and
+   * abandoning it.
+   */
+  it('revokes the grant before forgetting the credentials it is revoked with', async () => {
+    const order: string[] = [];
+    const bridge = installBridge({
+      fetch: vi.fn(async () => OK_BLOCK),
+      disconnect: vi.fn(async () => { order.push('disconnect'); }),
+      reset: vi.fn(async () => { order.push('reset'); }),
+    });
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.resetCalendar();
+
+    expect(order).toEqual(['disconnect', 'reset']);
+    expect(bridge.reset).toHaveBeenCalled();
+  });
+
+  it('resets anyway when the revoke could not be made', async () => {
+    const bridge = installBridge({ disconnect: vi.fn(async () => { throw new Error('offline'); }) });
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.resetCalendar();
+
+    expect(bridge.reset).toHaveBeenCalled();
+    expect(calendarCacheMocks.clearCalendarCache).toHaveBeenCalled();
+  });
+
+  /**
+   * A rotated managed client makes the stored token unusable, and the producer
+   * reports that as `reauth-required`. The row on disk has to go with it: the
+   * provenance it records — account, calendars, timezone — all still MATCH, so
+   * the next boot would believe a fortnight of blocks that no token can refresh.
+   */
+  it('forgets the cache row when the producer says the grant is no longer usable', async () => {
+    const { store, bridge } = await connected();
+
+    bridge.fetch.mockResolvedValueOnce({ ok: false, reason: 'reauth-required' });
+    await store.actions.refreshCalendar();
+
+    expect(store.getState().busyBlocks).toEqual([]);
+    expect(store.getState().calendarError).toBe('reauth-required');
+    expect(calendarCacheMocks.clearCalendarCache).toHaveBeenCalled();
+  });
+
+  it('leaves the row alone for a failure that is merely transient', async () => {
+    const { store, bridge } = await connected();
+
+    bridge.fetch.mockResolvedValueOnce({ ok: false, reason: 'request-failed' });
+    await store.actions.refreshCalendar();
+
+    expect(store.getState().busyBlocks).toHaveLength(1);
+    expect(calendarCacheMocks.clearCalendarCache).not.toHaveBeenCalled();
+  });
+
+  it('a tab that does not own the lock changes no credentials', async () => {
+    const bridge = installBridge();
+    tabLockMocks.acquireTabLock.mockResolvedValueOnce(false);
+    const store = await freshStore();
+    await store.initStore();
+
+    await store.actions.resetCalendar();
+
+    expect(bridge.disconnect).not.toHaveBeenCalled();
+    expect(bridge.reset).not.toHaveBeenCalled();
   });
 });

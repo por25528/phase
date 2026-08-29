@@ -9,6 +9,13 @@ export interface StatusResult {
   available: boolean;
   /** The store exists but cannot be decrypted; the UI offers a reset. */
   corrupt: boolean;
+  /**
+   * This build ships its own OAuth client, so nothing has to be pasted. Never
+   * the credential itself — only whether one exists.
+   */
+  managed: boolean;
+  /** The user saved their own OAuth client, which overrides the managed one. */
+  custom: boolean;
   /** Provenance only — the Google account's primary calendar id. Never a credential. */
   accountId: string | null;
   timeZone: string;
@@ -47,6 +54,11 @@ export interface FetchInput {
 
 export interface HandlerDeps {
   secrets: SecretStore;
+  /**
+   * The OAuth client this build ships, or null when it ships none. Resolved
+   * per call so a rotated credential takes effect without a stale copy.
+   */
+  managedClient?: () => { clientId: string; clientSecret: string } | null;
   oauth: {
     isConnected(): boolean;
     connect(): Promise<void>;

@@ -1,13 +1,15 @@
 # Google Calendar — the renderer data path (3a of 3)
 
-> **SHELVED 2026-08-07 — do not execute this plan.** The Google Calendar
-> integration was stopped before this slice began: the setup burden (a Google
-> Cloud project, a consent screen, pasted OAuth credentials) is too much to ask
-> of a user for what it returns. Plans 1 and 2 are built and committed; the
-> producer sits in `electron/` and nothing calls it. This document is kept
-> because the analysis in it is still true — in particular that the renderer is
-> almost entirely pre-wired, and that ten `blocks: []` literals are the whole
-> data path. If the feature is ever revived, start here.
+> **DONE 2026-08-30.** Unshelved and executed, with two departures worth
+> knowing about. First, `electron/` DID change: the build can now ship its own
+> OAuth client, which is what made the feature worth finishing at all — the
+> setup burden this plan was shelved over was the whole objection. Second, the
+> renderer had moved on in three weeks: `availability` is gone from the app,
+> `weekCapacity` no longer takes `windows`, `WeekCapacity` has no `freeMin`, and
+> the eight `blocks: []` literals had drifted to lines 1022–3053. The analysis
+> held; the line numbers did not. Calendar hydration also sits OUTSIDE the boot
+> `Promise.all` rather than inside it, so a cache that will not read cannot fail
+> hydration for a board full of goals.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

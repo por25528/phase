@@ -123,6 +123,37 @@ describe('exchangeCode', () => {
       .rejects.toBeInstanceOf(CredentialsNotConfiguredError);
   });
 
+  // The build can ship its own OAuth client so nobody has to create a Google
+  // Cloud project before planning a week. Nothing is stored in that case —
+  // there is no user-supplied pair to store — so the fallback has to be
+  // consulted at every use, not once at setup.
+  it("falls back to the build's managed credentials when none are stored", async () => {
+    const d = deps({
+      secrets: fakeSecrets({}),
+      managedClient: () => ({ clientId: 'managed-id', clientSecret: 'managed-secret' }),
+    });
+    await createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
+    expect(d._posts[0].body.get('client_id')).toBe('managed-id');
+    expect(d._posts[0].body.get('client_secret')).toBe('managed-secret');
+  });
+
+  // The discriminating test. Saving your own client is a deliberate act, and
+  // silently authenticating against the shipped one instead would send the
+  // consent screen to the wrong Cloud project with no way to tell.
+  it("prefers a stored pair over the build's managed one", async () => {
+    const d = deps({
+      managedClient: () => ({ clientId: 'managed-id', clientSecret: 'managed-secret' }),
+    });
+    await createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
+    expect(d._posts[0].body.get('client_id')).toBe(CLIENT.clientId);
+  });
+
+  it('still refuses when neither a stored nor a managed pair exists', async () => {
+    const d = deps({ secrets: fakeSecrets({}), managedClient: () => null });
+    await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
+      .rejects.toBeInstanceOf(CredentialsNotConfiguredError);
+  });
+
   // Google returns a refresh token only when it feels like it. Treating its
   // absence as success would leave a connection that dies within the hour.
   it('fails when Google returns no refresh token', async () => {
@@ -633,5 +664,179 @@ describe('connect', () => {
     const { d } = connectDeps();
     d.secrets = fakeSecrets({});
     await expect(createOAuth(d).connect()).rejects.toBeInstanceOf(CredentialsNotConfiguredError);
+  });
+});
+
+/**
+ * A token belongs to the OAuth client it was issued for.
+ *
+ * The build's own client can rotate — a new release, a revoked Cloud
+ * credential — and the stored refresh token then buys nothing. Without a
+ * record of which client issued it, Google answers `invalid_client` or a plain
+ * 400, which surfaces as "request-failed": a transient-looking error that the
+ * UI is right to shrug at and that will never clear. The user has to be told
+ * to reconnect, which means knowing that the client changed rather than
+ * guessing it from a refusal.
+ */
+describe('the client a token belongs to', () => {
+  it('records the client id alongside the token it issued', async () => {
+    const secrets = fakeSecrets();
+    const d = deps({ secrets });
+    const out = await createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
+    expect(out.clientId).toBe(CLIENT.clientId);
+  });
+
+  // The discriminating test. `invalid_client` from Google is indistinguishable
+  // from a transient 400 at the call site, so the mismatch has to be caught
+  // before the request rather than read out of the refusal.
+  it('demands reauthentication when the client has rotated under it', async () => {
+    const secrets = fakeSecrets({
+      client: { clientId: 'rotated-id', clientSecret: 'rotated-secret' },
+      token: { refreshToken: 'R', accessToken: 'A', expiresAt: 9_999_999_999_999, clientId: 'old-id' },
+    });
+    const d = deps({ secrets });
+    await expect(createOAuth(d).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+    // And it never spent a request finding out.
+    expect(d._posts).toHaveLength(0);
+  });
+
+  it('forgets a token it can no longer use, so nothing keeps retrying it', async () => {
+    const secrets = fakeSecrets({
+      client: { clientId: 'rotated-id', clientSecret: 'rotated-secret' },
+      token: { refreshToken: 'R', accessToken: 'A', expiresAt: 9_999_999_999_999, clientId: 'old-id' },
+    });
+    await expect(createOAuth(deps({ secrets })).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+    expect(secrets._bag.token).toBeUndefined();
+  });
+
+  it('serves a still-valid access token when the client has not changed', async () => {
+    const secrets = fakeSecrets({
+      client: CLIENT,
+      token: { refreshToken: 'R', accessToken: 'A', expiresAt: 9_999_999_999_999, clientId: CLIENT.clientId },
+    });
+    expect(await createOAuth(deps({ secrets })).getAccessToken()).toBe('A');
+  });
+
+  /*
+   * A token stored before this field existed says nothing about its client.
+   * Forcing everyone to reconnect on upgrade would be a worse bug than the one
+   * being fixed, so an unstamped token is trusted and stamped on its next
+   * refresh — after which rotation is caught like any other.
+   */
+  it('trusts a token stored before the client was recorded', async () => {
+    const secrets = fakeSecrets({
+      client: CLIENT,
+      token: { refreshToken: 'R', accessToken: 'A', expiresAt: 9_999_999_999_999 },
+    });
+    expect(await createOAuth(deps({ secrets })).getAccessToken()).toBe('A');
+  });
+
+  it('stamps the client onto a token when it refreshes one', async () => {
+    const secrets = fakeSecrets({
+      client: CLIENT,
+      token: { refreshToken: 'R', accessToken: 'A', expiresAt: 0 },
+    });
+    await createOAuth(deps({ secrets, now: () => 1_000_000 })).getAccessToken();
+    expect((secrets._bag.token as { clientId: string }).clientId).toBe(CLIENT.clientId);
+  });
+
+  it('still reports a connection it cannot spend, so the UI can say why', () => {
+    const secrets = fakeSecrets({
+      client: { clientId: 'rotated-id', clientSecret: 'rotated-secret' },
+      token: { refreshToken: 'R', accessToken: 'A', expiresAt: 9_999_999_999_999, clientId: 'old-id' },
+    });
+    expect(createOAuth(deps({ secrets })).isConnected()).toBe(true);
+  });
+});
+
+/**
+ * A refresh Google refuses because of the CLIENT, not the grant.
+ *
+ * `invalid_grant` was the only refusal mapped to reauth; everything else became
+ * a plain Error, which the renderer reads as `request-failed` — a
+ * transient-looking state the UI is right to shrug at and that will never
+ * clear on its own. But `invalid_client` is not transient at all. It is what
+ * Google says when the OAuth client behind the refresh token is gone or its
+ * secret has been rotated in the Cloud console, and the only cure is a
+ * reconnect.
+ *
+ * This is also the recovery path for the tokens the stamp cannot help: one
+ * stored before `clientId` existed carries no id to compare, so a rotation
+ * under it is only discoverable from the refusal. Catching it here is what
+ * closes that gap without forcing every upgrade to reconnect.
+ */
+describe('a refresh refused for the client', () => {
+  const STALE = { refreshToken: 'R', accessToken: 'A', expiresAt: 0, clientId: CLIENT.clientId };
+
+  function refusing(json: Record<string, unknown>, status = 400) {
+    const secrets = fakeSecrets({ client: CLIENT, token: { ...STALE } });
+    const d = deps({ secrets, httpPost: async () => ({ ok: false, status, json }) });
+    return { d, secrets };
+  }
+
+  it('demands reauthentication for invalid_client', async () => {
+    const { d } = refusing({ error: 'invalid_client' });
+    await expect(createOAuth(d).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+  });
+
+  it('demands reauthentication for unauthorized_client', async () => {
+    const { d } = refusing({ error: 'unauthorized_client' });
+    await expect(createOAuth(d).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+  });
+
+  // Google answers a rejected client secret with 401 and does not always put a
+  // parseable body on it. The status alone is enough: the token endpoint does
+  // not return 401 for anything transient.
+  it('demands reauthentication for a bare 401', async () => {
+    const { d } = refusing({}, 401);
+    await expect(createOAuth(d).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+  });
+
+  it('forgets the token it can no longer spend', async () => {
+    const { d, secrets } = refusing({ error: 'invalid_client' });
+    await expect(createOAuth(d).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+    expect(secrets._bag.token).toBeUndefined();
+  });
+
+  /*
+   * The discriminating test. A 503, a captive portal, a dropped association —
+   * these are the failures a reconnect would NOT fix, and prompting for one
+   * teaches people to reconnect at every hiccup until the prompt means nothing.
+   */
+  it('leaves a transient refusal transient', async () => {
+    const { d, secrets } = refusing({ error: 'backend_error' }, 503);
+    await expect(createOAuth(d).getAccessToken()).rejects.not.toBeInstanceOf(ReauthRequiredError);
+    expect(secrets._bag.token).toBeDefined();
+  });
+
+  it('keeps the message on a transient refusal, for the main-process log', async () => {
+    const { d } = refusing({ error: 'backend_error', error_description: 'try later' }, 503);
+    await expect(createOAuth(d).getAccessToken()).rejects.toThrow(/backend_error — try later/);
+  });
+
+  // Unchanged, and worth pinning beside the new cases: a revoked or expired
+  // grant is still reauth, and its token is still left alone.
+  it('still demands reauthentication for invalid_grant', async () => {
+    const { d, secrets } = refusing({ error: 'invalid_grant' });
+    await expect(createOAuth(d).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+    expect(secrets._bag.token).toBeDefined();
+  });
+
+  /*
+   * The legacy case this exists for. A token stored before the client id was
+   * recorded cannot be compared against anything, so the mismatch check passes
+   * it through — and the refusal is the only place the rotation shows up.
+   */
+  it('rescues an unstamped token whose client has rotated underneath it', async () => {
+    const secrets = fakeSecrets({
+      client: CLIENT,
+      token: { refreshToken: 'R', accessToken: 'A', expiresAt: 0 },
+    });
+    const d = deps({
+      secrets,
+      httpPost: async () => ({ ok: false, status: 401, json: { error: 'invalid_client' } }),
+    });
+    await expect(createOAuth(d).getAccessToken()).rejects.toBeInstanceOf(ReauthRequiredError);
+    expect(secrets._bag.token).toBeUndefined();
   });
 });
