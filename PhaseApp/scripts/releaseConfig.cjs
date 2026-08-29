@@ -45,6 +45,21 @@ const NOTARY_BUILDER_VARS = {
   'apple-id': ['APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'],
 };
 
+/**
+ * The Google OAuth client a PUBLISHED build ships, so a user does not have to
+ * make a Cloud project before they can see their week.
+ *
+ * A third contract beside the two above, and the one with no natural failure:
+ * a release built without these still signs, notarizes and verifies — it just
+ * ships an app that asks every user for their own client. So the preflight has
+ * to demand them, and only in `developer-id` mode: an ad-hoc developer build
+ * legitimately has none and falls back, which is what keeps a contributor with
+ * no Google project able to run `npm run build:mac`.
+ *
+ * Both or neither. Half a pair cannot authenticate, so it is not a pair.
+ */
+const CALENDAR_SECRETS = ['PHASE_GOOGLE_CLIENT_ID', 'PHASE_GOOGLE_CLIENT_SECRET'];
+
 const ENTITLEMENTS = 'build/entitlements.mac.plist';
 const ENTITLEMENTS_INHERIT = 'build/entitlements.mac.inherit.plist';
 
@@ -145,6 +160,35 @@ function assertReleaseSecrets(env) {
   refuseMixture(env, method);
 }
 
+/** Which halves of the calendar pair are missing; none for an ad-hoc build. */
+function missingCalendarSecrets(env) {
+  if (signingMode(env) !== 'developer-id') return [];
+  return CALENDAR_SECRETS.filter((name) => !isSet(env[name]));
+}
+
+/**
+ * The preflight's calendar check. Names only — never a value.
+ *
+ * It names the escape hatch as well as the failure, because "unset
+ * PHASE_RELEASE_SIGNING" is a real answer here in a way it is not for a
+ * certificate: an ad-hoc build with no managed client is a supported outcome,
+ * not a degraded one.
+ */
+function assertCalendarCredentials(env) {
+  const missing = missingCalendarSecrets(env);
+  if (missing.length === 0) return;
+  throw new Error(
+    `Release signing is on (${RELEASE_SIGNING_ENV}) but these repository ` +
+      `secrets for the managed Google OAuth client are missing or blank: ` +
+      `${missing.join(', ')}. Both are needed — half a pair cannot ` +
+      `authenticate — or the published app will ask every user for their own ` +
+      `OAuth client. Set both, or unset ${RELEASE_SIGNING_ENV} for an ad-hoc ` +
+      `developer build, which is allowed to ship without them. ` +
+      `docs/macos-signing.md lists them and docs/google-calendar-setup.md is ` +
+      `where the client itself comes from.`,
+  );
+}
+
 /**
  * ELECTRON-BUILDER's check, run as its config is loaded.
  *
@@ -216,6 +260,7 @@ module.exports = {
   SIGNING_SECRETS,
   NOTARY_SOURCE_SECRETS,
   NOTARY_BUILDER_VARS,
+  CALENDAR_SECRETS,
   signingMode,
   notaryMethod,
   requiredReleaseSecrets,
@@ -224,6 +269,8 @@ module.exports = {
   missingBuilderVars,
   conflictingReleaseSecrets,
   assertReleaseSecrets,
+  missingCalendarSecrets,
+  assertCalendarCredentials,
   assertBuilderEnv,
   macConfig,
   buildConfig,

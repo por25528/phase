@@ -44,6 +44,8 @@ export declare const SIGNING_SECRETS: string[];
 export declare const NOTARY_SOURCE_SECRETS: Record<NotaryMethod, string[]>;
 /** What electron-builder reads at pack time; `APPLE_API_KEY` is a path. */
 export declare const NOTARY_BUILDER_VARS: Record<NotaryMethod, string[]>;
+/** The managed Google OAuth client a published build ships. Both or neither. */
+export declare const CALENDAR_SECRETS: string[];
 
 export declare function signingMode(env: Env): SigningMode;
 /** Throws when the method is set to something unknown. */
@@ -58,6 +60,10 @@ export declare function missingBuilderVars(env: Env): string[];
 export declare function conflictingReleaseSecrets(env: Env): string[];
 /** The preflight's check. Throws naming only variables — never their values. */
 export declare function assertReleaseSecrets(env: Env): void;
+/** Missing halves of the managed calendar pair; empty for an ad-hoc build. */
+export declare function missingCalendarSecrets(env: Env): string[];
+/** Throws naming the missing halves — never a value. No-op when ad-hoc. */
+export declare function assertCalendarCredentials(env: Env): void;
 /** electron-builder's check, including that the API key file really exists. */
 export declare function assertBuilderEnv(env: Env, deps?: BuilderEnvDeps): void;
 export declare function macConfig(env: Env): MacConfig;

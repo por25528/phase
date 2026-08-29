@@ -72,19 +72,24 @@ Tag and push; `.github/workflows/release.yml` does the rest:
    so a bad secret costs seconds rather than an install, a suite and a build.
    It fails if a secret is missing, blank, or belongs to the wrong notarization
    method, and for `api-key` it decodes the key in memory and checks it really
-   is a PKCS#8 file. It prints names only.
+   is a PKCS#8 file. It also refuses a release missing either half of the
+   managed Google OAuth client, which is the one credential whose absence
+   would otherwise fail nothing. It prints names only.
 2. `npm ci`, `npm test`, `npm run build`.
-3. `scripts/write-apple-api-key.cjs` decodes the key into `$RUNNER_TEMP` — never
+3. `npm run calendar:credentials` writes the managed Google OAuth client into
+   `electron/calendar-credentials.json`, **before** electron-builder packs
+   `electron/**`. See [the calendar secrets](#the-managed-google-oauth-client).
+4. `scripts/write-apple-api-key.cjs` decodes the key into `$RUNNER_TEMP` — never
    the workspace — at mode 0600.
-4. `electron-builder` imports the certificate into a throwaway keychain, signs
+5. `electron-builder` imports the certificate into a throwaway keychain, signs
    with the hardened runtime and the entitlements, then notarizes and staples
    the `.app`.
-5. `scripts/notarize-dmg.sh` notarizes and staples each DMG — electron-builder
+6. `scripts/notarize-dmg.sh` notarizes and staples each DMG — electron-builder
    staples the app but not the image around it, and Gatekeeper assesses the
    downloaded image on its own.
-6. `node scripts/verify-build.cjs release` proves what was produced.
-7. The key file is deleted (`if: always()`).
-8. Only then is the GitHub release created.
+7. `node scripts/verify-build.cjs release` proves what was produced.
+8. The key file is deleted (`if: always()`).
+9. Only then is the GitHub release created.
 
 Step 6 is the gate that matters. electron-builder **warns rather than fails**
 when it cannot assemble notarization options — `skipped macOS notarization` — so
@@ -164,6 +169,35 @@ Program membership.
 |---|---|
 | `MACOS_CERTIFICATE_P12_BASE64` | the base64 of the `.p12` |
 | `MACOS_CERTIFICATE_PASSWORD` | the passphrase you set on export |
+
+### The managed Google OAuth client
+
+Phase ships an OAuth client so a user can connect a calendar without first
+making their own Google Cloud project. It is **not** an Apple credential and
+nothing about signing needs it — which is exactly why it is listed here: a
+release built without it signs, notarizes and verifies perfectly, and ships an
+app whose Calendar tab asks every user for a client ID. Nothing fails.
+
+[`docs/google-calendar-setup.md`](google-calendar-setup.md) is the authority on
+the client itself — which Cloud project it belongs to, which scopes it asks
+for, and how to create or rotate one.
+
+| Secret | What it is |
+|---|---|
+| `PHASE_GOOGLE_CLIENT_ID` | the Desktop app OAuth client ID, `NNN.apps.googleusercontent.com` |
+| `PHASE_GOOGLE_CLIENT_SECRET` | that client's secret |
+
+**Both or neither.** Half a pair cannot authenticate, so the preflight refuses
+one without the other rather than shipping a build that fails at consent. An
+ad-hoc developer build is allowed to have neither: `PHASE_RELEASE_SIGNING`
+unset means no check, and the app falls back to Settings → Calendar → *Use my
+own Google OAuth client*. That fallback is also what a user of a release gets
+if these are ever unset.
+
+A desktop client's "secret" is not confidential — a desktop app cannot keep
+one, which is why PKCE rather than the secret protects the flow. It is still
+kept out of the repository so it is rotatable without a code change, and so a
+fork does not inherit this project's Cloud quota.
 
 Add all of them under **Settings → Secrets and variables → Actions**.
 

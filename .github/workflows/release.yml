@@ -56,11 +56,29 @@ jobs:
           APPLE_ID: ${{ env.PHASE_NOTARY_METHOD == 'apple-id' && secrets.APPLE_ID || '' }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ env.PHASE_NOTARY_METHOD == 'apple-id' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ env.PHASE_NOTARY_METHOD == 'apple-id' && secrets.APPLE_TEAM_ID || '' }}
+          PHASE_GOOGLE_CLIENT_ID: ${{ secrets.PHASE_GOOGLE_CLIENT_ID }}
+          PHASE_GOOGLE_CLIENT_SECRET: ${{ secrets.PHASE_GOOGLE_CLIENT_SECRET }}
         run: node scripts/check-release-credentials.cjs
 
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+      # The OAuth client this build ships. It must exist BEFORE electron-builder
+      # packs `electron/**`, or the release ships without one — which fails
+      # nothing: the app simply asks every user for their own Google Cloud
+      # project. The preflight above already refused a half pair, so by here
+      # both are present; the writer checks again because it is also the path a
+      # developer runs by hand.
+      #
+      # The pair is scoped to this ONE step. A workflow-level `env` would put
+      # the client secret in the environment of every step, including the one
+      # that uploads the artifacts.
+      - name: Write the managed calendar OAuth client
+        env:
+          PHASE_GOOGLE_CLIENT_ID: ${{ secrets.PHASE_GOOGLE_CLIENT_ID }}
+          PHASE_GOOGLE_CLIENT_SECRET: ${{ secrets.PHASE_GOOGLE_CLIENT_SECRET }}
+        run: npm run calendar:credentials
 
       # notarytool wants the key as a file, so the base64 secret becomes one
       # here — and only here. The writer validates the alphabet, the round trip

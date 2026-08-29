@@ -20,6 +20,8 @@ const {
   notaryMethod,
   requiredReleaseSecrets,
   assertReleaseSecrets,
+  CALENDAR_SECRETS,
+  assertCalendarCredentials,
 } = require('./releaseConfig.cjs');
 const { API_KEY_BASE64_ENV, decodeApiKey } = require('./appleApiKey.cjs');
 
@@ -48,6 +50,18 @@ try {
 
   for (const name of requiredReleaseSecrets(env)) {
     if (name === API_KEY_BASE64_ENV) continue; // already reported, in more detail
+    console.log(`  ${name}: present`);
+  }
+  // The managed OAuth client the build will pack. Checked in this step, with
+  // the Apple secrets, because it is the one credential whose absence breaks
+  // nothing: the build would succeed, sign, notarize and verify, and ship an
+  // app that asks every user for a Google Cloud project. No later step notices.
+  //
+  // It is checked LAST because the Apple credentials are what a failed release
+  // costs twenty minutes on, and a diagnosis is worth more than a millisecond.
+  assertCalendarCredentials(env);
+  console.log('Managed Google OAuth client:');
+  for (const name of CALENDAR_SECRETS) {
     console.log(`  ${name}: present`);
   }
 } catch (err) {

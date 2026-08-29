@@ -177,6 +177,80 @@ describe('release workflow', () => {
         .not.toContain('base64 --decode');
     });
   });
+
+  /**
+   * The managed Google OAuth client has to be WRITTEN before electron-builder
+   * packs the bundle, or the published app ships without one and every user is
+   * asked for a Google Cloud project.
+   *
+   * Nothing in the build fails when it is missing — the app has a legitimate
+   * fallback and takes it — so only an ordering assertion catches this. That is
+   * exactly why it is pinned here rather than left to a release to discover.
+   */
+  describe('the managed calendar OAuth client', () => {
+    const CALENDAR_SECRETS = ['PHASE_GOOGLE_CLIENT_ID', 'PHASE_GOOGLE_CLIENT_SECRET'];
+
+    /** Text of one step, from its `- name:` to the next step at that indent. */
+    const step = (name: string) => {
+      const start = workflow.indexOf(`- name: ${name}`);
+      expect(start, `no step named ${name}`).toBeGreaterThan(-1);
+      const rest = workflow.slice(start + 1);
+      const end = rest.indexOf('\n      - ');
+      return rest.slice(0, end === -1 ? undefined : end);
+    };
+
+    it('is written before electron-builder packs the app', () => {
+      expect(indexOf('calendar:credentials')).toBeLessThan(indexOf('npx electron-builder'));
+    });
+
+    it('is written after the install that provides the script', () => {
+      // `npm run` needs package.json, which the checkout provides — but the
+      // step reads from electron/, so it must not race the working directory.
+      expect(indexOf('run: npm ci')).toBeLessThan(indexOf('calendar:credentials'));
+    });
+
+    it('wires both secret names, and takes each from secrets', () => {
+      for (const name of CALENDAR_SECRETS) {
+        expect(workflow, `${name} is never exported`).toContain(`${name}:`);
+      }
+      for (const line of workflow.split('\n')) {
+        const assignment = /^\s*(PHASE_GOOGLE_CLIENT_ID|PHASE_GOOGLE_CLIENT_SECRET):\s*(.+)$/
+          .exec(line);
+        if (!assignment) continue;
+        expect(assignment[2], `${assignment[1]} is not read from secrets`)
+          .toContain('secrets.');
+      }
+    });
+
+    it('fails in the preflight, before an install, a suite or a build', () => {
+      const preflight = step('Preflight — release credentials');
+      for (const name of CALENDAR_SECRETS) {
+        expect(preflight, `${name} is not checked early`).toContain(`${name}:`);
+      }
+      expect(indexOf('check-release-credentials.cjs')).toBeLessThan(indexOf('run: npm ci'));
+    });
+
+    it('scopes the pair to the steps that need it, never workflow-wide', () => {
+      // A workflow-level env key would put the client secret in the
+      // environment of every step, including the one that uploads artifacts.
+      const beforeJobs = workflow.slice(0, indexOf('\njobs:'));
+      for (const name of CALENDAR_SECRETS) {
+        expect(beforeJobs, `${name} is exported to every step`).not.toContain(name);
+      }
+      const publish = step('Create GitHub release');
+      for (const name of CALENDAR_SECRETS) {
+        expect(publish, `${name} reaches the publish step`).not.toContain(name);
+      }
+    });
+
+    it('never prints either value', () => {
+      for (const line of workflow.split('\n')) {
+        if (!CALENDAR_SECRETS.some((name) => line.includes(name))) continue;
+        expect(line, 'a calendar secret reaches a printing command')
+          .not.toMatch(/\b(echo|printf|cat|tee)\b/);
+      }
+    });
+  });
 });
 
 /**

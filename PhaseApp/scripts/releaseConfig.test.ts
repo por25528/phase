@@ -13,6 +13,9 @@ const {
   assertBuilderEnv,
   macConfig,
   buildConfig,
+  CALENDAR_SECRETS,
+  missingCalendarSecrets,
+  assertCalendarCredentials,
 } = nativeRequire('./releaseConfig.cjs') as typeof import('./releaseConfig.cjs');
 
 /** Values are fake throughout; only their presence is ever meaningful. */
@@ -231,5 +234,88 @@ describe('buildConfig', () => {
   });
   it('refuses a release whose key file the materialise step never wrote', () => {
     expect(() => buildConfig(API_KEY_BUILDER, absent)).toThrow(/APPLE_API_KEY/);
+  });
+});
+
+/**
+ * The managed Google OAuth client the published build ships.
+ *
+ * This is a THIRD contract beside the two above, and it is checked here for the
+ * same reason the Apple secrets are: a release that packs no credentials file
+ * still builds, still signs and still notarizes — it just ships an app whose
+ * Calendar tab asks every user for a Google Cloud project. That is the correct
+ * behaviour for a local ad-hoc build and a silent regression for a release, so
+ * only `developer-id` mode demands the pair.
+ */
+describe('managed calendar credentials', () => {
+  const RELEASE = { PHASE_RELEASE_SIGNING: '1' };
+  const PAIR = {
+    PHASE_GOOGLE_CLIENT_ID: '1234.apps.googleusercontent.com',
+    PHASE_GOOGLE_CLIENT_SECRET: 'a-fake-desktop-client-secret',
+  };
+
+  it('names both halves of the pair', () => {
+    expect(CALENDAR_SECRETS).toEqual([
+      'PHASE_GOOGLE_CLIENT_ID',
+      'PHASE_GOOGLE_CLIENT_SECRET',
+    ]);
+  });
+
+  it('demands nothing of an ad-hoc developer build', () => {
+    // The custom-client fallback is the whole point: a contributor with no
+    // Google project must still be able to run `npm run build:mac`.
+    expect(missingCalendarSecrets({})).toEqual([]);
+    expect(() => assertCalendarCredentials({})).not.toThrow();
+    expect(() => assertCalendarCredentials({ ...PAIR })).not.toThrow();
+  });
+
+  it('accepts a release that supplies both', () => {
+    expect(missingCalendarSecrets({ ...RELEASE, ...PAIR })).toEqual([]);
+    expect(() => assertCalendarCredentials({ ...RELEASE, ...PAIR })).not.toThrow();
+  });
+
+  it('refuses a release with neither, naming both', () => {
+    expect(missingCalendarSecrets({ ...RELEASE })).toEqual([
+      'PHASE_GOOGLE_CLIENT_ID',
+      'PHASE_GOOGLE_CLIENT_SECRET',
+    ]);
+    expect(() => assertCalendarCredentials({ ...RELEASE }))
+      .toThrow(/PHASE_GOOGLE_CLIENT_ID, PHASE_GOOGLE_CLIENT_SECRET/);
+  });
+
+  it('refuses half a pair, which cannot authenticate', () => {
+    const idOnly = { ...RELEASE, PHASE_GOOGLE_CLIENT_ID: PAIR.PHASE_GOOGLE_CLIENT_ID };
+    expect(missingCalendarSecrets(idOnly)).toEqual(['PHASE_GOOGLE_CLIENT_SECRET']);
+    expect(() => assertCalendarCredentials(idOnly)).toThrow(/PHASE_GOOGLE_CLIENT_SECRET/);
+
+    const secretOnly = { ...RELEASE, PHASE_GOOGLE_CLIENT_SECRET: PAIR.PHASE_GOOGLE_CLIENT_SECRET };
+    expect(missingCalendarSecrets(secretOnly)).toEqual(['PHASE_GOOGLE_CLIENT_ID']);
+    expect(() => assertCalendarCredentials(secretOnly)).toThrow(/PHASE_GOOGLE_CLIENT_ID/);
+  });
+
+  it('treats a blank secret as an absent one', () => {
+    // An unset GitHub secret interpolates to the empty string rather than
+    // vanishing, so blank is the shape a missing secret actually arrives in.
+    const blank = { ...RELEASE, PHASE_GOOGLE_CLIENT_ID: '   ', PHASE_GOOGLE_CLIENT_SECRET: '' };
+    expect(missingCalendarSecrets(blank)).toEqual([
+      'PHASE_GOOGLE_CLIENT_ID',
+      'PHASE_GOOGLE_CLIENT_SECRET',
+    ]);
+    expect(() => assertCalendarCredentials(blank)).toThrow();
+  });
+
+  it('never puts a credential value in the message it throws', () => {
+    const idOnly = { ...RELEASE, PHASE_GOOGLE_CLIENT_ID: PAIR.PHASE_GOOGLE_CLIENT_ID };
+    try {
+      assertCalendarCredentials(idOnly);
+      throw new Error('expected a refusal');
+    } catch (err) {
+      expect((err as Error).message).not.toContain(PAIR.PHASE_GOOGLE_CLIENT_ID);
+    }
+  });
+
+  it('says how to build without them, so the fallback stays discoverable', () => {
+    expect(() => assertCalendarCredentials({ ...RELEASE }))
+      .toThrow(/PHASE_RELEASE_SIGNING/);
   });
 });
