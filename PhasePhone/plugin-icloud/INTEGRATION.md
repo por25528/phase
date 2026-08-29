@@ -173,9 +173,9 @@ path derived from the identifier by replacing every `.` with `~`:
 ~/Library/Mobile Documents/iCloud~com~phaseapp~phone/Documents/Phase
 ```
 
-The desktop app is unsigned and unsandboxed, so it can simply read and write
-that path. No Mac-side entitlement, no Mac-side signing, and the unsigned `.dmg`
-ritual is untouched. Set track A's env var:
+The desktop app is signed but **not sandboxed**, so it can simply read and write
+that path. No Mac-side entitlement and no change to the release build. Set
+track A's env var:
 
 ```sh
 export PHASE_SYNC_DIR="$HOME/Library/Mobile Documents/iCloud~com~phaseapp~phone/Documents/Phase"
@@ -220,10 +220,12 @@ Both apps declare the same container, e.g. `iCloud.com.phaseapp.sync`:
   plus, if the Mac app is sandboxed, `com.apple.security.app-sandbox` and
   `com.apple.security.network.client`.
 
-The cost is real: signing the Mac app ends the "unsigned `.dmg`, right-click →
-Open" distribution the project deliberately kept. Option A buys the same
-behaviour for free. Only take B if a second desktop or a Mac App Store build
-ever needs it.
+The cost is real, though it is no longer the one written here originally. The
+Mac app is already Developer ID signed and notarized (`docs/macos-signing.md`),
+so signing is not the obstacle; an iCloud **container** entitlement is, because
+it has to be authorised by a provisioning profile tied to the App ID, which the
+current build does not carry. Option A buys the same behaviour for free. Only
+take B if a second desktop or a Mac App Store build ever needs it.
 
 ## 6. The bridge adapter
 

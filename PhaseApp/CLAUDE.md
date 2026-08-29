@@ -13,6 +13,27 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - `npm test` — run the Vitest suite (`vitest run --config vitest.config.ts`)
 - `npm run app:dev` — Electron shell against the Vite dev server (hot-reload)
 - `npm run build:mac` — production build, then `electron-builder --mac` (.dmg)
+- `npm run verify:mac` — assert what that build actually produced
+
+## Packaging
+
+The `mac` config is NOT a static block in `package.json`. `electron-builder.cjs`
+calls `scripts/releaseConfig.cjs`, which is a pure function of the environment,
+and one variable decides everything: `PHASE_RELEASE_SIGNING` unset gives the
+ad-hoc developer build, `=1` gives the Developer ID release the workflow
+publishes. Both harden the runtime and sign against `build/entitlements.mac.plist`
+so an entitlement mistake breaks a laptop build rather than a user's launch.
+
+The reason it is a function and not a config file: electron-builder only WARNS
+("skipped macOS notarization") when a credential is missing and then produces a
+DMG Gatekeeper rejects everywhere. `buildConfig` therefore throws on a
+half-configured release, `scripts/check-release-credentials.cjs` runs that check
+as the workflow's first release step, and `scripts/verify-macos-artifacts.sh`
+proves the signature, the runtime flag, the entitlements, the staple and the
+`spctl` verdict before anything is published. `scripts/releaseConfig.test.ts` and
+`scripts/releasePackaging.test.ts` cover the rules and the workflow; both run
+under `npm test`. Credentials live only in GitHub Actions secrets — see
+`../docs/macos-signing.md`.
 
 ## Layers
 

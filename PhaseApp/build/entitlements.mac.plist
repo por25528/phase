@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Phase is distributed with Developer ID, outside the App Store, so it is
+         NOT sandboxed. Everything below is a hardened-runtime exception, not a
+         capability grant: the loopback OAuth server, the Unix agent socket, the
+         Keychain access behind safeStorage and the global shortcut all work
+         without an entitlement once the process is unsandboxed. Adding
+         com.apple.security.app-sandbox here would break every one of them. -->
+
+    <!-- V8 compiles JavaScript at runtime; without these two the renderer dies
+         on launch. https://github.com/electron/notarize#prerequisites -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Electron launches its helpers through DYLD_* variables, and
+         ELECTRON_RUN_AS_NODE relies on the same mechanism. -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <!-- The framework and the helper bundles are signed as separate code, and
+         library validation would refuse to load them into the main app.
+         https://github.com/electron-userland/electron-builder/issues/3940 -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

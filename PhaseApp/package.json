@@ -14,34 +14,8 @@
     "icon": "bash scripts/make-icns.sh",
     "tray-icon": "bash scripts/make-tray-icon.sh",
     "app:dev": "VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
-    "build:mac": "npm run build && electron-builder --mac"
-  },
-  "build": {
-    "appId": "com.secoandhood.phase",
-    "productName": "Phase",
-    "directories": {
-      "buildResources": "build",
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
-      "category": "public.app-category.productivity",
-      "icon": "build/icon.icns",
-      "identity": "-",
-      "hardenedRuntime": false
-    }
+    "build:mac": "npm run build && electron-builder --mac",
+    "verify:mac": "bash scripts/verify-macos-artifacts.sh dev release/mac-arm64/Phase.app"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
