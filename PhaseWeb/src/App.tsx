@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { DOWNLOAD_NOTE, DOWNLOAD_URL } from './download';
+import { DOWNLOAD_NOTE, DOWNLOAD_URL, DOWNLOAD_URL_INTEL, RELEASES_URL } from './download';
 import { delay, useReveal } from './reveal';
 
 /* The page is one ruled sheet, the same argument Today makes in the app:
@@ -152,6 +152,18 @@ function DownloadButton({ large }: { large?: boolean }) {
   );
 }
 
+/* The button is pinned to Apple silicon. This is the way out for everyone
+   it would otherwise strand: the Intel build, and the whole shelf. */
+function IntelNote() {
+  return (
+    <span className="font-mono text-micro tracking-[.11em] uppercase text-muted">
+      <a href={DOWNLOAD_URL_INTEL} className="hover:text-ink">Intel Mac?</a>
+      {' · '}
+      <a href={RELEASES_URL} className="hover:text-ink">all releases</a>
+    </span>
+  );
+}
+
 export function App() {
   useReveal();
 
@@ -207,6 +219,9 @@ export function App() {
           >
             <DownloadButton large />
             <span className="font-mono text-micro tracking-[.11em] uppercase text-muted">{DOWNLOAD_NOTE}</span>
+          </div>
+          <div className="mt-3" data-reveal="up" data-enter style={delay(340)}>
+            <IntelNote />
           </div>
         </section>
 
@@ -374,6 +389,7 @@ export function App() {
             <div className="mt-10 flex flex-col items-center gap-4" data-reveal="up" style={delay(70)}>
               <DownloadButton large />
               <span className="font-mono text-micro tracking-[.11em] uppercase text-muted">{DOWNLOAD_NOTE}</span>
+              <IntelNote />
             </div>
           </div>
         </section>
