@@ -87,6 +87,58 @@ function Shot({ name, alt, eager, d = 0, enter }: {
   );
 }
 
+/** Signature 3: the shredder. One goal sheet feeds an ink slot and hangs
+ *  below it as strips — each strip a piece of work small enough to be a day.
+ *  The figure is one reveal group: the sheet descends, then the strips drop
+ *  with the page's own stagger. Blank strips keep the rhythm honest; a
+ *  shredder does not label every cut. */
+const STRIPS: [string, number][] = [
+  ['wireframe · 2h', 150],
+  ['copy draft · 90m', 196],
+  ['', 122],
+  ['build hero · 3h', 208],
+  ['polish nav · 1h', 168],
+  ['', 134],
+  ['deploy · 30m', 184],
+];
+
+function Shredder() {
+  return (
+    <div className="max-w-[440px] mx-auto" data-reveal="shred">
+      {/* The window clips the sheet's lower edge, so at rest the goal is
+          already part-swallowed — the no-JS state is the finished figure. */}
+      <div className="overflow-hidden">
+        <div className="shred-sheet w-[300px] max-w-full mx-auto -mb-7 bg-panel border border-line-2 rounded-t-[6px] shadow-card px-6 pt-5 pb-12 text-left">
+          <span className="section-label text-chip-ink">goal</span>
+          <div className="font-disp font-semibold text-ink mt-2" style={{ fontSize: '1.35rem', lineHeight: 1.15 }}>
+            Ship the portfolio site.
+          </div>
+          <div className="font-mono text-micro tracking-[.11em] uppercase text-muted mt-3">
+            est 42h · horizon: now
+          </div>
+        </div>
+      </div>
+      {/* The machine is the app: an ink bar with the nameplate set in it. */}
+      <div className="relative z-10 h-3.5 bg-ink rounded-[2px] flex items-center justify-end px-2.5">
+        <span aria-hidden className="font-mono text-[9px] leading-none tracking-[.2em] uppercase text-bg/60">
+          phase
+        </span>
+      </div>
+      <div className="overflow-hidden flex justify-center items-start gap-1.5" style={{ height: 220 }}>
+        {STRIPS.map(([label, h], i) => (
+          <div
+            key={i}
+            className="shred-strip w-7 bg-panel border border-t-0 border-line-2 shadow-card pt-3 flex justify-center"
+            style={{ height: h, ...delay(340 + i * 70) }}
+          >
+            {label && <span className="shred-label section-label text-muted">{label}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DownloadButton({ large }: { large?: boolean }) {
   return (
     <a
@@ -170,6 +222,16 @@ export function App() {
             enter
             d={370}
           />
+        </section>
+
+        {/* ── Method — the shredder ─────────────────────────────────
+            The figure sits where the claim is first made: a big goal
+            goes into the slot and comes out as days. */}
+        <section>
+          <Rule tag="Method" fact="goals in, days out" />
+          <div className="px-6 sm:px-10 pt-16 sm:pt-20 pb-12 sm:pb-16">
+            <Shredder />
+          </div>
         </section>
 
         {/* ── Plan ──────────────────────────────────────────────── */}
@@ -307,7 +369,7 @@ export function App() {
               style={{ fontSize: 'clamp(2.2rem, 5vw, 4rem)', lineHeight: 1.02, letterSpacing: '-0.015em' }}
               data-reveal="up"
             >
-              Put your week on paper.
+              Plan less. Finish more.
             </h2>
             <div className="mt-10 flex flex-col items-center gap-4" data-reveal="up" style={delay(70)}>
               <DownloadButton large />

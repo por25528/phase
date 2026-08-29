@@ -101,6 +101,13 @@
     @apply font-mono uppercase text-micro tracking-[.11em];
   }
 
+  /* A shredded strip reads down its own length, like writing on the edge
+     of a cut sheet. */
+  .shred-label {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+  }
+
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -199,6 +206,27 @@
 }
 .js [data-reveal='words'].is-in .w-inner { transform: none; }
 
+/* ── Signature 3: the shredder ────────────────────────────────────────
+   The closing figure replays the whole pitch: a goal sheet descends into
+   the slot, and strips small enough to be days drop out below it, one
+   after another on the page's own stagger. Both halves are masked by
+   overflow, so the paper emerges rather than fades — and nothing
+   bounces, because shredders don't. */
+.js [data-reveal='shred'] .shred-sheet {
+  opacity: 0;
+  transform: translateY(calc(-1 * var(--m-rise)));
+  transition:
+    opacity var(--m-scroll) var(--ease-out),
+    transform var(--m-scroll) var(--ease-out);
+}
+.js [data-reveal='shred'].is-in .shred-sheet { opacity: 1; transform: none; }
+
+.js [data-reveal='shred'] .shred-strip {
+  transform: translateY(-101%);
+  transition: transform var(--m-scroll) var(--ease-out) var(--m-d, 0ms);
+}
+.js [data-reveal='shred'].is-in .shred-strip { transform: none; }
+
 /* ── Interaction ──────────────────────────────────────────────────────
    Hover only where there is a real pointer; press feedback everywhere,
    because a surface that does not compress reads as unresponsive no
@@ -275,6 +303,13 @@
     transition-delay: 0ms;
   }
   .js [data-reveal='rule'] .rule-line { transform: none; transition: none; }
+  .js [data-reveal='shred'] .shred-sheet { transform: none; transition-duration: 220ms; }
+  .js [data-reveal='shred'] .shred-strip {
+    transform: none;
+    opacity: 0;
+    transition: opacity 220ms var(--ease-out) 0ms;
+  }
+  .js [data-reveal='shred'].is-in .shred-strip { opacity: 1; }
   .js [data-reveal='rule'] .rule-cell { transform: none; transition-duration: 220ms; transition-delay: 0ms; }
   .js [data-reveal='words'] .w-inner { transform: none; transition: none; }
   .w-mask { overflow: visible; }
