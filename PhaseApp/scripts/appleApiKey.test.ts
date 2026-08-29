@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
-const { API_KEY_BASE64_ENV, decodeApiKey, writeApiKey } =
+const { API_KEY_BASE64_ENV, PKCS8_HEADER, PKCS8_FOOTER, decodeApiKey, writeApiKey } =
   nativeRequire('./appleApiKey.cjs') as typeof import('./appleApiKey.cjs');
 
 /** A real P-256 PKCS#8 key — the shape App Store Connect hands out as .p8. */
@@ -78,6 +78,68 @@ describe('decodeApiKey', () => {
     }
     expect(message).not.toContain('BEGIN PRIVATE KEY-----\nM');
     expect(message).not.toContain(BASE64.slice(0, 32));
+  });
+});
+
+/**
+ * A secret cut on a 4-character boundary decodes cleanly: the alphabet is
+ * intact, the length is still a multiple of 4, the round trip is exact, and the
+ * BEGIN header survives because it sits at the START of the file. Every check
+ * the decoder had passed, and notarytool got half a key.
+ *
+ * `TRUNCATED` is built to be exactly that case, and the first test below proves
+ * it really is — otherwise this would be a regression test for nothing.
+ */
+// Two thirds of the way in: comfortably past the header, nowhere near the
+// footer, and rounded down to a 4-character boundary so nothing is corrupted.
+const TRUNCATED = BASE64.slice(0, Math.floor((BASE64.length * 2) / 3 / 4) * 4);
+
+describe('a secret truncated on a base64 boundary', () => {
+  it('really does defeat every check that is not the footer', () => {
+    // The four properties the decoder used to rely on, asserted directly.
+    expect(TRUNCATED).toMatch(/^[A-Za-z0-9+/]*={0,2}$/);
+    expect(TRUNCATED.length % 4).toBe(0);
+    const decoded = Buffer.from(TRUNCATED, 'base64');
+    expect(decoded.toString('base64').replace(/=+$/, '')).toBe(TRUNCATED.replace(/=+$/, ''));
+    expect(decoded.toString('utf8')).toContain(PKCS8_HEADER);
+    // And yet it is half a key.
+    expect(decoded.toString('utf8')).not.toContain(PKCS8_FOOTER);
+    expect(decoded.length).toBeLessThan(Buffer.from(PEM, 'utf8').length);
+  });
+
+  it('is refused, naming the marker that is missing', () => {
+    expect(() => decodeApiKey(TRUNCATED)).toThrow(/END PRIVATE KEY/);
+  });
+
+  it('names the variable and never the half-key it decoded', () => {
+    let message = '';
+    try {
+      decodeApiKey(TRUNCATED);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain(API_KEY_BASE64_ENV);
+    expect(message).not.toContain(TRUNCATED);
+    expect(message).not.toContain(TRUNCATED.slice(0, 32));
+    // The decoded material must not leak either — the body of a real key.
+    const body = PEM.split('\n')[1];
+    expect(message).not.toContain(body);
+  });
+
+  it('writes no half-key file', () => {
+    const dest = path.join(scratch(), 'apple-api-key.p8');
+    expect(() => writeApiKey(TRUNCATED, dest)).toThrow(/END PRIVATE KEY/);
+    expect(existsSync(dest)).toBe(false);
+  });
+});
+
+describe('a key whose markers are out of order', () => {
+  it('is refused, because a footer before a header is not a key', () => {
+    const scrambled = Buffer.from(
+      `${PKCS8_FOOTER}\nsome-body\n${PKCS8_HEADER}\n`,
+      'utf8',
+    ).toString('base64');
+    expect(() => decodeApiKey(scrambled)).toThrow(new RegExp(API_KEY_BASE64_ENV));
   });
 });
 
