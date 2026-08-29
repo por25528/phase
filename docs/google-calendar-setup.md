@@ -1,100 +1,134 @@
 # Google Calendar setup
 
-> **Shelved as of 2026-08-07.** The integration is unfinished and not reachable
-> from the app. The Electron producer is built and tested but nothing in the
-> renderer calls it, so following this guide will not give you calendar data in
-> Phase. It was stopped because the setup burden below — a Google Cloud project,
-> a consent screen, and pasting OAuth credentials — is too much to ask before
-> someone can plan a week. The remaining work is written up in
-> `docs/superpowers/plans/2026-08-07-google-calendar-3a-data-path.md` and `-3b-settings-ui.md`
-> if it is ever picked back up.
+Phase reads your Google Calendar so it stops putting work on top of time you
+have already committed. It is read-only and one-way — Phase never writes to
+Google — and the events are cached on your own Mac, outside the backup.
 
-Phase reads Google Calendar busy time locally so it can protect the time you
-have already committed. Follow these steps once to create an OAuth client for
-your own Phase installation.
+**Most people do not need this page.** Open **Settings → Calendar** and click
+**Connect Google Calendar**. If that button is there, the build you are running
+ships its own OAuth client and there is nothing to set up.
 
-## Create a Google Cloud project
+This page is for the other case: a build with no OAuth client of its own, or a
+deliberate decision to point Phase at your own Google Cloud project instead.
 
-1. Open the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project, or select an existing project dedicated to your Phase
-   installation.
+---
 
-## Enable the Google Calendar API
+## Which client is Phase using?
 
-1. In the selected project, open **APIs & Services → Library**.
-2. Search for **Google Calendar API**.
-3. Open it and click **Enable**.
+Settings → Calendar tells you without jargon:
 
-The API is free for this use and does not require a billing account.
+| What you see | What it means |
+|---|---|
+| **Connect Google Calendar** | The build ships a client. Nothing to set up. |
+| *"This build of Phase ships no Google OAuth client…"* with the client fields open | You need your own — follow this page. |
+| **Use my own Google OAuth client** (collapsed) | The advanced fallback, when you want your own project anyway. |
 
-## Configure the OAuth consent screen as External
+A saved client always wins over the shipped one. Once you have saved your own,
+the disclosure offers **Use the built-in client instead**, which forgets yours
+and reconnects against the shipped one.
 
-1. Open **APIs & Services → OAuth consent screen**.
-2. Choose **External** as the user type and create the app configuration.
-3. Enter an app name and your support and developer contact details.
-4. Add the two scopes Phase requests:
-   - `https://www.googleapis.com/auth/calendar.events.readonly` for the busy
-     event data.
-   - `https://www.googleapis.com/auth/calendar.calendarlist.readonly` for the
-     calendar picker.
+---
 
-`calendar.events.readonly` by itself does not authorize the calendar picker,
-and the broader `calendar.readonly` scope would grant more access than Phase
-needs. Phase never writes to Google Calendar.
+## Creating your own OAuth client
 
-### Set Publishing status to "In production"
+### 1. Create a Google Cloud project
 
-In the OAuth consent screen's **Audience** page, click **Publish app**, then
-set **Publishing status** to **In production**. The choice affects whether
-Google's refresh token persists:
+Open the [Google Cloud Console](https://console.cloud.google.com/) and create a
+project, or select an existing one dedicated to your Phase installation.
+
+### 2. Enable the Google Calendar API
+
+**APIs & Services → Library**, search for **Google Calendar API**, open it and
+click **Enable**. The API is free for this use and needs no billing account.
+
+### 3. Configure the OAuth consent screen as External
+
+**APIs & Services → OAuth consent screen**, choose **External**, and add the
+two scopes Phase requests:
+
+- `https://www.googleapis.com/auth/calendar.events.readonly` — the busy events.
+- `https://www.googleapis.com/auth/calendar.calendarlist.readonly` — the picker.
+
+`calendar.events.readonly` by itself does not authorize the calendar picker, and
+the broader `calendar.readonly` scope would grant more access than Phase needs.
+
+#### Set Publishing status to "In production"
+
+On the consent screen's **Audience** page, click **Publish app** and set
+**Publishing status** to **In production**. The choice decides whether Google's
+refresh token survives:
 
 | Posture | Refresh token | Notes |
 |---|---|---|
-| Own client, **In production**, unverified | Persists | **Recommended.** One-time "Google hasn't verified this app" screen — click *Advanced → Go to Phase*. |
-| Own client, **Testing** | **Expires in 7 days** | Development only. You will be forced to re-consent every week. |
+| Own client, **In production**, unverified | Persists | **Recommended.** One-time "Google hasn't verified this app" screen — *Advanced → Go to Phase*. |
+| Own client, **Testing** | **Expires in 7 days** | Development only. Weekly re-consent. |
 | Verified production app | Persists | Requires Google review; out of scope. |
 
-For a private client used only by you, an unverified app in production is the
-recommended posture. Google may show the one-time unverified-app warning during
-consent; use **Advanced → Go to Phase** to continue.
+### 4. Create the client
 
-## Create an OAuth client
+**APIs & Services → Credentials → Create credentials → OAuth client ID**, and
+choose **Desktop app**. Copy the client ID and client secret.
 
-1. Open **APIs & Services → Credentials**.
-2. Click **Create credentials → OAuth client ID**.
-3. Choose **Desktop app** as the application type.
-4. Create the client and copy its client ID and client secret.
+Phase uses `http://127.0.0.1:<port>/callback` as its loopback redirect. A
+Desktop app client needs no redirect configuration; Google auto-allows loopback.
 
-Phase uses `http://127.0.0.1:<port>/callback` as its loopback redirect URI. A
-**Desktop app** OAuth client needs no redirect URI configuration; Google
-auto-allows loopback redirects.
+A desktop OAuth client's "secret" is not confidential — a desktop app cannot
+keep a shipped secret. PKCE is what actually protects the authorization-code
+flow.
 
-A desktop OAuth client's "secret" is not confidential. Desktop applications
-cannot keep a shipped secret, which is why Phase ships none. PKCE is what
-actually protects the authorization-code flow.
+### 5. Paste it into Phase
 
-## Paste the credentials into Phase
-
-Phase has no Google Calendar settings panel yet. Until it does, the credentials
-go in through the devtools console of the desktop app:
-
-```bash
-npm run dev &
-npm run app:dev
-```
-
-```js
-await window.phaseCalendar.configure({ clientId: '...', clientSecret: '...' })
-await window.phaseCalendar.connect()
-```
-
-`connect()` opens your browser for Google's consent flow. Click through the
-unverified-app screen via **Advanced → Go to Phase**; the browser then lands on
-a page confirming Phase is connected.
+**Settings → Calendar → Use my own Google OAuth client**, paste both fields,
+**Save**, then **Connect Google Calendar**. Your browser opens for consent;
+click through the unverified-app screen via **Advanced → Go to Phase**.
 
 Phase stores the credentials and tokens in the operating system's encrypted
-user-data store; they do not cross the renderer bridge.
+user-data store. They never cross the renderer bridge — `status()` reports only
+*whether* a client is configured, never its value, which is why the fields are
+always blank when you reopen them.
 
-[google-calendar-verification.md](google-calendar-verification.md) walks the
-rest of the connection — listing your calendars, fetching a week, and
-confirming the connection survives a restart.
+---
+
+## Shipping a build with managed credentials
+
+For whoever packages Phase, not for whoever runs it.
+
+Nothing in this repository contains a credential, and nothing may. The client
+the build ships is written into the bundle at build time:
+
+```bash
+PHASE_GOOGLE_CLIENT_ID=…apps.googleusercontent.com \
+PHASE_GOOGLE_CLIENT_SECRET=… \
+  npm run calendar:credentials
+
+npm run build:mac
+```
+
+`npm run calendar:credentials` writes `electron/calendar-credentials.json`,
+which is git-ignored and packaged by the existing `electron/**/*` rule. Skipping
+it is a supported outcome: the build then ships no client, and Settings asks for
+the user's own.
+
+During `npm run app:dev` the two environment variables are read directly, so no
+file is needed. The packaged file wins over the environment when both exist — a
+released app must not have its OAuth client swapped by whatever happened to be
+exported in the shell that launched it.
+
+Both variables or neither. Half a pair cannot authenticate, and reporting it as
+present would make Phase claim to be configured and then fail at consent.
+
+## What is stored, and where
+
+| Thing | Where | In a backup? |
+|---|---|---|
+| Client id and secret | OS encrypted store (`safeStorage`), in the app's user-data directory | No |
+| Refresh and access tokens | Same | No |
+| Fetched busy blocks | The `calendarCache` table in IndexedDB, on this device | **No** — it is a cache, not data |
+
+The cache carries its own provenance: the account, the selected calendars and
+the machine timezone the events were flattened against. If any of those changes,
+the cached blocks stop being displayed rather than being shown as current fact.
+
+[google-calendar-verification.md](google-calendar-verification.md) is the manual
+checklist for the parts no test can reach — the OAuth round trip, `safeStorage`
+persistence, and the IPC boundary itself.

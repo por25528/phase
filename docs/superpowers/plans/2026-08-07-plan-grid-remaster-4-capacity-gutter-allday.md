@@ -830,5 +830,5 @@ Expected: the availability dims plus exactly one wash — not a wash added on to
 ## What this plan does NOT do
 
 - Parts 2 and 3 of the spec — plans 2a, 2b and 3.
-- Google Calendar busy blocks. `blocks` stays `[]`; the integration is shelved (`docs/google-calendar-setup.md`). The all-day lane is built on checkpoints and deadlines precisely so it ships with a real producer.
+- Google Calendar busy blocks. `blocks` stayed `[]` for this plan; the integration was shelved at the time and landed on 2026-08-30 (`docs/google-calendar-setup.md`). The all-day lane is built on checkpoints and deadlines precisely so it ships independently of that producer.
 - Ghost auto-place, the now-band, estimate-vs-actual rendering, multi-select on the grid, a day/3-day view, mobile layout, or any change to `Session`.
