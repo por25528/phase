@@ -9,4 +9,6 @@ This repo holds two projects:
   Tailwind, static build). It copies the app's theme tokens and fonts; it
   never imports across the folder boundary.
 
-`docs/` at the root holds repo-level docs and specs.
+`docs/` at the root holds repo-level docs and specs —
+`docs/macos-signing.md` is the authority on how the app is signed,
+notarized and released, and on the ad-hoc developer build.

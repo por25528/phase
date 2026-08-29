@@ -13,6 +13,39 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - `npm test` — run the Vitest suite (`vitest run --config vitest.config.ts`)
 - `npm run app:dev` — Electron shell against the Vite dev server (hot-reload)
 - `npm run build:mac` — production build, then `electron-builder --mac` (.dmg)
+- `npm run verify:mac` — assert what that build actually produced
+
+## Packaging
+
+The `mac` config is NOT a static block in `package.json`. `electron-builder.cjs`
+calls `scripts/releaseConfig.cjs`, which is a pure function of the environment,
+and one variable decides everything: `PHASE_RELEASE_SIGNING` unset gives the
+ad-hoc developer build, `=1` gives the Developer ID release the workflow
+publishes. Both harden the runtime and sign against `build/entitlements.mac.plist`
+so an entitlement mistake breaks a laptop build rather than a user's launch.
+
+The reason it is a function and not a config file: electron-builder only WARNS
+("skipped macOS notarization") when a credential is missing and then produces a
+DMG Gatekeeper rejects everywhere. `buildConfig` therefore throws on a
+half-configured release, `scripts/check-release-credentials.cjs` runs that check
+as the workflow's FIRST step (before `npm ci`), and `node scripts/verify-build.cjs`
+proves the signature, the runtime flag, the entitlements, the staple and the
+`spctl` verdict before anything is published.
+
+Two rules that look like details and are not. **The App Store Connect key has
+two names**: `APPLE_API_KEY_P8_BASE64` is the repository secret,
+`APPLE_API_KEY` is a PATH to the decoded file, and `releaseConfig.cjs` keeps
+`requiredReleaseSecrets` (preflight) and `requiredBuilderVars` (electron-builder)
+apart so the two can never be swapped. **Nothing names an architecture
+directory**: electron-builder writes `release/mac` for x64 and
+`release/mac-arm64` for arm64, so `scripts/appBundles.cjs` discovers what was
+built and a run that finds nothing fails — a verifier checking zero artifacts
+reads exactly like one that passed.
+
+`scripts/*.test.ts` covers all of it — the rules, the key decoding, the
+discovery, the workflow, and the ban on Gatekeeper-bypass copy returning to the
+end-user install path — and runs under `npm test`. Credentials live only in
+GitHub Actions secrets; see `../docs/macos-signing.md`.
 
 ## Layers
 
