@@ -67,6 +67,135 @@ GitHub Actions secrets; see `../docs/macos-signing.md`.
 - Deletes (and other destructive edits) are undo-aware: the action snapshots the affected slice and calls `scheduleUndo`, giving a 5-second undo window (`store.ts`). Any edit that discards user data to hold an invariant — `indentNode` clearing the new parent's completion and slot, `addChild` converting a scheduled leaf into a container — must be undoable too.
 - **The Undo toast never outlives its restore.** `setAndPersist`'s sweep drops every non-surgical entry when an ordinary edit lands, and clears `pendingUndo` in the same write (`armedSurgical`). A visible Undo button that does nothing is worse than no button.
 - **An import is a generation boundary.** `importBackup` clears `undoStack`/`pendingUndo`: a whole-slice restore armed against the previous dataset would otherwise overwrite the imported one and persist it.
+- **A backup is ONE derivation, and `buildBackupText` is it.** The Export menu
+  item, the automatic snapshot and the fatal error screen all spend the same
+  function in `db/db.ts`, so what Phase writes by itself is byte-for-byte the
+  kind of file `importStateFromFile` already accepts — and there is no second
+  reader for "our own" backups that could drift from the one with the
+  validators in it. `exportState` is now `buildBackupText` plus
+  `downloadBackupText`; `emergencyBackupText` is the same builder fed from the
+  DATABASE rather than the store, through the loaders hydration uses, because
+  its one caller renders BECAUSE the store crashed and asking the fault for the
+  rescue is not a plan.
+- **Phase backs itself up on the desktop, and the FILE NAME is the whole
+  record.** `electron/backupStore.cjs` owns one folder under `userData`
+  (`Backups/`, beside the secret store and for the same reason: an .app is
+  read-only and is replaced wholesale on every update). One file per snapshot,
+  named `phase-backup-<YYYYMMDD>-<HHmmss>-<reason>.json`, so the folder opened
+  in Finder is already sorted, already dated and already says why. A sidecar
+  manifest would be a second opinion about what is on disk and the one that
+  goes stale first. `reason` is a CLOSED vocabulary — `auto`, `manual`,
+  `pre-import` — because it is part of a file name and part of the retention
+  rule. Writes are atomic by rename, exactly as `state.json` is: a snapshot
+  half-written when the app was force-quit is precisely the file someone
+  reaches for later. A same-second collision steps the stamp forward rather
+  than overwriting, so a `pre-import` taken right after a `manual` cannot eat
+  it. `isBackupName` is the ONE gate on a caller's string: the pattern contains
+  no separator and no dot segment, so traversal is refused by construction
+  rather than by scrubbing, and `backupIpc.cjs` re-applies it even though the
+  store does — a guard that a future store swap could silently remove is not a
+  guard. The door is three fixed channels validated at the sender seam against
+  the live main window's webContents id, the same discipline `shellIpc.cjs`
+  follows, and the renderer never learns the path: it names a FILE.
+- **Retention is a KEEP list, never a delete list.** `planRetention` is pure and
+  exported so the policy is asserted directly rather than inferred from what a
+  folder looks like after thirty writes. Four tiers, each of them a reason to
+  SURVIVE — everything from today and yesterday, then the newest per day for 14
+  days, per seven-day bucket for 8 weeks, per month for 12 months — plus a
+  floor of the five newest whatever the tiers say, because a folder pruned to
+  nothing is not a backup folder. A file is deleted only because no tier
+  claimed it, which is the direction that fails safe. A tier CLAIMS its
+  buckets whichever tier did the keeping, or one busy Tuesday would keep a
+  daily, a weekly and a monthly copy of itself. `pre-import` is the one reason
+  that is not about age: it ages out by COUNT (20) and never by calendar,
+  because the import you need to walk back from may well be the one you made a
+  year ago. Bucket maths runs off the stamp's own digits through `Date.UTC`, so
+  no DST rule can move a backup between buckets.
+- **The scheduler is a quiet period AND a minimum interval, and the second one
+  is why it is not a debounce.** `state/autoBackup.ts`: a change ARMS the timer
+  and further changes do not reset it (60s), and a snapshot that landed starts
+  a floor under the next one (30 min). A plain debounce writes nothing at all
+  while someone is working, which is exactly when the work is worth keeping.
+  Text is built at WRITE time through `getSlices`-style reads, never captured
+  when the write was scheduled — the point of coalescing a burst is that the
+  file states where the burst ENDED, the same rule `syncExport.ts` follows.
+  There is deliberately NO snapshot at launch: a launch that changed nothing
+  has nothing new to record, and the launch's only job is to learn when the
+  last snapshot was so the interval survives a restart. A REFUSED write banks
+  no interval, so the next change retries rather than waiting half an hour for
+  a snapshot that does not exist. **`start()` is async, so a `schedule()` that
+  beats it is DEFERRED, never armed early.** Arming against an unknown mark
+  measures `since` as Infinity, collapses the wait to the quiet period and
+  writes a second snapshot a minute after the one already on disk — and that is
+  not a rare interleaving, it is every launch that begins with an edit. For the
+  same reason `start()` adopts the disk's answer only while `lastWriteAt` is
+  still null: a flush that landed during the read is NEWER than anything the
+  disk was describing, and taking the older stamp would lower the very floor
+  that write just raised. The App effect takes the same THREE gates the
+  sync bridge takes — `hydration === 'ready'`, the preload exists,
+  `ownsSingleWriterLock()` — and compares the five entity slices BY REFERENCE,
+  because the store notifies for every hovered row. Teardown STOPS rather than
+  flushes: a flush there would fire on every StrictMode remount.
+- **A snapshot is a WRITE, so it takes the single-writer lock like every other
+  one.** `writeBackupNow` (`state/autoBackup.ts`) is where that gate lives, and
+  it is a function rather than two lines at the call site because it has three
+  answers and the third is the point: `not-owner` is a second window's turn, not
+  a disk problem, and a surface reporting it as "couldn't save to this Mac"
+  would send someone hunting free space over another tab being open. A second
+  window's in-memory state is a stale view of the owner's database — that is
+  what `persist`'s own gate is for — and a backup is that write wearing a
+  different name, only worse, because it is the copy someone later restores
+  FROM: a stale one launders a stale view into the thing you reach for when
+  everything else has failed. It refuses BEFORE building the text, since
+  reading the store to write it is already the wrong act. Listing and restoring
+  are NOT gated here: reading is not writing, and a restore goes through
+  `importBackup`, which takes the lock itself.
+- **The one action with no undo now has a snapshot in front of it, and the
+  ordering lives in the store.** `importBackup(file, safetyBackup?)` takes the
+  capability INJECTED — the store is platform-free, every preload bridge lives
+  in `App.tsx` — but owns the sequence, because a caller that got it the other
+  way round would still look like it worked: tab lock, then VALIDATE, then
+  snapshot, then replace. `validateBackupFile` is the second step and it is
+  there for a specific cost: a pre-import snapshot occupies one of a bounded
+  number of retention slots, so a file that was never going to be accepted must
+  not evict a real one — a mis-picked photo tried three times would otherwise
+  age out three genuine safety copies. It is `readBackupJson` extracted, the
+  same code the import itself runs, because the answer to "will this be
+  refused?" has to BE the refusal rather than a second check written to
+  resemble it; the price is one extra parse on an action behind a typed
+  confirmation. A snapshot that could not be written REFUSES the import:
+  "the safety net is missing" and "go ahead anyway" cannot both be true about
+  the one action `applyImportedBackup` clears the undo stack for. ABSENT is a
+  different case and proceeds — the plain browser has no folder, and refusing
+  every import there would be a regression wearing a safety belt. It is also
+  what the confirmation dialog's `snapshotFirst` prop is for: the sentence
+  changes because it would otherwise be wrong, and a warning that overstates
+  the damage teaches people to stop reading the dialog.
+- **A restore is an import, and goes through the whole gate.** `BackupsSettings`
+  hands `onRestore` a real `File` built from the text the bridge read, so a
+  local snapshot travels the SAME `ConfirmImportModal` and the same validated
+  `importStateFromFile` a picked file does — including the typed REPLACE, since
+  reading a file Phase wrote does not make replacing everything with it any
+  less irreversible. "Back up now" is a CALLBACK into the scheduler rather than
+  a direct `bridge.write`, so a manual snapshot restarts the interval; writing
+  past it would leave the automatic pass believing nothing had been saved and
+  land a duplicate a minute later. The whole section renders null in the plain
+  browser, exactly as `LaunchAtLoginSettings` does — a list that could never
+  fill above a button that could never write promises a capability the web
+  build does not have. It carries its OWN heading and copy, unlike every other
+  section in that dialog, and that asymmetry is load-bearing rather than
+  untidy: a heading owned by `SettingsModal` cannot vanish with the section it
+  introduces, so the browser build showed "Backups" over a paragraph promising
+  versioned local copies, above nothing at all. One component, one decision
+  about whether any of this exists.
+- **The fatal screen's recovery has to work from the fatal screen.** It told
+  people to "export a backup from the sidebar": there is no sidebar with an
+  export in it, and the route it named went through the store that had just
+  crashed. Naming a control that does not exist is worse than saying nothing.
+  `ErrorBoundary` now carries the button itself, reading Dexie directly, and it
+  REPORTS both outcomes — a fatal screen that silently failed to save would
+  leave someone reloading in the belief they have a copy, which is the one
+  mistake this surface must not cause.
 - Backup export/import is disabled until `hydration === 'ready'` (`App.tsx`). A Web Lock (`src/lib/tabLock.ts`) rejects a second tab — Phase assumes a single writer. **A tab that does not own the lock never writes at all**: `persist` is gated in `setAndPersist`, every settings write goes through `ifOwner`, and `importBackup` refuses outright. A single write is a full clear + bulkPut of all four tables, so one from a stale tab rewrites the whole database.
 - **`assets` lives outside `AppState` and outside `persist()`.** A single write is a full clear + bulkPut of all four tables, so image bytes in a goal row would be rewritten on every checkbox tick. Asset writes are surgical, go through `ifOwner`, and are append-only — an orphaned blob is inert, and deleting one eagerly would let undo restore a note pointing at nothing, exactly as `Session.nodeId` is allowed to dangle.
 - **Note autosave is held while `pendingUndo` is live.** `setAndPersist`'s sweep is correct and must not be exempted; instead a *timer* never spends the undo, while an explicit departure — blur, navigation, unmount — always saves, because losing typing is worse than losing an unused undo.

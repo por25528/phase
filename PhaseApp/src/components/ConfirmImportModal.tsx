@@ -29,11 +29,22 @@ const PHRASE = 'REPLACE';
 export function ConfirmImportModal({
   open,
   fileName,
+  snapshotFirst = false,
   onCancel,
   onConfirm,
 }: {
   open: boolean;
   fileName: string;
+  /**
+   * Whether a snapshot of the CURRENT data is written before the replacement.
+   *
+   * True on desktop, where there is a Backups folder to put one in; false in
+   * the browser, where there is not. It changes only the sentence, and it
+   * changes it because the sentence would otherwise be wrong: this dialog's
+   * whole job is to make someone read what is about to happen, and a warning
+   * that overstates the damage teaches people to stop reading it.
+   */
+  snapshotFirst?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -60,7 +71,10 @@ export function ConfirmImportModal({
       <div className={dialogBody}>
         <p className="text-body text-ink-soft leading-[1.6]">
           This replaces every goal, habit and task currently in Phase with the contents of{' '}
-          <span className="text-ink font-semibold">{fileName}</span>. It cannot be undone.
+          <span className="text-ink font-semibold">{fileName}</span>.{' '}
+          {snapshotFirst
+            ? 'Undo cannot reach it — Phase saves a copy of what is here now to Backups first, and that copy is the only way back.'
+            : 'It cannot be undone.'}
         </p>
         {/*
           The instruction stays PROSE, above the line rather than inside it.

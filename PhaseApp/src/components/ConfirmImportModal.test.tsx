@@ -42,6 +42,27 @@ describe('ConfirmImportModal', () => {
     expect(screen.getByText('phase-backup-2026-08-09.json')).toBeTruthy();
   });
 
+  /**
+   * The gate's job is to make someone READ what is about to happen, so the
+   * sentence has to be true on the build they are reading it on. Overstating
+   * the damage on desktop — where a snapshot IS taken first — teaches people
+   * to stop reading the dialog, which costs more than it buys.
+   */
+  it('says the replacement is final where nothing is snapshotted first', () => {
+    setup();
+    expect(screen.getByText(/It cannot be undone\./)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Backups');
+  });
+
+  it('names the snapshot, and still says Undo cannot reach it', () => {
+    setup({ snapshotFirst: true });
+    expect(document.body.textContent).toContain('Backups');
+    expect(document.body.textContent).toContain('Undo cannot reach it');
+    // Never both sentences: "it cannot be undone" beside "here is the way
+    // back" is the dialog contradicting itself.
+    expect(document.body.textContent).not.toContain('It cannot be undone.');
+  });
+
   it('holds the confirm button disabled until the phrase is typed', async () => {
     const user = userEvent.setup();
     const { onConfirm } = setup();

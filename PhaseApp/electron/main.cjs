@@ -26,6 +26,8 @@ const { createAgentIpc } = require('./agentIpc.cjs')
 const { createAgentSocket } = require('./agentSocket.cjs')
 const { createSyncFiles } = require('./syncFiles.cjs')
 const { createUpdateCheck } = require('./updateCheck.cjs')
+const { createBackupStore } = require('./backupStore.cjs')
+const { createBackupIpc } = require('./backupIpc.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
@@ -84,6 +86,7 @@ const lifecycle = createAppLifecycle({
     menuBar.dispose()
     assistantIpc.dispose(ipcMain)
     shellIpc.dispose(ipcMain)
+    backupIpc.dispose(ipcMain)
     // Close before the process goes: a socket node left behind would advertise
     // a door that answers nothing. dispose() also settles anything in flight.
     agentIpc.dispose(ipcMain)
@@ -211,6 +214,29 @@ const agentSocket = createAgentSocket({
 // is dropped on the floor. Without the pull, an op sitting in the journal at
 // launch would wait for the next external change to be noticed.
 const syncFiles = createSyncFiles({})
+
+/*
+ * Versioned local backups, beside the app's other user data.
+ *
+ * `userData` and not the bundle, for the reason the secret store gives: an
+ * .app is read-only and is replaced wholesale on every update, so a backup
+ * inside it would be destroyed by the very act of updating. It is also the
+ * folder that survives an app the user drags to the Trash and reinstalls.
+ *
+ * The path is resolved lazily — `app.getPath` is not answerable until the app
+ * is ready — and the renderer never learns it: the door below takes a NAME.
+ */
+let backupStore = null
+const backupIpc = createBackupIpc({
+  getMainWindow: () => mainWindow,
+  store: {
+    get dir() { return backupStore?.dir ?? '' },
+    list: () => (backupStore ? backupStore.list() : []),
+    write: (text, reason) => (backupStore ? backupStore.write(text, reason) : null),
+    read: (name) => (backupStore ? backupStore.read(name) : null),
+  },
+  logError: (...args) => console.error(...args),
+})
 
 function pushJournal(text) {
   if (typeof text !== 'string') return
@@ -347,6 +373,16 @@ app.whenReady().then(() => {
     // socket could not bind would be the tail wagging the dog.
     console.error('[phase-agent] socket registration failed', err)
   }
+  try {
+    backupStore = createBackupStore({ dir: path.join(app.getPath('userData'), 'Backups') })
+    backupIpc.register(ipcMain)
+  } catch (err) {
+    // Same rule as every bridge above: the planner opens even if this cannot.
+    // A renderer whose `write` answers null shows the failure in Settings; a
+    // dock icon that never appears shows nothing at all.
+    console.error('[phase-backups] IPC registration failed', err)
+  }
+
   try {
     ipcMain.handle('phase-sync:write-state', (_event, text) => syncFiles.writeState(text))
     ipcMain.handle('phase-sync:request-journal', () => syncFiles.readJournal())

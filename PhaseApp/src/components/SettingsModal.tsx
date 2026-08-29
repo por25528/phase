@@ -3,6 +3,8 @@ import { sectionLabel } from './sectionLabel';
 import { LivesSettings } from '../views/goals/LivesSettings';
 import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings';
 import { LaunchAtLoginSettings } from './assistant/LaunchAtLoginSettings';
+import { BackupsSettings } from './BackupsSettings';
+import type { BackupNowResult } from '../state/autoBackup';
 import { useAppStore } from '../state/store';
 
 /**
@@ -18,7 +20,19 @@ import { useAppStore } from '../state/store';
  * utility menu or `⌘K`, never stumbled into. Naming your lives belongs to the
  * same class — done once a semester, and it costs the board no chrome.
  */
-export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SettingsModal({
+  open,
+  onClose,
+  onRestoreBackup,
+  onBackupNow,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Hands one local snapshot to the ordinary import path, confirmation and all. */
+  onRestoreBackup: (file: File) => void;
+  /** Takes a manual snapshot through the same scheduler the automatic ones use. */
+  onBackupNow: () => Promise<BackupNowResult>;
+}) {
   const { assistantAccelerator, assistantShortcut, actions } = useAppStore();
   return (
     <Modal open={open} onClose={onClose} title="Settings">
@@ -46,6 +60,16 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       />
       {/* Desktop only: the row renders nothing in the plain browser. */}
       <LaunchAtLoginSettings />
+
+      {/* Same rule, and the same reason it is HERE: a backup is provider-style
+          configuration you look at twice a year, not routine editing. It sits
+          last because the list is the only thing in this dialog that grows.
+
+          It brings its OWN heading and copy, unlike every other section above.
+          That is not an inconsistency to tidy: this is the one section that can
+          be absent entirely — the browser build has no backup folder — and a
+          heading owned by this file could not vanish with it. */}
+      <BackupsSettings onRestore={onRestoreBackup} onBackupNow={onBackupNow} />
     </Modal>
   );
 }

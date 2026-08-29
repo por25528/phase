@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  db, persist, exportState, importStateFromFile, loadState,
+  db, persist, exportState, importStateFromFile, validateBackupFile, loadState,
   loadAllDayBlocks, saveAllDayBlocks,
   isSlotMigrationDone, markSlotMigrationDone, saveSlotMigrationSnapshot,
   resetSlotMigration, loadSlotMigrationSnapshot,
@@ -269,6 +269,39 @@ describe('importStateFromFile', () => {
 
   it('rejects a backup whose tables are malformed', async () => {
     await expect(importStateFromFile(fileOf('{"goals": "nope"}'))).rejects.toThrow(/Phase backup/);
+  });
+
+  /**
+   * `validateBackupFile` is the same three refusals, asked BEFORE anything is
+   * spent on the import — a pre-import snapshot occupies a bounded retention
+   * slot, and a file that was never going to be accepted must not evict a real
+   * one. The point of extracting it is that there is no second validator to
+   * drift, so what is pinned here is that the verdicts MATCH and that asking
+   * writes nothing.
+   */
+  describe('validateBackupFile', () => {
+    it('gives the same verdict the import gives, on each refusal', async () => {
+      await expect(validateBackupFile(fileOf('not json {'))).rejects.toThrow(/valid JSON/);
+      await expect(validateBackupFile(fileOf('{"foo": 1}'))).rejects.toThrow(/Phase backup/);
+      await expect(validateBackupFile(fileOf('{"goals": "nope"}'))).rejects.toThrow(/Phase backup/);
+    });
+
+    it('accepts what the import accepts', async () => {
+      await expect(
+        validateBackupFile(fileOf(JSON.stringify({ goals: [goal('g1')], habits: [], tasks: [], sessions: [] }))),
+      ).resolves.toBeUndefined();
+    });
+
+    it('writes nothing — not the tables, not a settings row', async () => {
+      await persist(stateA);
+      const before = await loadState();
+      await validateBackupFile(fileOf(JSON.stringify({
+        goals: [goal('imported')], habits: [], tasks: [], sessions: [], pxPerDay: 99,
+      })));
+      // Asking whether a file would import must leave the database exactly as
+      // it was, or the check is itself the destructive act it exists to defer.
+      expect((await loadState()).goals.map((g) => g.id)).toEqual(before.goals.map((g) => g.id));
+    });
   });
 
   it('round-trips allDayBlocks through a backup', async () => {
