@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackupsSettings } from './BackupsSettings';
+import { actions } from '../state/store';
 import type { BackupEntry, PhaseBackupBridge } from '../lib/backupBridge';
 import type { BackupNowResult } from '../state/autoBackup';
 
@@ -169,5 +170,53 @@ describe('BackupsSettings', () => {
     // belt-and-braces case; either way the section must settle, never hang on
     // its skeleton.
     await waitFor(() => expect(screen.queryByTestId('backups-skeleton')).toBeNull());
+  });
+});
+
+/**
+ * The section's heading PROMISES something: "Phase keeps versioned copies of
+ * everything on this Mac". While the scheduler is failing that is false, and
+ * this is the surface where the falsehood costs the most — someone reads it,
+ * believes they are covered, and finds out otherwise the day the database will
+ * not open. So the promise has to yield to the fact.
+ */
+describe('while the scheduler is failing', () => {
+  afterEach(() => { actions.setAutoBackupFailed(false); });
+
+  it('says so, in the section that made the promise', async () => {
+    installBridge();
+    actions.setAutoBackupFailed(true);
+    render(createElement(BackupsSettings, { onRestore: vi.fn(), onBackupNow: vi.fn(async () => 'saved' as BackupNowResult) }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/couldn.t|failed|not.*being saved/i);
+  });
+
+  it('stops claiming copies are being kept', async () => {
+    installBridge();
+    actions.setAutoBackupFailed(true);
+    render(createElement(BackupsSettings, { onRestore: vi.fn(), onBackupNow: vi.fn(async () => 'saved' as BackupNowResult) }));
+    await screen.findByRole('alert');
+    expect(document.body.textContent, 'still promises versioned copies while failing')
+      .not.toMatch(/Phase keeps versioned copies/i);
+  });
+
+  it('keeps the promise when the scheduler is healthy', async () => {
+    installBridge();
+    render(createElement(BackupsSettings, { onRestore: vi.fn(), onBackupNow: vi.fn(async () => 'saved' as BackupNowResult) }));
+    await waitFor(() => expect(document.body.textContent).toMatch(/Phase keeps versioned copies/i));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('leaves the manual outcome messages alone', async () => {
+    // The manual notice is a different fact — what THIS press did — and the
+    // standing warning must not swallow it.
+    installBridge();
+    actions.setAutoBackupFailed(true);
+    const onBackupNow = vi.fn(async () => 'not-owner' as BackupNowResult);
+    render(createElement(BackupsSettings, { onRestore: vi.fn(), onBackupNow }));
+    await screen.findByRole('alert');
+    await userEvent.click(screen.getByRole('button', { name: /back up now/i }));
+    await waitFor(() => expect(onBackupNow).toHaveBeenCalled());
+    await waitFor(() => expect(document.body.textContent).toMatch(/another window|another tab/i));
   });
 });

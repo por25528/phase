@@ -10,6 +10,7 @@ import {
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   loadPlanMode, savePlanMode,
   loadCalendarIds, saveCalendarIds,
+  downloadBackupText, BLOB_URL_REVOKE_MS,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
 import { loadCalendarCache, saveCalendarCache } from './calendarCache';
@@ -63,13 +64,20 @@ function asset(id: string, bytes: number[]): Asset {
 
 async function exportedPayload(state: AppState): Promise<Record<string, unknown>> {
   let backupBlob: Blob | undefined;
-  const anchor = { href: '', download: '', click: vi.fn() };
-  vi.stubGlobal('document', { createElement: vi.fn(() => anchor) });
+  const anchor = {
+    href: '', download: '', style: {} as Record<string, string>,
+    click: vi.fn(), remove: vi.fn(),
+  };
+  vi.stubGlobal('document', {
+    createElement: vi.fn(() => anchor),
+    body: { appendChild: vi.fn() },
+  });
   vi.stubGlobal('URL', {
     createObjectURL: vi.fn((blob: Blob) => {
       backupBlob = blob;
       return 'blob:backup';
     }),
+    revokeObjectURL: vi.fn(),
   });
 
   await exportState(state, 13, null, true, []);
@@ -859,5 +867,59 @@ describe('calendar selection', () => {
     expect(await loadCalendarIds()).toEqual(['primary']);
     await db.settings.put({ key: 'calendarIds', value: JSON.stringify({ id: 'primary' }) });
     expect(await loadCalendarIds()).toEqual(['primary']);
+  });
+});
+
+/**
+ * Handing a file to the browser is a ONE-WAY gesture: the anchor click starts a
+ * download and reports nothing about where it went, whether a save prompt was
+ * answered, or whether it was cancelled. Every caller's copy has to survive
+ * that, and the object URL still has to be released.
+ */
+describe('downloadBackupText', () => {
+  const setup = () => {
+    const anchor = { href: '', download: '', style: {} as Record<string, string>, click: vi.fn(), remove: vi.fn() };
+    const appendChild = vi.fn();
+    vi.stubGlobal('document', {
+      createElement: vi.fn(() => anchor),
+      body: { appendChild },
+    });
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:phase-backup'),
+      revokeObjectURL,
+    });
+    return { anchor, revokeObjectURL };
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('names the file and clicks once', () => {
+    vi.useFakeTimers();
+    const { anchor } = setup();
+    downloadBackupText('{}', 'phase-recovery-2026-08-30.json');
+    expect(anchor.download).toBe('phase-recovery-2026-08-30.json');
+    expect(anchor.href).toBe('blob:phase-backup');
+    expect(anchor.click).toHaveBeenCalledOnce();
+  });
+
+  it('does not revoke the URL in the same task as the click', () => {
+    // Revoking synchronously cancels the download in WebKit: the click starts
+    // the fetch, the download reads the blob afterwards.
+    vi.useFakeTimers();
+    const { revokeObjectURL } = setup();
+    downloadBackupText('{}', 'x.json');
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('revokes the URL once the download has had time to start', () => {
+    vi.useFakeTimers();
+    const { revokeObjectURL } = setup();
+    downloadBackupText('{}', 'x.json');
+    vi.advanceTimersByTime(BLOB_URL_REVOKE_MS);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:phase-backup');
   });
 });

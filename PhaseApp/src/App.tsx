@@ -178,7 +178,7 @@ async function buildCurrentBackupText(): Promise<string> {
 }
 
 export function App() {
-  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, theme, openStepId, openGoalId, openAreaId, settingsOpen, actions } = useAppStore();
+  const { view, toast, pendingUndo, goals, tasks, habits, hydration, secondTab, persistFailed, autoBackupFailed, theme, openStepId, openGoalId, openAreaId, settingsOpen, actions } = useAppStore();
   useLocalDate(hydration === 'ready' ? actions.ensureWeekRollover : undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [sysDark, setSysDark] = useState(() => systemPrefersDark());
@@ -221,12 +221,21 @@ export function App() {
    * neither call site can hold a different opinion about who may write. All
    * this does is hand it this window's capabilities.
    */
-  const writeBackup = useCallback((reason: 'manual' | 'pre-import') => writeBackupNow(reason, {
-    ownsLock: ownsSingleWriterLock,
-    scheduler: () => autoBackupRef.current,
-    buildText: buildCurrentBackupText,
-    write: (text, backupReason) => backups.write(text, backupReason),
-  }), [backups]);
+  const writeBackup = useCallback(async (reason: 'manual' | 'pre-import') => {
+    const result = await writeBackupNow(reason, {
+      ownsLock: ownsSingleWriterLock,
+      scheduler: () => autoBackupRef.current,
+      buildText: buildCurrentBackupText,
+      write: (text, backupReason) => backups.write(text, backupReason),
+    });
+    // A manual snapshot is evidence about the FOLDER, so it settles the
+    // standing warning either way — including on the direct-write path, where
+    // there is no scheduler to report through. `not-owner` is neither: it is
+    // another window's turn, and reporting it as a disk failure would send
+    // someone hunting free space over a second tab being open.
+    if (result !== 'not-owner') actions.setAutoBackupFailed(result === 'failed');
+    return result;
+  }, [backups]);
 
   /**
    * Versioned local snapshots, on the desktop, in the tab that owns the data.
@@ -261,6 +270,10 @@ export function App() {
       },
       now: () => Date.now(),
       logError: (message, err) => console.warn(message, err),
+      // The console is for a developer; this is for the person whose data it
+      // is. Without it a scheduler failing every half hour is invisible, and
+      // Backups Settings goes on describing copies that are not being taken.
+      onOutcome: (ok) => actions.setAutoBackupFailed(!ok),
     });
     autoBackupRef.current = scheduler;
     void scheduler.start();
@@ -846,6 +859,31 @@ export function App() {
             className="font-semibold underline hover:no-underline min-h-[24px] inline-flex items-center"
           >
             Export a backup
+          </button>
+        </div>
+      )}
+
+      {/* The automatic snapshots have stopped. A quieter fact than the one
+          above — the data is fine, it is the SAFETY NET that is gone — so it
+          states the loss and points at the section that can retry, rather than
+          offering a second recovery button beside the first. Same latched
+          shape, same warn voice; `role="status"` because nothing is being lost
+          right now. */}
+      {autoBackupFailed && !persistFailed && (
+        <div
+          role="status"
+          className="bg-warn-tint text-warn text-ui px-[16px] sm:px-[36px] py-[7px] border-b border-line flex flex-wrap items-center gap-x-[8px] gap-y-[2px]"
+        >
+          <span>
+            Phase couldn’t save its last automatic backup. Your work is safe, but new copies aren’t
+            being kept.
+          </span>
+          <button
+            type="button"
+            onClick={() => actions.openSettings()}
+            className="font-semibold underline hover:no-underline min-h-[24px] inline-flex items-center"
+          >
+            Open Backups
           </button>
         </div>
       )}

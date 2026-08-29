@@ -641,12 +641,38 @@ export async function buildBackupText(
 }
 
 /** Hand a built backup to the browser as a file. */
+/**
+ * How long the blob URL outlives the click.
+ *
+ * Revoking in the SAME task cancels the download in WebKit — the click starts
+ * the fetch and the download reads the blob afterwards — so the choice is
+ * between leaking the URL forever and holding it for a while. A minute is far
+ * longer than any engine needs to begin, and the bytes were already in memory
+ * to be handed over.
+ */
+export const BLOB_URL_REVOKE_MS = 60_000;
+
+/**
+ * Hand the file to the browser. This is a ONE-WAY gesture.
+ *
+ * Nothing here observes what happens next: the anchor click starts a download
+ * and reports no destination, no completion, and no cancellation. A caller may
+ * therefore say the download STARTED and must never say the file was saved —
+ * see `ErrorBoundary`, which made exactly that claim.
+ */
 export function downloadBackupText(text: string, fileName: string): void {
   const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = fileName;
+  // In the document for the click to count in every engine, and out again
+  // immediately: this runs on the fatal screen, where the tree below is gone.
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_REVOKE_MS);
 }
 
 export async function exportState(

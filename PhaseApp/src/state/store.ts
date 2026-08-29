@@ -188,6 +188,17 @@ interface UIState {
   // A write to IndexedDB has failed and no later write has succeeded. Latched,
   // not a toast: the whole point is that it outlives the moment.
   persistFailed: boolean;
+  /**
+   * The automatic backup scheduler's last attempt failed.
+   *
+   * Latched and EPHEMERAL, exactly like `persistFailed`, and for the same
+   * reason: it describes this session's disk rather than the user's data, so
+   * persisting it would warn next launch about a failure that is over. It
+   * exists because the scheduler's only report used to be `console.warn`,
+   * where nobody reading Backups Settings could see it — and that section went
+   * on describing versioned copies being kept while none were.
+   */
+  autoBackupFailed: boolean;
   dateReviewDismissed: boolean;
   theme: Theme; // per-device UI preference (localStorage, not Dexie)
   planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
@@ -305,6 +316,7 @@ let state: FullState = {
   hydration: 'loading',
   secondTab: false,
   persistFailed: false,
+  autoBackupFailed: false,
   dateReviewDismissed: false,
   planReview: null,
   allDayBlocks: true,
@@ -3648,6 +3660,16 @@ export const actions = {
       return;
     }
     set({ goalModal: kind, view: 'goals', openGoalId: null, openStepId: null });
+  },
+
+  /**
+   * Report whether the last automatic snapshot landed. `set`, never
+   * `setAndPersist`: this is a status flag, and a whole-database write on
+   * every backup outcome would be the tail wagging the dog.
+   */
+  setAutoBackupFailed(failed: boolean): void {
+    if (state.autoBackupFailed === failed) return;
+    set({ autoBackupFailed: failed });
   },
 
   openSettings(): void { set({ settingsOpen: true }); },

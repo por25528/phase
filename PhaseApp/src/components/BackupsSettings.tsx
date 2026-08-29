@@ -5,6 +5,7 @@ import {
 import { secondaryBtn } from './dialogStyles';
 import { sectionLabel } from './sectionLabel';
 import type { BackupNowResult } from '../state/autoBackup';
+import { useAppStore } from '../state/store';
 
 /**
  * The Backups section in Settings — where a snapshot Phase took by itself
@@ -60,15 +61,33 @@ const BACKUP_NOW_NOTICE: Record<BackupNowResult, Notice> = {
  * Inside this file rather than in `SettingsModal` so they cannot outlive the
  * list they introduce; see the note on the component below.
  */
-function Heading() {
+/**
+ * The blurb makes a PROMISE, so it yields to the fact when the promise is
+ * false. A section describing versioned copies being kept, above a list of
+ * copies that stopped a month ago, is the exact shape of the failure this
+ * warning exists to prevent — and this is where it costs the most, because
+ * someone reading it concludes they are covered.
+ *
+ * `role="alert"` and `text-warn` are the app's standing warning voice, the
+ * same pair the persist banner and the manual-failure notice already use.
+ */
+function Heading({ failing }: { failing: boolean }) {
   return (
     <>
       <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Backups</h3>
-      <p className="text-ui text-muted mb-[12px] leading-[1.5]">
-        Phase keeps versioned copies of everything on this Mac, and takes one
-        before any import replaces your data. Restoring goes through the same
-        confirmation an imported file does.
-      </p>
+      {failing ? (
+        <p role="alert" className="text-ui text-warn mb-[12px] leading-[1.5]">
+          Phase couldn’t save its last automatic backup, so new copies are not
+          being kept right now. Anything below this line is still restorable.
+          Check free disk space, then try Back up now.
+        </p>
+      ) : (
+        <p className="text-ui text-muted mb-[12px] leading-[1.5]">
+          Phase keeps versioned copies of everything on this Mac, and takes one
+          before any import replaces your data. Restoring goes through the same
+          confirmation an imported file does.
+        </p>
+      )}
     </>
   );
 }
@@ -93,6 +112,7 @@ export function BackupsSettings({
    */
   onBackupNow: () => Promise<BackupNowResult>;
 }) {
+  const { autoBackupFailed } = useAppStore();
   const bridge = useMemo(() => backupBridge(), []);
   const [entries, setEntries] = useState<BackupEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,7 +155,7 @@ export function BackupsSettings({
     // dialog would read as the dialog still loading.
     return (
       <>
-        <Heading />
+        <Heading failing={autoBackupFailed} />
         <div aria-hidden="true" data-testid="backups-skeleton" className="h-[42px] rounded-field bg-fill" />
       </>
     );
@@ -183,7 +203,7 @@ export function BackupsSettings({
 
   return (
     <>
-      <Heading />
+      <Heading failing={autoBackupFailed} />
       <div className="flex flex-col gap-[8px]">
         <div className="flex items-center gap-[8px]">
           <button type="button" className={secondaryBtn} disabled={busy} onClick={backUpNow}>

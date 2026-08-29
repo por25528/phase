@@ -48,6 +48,14 @@ export interface AssistantWindowControllerDeps {
   platform?: NodeJS.Platform;
   shouldUseDarkColors?(): boolean;
   logError?(message: string, error?: unknown): void;
+  /**
+   * Install the navigation policy on the shelf's `webContents`.
+   *
+   * Injected rather than imported so this module keeps owning the window's
+   * lifecycle and nothing else — `main.cjs` supplies the same policy the main
+   * frame runs. Defaults to a no-op, which is what every existing test wants.
+   */
+  guardNavigation?(contents: AssistantShelfWindow['webContents']): void;
 }
 
 export interface AssistantWindowController {

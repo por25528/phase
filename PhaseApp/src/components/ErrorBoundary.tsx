@@ -2,7 +2,13 @@ import { Component, type ReactNode } from 'react';
 import { emergencyBackupText, downloadBackupText } from '../db/db';
 import { todayStr } from '../lib/dates';
 
-type Rescue = 'idle' | 'saving' | 'saved' | 'failed';
+/**
+ * `started` is deliberately not `saved`. Handing the file to the browser is a
+ * one-way gesture: `downloadBackupText` clicks an anchor, and nothing observes
+ * the destination, a cancelled save prompt or a full disk. The state names
+ * what this screen actually witnessed.
+ */
+type Rescue = 'idle' | 'preparing' | 'started' | 'failed';
 
 /**
  * The one surface that renders BECAUSE the app failed.
@@ -20,9 +26,13 @@ type Rescue = 'idle' | 'saving' | 'saved' | 'failed';
  * hydration uses, owing nothing to the store, and produces exactly the file
  * Import accepts — the one derivation `buildBackupText` exists to keep single.
  *
- * The button reports what happened, in both directions. A fatal screen that
- * silently failed to save would leave someone reloading in the belief they
- * have a copy, and that is the one mistake this surface must not cause.
+ * The button reports what happened, in both directions — and reports only what
+ * it can WITNESS. It used to answer "Saved to your downloads", which it could
+ * not know in either Electron or a browser: the anchor click starts a download
+ * and returns nothing about where it went or whether it finished. A fatal
+ * screen that leaves someone reloading in the belief they have a copy is the
+ * one mistake this surface must not cause, and an over-confident success
+ * message causes it exactly as a silent failure would.
  */
 export class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -34,15 +44,17 @@ export class ErrorBoundary extends Component<
     return { error };
   }
 
+  private fileName = `phase-recovery-${todayStr()}.json`;
+
   private save = () => {
     // A second press while the first read is in flight would write two files
     // and race two status lines onto one button.
-    if (this.state.rescue === 'saving') return;
-    this.setState({ rescue: 'saving' });
+    if (this.state.rescue === 'preparing') return;
+    this.setState({ rescue: 'preparing' });
     emergencyBackupText().then(
       (text) => {
-        downloadBackupText(text, `phase-recovery-${todayStr()}.json`);
-        this.setState({ rescue: 'saved' });
+        downloadBackupText(text, this.fileName);
+        this.setState({ rescue: 'started' });
       },
       () => {
         this.setState({ rescue: 'failed' });
@@ -64,10 +76,10 @@ export class ErrorBoundary extends Component<
           <div className="flex items-center gap-[8px]">
             <button
               className="px-[12px] py-[5px] rounded-[6px] border border-line-2 text-body text-ink hover:bg-hover disabled:opacity-50"
-              disabled={rescue === 'saving'}
+              disabled={rescue === 'preparing'}
               onClick={this.save}
             >
-              {rescue === 'saving' ? 'Saving…' : 'Save a backup'}
+              {rescue === 'preparing' ? 'Preparing…' : 'Save a backup'}
             </button>
             <button
               className="px-[12px] py-[5px] rounded-[6px] border border-line-2 text-body text-ink hover:bg-hover"
@@ -82,9 +94,11 @@ export class ErrorBoundary extends Component<
             vanished after 1.9 seconds is the mistake the persist banner was
             already fixed for.
           */}
-          {rescue === 'saved' && (
+          {rescue === 'started' && (
             <p role="status" className="mt-[10px] text-meta text-muted">
-              Saved to your downloads. Import it from Phase’s menu once it reopens.
+              Download started for <span className="font-mono">{this.fileName}</span>. Finish any
+              save prompt your system shows. Phase can’t confirm where it landed, so check for the
+              file before reloading — then import it from Phase’s menu once Phase reopens.
             </p>
           )}
           {rescue === 'failed' && (

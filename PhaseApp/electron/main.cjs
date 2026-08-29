@@ -29,10 +29,15 @@ const { createSyncFiles } = require('./syncFiles.cjs')
 const { createUpdateCheck } = require('./updateCheck.cjs')
 const { createBackupStore } = require('./backupStore.cjs')
 const { createBackupIpc } = require('./backupIpc.cjs')
+const { applyNavigationPolicy } = require('./navigationPolicy.cjs')
 
 // When VITE_DEV_SERVER_URL is set (npm run app:dev) we load the live dev
 // server for hot-reload; otherwise we load the built files from dist/.
 const devServerUrl = process.env.VITE_DEV_SERVER_URL
+
+// The one document a packaged build ever loads. Named once, so the loader and
+// the navigation policy cannot disagree about what "the app" is.
+const appEntryFile = path.join(__dirname, '..', 'dist', 'index.html')
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null
@@ -140,19 +145,20 @@ function createWindow(showOnReady = true) {
     if (showOnReady && mainWindow === win) win.show()
   })
 
-  // Open target="_blank" / external links in the user's browser, not in-app.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url)
-      return { action: 'deny' }
-    }
-    return { action: 'allow' }
+  // What this frame may become, and where a link goes instead. Both doors are
+  // guarded together because they are one question — see navigationPolicy.cjs,
+  // and note that the preload is what is being protected: it survives a
+  // navigation, so a remote origin loaded here would inherit every bridge.
+  applyNavigationPolicy(win.webContents, {
+    devServerUrl,
+    appEntryFile,
+    openExternal: (url) => shell.openExternal(url),
   })
 
   if (devServerUrl) {
     win.loadURL(devServerUrl)
   } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+    win.loadFile(appEntryFile)
   }
 
   win.on('closed', () => {
@@ -459,6 +465,12 @@ app.whenReady().then(() => {
     createWindow: (options) => new BrowserWindow(options),
     preloadPath: path.join(__dirname, 'assistantPreload.cjs'),
     entry: assistantEntry(devServerUrl),
+    // The same policy the main frame runs, against the shelf's own document.
+    guardNavigation: (contents) => applyNavigationPolicy(contents, {
+      devServerUrl,
+      appEntryFile: assistantEntry(devServerUrl).target,
+      openExternal: (url) => shell.openExternal(url),
+    }),
     getCursorScreenPoint: () => screen.getCursorScreenPoint(),
     getDisplayNearestPoint: (point) => screen.getDisplayNearestPoint(point),
     beforeShow: () => assistantIpc.requestSnapshot(),

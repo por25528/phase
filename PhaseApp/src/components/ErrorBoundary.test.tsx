@@ -71,10 +71,59 @@ describe('ErrorBoundary', () => {
     );
   });
 
-  it('says the backup was saved rather than leaving the press unanswered', async () => {
+  it('answers the press rather than leaving it silent', async () => {
     crash();
     await userEvent.click(screen.getByRole('button', { name: /save a backup/i }));
-    await screen.findByText(/saved/i);
+    await screen.findByRole('status');
+  });
+
+  /**
+   * `downloadBackupText` clicks an anchor. That starts a download and reports
+   * NOTHING back — not the destination, not a cancelled save prompt, not a
+   * disk that filled up. The screen used to answer "Saved to your downloads",
+   * which is a claim it cannot make in either Electron or a browser, on the
+   * one surface whose entire job is to not lie about whether data is safe.
+   */
+  describe('what it can honestly say about the download', () => {
+    const started = async () => {
+      crash();
+      await userEvent.click(screen.getByRole('button', { name: /save a backup/i }));
+      return screen.findByRole('status');
+    };
+
+    it('says the download started, not that a file was saved', async () => {
+      const status = await started();
+      expect(status.textContent).toMatch(/started/i);
+      expect(status.textContent, 'claims a completed save').not.toMatch(/\bsaved\b/i);
+    });
+
+    it('names no destination it cannot know', async () => {
+      const status = await started();
+      // "your downloads" was the specific lie: Electron may put it anywhere,
+      // and a browser may have asked and been cancelled.
+      expect(status.textContent).not.toMatch(/your downloads/i);
+    });
+
+    it('tells the user to finish a save prompt, which only they can see', async () => {
+      const status = await started();
+      expect(status.textContent).toMatch(/prompt/i);
+    });
+
+    it('says the outcome is unconfirmed, so nobody reloads on a guess', async () => {
+      const status = await started();
+      // The whole point of the screen: reloading in the belief you have a copy
+      // is the one mistake it must not cause.
+      expect(status.textContent).toMatch(/can.t confirm|unconfirmed|check/i);
+    });
+
+    it('still names the file, which is the one fact it does know', async () => {
+      const status = await started();
+      expect(dbMocks.downloadBackupText).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.stringMatching(/^phase-recovery-\d{4}-\d{2}-\d{2}\.json$/),
+      );
+      expect(status.textContent).toMatch(/phase-recovery-/);
+    });
   });
 
   it('says so plainly when the database cannot be read either', async () => {

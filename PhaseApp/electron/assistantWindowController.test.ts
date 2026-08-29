@@ -654,3 +654,50 @@ describe('assistantWindowController', () => {
     expect(logError).toHaveBeenCalledWith('[phase-assistant] shelf window unavailable', expect.any(Error));
   });
 });
+
+/**
+ * The shelf's preload survives a navigation exactly as the main window's does.
+ * It exposes less — `phaseAssistantOverlay` alone — but "less" is not "none",
+ * and the shelf is a floating panel that outranks every other window, which is
+ * the worst place to be showing someone else's document.
+ */
+describe('navigation guard', () => {
+  it('installs the policy on the window it just created', () => {
+    const guardNavigation = vi.fn();
+    const win = fakeWindow();
+    const controller = controllerWith(win, { guardNavigation });
+    controller.create();
+    expect(guardNavigation).toHaveBeenCalledTimes(1);
+    expect(guardNavigation).toHaveBeenCalledWith(win.webContents);
+  });
+
+  it('installs it on a REPLACEMENT window too', () => {
+    // A destroyed shelf is rebuilt on the next summon, and a guard attached
+    // only to the first would protect nothing thereafter.
+    const guardNavigation = vi.fn();
+    const first = fakeWindow();
+    const second = fakeWindow();
+    let next = first;
+    const controller = createAssistantWindowController({
+      createWindow: () => next,
+      preloadPath: '/x/preload.cjs',
+      entry: { kind: 'file', target: '/x/assistant.html' },
+      getCursorScreenPoint: () => ({ x: 0, y: 0 }),
+      getDisplayNearestPoint: () => ({ workArea: { x: 0, y: 0, width: 1512, height: 957 } }),
+      beforeShow: () => {},
+      platform: 'darwin',
+      guardNavigation,
+    });
+    controller.create();
+    first.destroy();
+    next = second;
+    controller.create();
+    expect(guardNavigation).toHaveBeenCalledTimes(2);
+    expect(guardNavigation).toHaveBeenLastCalledWith(second.webContents);
+  });
+
+  it('is optional, so nothing else in the controller depends on it', () => {
+    const controller = controllerWith(fakeWindow());
+    expect(() => controller.create()).not.toThrow();
+  });
+});

@@ -21,6 +21,7 @@ function createAssistantWindowController(deps) {
     platform = process.platform,
     shouldUseDarkColors = () => false,
     logError = () => {},
+    guardNavigation = () => {},
   } = deps
 
   let assistantWindow = null
@@ -76,8 +77,13 @@ function createAssistantWindowController(deps) {
         skipTransformProcessType: true,
       })
       // The shelf renders trusted snapshot data only; nothing may open a
-      // window from it.
+      // window from it, and nothing may navigate it away from its own
+      // document either — its preload outlives a navigation exactly as the
+      // main window's does. `guardNavigation` is injected so this module keeps
+      // owning the window's LIFECYCLE and nothing else; `main.cjs` supplies
+      // the policy, which is the same one the main frame runs.
       win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+      guardNavigation(win.webContents)
 
       win.once('ready-to-show', () => {
         if (assistantWindow !== win) return

@@ -6073,3 +6073,41 @@ describe('calendar credential changes', () => {
     expect(bridge.reset).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The scheduler's health is app-wide state because two surfaces read it: the
+ * banner, which is the only thing that reaches someone not in Settings, and
+ * Backups Settings, which must stop promising versioned copies while none are
+ * being taken. It is EPHEMERAL — never persisted — for the same reason
+ * `persistFailed` is: it describes this session's disk, not the user's data.
+ */
+describe('autoBackupFailed', () => {
+  it('starts false, because nothing has failed yet', async () => {
+    const { getState } = await freshStore();
+    expect(getState().autoBackupFailed).toBe(false);
+  });
+
+  it('latches when the scheduler reports a failure', async () => {
+    const { actions, getState } = await freshStore();
+    actions.setAutoBackupFailed(true);
+    expect(getState().autoBackupFailed).toBe(true);
+  });
+
+  it('clears when a later snapshot lands', async () => {
+    const { actions, getState } = await freshStore();
+    actions.setAutoBackupFailed(true);
+    actions.setAutoBackupFailed(false);
+    expect(getState().autoBackupFailed).toBe(false);
+  });
+
+  it('does not write to the database when it changes', async () => {
+    // A flag about this session's disk must not be persisted and come back
+    // next launch warning about a failure that is over. `persist` is the
+    // whole-database write; a status flag must never trigger one.
+    const { actions } = await freshStore();
+    const { persist } = await import('../db/db');
+    vi.mocked(persist).mockClear();
+    actions.setAutoBackupFailed(true);
+    expect(vi.mocked(persist)).not.toHaveBeenCalled();
+  });
+});

@@ -18,12 +18,14 @@ function harness(overrides: Partial<AutoBackupDeps> = {}) {
     lastBackupAt: vi.fn(async () => null),
     now: () => clock,
     logError: vi.fn(),
+    onOutcome: vi.fn(),
     ...overrides,
   };
   return {
     deps,
     write: deps.write as ReturnType<typeof vi.fn>,
     buildText: deps.buildText as ReturnType<typeof vi.fn>,
+    onOutcome: deps.onOutcome as ReturnType<typeof vi.fn>,
     advance: (ms: number) => { clock += ms; },
     setClock: (ms: number) => { clock = ms; },
     at: () => clock,
@@ -435,5 +437,80 @@ describe('writeBackupNow', () => {
   it('reports an unreadable database as failed rather than throwing at the caller', async () => {
     const d = deps({ buildText: vi.fn(async () => { throw new Error('IndexedDB gone'); }) });
     await expect(writeBackupNow('manual', d)).resolves.toBe('failed');
+  });
+});
+
+/**
+ * A scheduler that fails writes forever used to say so on `console.warn` and
+ * nowhere else. Backups Settings went on describing versioned copies being
+ * kept, and the one moment the promise mattered — a database that would not
+ * open — is the moment it turned out none had been taken for a month.
+ *
+ * `onOutcome` is what makes the failure REPORTABLE. It is a bare boolean and
+ * not a message: the words belong to the surface that renders them, and the
+ * scheduler's job is to say whether the last attempt landed.
+ */
+describe('reporting whether the scheduler is actually working', () => {
+  it('reports a landed automatic snapshot', async () => {
+    const h = harness();
+    const b = createAutoBackup(h.deps);
+    await b.start();
+    b.schedule();
+    h.advance(AUTO_BACKUP_QUIET_MS);
+    await vi.advanceTimersByTimeAsync(AUTO_BACKUP_QUIET_MS);
+    expect(h.onOutcome).toHaveBeenLastCalledWith(true);
+  });
+
+  it('reports a refused write, which nothing else would surface', async () => {
+    const h = harness({ write: vi.fn(async () => null) });
+    const b = createAutoBackup(h.deps);
+    await b.start();
+    b.schedule();
+    h.advance(AUTO_BACKUP_QUIET_MS);
+    await vi.advanceTimersByTimeAsync(AUTO_BACKUP_QUIET_MS);
+    expect(h.onOutcome).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports a snapshot it could not even build', async () => {
+    const h = harness({ buildText: vi.fn(async () => { throw new Error('IndexedDB gone'); }) });
+    const b = createAutoBackup(h.deps);
+    await b.start();
+    b.schedule();
+    h.advance(AUTO_BACKUP_QUIET_MS);
+    await vi.advanceTimersByTimeAsync(AUTO_BACKUP_QUIET_MS);
+    expect(h.onOutcome).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports recovery, so a fixed disk clears the warning', async () => {
+    let ok = false;
+    const h = harness({ write: vi.fn(async () => (ok ? entry('20260830-142530') : null)) });
+    const b = createAutoBackup(h.deps);
+    await b.start();
+
+    b.schedule();
+    h.advance(AUTO_BACKUP_QUIET_MS);
+    await vi.advanceTimersByTimeAsync(AUTO_BACKUP_QUIET_MS);
+    expect(h.onOutcome).toHaveBeenLastCalledWith(false);
+
+    ok = true;
+    await b.flush('manual');
+    expect(h.onOutcome).toHaveBeenLastCalledWith(true);
+  });
+
+  it('reports a manual flush too — a working folder is a working folder', async () => {
+    const h = harness({ write: vi.fn(async () => null) });
+    const b = createAutoBackup(h.deps);
+    await b.start();
+    await b.flush('manual');
+    expect(h.onOutcome).toHaveBeenLastCalledWith(false);
+  });
+
+  it('still logs, because the console is where a developer looks', async () => {
+    const logError = vi.fn();
+    const h = harness({ write: vi.fn(async () => null), logError });
+    const b = createAutoBackup(h.deps);
+    await b.start();
+    await b.flush('manual');
+    expect(logError).toHaveBeenCalled();
   });
 });

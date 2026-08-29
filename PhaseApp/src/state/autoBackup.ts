@@ -38,6 +38,17 @@ export interface AutoBackupDeps {
   lastBackupAt(): Promise<number | null>;
   now(): number;
   logError(message: string, err?: unknown): void;
+  /**
+   * Told after EVERY write attempt, automatic or flushed, whether it landed.
+   *
+   * `logError` writes to the console, which nobody reading Settings can see.
+   * A scheduler failing forever used to be invisible while Backups Settings
+   * went on describing versioned copies being kept — and the one moment that
+   * promise mattered was the moment it turned out to be false. This is a bare
+   * boolean on purpose: the words belong to the surface, and the scheduler
+   * only knows whether the last attempt worked.
+   */
+  onOutcome(ok: boolean): void;
 }
 
 export interface AutoBackup {
@@ -107,13 +118,16 @@ export function createAutoBackup(deps: AutoBackupDeps): AutoBackup {
       // nothing to write, and the next change tries again — banking an interval
       // here would silence the retry for half an hour.
       deps.logError('[backup] could not build a snapshot', err);
+      deps.onOutcome(false);
       return null;
     }
     const written = await deps.write(text, reason);
     if (!written) {
       deps.logError('[backup] the snapshot was refused');
+      deps.onOutcome(false);
       return null;
     }
+    deps.onOutcome(true);
     // Only a snapshot that LANDED starts the interval — the same rule the sync
     // exporter follows for its generation number.
     lastWriteAt = deps.now();
