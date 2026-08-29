@@ -22,6 +22,8 @@ const API_KEY_PATH_ENV = 'APPLE_API_KEY';
 
 /** What a PKCS#8 key says on its first line. Apple issues nothing else. */
 const PKCS8_HEADER = '-----BEGIN PRIVATE KEY-----';
+/** And on its last. Checking only the header cannot see a truncated key. */
+const PKCS8_FOOTER = '-----END PRIVATE KEY-----';
 
 const BASE64_ALPHABET = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -58,11 +60,27 @@ function decodeApiKey(base64) {
     );
   }
 
-  if (!decoded.toString('utf8').includes(PKCS8_HEADER)) {
+  const text = decoded.toString('utf8');
+  const begin = text.indexOf(PKCS8_HEADER);
+  if (begin === -1) {
     throw new Error(
       `${API_KEY_BASE64_ENV} decodes to something that is not an App Store ` +
         `Connect key: no ${PKCS8_HEADER} header. It should be the base64 of the ` +
         `AuthKey_XXXXXXXX.p8 file, not the key id, the issuer, or a certificate.`,
+    );
+  }
+
+  // The footer is the check that catches a TRUNCATED secret, and nothing above
+  // can. Cut a base64 string on a 4-character boundary and it stays in the
+  // alphabet, stays a multiple of 4, round-trips exactly, and still carries the
+  // header — because the header is at the START of the file. What is missing is
+  // the end of the key, and notarytool is where you would have found that out.
+  const end = text.indexOf(PKCS8_FOOTER, begin + PKCS8_HEADER.length);
+  if (end === -1) {
+    throw new Error(
+      `${API_KEY_BASE64_ENV} decodes to a key that has a ${PKCS8_HEADER} but no ` +
+        `${PKCS8_FOOTER}. The secret is truncated — copy the WHOLE output of ` +
+        `\`base64 -i AuthKey_XXXXXXXX.p8\`, including the last line.`,
     );
   }
 
@@ -87,4 +105,11 @@ function writeApiKey(base64, destPath) {
   return destPath;
 }
 
-module.exports = { API_KEY_BASE64_ENV, API_KEY_PATH_ENV, PKCS8_HEADER, decodeApiKey, writeApiKey };
+module.exports = {
+  API_KEY_BASE64_ENV,
+  API_KEY_PATH_ENV,
+  PKCS8_HEADER,
+  PKCS8_FOOTER,
+  decodeApiKey,
+  writeApiKey,
+};

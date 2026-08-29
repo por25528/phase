@@ -11,6 +11,7 @@ import { readFileSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
@@ -389,6 +390,24 @@ describe('check-release-credentials.cjs', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('BEGIN PRIVATE KEY');
   });
+  it('rejects a key truncated on a base64 boundary, which every other check passes', () => {
+    const { privateKey } = generateKeyPairSync('ec', {
+      namedCurve: 'prime256v1',
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+    });
+    const full = Buffer.from(privateKey as unknown as string, 'utf8').toString('base64');
+    const truncated = full.slice(0, Math.floor((full.length * 2) / 3 / 4) * 4);
+    const r = runNode(script, [], {
+      ...holed,
+      APPLE_API_KEY_ID: 'ABC123',
+      APPLE_API_KEY_P8_BASE64: truncated,
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('END PRIVATE KEY');
+    expect(r.stderr).not.toContain(truncated.slice(0, 32));
+  });
+
   it('leaks no secret value on either stream, even the ones it found', () => {
     const r = runNode(script, [], holed);
     const output = r.stdout + r.stderr;

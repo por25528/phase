@@ -7,10 +7,14 @@ export declare const API_KEY_BASE64_ENV: 'APPLE_API_KEY_P8_BASE64';
 export declare const API_KEY_PATH_ENV: 'APPLE_API_KEY';
 /** The first line of any key Apple issues. */
 export declare const PKCS8_HEADER: '-----BEGIN PRIVATE KEY-----';
+/** The last line. Required, because a header alone cannot see a truncation. */
+export declare const PKCS8_FOOTER: '-----END PRIVATE KEY-----';
 
 /**
- * Strictly decode the secret: alphabet, length, round trip, then the PKCS#8
- * header of the result. Throws naming the variable and never the material.
+ * Strictly decode the secret: alphabet, length, round trip, then a PKCS#8
+ * header AND a footer after it — a secret cut on a 4-character boundary passes
+ * every one of the earlier checks. Throws naming the variable, never the
+ * material.
  */
 export declare function decodeApiKey(base64: string): Buffer;
 
