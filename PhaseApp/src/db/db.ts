@@ -678,9 +678,36 @@ function isEntityArray(v: unknown): boolean {
   );
 }
 
-export async function importStateFromFile(
-  file: File,
-): Promise<ImportedBackupState> {
+type RawBackup = Partial<
+  AppState & {
+    pxPerDay?: number;
+    zoom?: string;
+    allDayBlocks?: unknown;
+    sidebarPanels?: unknown;
+    // Present on backups exported by this feature, but deliberately NOT part
+    // of the type below and never read: it records a PREVIOUS DEVICE's
+    // pre-migration state. Importing it must never overwrite this device's
+    // own snapshot (see saveSlotMigrationSnapshot's write-once contract) —
+    // this device's snapshot, if any, is the only one that protects THIS
+    // device's data, and resetSlotMigration (below) clears it deliberately
+    // so a fresh one can be taken for the just-imported data on next launch.
+    preSlotMigrationSnapshot?: unknown;
+    // Same rule for the checkpoint migration: this belongs to the exporting
+    // device's generation and must never become this device's recovery copy.
+    preCheckpointMigrationSnapshot?: unknown;
+    assets?: unknown;
+  }
+>;
+
+/**
+ * Read the file and decide whether it is a Phase backup at all. Writes nothing.
+ *
+ * Extracted so `validateBackupFile` and `importStateFromFile` cannot form two
+ * opinions about what a backup IS — the answer to "will this import be
+ * refused?" has to be the refusal itself, run early, not a second check
+ * written to resemble it.
+ */
+async function readBackupJson(file: File): Promise<RawBackup> {
   let text: string;
   try {
     text = await file.text();
@@ -688,26 +715,7 @@ export async function importStateFromFile(
     throw new Error('Could not read that file.');
   }
 
-  let raw: Partial<
-    AppState & {
-      pxPerDay?: number;
-      zoom?: string;
-      allDayBlocks?: unknown;
-      sidebarPanels?: unknown;
-      // Present on backups exported by this feature, but deliberately NOT part
-      // of the type below and never read: it records a PREVIOUS DEVICE's
-      // pre-migration state. Importing it must never overwrite this device's
-      // own snapshot (see saveSlotMigrationSnapshot's write-once contract) —
-      // this device's snapshot, if any, is the only one that protects THIS
-      // device's data, and resetSlotMigration (below) clears it deliberately
-      // so a fresh one can be taken for the just-imported data on next launch.
-      preSlotMigrationSnapshot?: unknown;
-      // Same rule for the checkpoint migration: this belongs to the exporting
-      // device's generation and must never become this device's recovery copy.
-      preCheckpointMigrationSnapshot?: unknown;
-      assets?: unknown;
-    }
-  >;
+  let raw: RawBackup;
   try {
     raw = JSON.parse(text);
   } catch {
@@ -719,6 +727,31 @@ export async function importStateFromFile(
   if (present.length === 0 || present.some((t) => !isEntityArray(raw[t]))) {
     throw new Error("That file doesn't look like a Phase backup.");
   }
+  return raw;
+}
+
+/**
+ * Would this file be accepted? Throws the message the import would throw.
+ *
+ * It exists so the caller can ask BEFORE spending anything on the import. A
+ * pre-import snapshot occupies one of a bounded number of retention slots, and
+ * a file that was never going to be accepted must not evict a real one — a
+ * mis-picked holiday photo, tried three times, would otherwise age out three
+ * genuine safety copies.
+ *
+ * It re-reads and re-parses the file, deliberately. That is one extra parse on
+ * a once-in-a-blue-moon action behind a typed confirmation, and the price of
+ * it is that the check and the import are the SAME code rather than two
+ * validators that agree until one of them is edited.
+ */
+export async function validateBackupFile(file: File): Promise<void> {
+  await readBackupJson(file);
+}
+
+export async function importStateFromFile(
+  file: File,
+): Promise<ImportedBackupState> {
+  const raw = await readBackupJson(file);
 
   const pxPerDay =
     Number.isFinite(raw.pxPerDay) && (raw.pxPerDay as number) > 0

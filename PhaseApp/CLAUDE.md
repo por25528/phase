@@ -90,17 +90,47 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   has nothing new to record, and the launch's only job is to learn when the
   last snapshot was so the interval survives a restart. A REFUSED write banks
   no interval, so the next change retries rather than waiting half an hour for
-  a snapshot that does not exist. The App effect takes the same THREE gates the
+  a snapshot that does not exist. **`start()` is async, so a `schedule()` that
+  beats it is DEFERRED, never armed early.** Arming against an unknown mark
+  measures `since` as Infinity, collapses the wait to the quiet period and
+  writes a second snapshot a minute after the one already on disk — and that is
+  not a rare interleaving, it is every launch that begins with an edit. For the
+  same reason `start()` adopts the disk's answer only while `lastWriteAt` is
+  still null: a flush that landed during the read is NEWER than anything the
+  disk was describing, and taking the older stamp would lower the very floor
+  that write just raised. The App effect takes the same THREE gates the
   sync bridge takes — `hydration === 'ready'`, the preload exists,
   `ownsSingleWriterLock()` — and compares the five entity slices BY REFERENCE,
   because the store notifies for every hovered row. Teardown STOPS rather than
   flushes: a flush there would fire on every StrictMode remount.
+- **A snapshot is a WRITE, so it takes the single-writer lock like every other
+  one.** `writeBackupNow` (`state/autoBackup.ts`) is where that gate lives, and
+  it is a function rather than two lines at the call site because it has three
+  answers and the third is the point: `not-owner` is a second window's turn, not
+  a disk problem, and a surface reporting it as "couldn't save to this Mac"
+  would send someone hunting free space over another tab being open. A second
+  window's in-memory state is a stale view of the owner's database — that is
+  what `persist`'s own gate is for — and a backup is that write wearing a
+  different name, only worse, because it is the copy someone later restores
+  FROM: a stale one launders a stale view into the thing you reach for when
+  everything else has failed. It refuses BEFORE building the text, since
+  reading the store to write it is already the wrong act. Listing and restoring
+  are NOT gated here: reading is not writing, and a restore goes through
+  `importBackup`, which takes the lock itself.
 - **The one action with no undo now has a snapshot in front of it, and the
   ordering lives in the store.** `importBackup(file, safetyBackup?)` takes the
   capability INJECTED — the store is platform-free, every preload bridge lives
   in `App.tsx` — but owns the sequence, because a caller that got it the other
-  way round would still look like it worked: tab lock, then snapshot, then
-  check, then replace. A snapshot that could not be written REFUSES the import:
+  way round would still look like it worked: tab lock, then VALIDATE, then
+  snapshot, then replace. `validateBackupFile` is the second step and it is
+  there for a specific cost: a pre-import snapshot occupies one of a bounded
+  number of retention slots, so a file that was never going to be accepted must
+  not evict a real one — a mis-picked photo tried three times would otherwise
+  age out three genuine safety copies. It is `readBackupJson` extracted, the
+  same code the import itself runs, because the answer to "will this be
+  refused?" has to BE the refusal rather than a second check written to
+  resemble it; the price is one extra parse on an action behind a typed
+  confirmation. A snapshot that could not be written REFUSES the import:
   "the safety net is missing" and "go ahead anyway" cannot both be true about
   the one action `applyImportedBackup` clears the undo stack for. ABSENT is a
   different case and proceeds — the plain browser has no folder, and refusing
@@ -119,7 +149,12 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
   land a duplicate a minute later. The whole section renders null in the plain
   browser, exactly as `LaunchAtLoginSettings` does — a list that could never
   fill above a button that could never write promises a capability the web
-  build does not have.
+  build does not have. It carries its OWN heading and copy, unlike every other
+  section in that dialog, and that asymmetry is load-bearing rather than
+  untidy: a heading owned by `SettingsModal` cannot vanish with the section it
+  introduces, so the browser build showed "Backups" over a paragraph promising
+  versioned local copies, above nothing at all. One component, one decision
+  about whether any of this exists.
 - **The fatal screen's recovery has to work from the fatal screen.** It told
   people to "export a backup from the sidebar": there is no sidebar with an
   export in it, and the route it named went through the store that had just

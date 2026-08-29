@@ -1,7 +1,7 @@
 import { useSyncExternalStore, useCallback } from 'react';
 import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, Asset, Life } from '../db/types';
 import {
-  loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
+  loadState, persist, exportState, importStateFromFile, validateBackupFile, loadScale, saveScale,
   loadPlanReview, savePlanReview,
   loadAllDayBlocks, saveAllDayBlocks,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
@@ -3402,14 +3402,35 @@ export const actions = {
    * cannot both be true. Absent altogether is a different case and proceeds:
    * the plain browser has no backup folder, and refusing every import there
    * would be a regression wearing a safety belt.
+   *
+   * The ORDER is the whole contract, and each step is where it is for a
+   * different reason:
+   *
+   *   1. the tab lock, because a refused import must not leave a snapshot
+   *      behind for a replacement that never happened;
+   *   2. `validateBackupFile`, because a pre-import snapshot occupies one of a
+   *      bounded number of retention slots and a file that was never going to
+   *      be accepted must not evict a real one — a mis-picked photo tried three
+   *      times would otherwise age out three genuine safety copies;
+   *   3. the snapshot, because everything after this line is destructive;
+   *   4. the replacement.
+   *
+   * Steps 2 and 3 cannot be swapped without one of those two costs, and step 3
+   * cannot move below step 4 at all.
    */
   async importBackup(file: File, safetyBackup?: () => Promise<boolean>) {
     // `importStateFromFile` writes all four tables plus every settings row
-    // itself, so it has to be gated here rather than downstream. Before the
-    // snapshot, too: a refused import must not leave a file behind for a
-    // replacement that never happened.
+    // itself, so it has to be gated here rather than downstream.
     if (!ownsTabLock) {
       actions.showToast('Phase is open in another tab — close it before importing.');
+      return;
+    }
+    // Cheap and read-only: it decides whether the import CAN succeed without
+    // writing anything, so a refusal costs nothing but the parse.
+    try {
+      await validateBackupFile(file);
+    } catch (e) {
+      actions.showToast(e instanceof Error ? e.message : 'Could not read that file.');
       return;
     }
     if (safetyBackup) {

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackupsSettings } from './BackupsSettings';
 import type { BackupEntry, PhaseBackupBridge } from '../lib/backupBridge';
+import type { BackupNowResult } from '../state/autoBackup';
 
 /**
  * The history surface is the only place a backup Phase took by itself is
@@ -37,7 +38,7 @@ function installBridge(overrides: Partial<PhaseBackupBridge> = {}) {
 
 function setup(props: Partial<Parameters<typeof BackupsSettings>[0]> = {}) {
   const onRestore = vi.fn();
-  const onBackupNow = vi.fn(async () => true);
+  const onBackupNow = vi.fn(async (): Promise<BackupNowResult> => 'saved');
   render(createElement(BackupsSettings, { onRestore, onBackupNow, ...props }));
   return { onRestore, onBackupNow };
 }
@@ -49,14 +50,27 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('BackupsSettings', () => {
-  it('renders nothing in the plain browser', () => {
+  it('renders nothing at all in the plain browser — heading and copy included', () => {
     installBridge({ available: false });
     const { container } = render(
-      createElement(BackupsSettings, { onRestore: vi.fn(), onBackupNow: vi.fn(async () => true) }),
+      createElement(BackupsSettings, {
+        onRestore: vi.fn(),
+        onBackupNow: vi.fn(async (): Promise<BackupNowResult> => 'saved'),
+      }),
     );
-    // The web build has no backup folder. A section that listed nothing, with
-    // a button that could never write, would promise a feature it does not have.
+    // The web build has no backup folder. The heading and the paragraph live
+    // HERE rather than in SettingsModal precisely so they vanish with the list
+    // they introduce — a "Backups" heading over a paragraph describing
+    // versioned local copies, above nothing, describes a feature this build
+    // does not have.
     expect(container.textContent).toBe('');
+    expect(document.body.textContent).not.toContain('Backups');
+  });
+
+  it('carries its own heading on desktop, so the two halves cannot disagree', async () => {
+    installBridge();
+    setup();
+    expect(await screen.findByRole('heading', { name: 'Backups' })).toBeTruthy();
   });
 
   it('lists what is on disk, newest first, with when and why', async () => {
@@ -118,10 +132,34 @@ describe('BackupsSettings', () => {
 
   it('says so when the snapshot could not be written', async () => {
     installBridge();
-    setup({ onBackupNow: vi.fn(async () => false) });
+    setup({ onBackupNow: vi.fn(async (): Promise<BackupNowResult> => 'failed') });
     await screen.findByText('30 Aug 2026, 14:25');
     await userEvent.click(screen.getByRole('button', { name: /back up now/i }));
     await screen.findByText(/couldn’t save/i);
+  });
+
+  /**
+   * A second window holds a STALE view of the owner's database — that is what
+   * the single-writer lock is for — so a backup written from it would launder
+   * that stale view into the file someone later restores from. The refusal has
+   * to name the real reason: reported as a save failure it would send someone
+   * hunting a disk problem that does not exist.
+   */
+  it('names the other window rather than blaming the disk', async () => {
+    installBridge();
+    setup({ onBackupNow: vi.fn(async (): Promise<BackupNowResult> => 'not-owner') });
+    await screen.findByText('30 Aug 2026, 14:25');
+    await userEvent.click(screen.getByRole('button', { name: /back up now/i }));
+    await screen.findByText(/another (tab|window)/i);
+    expect(document.body.textContent).not.toContain('disk');
+  });
+
+  it('still lists what is on disk in a window that may not write', async () => {
+    installBridge();
+    setup({ onBackupNow: vi.fn(async (): Promise<BackupNowResult> => 'not-owner') });
+    // Reading is not writing: the history is still worth showing, and a
+    // restore from here goes through the store, which does its own lock check.
+    expect(await screen.findByText('30 Aug 2026, 14:25')).toBeTruthy();
   });
 
   it('reports an unreachable folder rather than pretending it is empty', async () => {

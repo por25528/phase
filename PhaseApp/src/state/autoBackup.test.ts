@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  createAutoBackup, AUTO_BACKUP_QUIET_MS, AUTO_BACKUP_MIN_INTERVAL_MS, type AutoBackupDeps,
+  createAutoBackup, writeBackupNow, AUTO_BACKUP_QUIET_MS, AUTO_BACKUP_MIN_INTERVAL_MS,
+  type AutoBackupDeps, type AutoBackup,
 } from './autoBackup';
 import type { WrittenBackup } from '../lib/backupBridge';
 
@@ -194,6 +195,105 @@ describe('createAutoBackup', () => {
     await expect(backup.flush('manual')).resolves.toBeNull();
   });
 
+  /**
+   * `start()` is ASYNC — it asks the disk when the last snapshot was — and a
+   * change can land while that read is still in flight. Arming against a
+   * not-yet-known mark makes `since` Infinity, which collapses the wait to the
+   * quiet period and writes a second snapshot a minute after the one already
+   * on disk, silently bypassing the interval on every launch that begins with
+   * an edit. So a schedule that arrives early WAITS for the answer.
+   */
+  describe('a change during the disk read', () => {
+    function deferredStart() {
+      let release: (at: number | null) => void = () => {};
+      const lastBackupAt = vi.fn(() => new Promise<number | null>((r) => { release = r; }));
+      return { lastBackupAt, release: (at: number | null) => release(at) };
+    }
+
+    it('cannot bypass the interval floor by racing the read', async () => {
+      const gate = deferredStart();
+      const h = harness({ lastBackupAt: gate.lastBackupAt });
+      const backup = createAutoBackup(h.deps);
+      const started = backup.start();
+
+      // An edit lands before the disk has answered.
+      backup.schedule();
+      await tick(h, AUTO_BACKUP_QUIET_MS * 2);
+      expect(h.write).not.toHaveBeenCalled();
+
+      // The disk says: five minutes ago.
+      gate.release(h.at() - 5 * 60_000);
+      await started;
+
+      // The wait now runs from that mark, not from a blank one.
+      await tick(h, AUTO_BACKUP_QUIET_MS);
+      expect(h.write).not.toHaveBeenCalled();
+      await tick(h, AUTO_BACKUP_MIN_INTERVAL_MS - 5 * 60_000);
+      expect(h.write).toHaveBeenCalledTimes(1);
+    });
+
+    it('still honours the change once the read comes back empty', async () => {
+      const gate = deferredStart();
+      const h = harness({ lastBackupAt: gate.lastBackupAt });
+      const backup = createAutoBackup(h.deps);
+      const started = backup.start();
+
+      backup.schedule();
+      gate.release(null);
+      await started;
+      // Deferred, never dropped: the edit that arrived early still gets its
+      // snapshot, one quiet period after the answer.
+      await tick(h, AUTO_BACKUP_QUIET_MS);
+      expect(h.write).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not lower the floor a flush already raised', async () => {
+      const gate = deferredStart();
+      const h = harness({ lastBackupAt: gate.lastBackupAt });
+      const backup = createAutoBackup(h.deps);
+      const started = backup.start();
+
+      // A manual snapshot lands while the disk read is still out.
+      await backup.flush('manual');
+      expect(h.write).toHaveBeenCalledTimes(1);
+
+      // The disk then reports an OLDER stamp. Adopting it would move the mark
+      // backwards and let the next change write half an hour early.
+      gate.release(h.at() - AUTO_BACKUP_MIN_INTERVAL_MS);
+      await started;
+
+      backup.schedule();
+      await tick(h, AUTO_BACKUP_QUIET_MS);
+      expect(h.write).toHaveBeenCalledTimes(1);
+      await tick(h, AUTO_BACKUP_MIN_INTERVAL_MS);
+      expect(h.write).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops a deferred arm when the scheduler stopped before the read landed', async () => {
+      const gate = deferredStart();
+      const h = harness({ lastBackupAt: gate.lastBackupAt });
+      const backup = createAutoBackup(h.deps);
+      const started = backup.start();
+
+      backup.schedule();
+      backup.stop();
+      gate.release(null);
+      await started;
+      await tick(h, AUTO_BACKUP_MIN_INTERVAL_MS * 2);
+      expect(h.write).not.toHaveBeenCalled();
+    });
+
+    it('treats a rejected read as unknown and still serves the early change', async () => {
+      const h = harness({ lastBackupAt: vi.fn(async () => { throw new Error('EACCES'); }) });
+      const backup = createAutoBackup(h.deps);
+      const started = backup.start();
+      backup.schedule();
+      await started;
+      await tick(h, AUTO_BACKUP_QUIET_MS);
+      expect(h.write).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('stops cleanly — a pending snapshot never fires after teardown', async () => {
     const h = harness();
     const backup = createAutoBackup(h.deps);
@@ -212,5 +312,79 @@ describe('createAutoBackup', () => {
     backup.schedule();
     await tick(h, AUTO_BACKUP_MIN_INTERVAL_MS * 2);
     expect(h.write).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Who is allowed to write a snapshot, and through what.
+ *
+ * Phase assumes a SINGLE WRITER: a second window's in-memory state is a stale
+ * view of the owner's database, and `persist` is gated on the lock for exactly
+ * that reason. A backup is the same write wearing a different name — worse,
+ * really, because it is the copy someone would later restore FROM. A second
+ * window pressing "Back up now" would have written that stale view to disk and
+ * called it a rescue.
+ *
+ * The three answers are distinct on purpose. `not-owner` is not a failure to
+ * fix, it is a different window's turn, and a surface that reported it as
+ * "couldn't save to this Mac" would send someone hunting a disk problem that
+ * does not exist.
+ */
+describe('writeBackupNow', () => {
+  function deps(overrides: Partial<Parameters<typeof writeBackupNow>[1]> = {}) {
+    return {
+      ownsLock: () => true,
+      scheduler: () => null as AutoBackup | null,
+      buildText: vi.fn(async () => '{"goals":[]}'),
+      write: vi.fn(async () => entry('20260830-142530')),
+      ...overrides,
+    };
+  }
+
+  it('refuses outright in a window that does not own the data', async () => {
+    const d = deps({ ownsLock: () => false });
+    await expect(writeBackupNow('manual', d)).resolves.toBe('not-owner');
+    // Nothing was read and nothing was written — a stale snapshot is worse
+    // than no snapshot, because it is the one someone would restore from.
+    expect(d.buildText).not.toHaveBeenCalled();
+    expect(d.write).not.toHaveBeenCalled();
+  });
+
+  it('refuses a pre-import snapshot from a non-owner too', async () => {
+    const d = deps({ ownsLock: () => false });
+    await expect(writeBackupNow('pre-import', d)).resolves.toBe('not-owner');
+    expect(d.write).not.toHaveBeenCalled();
+  });
+
+  it('goes through the scheduler when there is one, so the interval restarts', async () => {
+    const flush = vi.fn(async () => entry('20260830-142530'));
+    const scheduler = { flush } as unknown as AutoBackup;
+    const d = deps({ scheduler: () => scheduler });
+    await expect(writeBackupNow('manual', d)).resolves.toBe('saved');
+    expect(flush).toHaveBeenCalledWith('manual');
+    // Writing past the scheduler would leave the automatic pass believing
+    // nothing had been saved, and land a duplicate a minute later.
+    expect(d.write).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a direct write before the scheduler exists', async () => {
+    const d = deps();
+    await expect(writeBackupNow('manual', d)).resolves.toBe('saved');
+    expect(d.write).toHaveBeenCalledWith('{"goals":[]}', 'manual');
+  });
+
+  it('reports a refused write as failed, not as a missing turn', async () => {
+    const d = deps({ write: vi.fn(async () => null) });
+    await expect(writeBackupNow('manual', d)).resolves.toBe('failed');
+  });
+
+  it('reports a scheduler refusal as failed', async () => {
+    const scheduler = { flush: vi.fn(async () => null) } as unknown as AutoBackup;
+    await expect(writeBackupNow('manual', deps({ scheduler: () => scheduler }))).resolves.toBe('failed');
+  });
+
+  it('reports an unreadable database as failed rather than throwing at the caller', async () => {
+    const d = deps({ buildText: vi.fn(async () => { throw new Error('IndexedDB gone'); }) });
+    await expect(writeBackupNow('manual', d)).resolves.toBe('failed');
   });
 });

@@ -4,6 +4,7 @@ import { LivesSettings } from '../views/goals/LivesSettings';
 import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings';
 import { LaunchAtLoginSettings } from './assistant/LaunchAtLoginSettings';
 import { BackupsSettings } from './BackupsSettings';
+import type { BackupNowResult } from '../state/autoBackup';
 import { useAppStore } from '../state/store';
 
 /**
@@ -30,7 +31,7 @@ export function SettingsModal({
   /** Hands one local snapshot to the ordinary import path, confirmation and all. */
   onRestoreBackup: (file: File) => void;
   /** Takes a manual snapshot through the same scheduler the automatic ones use. */
-  onBackupNow: () => Promise<boolean>;
+  onBackupNow: () => Promise<BackupNowResult>;
 }) {
   const { assistantAccelerator, assistantShortcut, actions } = useAppStore();
   return (
@@ -62,13 +63,12 @@ export function SettingsModal({
 
       {/* Same rule, and the same reason it is HERE: a backup is provider-style
           configuration you look at twice a year, not routine editing. It sits
-          last because the list is the only thing in this dialog that grows. */}
-      <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Backups</h3>
-      <p className="text-ui text-muted mb-[12px] leading-[1.5]">
-        Phase keeps versioned copies of everything on this Mac, and takes one
-        before any import replaces your data. Restoring goes through the same
-        confirmation an imported file does.
-      </p>
+          last because the list is the only thing in this dialog that grows.
+
+          It brings its OWN heading and copy, unlike every other section above.
+          That is not an inconsistency to tidy: this is the one section that can
+          be absent entirely — the browser build has no backup folder — and a
+          heading owned by this file could not vanish with it. */}
       <BackupsSettings onRestore={onRestoreBackup} onBackupNow={onBackupNow} />
     </Modal>
   );

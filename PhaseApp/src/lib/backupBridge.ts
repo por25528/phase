@@ -124,37 +124,51 @@ export function backupBridge(): PhaseBackupBridge {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
+ * `<YYYYMMDD>-<HHmmss>`, taken apart once.
+ *
+ * The two readers below — the label and the timestamp — had a copy of this
+ * pattern each, which is two chances to disagree about what a stamp IS while
+ * both look right in isolation. Neither of them parses through `new Date(str)`
+ * or `Date.parse`: the stamp was written from the LOCAL clock and carries no
+ * zone, so handing the string to a runtime parser is asking it to guess one.
+ */
+const STAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/;
+
+function parseStamp(stamp: string) {
+  const match = STAMP_RE.exec(stamp);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second] = match.map(Number);
+  return { year, month, day, hour, minute, second };
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
  * The stamp, read back as a date and a time.
  *
- * Parsed from the digits rather than through `new Date(...)`: the stamp was
- * written from the LOCAL clock and carries no zone, so handing it to a Date
- * would be asking the runtime to guess one. A malformed stamp is printed
- * verbatim — a row whose label is a raw file name is still a row you can
- * restore, and inventing a plausible date for it would not be.
+ * A malformed stamp is printed verbatim — a row whose label is a raw file name
+ * is still a row you can restore, and inventing a plausible date for it would
+ * not be.
  */
 export function describeBackup(stamp: string): string {
-  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(stamp);
-  if (!match) return stamp;
-  const [, year, month, day, hour, minute] = match;
-  const name = MONTHS[Number(month) - 1];
+  const parts = parseStamp(stamp);
+  if (!parts) return stamp;
+  const name = MONTHS[parts.month - 1];
   if (!name) return stamp;
-  return `${Number(day)} ${name} ${year}, ${hour}:${minute}`;
+  return `${parts.day} ${name} ${parts.year}, ${pad(parts.hour)}:${pad(parts.minute)}`;
 }
 
 /**
  * The stamp as a local-clock timestamp, or null when it is malformed.
  *
- * `new Date(y, m, d, …)` and never `Date.parse`: the stamp was WRITTEN from
- * the local clock with no zone on it, so the only reading that round-trips is
- * the one that puts it back in the same clock. This feeds one decision — how
- * long it has been since the last snapshot — so a null has to mean "unknown",
- * never "just now".
+ * `new Date(y, m, d, …)`, the only reading that puts the stamp back in the
+ * clock it was written from. This feeds one decision — how long it has been
+ * since the last snapshot — so a null has to mean "unknown", never "just now".
  */
 export function stampToLocalMs(stamp: string): number | null {
-  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(stamp);
-  if (!match) return null;
-  const [, year, month, day, hour, minute, second] = match.map(Number);
-  const date = new Date(year, month - 1, day, hour, minute, second);
+  const parts = parseStamp(stamp);
+  if (!parts) return null;
+  const date = new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
   return Number.isNaN(date.getTime()) ? null : date.getTime();
 }
 

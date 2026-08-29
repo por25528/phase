@@ -41,7 +41,12 @@ export interface AutoBackupDeps {
 }
 
 export interface AutoBackup {
-  /** Learn when the last snapshot was, so the interval survives a restart. */
+  /**
+   * Learn when the last snapshot was, so the interval survives a restart.
+   *
+   * A `schedule()` that arrives before this resolves is DEFERRED, never
+   * dropped and never armed early — see the note on the race below.
+   */
   start(): Promise<void>;
   /** A change landed. Arms the next snapshot; does not reset a pending one. */
   schedule(): void;
@@ -59,6 +64,23 @@ export function createAutoBackup(deps: AutoBackupDeps): AutoBackup {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastWriteAt: number | null = null;
   let stopped = false;
+  /*
+   * The two flags that close the start-up race.
+   *
+   * `start()` is ASYNC — it asks the disk when the last snapshot was — and the
+   * first change of a session routinely lands while that read is in flight.
+   * Arming then would measure `since` against a mark of `null`, i.e. Infinity,
+   * collapse the wait to the quiet period, and write a second snapshot a
+   * minute after the one already on disk. That is not a rare interleaving: it
+   * is every launch that begins with an edit, and it would quietly defeat the
+   * interval it looks like it is honouring.
+   *
+   * So an early schedule is DEFERRED rather than dropped — the edit is real
+   * and still deserves its snapshot — and `start()` arms it once the mark is
+   * known.
+   */
+  let ready = false;
+  let armWhenReady = false;
 
   const cancel = () => {
     if (timer === null) return;
@@ -101,16 +123,34 @@ export function createAutoBackup(deps: AutoBackupDeps): AutoBackup {
 
   return {
     async start() {
+      let fromDisk: number | null = null;
       try {
-        lastWriteAt = await deps.lastBackupAt();
+        fromDisk = await deps.lastBackupAt();
       } catch {
         // Unknown is not "just now": leaving the mark null makes the first
         // change due after the quiet period, which is the safe direction.
-        lastWriteAt = null;
+        fromDisk = null;
+      }
+      // Only adopt the disk's answer if nothing has been written since this
+      // scheduler was built. A flush that landed during the read is NEWER than
+      // anything the disk could have been describing, and taking the older
+      // stamp would move the mark backwards — lowering the very floor the
+      // write just raised.
+      if (lastWriteAt === null) lastWriteAt = fromDisk;
+      ready = true;
+      if (armWhenReady) {
+        armWhenReady = false;
+        arm();
       }
     },
 
     schedule() {
+      if (stopped) return;
+      // Held, not armed: `arm()` cannot price the wait until the mark is known.
+      if (!ready) {
+        armWhenReady = true;
+        return;
+      }
       arm();
     },
 
@@ -124,7 +164,61 @@ export function createAutoBackup(deps: AutoBackupDeps): AutoBackup {
 
     stop() {
       stopped = true;
+      armWhenReady = false;
       cancel();
     },
   };
+}
+
+/** What a snapshot taken on demand did. Three answers, because there are three. */
+export type BackupNowResult = 'saved' | 'failed' | 'not-owner';
+
+export interface ManualBackupDeps {
+  /** Whether this window holds the single-writer lock. */
+  ownsLock(): boolean;
+  /** The live scheduler, or null before the effect that builds it has run. */
+  scheduler(): AutoBackup | null;
+  buildText(): Promise<string>;
+  write(text: string, reason: BackupReason): Promise<WrittenBackup | null>;
+}
+
+/**
+ * A snapshot taken on demand — the Settings button, and the one before an
+ * import.
+ *
+ * The LOCK GATE is the whole reason this is a function rather than two lines at
+ * the call site. Phase assumes a single writer: a second window's in-memory
+ * state is a stale view of the owner's database, which is why `persist` and
+ * every settings write are gated on the lock. A backup is that same write
+ * wearing a different name, and worse — it is the copy someone would later
+ * restore FROM, so a stale one does not merely waste a file, it launders a
+ * stale view into the thing you reach for when everything else has failed. It
+ * refuses BEFORE building the text, because reading the store to write it is
+ * already the wrong act.
+ *
+ * `not-owner` is deliberately not `failed`. It is not a disk problem and there
+ * is nothing to fix; reporting it as one would send someone hunting free space
+ * over another window being open.
+ *
+ * The write goes through the SCHEDULER whenever there is one, so a snapshot
+ * taken by hand restarts the interval. Writing past it would leave the
+ * automatic pass believing nothing had been saved, and land a duplicate a
+ * minute later. The direct write is the fallback for the window before the
+ * scheduler exists, and it spends the same builder, so the two paths cannot
+ * produce different files.
+ */
+export async function writeBackupNow(
+  reason: Extract<BackupReason, 'manual' | 'pre-import'>,
+  deps: ManualBackupDeps,
+): Promise<BackupNowResult> {
+  if (!deps.ownsLock()) return 'not-owner';
+  const scheduler = deps.scheduler();
+  if (scheduler) return (await scheduler.flush(reason)) !== null ? 'saved' : 'failed';
+  try {
+    return (await deps.write(await deps.buildText(), reason)) !== null ? 'saved' : 'failed';
+  } catch {
+    // The database is what a backup reads. If it cannot be read there is
+    // nothing to write, and the caller needs an answer rather than a rejection.
+    return 'failed';
+  }
 }

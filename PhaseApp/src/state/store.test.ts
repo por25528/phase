@@ -24,6 +24,7 @@ const dbMocks = vi.hoisted(() => ({
   persist: vi.fn(async () => {}),
   exportState: vi.fn(),
   importStateFromFile: vi.fn(),
+  validateBackupFile: vi.fn(async () => {}),
   isSlotMigrationDone: vi.fn(async () => true),
   saveSlotMigrationSnapshot: vi.fn(async () => {}),
   loadSlotMigrationSnapshot: vi.fn(async () => null),
@@ -3673,6 +3674,69 @@ describe('importBackup safety snapshot', () => {
 
     expect(vi.mocked(importStateFromFile)).toHaveBeenCalled();
     expect(store.getState().toast).toBe('Backup imported');
+  });
+
+  /**
+   * A pre-import snapshot occupies one of a BOUNDED number of retention slots
+   * (`PRE_IMPORT_KEEP`), so spending one on a file that was never going to be
+   * accepted is not merely wasteful — it ages out a real safety copy. Picking
+   * the wrong file three times would have cost three of them.
+   */
+  it('validates the file before spending a retention slot on it', async () => {
+    const { validateBackupFile, importStateFromFile } = await import('../db/db');
+    vi.mocked(validateBackupFile).mockRejectedValueOnce(
+      new Error("That file doesn't look like a Phase backup."),
+    );
+    const snapshot = vi.fn(async () => true);
+
+    const store = await freshStore();
+    await store.initStore();
+    vi.mocked(importStateFromFile).mockClear();
+    await store.actions.importBackup(new File(['nope'], 'holiday.jpg'), snapshot);
+
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(vi.mocked(importStateFromFile)).not.toHaveBeenCalled();
+    // And the refusal says the same thing the import itself would have said.
+    expect(store.getState().toast).toContain('Phase backup');
+  });
+
+  it('validates before the snapshot, and snapshots before the replacement', async () => {
+    const { validateBackupFile, importStateFromFile } = await import('../db/db');
+    const order: string[] = [];
+    vi.mocked(validateBackupFile).mockImplementationOnce(async () => { order.push('validate'); });
+    vi.mocked(importStateFromFile).mockImplementationOnce(async () => {
+      order.push('import');
+      return {
+        goals: [], habits: [], tasks: [], sessions: [], lives: [],
+        pxPerDay: 13, allDayBlocks: true, sidebarPanels: [],
+      };
+    });
+
+    const store = await freshStore();
+    await store.initStore();
+    await store.actions.importBackup(new File([], 'backup.json'), async () => {
+      order.push('snapshot');
+      return true;
+    });
+
+    // The whole contract in one assertion: the cheap read-only check first, the
+    // snapshot before anything destructive, the replacement last.
+    expect(order).toEqual(['validate', 'snapshot', 'import']);
+  });
+
+  it('validates a malformed file even where there is no snapshot to spend', async () => {
+    const { validateBackupFile, importStateFromFile } = await import('../db/db');
+    vi.mocked(validateBackupFile).mockRejectedValueOnce(new Error("That file isn't valid JSON."));
+
+    const store = await freshStore();
+    await store.initStore();
+    vi.mocked(importStateFromFile).mockClear();
+    // The browser has no folder, so nothing is evicted — but the message must
+    // still be the import's own, not a generic failure from further down.
+    await store.actions.importBackup(new File(['{'], 'broken.json'));
+
+    expect(vi.mocked(importStateFromFile)).not.toHaveBeenCalled();
+    expect(store.getState().toast).toContain('valid JSON');
   });
 
   it('does not spend a snapshot on an import a second tab was going to refuse', async () => {

@@ -48,12 +48,13 @@ import { handleAgentRead } from './lib/agentReads';
 import { handleAgentWrite } from './lib/agentWrites';
 import { ingestJournal } from './state/syncIngest';
 import { createSyncExporter } from './state/syncExport';
+import type { SyncSlices } from './lib/sync/stateFile';
 import {
   loadSyncMeta, saveSyncMeta, buildBackupText,
   loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot,
 } from './db/db';
 import { backupBridge, stampToLocalMs } from './lib/backupBridge';
-import { createAutoBackup, type AutoBackup } from './state/autoBackup';
+import { createAutoBackup, writeBackupNow, type AutoBackup } from './state/autoBackup';
 import {
   type Theme,
   resolveTheme,
@@ -132,6 +133,21 @@ export function ingestToast(applied: number, skipped: number): string | null {
 }
 
 /**
+ * The five entity arrays, read at the moment they are asked for.
+ *
+ * Three callers mirror the store to somewhere outside it — the phone's
+ * `state.json`, the change detector that arms a backup, and the backup
+ * document itself — and each had this literal written out. Three copies of
+ * "what the app's data IS" is three places to forget a table the day a sixth
+ * one is added, and the two that are not the sync file are the ones nobody
+ * would notice going stale.
+ */
+function entitySlices(): SyncSlices {
+  const s = getState();
+  return { goals: s.goals, habits: s.habits, tasks: s.tasks, sessions: s.sessions, lives: s.lives };
+}
+
+/**
  * The backup document for the state the app is holding RIGHT NOW.
  *
  * Read through `getState()` at the moment it is called, never from a captured
@@ -145,13 +161,13 @@ export function ingestToast(applied: number, skipped: number): string | null {
  * nicety, and must never be why no backup is written.
  */
 async function buildCurrentBackupText(): Promise<string> {
-  const s = getState();
   const [preSlot, preCheckpoint] = await Promise.all([
     loadSlotMigrationSnapshot().catch(() => null),
     loadCheckpointMigrationSnapshot().catch(() => null),
   ]);
+  const s = getState();
   return buildBackupText(
-    { goals: s.goals, habits: s.habits, tasks: s.tasks, sessions: s.sessions, lives: s.lives },
+    entitySlices(),
     s.pxPerDay,
     s.planReview,
     s.allDayBlocks,
@@ -200,18 +216,17 @@ export function App() {
   /**
    * A manual snapshot, and the one taken before an import replaces everything.
    *
-   * Both go through the SCHEDULER rather than straight at the bridge, so a
-   * snapshot written by hand restarts the interval — writing past it would
-   * leave the automatic pass believing nothing had been saved, and land a
-   * duplicate a minute later. The direct write is the fallback for the window
-   * before the effect below has run; it spends the same builder, so the two
-   * paths cannot produce different files.
+   * The policy — the single-writer gate, the scheduler-before-bridge rule, the
+   * three-way answer — lives in `writeBackupNow` so it is unit-testable and so
+   * neither call site can hold a different opinion about who may write. All
+   * this does is hand it this window's capabilities.
    */
-  const writeBackup = useCallback(async (reason: 'manual' | 'pre-import'): Promise<boolean> => {
-    const scheduler = autoBackupRef.current;
-    if (scheduler) return (await scheduler.flush(reason)) !== null;
-    return (await backups.write(await buildCurrentBackupText(), reason)) !== null;
-  }, [backups]);
+  const writeBackup = useCallback((reason: 'manual' | 'pre-import') => writeBackupNow(reason, {
+    ownsLock: ownsSingleWriterLock,
+    scheduler: () => autoBackupRef.current,
+    buildText: buildCurrentBackupText,
+    write: (text, backupReason) => backups.write(text, backupReason),
+  }), [backups]);
 
   /**
    * Versioned local snapshots, on the desktop, in the tab that owns the data.
@@ -237,11 +252,6 @@ export function App() {
     if (hydration !== 'ready') return;
     if (!backups.available || !ownsSingleWriterLock()) return;
 
-    const slices = () => {
-      const s = getState();
-      return { goals: s.goals, habits: s.habits, tasks: s.tasks, sessions: s.sessions, lives: s.lives };
-    };
-
     const scheduler = createAutoBackup({
       buildText: buildCurrentBackupText,
       write: (text, reason) => backups.write(text, reason),
@@ -255,9 +265,9 @@ export function App() {
     autoBackupRef.current = scheduler;
     void scheduler.start();
 
-    let last = slices();
+    let last = entitySlices();
     const unsubscribe = subscribe(() => {
-      const next = slices();
+      const next = entitySlices();
       if (
         next.goals === last.goals && next.habits === last.habits && next.tasks === last.tasks &&
         next.sessions === last.sessions && next.lives === last.lives
@@ -400,13 +410,8 @@ export function App() {
     let mark: string | null = null;
     let advanced = false;
 
-    const slices = () => {
-      const s = getState();
-      return { goals: s.goals, habits: s.habits, tasks: s.tasks, sessions: s.sessions, lives: s.lives };
-    };
-
     const exporter = createSyncExporter({
-      getSlices: slices,
+      getSlices: entitySlices,
       loadMeta: loadSyncMeta,
       saveMeta: saveSyncMeta,
       writeState: (text) => sync.writeState(text),
@@ -451,9 +456,9 @@ export function App() {
 
     const unsubscribeJournal = sync.onJournal((text) => void ingest(text));
 
-    let last = slices();
+    let last = entitySlices();
     const unsubscribeStore = subscribe(() => {
-      const next = slices();
+      const next = entitySlices();
       if (
         next.goals === last.goals && next.habits === last.habits && next.tasks === last.tasks &&
         next.sessions === last.sessions && next.lives === last.lives
@@ -948,7 +953,9 @@ export function App() {
           if (pendingImport) {
             actions.importBackup(
               pendingImport,
-              backups.available ? () => writeBackup('pre-import') : undefined,
+              backups.available
+                ? async () => (await writeBackup('pre-import')) === 'saved'
+                : undefined,
             );
           }
           setPendingImport(null);
