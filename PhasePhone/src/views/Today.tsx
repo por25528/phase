@@ -49,6 +49,21 @@ export function Today({ store }: { store: PhoneStore }) {
       ? ({ kind: 'step', id: item.id, goalId: item.goalId! } as const)
       : ({ kind: 'task', id: item.id, goalId: item.goalId } as const);
 
+  /**
+   * The ops answer a boolean — did this reach the journal — and this screen
+   * DISCARDS it, where `Capture` does not. That asymmetry is deliberate and it
+   * is not a swallowed failure.
+   *
+   * A write that failed recomputes nothing, so the row simply does not move:
+   * the box stays unticked, which is the truth. There is no claim to withhold
+   * and no field to preserve — the two things `Capture` uses its answer for.
+   * What the person needs is a reason, and the reason is the shell's
+   * `SyncBar`, which reads the store's `error` and keeps saying so until
+   * another WRITE succeeds. See `Today.test.tsx`, "a tick that never reached
+   * the journal".
+   */
+  const fireAndForget = (op: Promise<boolean>): void => void op;
+
   const row = (item: DailyWorkItem, note?: string | null) => {
     const status = statusOf(item);
     return (
@@ -57,12 +72,12 @@ export function Today({ store }: { store: PhoneStore }) {
         item={item}
         status={status}
         note={note}
-        onTick={() => void store.ops.completeTask(refOf(item))}
+        onTick={() => fireAndForget(store.ops.completeTask(refOf(item)))}
         // Steps only: a loose `Task` carries no status, so there is nothing on
         // it to park.
         onPark={
           item.kind === 'step'
-            ? () => void store.ops.setStatus(item.id, status === 'parked' ? 'todo' : 'parked')
+            ? () => fireAndForget(store.ops.setStatus(item.id, status === 'parked' ? 'todo' : 'parked'))
             : undefined
         }
       />
@@ -74,7 +89,12 @@ export function Today({ store }: { store: PhoneStore }) {
       {/* ── The day ──
           The app's stamp at phone measure, with the sync's one honest caveat
           beside it: how old the canonical file is. It appears only when the
-          answer is interesting — see `asOfLabel`. */}
+          answer is interesting — see `asOfLabel`.
+
+          What is still WAITING to reach the Mac is not drawn here: it is the
+          shell's `SyncBar`, because a capture made on the Capture screen is
+          the op most likely to be outstanding and Today is the wrong place to
+          tell anyone about it. */}
       <header className="px-[18px] pt-[18px] pb-[16px] border-b border-line">
         <span className="inline-flex items-stretch rounded-[4px] border border-line-2 overflow-hidden">
           <span className="section-label px-[8px] py-[3px] bg-fill text-paper font-semibold">
@@ -134,12 +154,6 @@ export function Today({ store }: { store: PhoneStore }) {
             </section>
           )}
         </>
-      )}
-
-      {state.pendingCount > 0 && (
-        <p className="px-[18px] py-[14px] text-meta text-muted">
-          {state.pendingCount} change{state.pendingCount === 1 ? '' : 's'} waiting for your Mac
-        </p>
       )}
     </div>
   );

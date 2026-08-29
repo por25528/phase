@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { createLocalBridge } from './bridge/localBridge';
 import { createICloudBridge } from './bridge/icloudBridge';
 import { createPhoneStore, type PhoneStore } from './state/phoneStore';
+import { SyncBar } from './views/SyncBar';
 import { Today } from './views/Today';
 import { Capture } from './views/Capture';
 import { Week } from './views/Week';
@@ -43,6 +44,11 @@ export function App({ store: injected }: { store?: PhoneStore } = {}) {
         {tab === 'capture' && <Capture store={store} />}
         {tab === 'week' && <Week store={store} />}
       </main>
+
+      {/* Above the nav and below the scroller, so it is the last thing before
+          your thumb and it never scrolls out of reach of the screen it is
+          reporting on. It draws nothing when the sync is healthy. */}
+      <SyncBar store={store} />
 
       {/* The bar is a rule with cells on it, the same object every other
           heading in this product is — not a floating pill. */}

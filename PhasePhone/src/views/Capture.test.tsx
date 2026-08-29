@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { buildStateFile, type SyncSlices } from '@app/lib/sync/stateFile';
 import type { StateFileMeta } from '@app/lib/sync/ops';
 import { todayStr } from '@app/lib/dates';
+import { createPhoneStore } from '../state/phoneStore';
 import { seededStore, type SeededStore } from '../test/seededStore';
 import { Capture } from './Capture';
 
@@ -105,6 +106,32 @@ describe('submitting', () => {
 
     expect(field.value).toBe('');
     expect(screen.getByRole('status').textContent).toContain('Buy stamps');
+  });
+
+  it('keeps the line and claims nothing when the journal write failed', async () => {
+    const store = createPhoneStore({
+      readStateFile: async () => buildStateFile(slices(), META),
+      readJournal: async () => '',
+      appendOp: async () => {
+        throw new Error('the container is not writable');
+      },
+      rewriteJournal: async () => {
+        throw new Error('the container is not writable');
+      },
+      onChange: () => () => {},
+    });
+    await store.refresh();
+    render(<Capture store={store} />);
+    const field = screen.getByLabelText('What needs doing?') as HTMLInputElement;
+
+    await userEvent.type(field, 'Buy stamps');
+    await userEvent.click(screen.getByRole('button', { name: 'Capture' }));
+
+    // The thought is still on screen — it is the only copy — and nothing
+    // claims it was taken. The shell's SyncBar says why.
+    expect(field.value).toBe('Buy stamps');
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(store.getState().error).toMatchObject({ kind: 'write' });
   });
 
   it('refuses an empty line', async () => {

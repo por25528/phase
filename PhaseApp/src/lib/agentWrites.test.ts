@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleAgentWrite } from './agentWrites';
+import { todayStr } from './dates';
 import type { Goal, GoalNode, Task } from '../db/types';
 import type { FullState } from '../state/store';
 
@@ -154,7 +155,7 @@ describe('complete_task', () => {
       h.deps,
     );
     // toggleLeaf takes the node id ALONE — it does not take a goalId.
-    expect(h.spies.toggleLeaf).toHaveBeenCalledWith('n1');
+    expect(h.spies.toggleLeaf).toHaveBeenCalledWith('n1', todayStr());
     expect(res).toEqual({ ok: true, data: { completed: 'n1' } });
   });
 
@@ -164,7 +165,7 @@ describe('complete_task', () => {
       { tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } },
       h.deps,
     );
-    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1');
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1', todayStr());
     expect(res.ok).toBe(true);
   });
 
@@ -234,7 +235,7 @@ describe('set_status', () => {
       { tool: 'set_status', nodeId: 'n1', status: 'blocked', blockedOn: 'the library reopening' },
       h.deps,
     );
-    expect(h.spies.setNodeStatus).toHaveBeenCalledWith('n1', 'blocked', 'the library reopening');
+    expect(h.spies.setNodeStatus).toHaveBeenCalledWith('n1', 'blocked', 'the library reopening', todayStr());
     expect(res.ok).toBe(true);
   });
 
@@ -248,7 +249,7 @@ describe('set_status', () => {
     const h = harness({ goals: [GOAL()] });
     const res = handleAgentWrite({ tool: 'set_status', nodeId: 'n1', status: 'done' }, h.deps);
     // Same function the checkbox calls ⇒ the identical `Completed "X"` undo.
-    expect(h.spies.toggleLeaf).toHaveBeenCalledWith('n1');
+    expect(h.spies.toggleLeaf).toHaveBeenCalledWith('n1', todayStr());
     expect(h.spies.setNodeStatus).not.toHaveBeenCalled();
     expect(res.ok).toBe(true);
   });

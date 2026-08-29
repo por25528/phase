@@ -1198,13 +1198,20 @@ export type FinishWorkResult =
 // ---- actions ----
 export const actions = {
   // Goals / nodes
-  toggleLeaf(nodeId: string) {
+  /**
+   * `today` is the day a completion is STAMPED with, and it defaults to now
+   * because that is what every gesture in this app means. It is a parameter at
+   * all for the phone companion: an op made at 23:50 and ingested at 00:10 has
+   * to land on the day the person made it, not the day the Mac read it. See
+   * `opDay` in `lib/sync/ops.ts`.
+   */
+  toggleLeaf(nodeId: string, today = todayStr()) {
     if (!isActiveNode(nodeId)) return; // frozen on a completed project
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node || node.children?.length) return;
     const wasDone = isDone(node);
-    writeStatus(node, wasDone ? 'todo' : 'done', todayStr());
+    writeStatus(node, wasDone ? 'todo' : 'done', today);
     if (wasDone) {
       // Unchecking lands on 'todo' unconditionally — a 'doing' step ticked
       // then unticked does not come back 'doing' — but nothing undo-worthy is
@@ -1225,7 +1232,7 @@ export const actions = {
    * carry no `done`: a container's state is derived from its children, and
    * storing one would be a second source of truth about the same work.
    */
-  setNodeStatus(nodeId: string, next: StepStatus, blockedOn?: string): boolean {
+  setNodeStatus(nodeId: string, next: StepStatus, blockedOn?: string, today = todayStr()): boolean {
     if (!isActiveNode(nodeId)) return false; // frozen on a completed project
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
@@ -1233,7 +1240,7 @@ export const actions = {
     if (stepStatus(node) === next && (next !== 'blocked' || node.blockedOn === blockedOn?.trim())) {
       return false;
     }
-    writeStatus(node, next, todayStr(), blockedOn);
+    writeStatus(node, next, today, blockedOn);
     setAndPersist({ goals });
     return true;
   },
@@ -2417,7 +2424,8 @@ export const actions = {
     setAndPersist({ tasks: [...state.tasks, task] });
   },
 
-  toggleTask(taskId: string): void {
+  /** `today` as on `toggleLeaf` — the day the completion is stamped with. */
+  toggleTask(taskId: string, today = todayStr()): void {
     const target = state.tasks.find((task) => task.id === taskId);
     if (!target) return;
     const wasDone = target.done;
@@ -2429,7 +2437,7 @@ export const actions = {
         delete updated.doneAt;
       } else {
         updated.done = true;
-        updated.doneAt = todayStr();
+        updated.doneAt = today;
       }
       return updated;
     });

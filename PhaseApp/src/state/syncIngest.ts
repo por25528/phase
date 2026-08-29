@@ -1,4 +1,4 @@
-import { parseOpsJournal, opsAfter, type CompanionOp } from '../lib/sync/ops';
+import { parseOpsJournal, opsAfter, opDay, type CompanionOp } from '../lib/sync/ops';
 import { handleAgentWrite, type AgentWriteDeps } from '../lib/agentWrites';
 
 /**
@@ -42,6 +42,11 @@ export interface IngestResult {
 
 function apply(op: CompanionOp, deps: IngestDeps): boolean {
   try {
+    // The op's OWN day, not this Mac's clock. An op made at 23:50 and ingested
+    // at 00:10 is a record of the day it was made — and the phone has already
+    // drawn it under that day, so any other answer is a row that jumps when
+    // the Mac catches up.
+    const write = { ...deps, today: opDay(op) };
     if (op.request.tool === 'add_loose_task') {
       // The store's own default is null, and it is passed explicitly so an
       // absent date can never read as today: capture and commitment are
@@ -49,7 +54,7 @@ function apply(op: CompanionOp, deps: IngestDeps): boolean {
       deps.actions.addTask(op.request.title, op.request.date ?? null, null);
       return true;
     }
-    return handleAgentWrite(op.request, deps).ok;
+    return handleAgentWrite(op.request, write).ok;
   } catch (err) {
     // `parseOpsJournal` checks the ENVELOPE and the verb; nothing checks the
     // payload, and `validAgentRequest` cannot be spent here without rejecting

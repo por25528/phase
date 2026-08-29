@@ -7,6 +7,7 @@ import { todayStr } from '@app/lib/dates';
 import { addDays } from '@app/lib/dates';
 import { weekDates } from '@app/lib/dates';
 import { createPhoneStore, type PhoneStore } from '../state/phoneStore';
+import { SyncBar } from './SyncBar';
 import { seededStore } from '../test/seededStore';
 import { Today } from './Today';
 
@@ -101,6 +102,76 @@ describe('ticking', () => {
     expect(
       within(section('Done today')).getByText('Buy stamps'),
     ).toBeDefined();
+  });
+});
+
+/**
+ * `Today` fires the ops and DISCARDS the boolean they answer with, unlike
+ * `Capture`, which has a claim to withhold. These cases are why that is safe:
+ * a tick that did not reach the journal changes nothing on the row, and the
+ * shell's `SyncBar` is what says so. Nothing about the failure is silent.
+ */
+describe('a tick that never reached the journal', () => {
+  async function jammed(): Promise<PhoneStore> {
+    const store = createPhoneStore({
+      readStateFile: async () => buildStateFile(slices(), META),
+      readJournal: async () => '',
+      appendOp: async () => {
+        throw new Error('the container is not writable');
+      },
+      rewriteJournal: async () => {
+        throw new Error('the container is not writable');
+      },
+      onChange: () => () => {},
+    });
+    await store.refresh();
+    return store;
+  }
+
+  it('leaves the row exactly where it was', async () => {
+    const store = await jammed();
+    render(<Today store={store} />);
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Buy stamps/ }));
+
+    expect(store.getState().projected!.tasks[0].done).toBe(false);
+    expect(store.getState().pendingCount).toBe(0);
+    expect(within(section('Today')).getByText('Buy stamps')).toBeDefined();
+    // The section is there — `Email the supervisor` finished today — and the
+    // row that failed to tick is NOT in it.
+    expect(within(section('Done today')).getByText('Email the supervisor')).toBeDefined();
+    expect(within(section('Done today')).queryByText('Buy stamps')).toBeNull();
+  });
+
+  it('is reported by the shell rather than swallowed', async () => {
+    const store = await jammed();
+    render(
+      <>
+        <Today store={store} />
+        <SyncBar store={store} />
+      </>,
+    );
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Buy stamps/ }));
+
+    expect(screen.getByRole('status', { name: 'Sync' }).textContent).toContain('didn’t save');
+  });
+
+  it('survives a refresh, so it cannot vanish before it is read', async () => {
+    const store = await jammed();
+    render(
+      <>
+        <Today store={store} />
+        <SyncBar store={store} />
+      </>,
+    );
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Buy stamps/ }));
+    // The refresh `onChange` fires whenever iCloud lands anything at all. It
+    // must not take the notice away.
+    await store.refresh();
+
+    expect(screen.getByRole('status', { name: 'Sync' }).textContent).toContain('didn’t save');
   });
 });
 

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  The iCloud Documents container the sync files live in. All three keys are
+	  required and the two identifier arrays must hold the SAME container:
+	  `ubiquity-container-identifiers` is the older key and
+	  `url(forUbiquityContainerIdentifier:)` still consults it.
+
+	  The plugin passes `nil` to that call, which resolves to the FIRST
+	  container listed — so if a second one is ever added it goes after this
+	  one, never before it.
+
+	  A Team ID is deliberately absent from this file and from the project's
+	  build settings. Signing is a per-developer fact; set the Team in Xcode →
+	  Signing & Capabilities and let automatic signing write it into your own
+	  local `project.pbxproj` diff.
+	-->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.phaseapp.phone</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.com.phaseapp.phone</string>
+	</array>
+</dict>
+</plist>

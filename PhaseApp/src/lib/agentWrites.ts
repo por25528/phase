@@ -45,6 +45,16 @@ import { slippedWork, type ReplanMove } from './replan';
 export interface AgentWriteDeps {
   actions: typeof storeActions;
   getState(): FullState;
+  /**
+   * The local day this write is being made AS. Absent means now, which is what
+   * a live agent request means.
+   *
+   * The phone's ingest passes the op's own day instead: a request that was
+   * composed at 23:50 and is being applied at 00:10 is a record of the 29th,
+   * and the projection the phone already drew for its owner said so. See
+   * `opDay` in `lib/sync/ops.ts`.
+   */
+  today?: string;
 }
 
 const PERSIST_FAILED =
@@ -136,6 +146,12 @@ export function handleAgentWrite(
 ): AgentResponse {
   const { actions, getState } = deps;
   const state = getState();
+  /**
+   * The day this write is being made AS — `deps.today` when a caller has one
+   * (the phone's ingest does), otherwise now. Every branch that STAMPS a day
+   * spends this, and no branch that merely reads the calendar does.
+   */
+  const asOfDay = deps.today ?? todayStr();
 
   /** Every mutation exits through here, so the persist check cannot be forgotten. */
   const settled = (data: unknown): AgentResponse =>
@@ -225,7 +241,7 @@ export function handleAgentWrite(
         // undo the checkbox arms. `toggleLeaf` TOGGLES, so it may only fire on
         // the transition INTO 'done'.
         if (isDone(target.found)) return errorResponse('That status change did not apply.');
-        actions.toggleLeaf(request.nodeId);
+        actions.toggleLeaf(request.nodeId, asOfDay);
         return settled({ nodeId: request.nodeId, status: 'done' });
       }
       // `setNodeStatus`, not `setNodesStatus`: the singular form is the one
@@ -234,6 +250,7 @@ export function handleAgentWrite(
         request.nodeId,
         request.status,
         request.status === 'blocked' ? request.blockedOn : undefined,
+        asOfDay,
       )) {
         return errorResponse('That status change did not apply.');
       }
@@ -327,12 +344,12 @@ export function handleAgentWrite(
         // they would un-tick it, and reporting `{ completed }` about that is
         // the one thing this surface may never do.
         if (isDone(target.found)) return errorResponse(`"${target.found.title}" is already done.`);
-        actions.toggleLeaf(request.ref.id);
+        actions.toggleLeaf(request.ref.id, asOfDay);
       } else {
         const task = state.tasks.find((t) => t.id === request.ref.id);
         if (!task) return errorResponse(`No task with id "${request.ref.id}".`);
         if (task.done) return errorResponse(`"${task.title}" is already done.`);
-        actions.toggleTask(request.ref.id);
+        actions.toggleTask(request.ref.id, asOfDay);
       }
       return settled({ completed: request.ref.id });
     }
@@ -444,10 +461,13 @@ export function handleAgentWrite(
     }
 
     case 'log_time': {
-      const date = request.date ?? todayStr();
+      const date = request.date ?? asOfDay;
       if (!isValidLocalDate(date)) return errorResponse(`"${date}" is not a real date.`);
-      // Future time is a plan, not a record; the ledger holds records.
-      if (date > todayStr()) return errorResponse(`${date} has not happened yet.`);
+      // Future time is a plan, not a record; the ledger holds records. Judged
+      // against the day the request was MADE, not the day it is being read:
+      // for a live agent those are the same moment, and for a phone op read
+      // after midnight the op's own day is the only honest yardstick.
+      if (date > asOfDay) return errorResponse(`${date} has not happened yet.`);
       const target = workItem(state, request.ref);
       if (failed(target)) return errorResponse(target.error);
       if (!actions.logSession(request.ref.kind, request.ref.id, request.minutes, date)) {

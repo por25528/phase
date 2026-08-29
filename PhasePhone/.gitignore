@@ -1,6 +1,21 @@
 node_modules
 dist
-ios
 *.local
 *.tsbuildinfo
 .DS_Store
+
+# `ios/` IS checked in — it is the Capacitor shell, and regenerating it would
+# lose the entitlements, the iCloud Info.plist block and the bundle id along
+# with it. What must NOT be checked in is listed in `ios/.gitignore`, which
+# Capacitor writes: `App/Pods`, `App/App/public` (a copy of `dist/`), the
+# generated `capacitor.config.json` and `config.xml`, build output and
+# `xcuserdata`. Everything there is reproduced by `npm run ios:sync`.
+ios/App/Pods
+ios/App/build
+ios/App/output
+ios/App/App/public
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/DerivedData
+ios/capacitor-cordova-ios-plugins
+**/xcuserdata

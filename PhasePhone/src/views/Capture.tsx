@@ -38,8 +38,14 @@ export function Capture({ store }: { store: PhoneStore }) {
   async function submit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     if (!trimmed) return;
-    if (goalId === NO_PROJECT) await store.ops.addLooseTask(trimmed, day ?? undefined);
-    else await store.ops.addStep(goalId, trimmed);
+    const landed =
+      goalId === NO_PROJECT
+        ? await store.ops.addLooseTask(trimmed, day ?? undefined)
+        : await store.ops.addStep(goalId, trimmed);
+    // A write that failed leaves the field alone. Clearing it would destroy
+    // the only copy of the thought this screen exists to catch, and the
+    // shell's `SyncBar` is already saying why nothing happened.
+    if (!landed) return;
     setTitle('');
     setDay(null);
     setCaptured(trimmed);

@@ -1,9 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { replayOps } from './replay';
+import { todayStr } from '../dates';
 import type { CompanionOp, CompanionRequest } from './ops';
 import type { SyncSlices } from './stateFile';
 
 const TS = '2026-08-25T09:30:00.000Z';
+/**
+ * The day `op()` CARRIES, and therefore the day every stamp below reads.
+ *
+ * It is on the op rather than derived from `TS`, so these assertions are exact
+ * literals in every timezone the suite is ever run in. Deriving it would make
+ * them agree with `opDay` by construction and prove nothing; leaving the op
+ * undated would make `DAY` a different string in Honolulu than in Kiritimati.
+ * The fallback for an op with no `day` is exercised deliberately, by `undated`
+ * inside a pinned zone.
+ */
 const DAY = '2026-08-25';
 
 function slices(): SyncSlices {
@@ -30,7 +41,14 @@ function slices(): SyncSlices {
 }
 
 function op(request: CompanionRequest, over: Partial<CompanionOp> = {}): CompanionOp {
-  return { id: 'op-1', ts: TS, baseGeneration: 3, request, ...over };
+  return { id: 'op-1', ts: TS, day: DAY, baseGeneration: 3, request, ...over };
+}
+
+/** An op from a journal written before `day` existed — the fallback path. */
+function undated(request: CompanionRequest, over: Partial<CompanionOp> = {}): CompanionOp {
+  const older = op(request, over);
+  delete older.day;
+  return older;
 }
 
 /** The node with `id` in the projection's first goal, wherever it sits. */
@@ -193,6 +211,72 @@ describe('append_note', () => {
       op({ tool: 'append_note', ref: { kind: 'step', id: 'gone' }, markdown: 'lost' }),
     ]);
     expect(out.goals).toEqual(slices().goals);
+  });
+});
+
+/**
+ * The day a stamp names is the LOCAL calendar day, because that is the day
+ * `todayStr()` hands `toggleTask` and `applyStatus` when the Mac ingests the
+ * same op. `op.ts` is a UTC instant: its first ten characters name a DIFFERENT
+ * day for everyone east of Greenwich between midnight and their offset, and
+ * west of it after their evening. A row ticked at 00:30 in Bangkok would be
+ * stamped yesterday, and `buildDailyWork` — which matches `doneAt` against
+ * today — would drop it out of "Done today" the instant it was ticked.
+ */
+describe('the day an op is stamped with', () => {
+  const ORIGINAL_TZ = process.env.TZ;
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  /** Node re-reads `TZ` per `Date` call, so a zone can be pinned per case. */
+  function inZone<T>(tz: string, fn: () => T): T {
+    process.env.TZ = tz;
+    return fn();
+  }
+
+  it('is the local day east of Greenwich, where UTC is still yesterday', () => {
+    // 00:30 on the 30th in Bangkok; 17:30 on the 29th in UTC.
+    const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
+      undated({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: '2026-08-29T17:30:00.000Z' }),
+    ]));
+    expect(out.tasks[0].doneAt).toBe('2026-08-30');
+  });
+
+  it('is the local day west of Greenwich, where UTC is already tomorrow', () => {
+    // 21:30 on the 29th in Los Angeles; 04:30 on the 30th in UTC.
+    const out = inZone('America/Los_Angeles', () => replayOps(slices(), [
+      undated({ tool: 'complete_task', ref: { kind: 'step', id: 'n1', goalId: 'g1' } }, { ts: '2026-08-30T04:30:00.000Z' }),
+    ]));
+    expect(node(out, 'n1')).toMatchObject({ status: 'done', doneAt: '2026-08-29' });
+  });
+
+  it('dates an unstated log_time session the same way', () => {
+    const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
+      undated({ tool: 'log_time', ref: { kind: 'task', id: 't1', goalId: null }, minutes: 30 }, { ts: '2026-08-29T17:30:00.000Z' }),
+    ]));
+    expect(out.sessions[0].date).toBe('2026-08-30');
+  });
+
+  it('is the day the OP carries, and beats the reader’s own clock', () => {
+    // The phone recorded the 29th; in this reader's zone the SAME instant is
+    // the 30th, and the case above proves an undated op would read it that
+    // way. The phone is where the tap happened, so its answer wins.
+    const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
+      op(
+        { tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } },
+        { ts: '2026-08-29T17:30:00.000Z', day: '2026-08-29' },
+      ),
+    ]));
+    expect(out.tasks[0].doneAt).toBe('2026-08-29');
+  });
+
+  it('falls back to today when the timestamp is unreadable, rather than stamping NaN', () => {
+    const out = replayOps(slices(), [
+      undated({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: 'not-a-timestamp' }),
+    ]);
+    expect(out.tasks[0].doneAt).toBe(todayStr());
   });
 });
 

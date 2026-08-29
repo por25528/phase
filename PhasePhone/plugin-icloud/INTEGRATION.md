@@ -1,9 +1,19 @@
 # Integrating `phase-icloud`
 
-Post-merge steps for the coordinator. Everything here is outside track C's file
-ownership — this plugin package is self-contained, and wiring it up touches
-`PhasePhone/` files that track B owns and an Xcode project that does not exist
-yet.
+> **Status: §§1, 2 and 6 are done and in the repo.** The plugin is a
+> dependency, `capacitor.config.ts` exists, `ios/` was generated and is checked
+> in with the entitlements and the `Info.plist` block of §4 already written,
+> and the bridge adapter of §6 is `src/bridge/icloudBridge.ts`. What is left is
+> §3 (your Team, in Xcode) and §5 (`PHASE_SYNC_DIR` on the Mac).
+>
+> **`PhasePhone/README.md` is the living document** — commands, what is checked
+> in, what you have to supply, and the device smoke checklist. This file is
+> kept for the reasoning behind each piece, and for §5's Option B.
+
+Post-merge steps for the coordinator. Everything here was outside track C's
+file ownership — this plugin package is self-contained, and wiring it up
+touches `PhasePhone/` files that track B owns and an Xcode project that did
+not exist at the time.
 
 Worked example uses the bundle id **`com.phaseapp.phone`** throughout. The one
 value that cannot be written down here is your **Apple Developer Team ID** (a
@@ -13,7 +23,7 @@ written `<TEAMID>`.
 
 ---
 
-## 1. Add the plugin to PhasePhone
+## 1. Add the plugin to PhasePhone — **done**
 
 In `PhasePhone/package.json`:
 
@@ -45,16 +55,15 @@ npm --prefix plugin-icloud run build
 
 npm symlinks `file:` dependencies. CocoaPods resolves `:path` through the
 symlink fine in the normal case; if `pod install` later complains that it
-cannot find `PhaseICloud.podspec`, reinstall with copies instead:
+cannot find `PhaseIcloud.podspec`, reinstall with copies instead:
 
 ```sh
 npm install --install-links
 ```
 
-## 2. Capacitor config
+## 2. Capacitor config — **done**
 
-`PhasePhone/capacitor.config.ts` (create it — Capacitor reads it at `cap add`
-time):
+`PhasePhone/capacitor.config.ts` (Capacitor reads it at `cap add` time):
 
 ```ts
 import type { CapacitorConfig } from '@capacitor/cli';
@@ -74,20 +83,31 @@ assets before every sync — `cap sync` copies whatever is in `dist/`, it does n
 run your bundler:
 
 ```sh
-npm run build
-npx cap add ios      # once
-npx cap sync ios     # after every web build or dependency change
+npm run ios:sync     # npm run build && cap sync ios — after every change
 ```
 
-`cap add ios` creates `PhasePhone/ios/`. `cap sync` regenerates the plugin block
-in `ios/App/Podfile` — you should see this line appear, which is how you know
-Capacitor found the podspec:
+`cap add ios` created `PhasePhone/ios/`, which is now **checked in**; do not
+run it again, or the entitlements and the `Info.plist` block go with it.
+`cap sync` regenerates the plugin block in `ios/App/Podfile`, and this is the
+line that proves Capacitor found the podspec:
 
 ```ruby
-pod 'PhaseICloud', :path => '../../node_modules/phase-icloud'
+pod 'PhaseIcloud', :path => '../../plugin-icloud'
 ```
 
-## 3. Xcode: signing
+Two things about that line differ from what this document originally predicted,
+and both are Capacitor's doing rather than a choice:
+
+- The pod is **`PhaseIcloud`**, not `PhaseICloud`. Capacitor derives the name
+  from the npm package name (`phase-icloud` → `PhaseIcloud`, via `fixName` in
+  `@capacitor/cli`) with no override, and CocoaPods rejects a podspec whose
+  `s.name` disagrees with the name it was asked for. The file is
+  `PhaseIcloud.podspec`; the Swift class stays `PhaseICloud`.
+- The path resolves through the npm symlink to `../../plugin-icloud` rather
+  than to `node_modules/phase-icloud`. Same directory, and CocoaPods is happy
+  with it.
+
+## 3. Xcode: signing — **yours to do**
 
 ```sh
 npx cap open ios
@@ -102,12 +122,15 @@ In the **App** target → **Signing & Capabilities**:
 4. Deployment target: **iOS 14.0** or later (Capacitor 7's floor, and the
    podspec's).
 
-## 4. Xcode: the iCloud capability
+## 4. Xcode: the iCloud capability — **already written**
 
-Still in **Signing & Capabilities**: **+ Capability** → **iCloud** → tick
-**iCloud Documents** → **+** under Containers → `iCloud.com.phaseapp.phone`.
+`ios/App/App/App.entitlements` is in the repo and `CODE_SIGN_ENTITLEMENTS`
+points at it from both build configurations, so the capability should already
+read as present. If Xcode shows it missing, **+ Capability** → **iCloud** →
+tick **iCloud Documents** → **+** under Containers →
+`iCloud.com.phaseapp.phone` rewrites the same file.
 
-That writes `ios/App/App/App.entitlements`. The complete file, spelled out:
+The complete file, spelled out:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -140,7 +163,7 @@ The plugin passes `nil` to `url(forUbiquityContainerIdentifier:)`, which
 resolves to the first container above. By default its `Documents/` is private.
 To surface it as a folder in the Files app and in Finder's iCloud Drive — which
 is what lets you look at `state.json` with your own eyes during the smoke test —
-add to `ios/App/App/Info.plist`:
+`ios/App/App/Info.plist` carries (already added):
 
 ```xml
 <key>NSUbiquitousContainers</key>
@@ -225,10 +248,11 @@ Open" distribution the project deliberately kept. Option A buys the same
 behaviour for free. Only take B if a second desktop or a Mac App Store build
 ever needs it.
 
-## 6. The bridge adapter
+## 6. The bridge adapter — **done**
 
-Create `PhasePhone/src/bridge/icloudBridge.ts`. It maps the plugin onto track
-B's `FileBridge`, quoted here verbatim from the plan:
+`PhasePhone/src/bridge/icloudBridge.ts` exports `createICloudBridge()` and
+`App.tsx` picks it on a native platform. It maps the plugin onto track B's
+`FileBridge`, quoted here verbatim from the plan:
 
 ```ts
 export interface FileBridge {
@@ -289,42 +313,10 @@ in the browser if you ever want one code path.)
 
 ## 7. Device smoke checklist
 
-Prerequisites: iPhone and Mac signed into the **same** iCloud account, iCloud
-Drive on for both, phone off Low Data Mode, Mac app running with
-`PHASE_SYNC_DIR` set per §5.
-
-Run in order and confirm each before moving on:
-
-- [ ] `npm run build && npx cap sync ios && npx cap open ios`, then Run on a
-      real device (not the simulator — the simulator's iCloud sync is
-      unreliable and will make you chase a bug that is not yours).
-- [ ] On the Mac, tick anything in Phase. Confirm
-      `state.json` appears at `$PHASE_SYNC_DIR` and its `meta.generation`
-      increments on each subsequent edit:
-      `cat "$PHASE_SYNC_DIR/state.json" | python3 -m json.tool | head -20`
-- [ ] Launch the phone app. Today shows real work, and the "as of" stamp is
-      recent. This proves `readStateFile` + the download wait.
-- [ ] In Finder, `~/Library/Mobile Documents/iCloud~com~phaseapp~phone/Documents/`
-      shows a `Phase` folder (the §4 Info.plist block working).
-- [ ] Tick a row on the phone. Confirm `ops-phone.jsonl` gains one line:
-      `tail -3 "$PHASE_SYNC_DIR/ops-phone.jsonl"`
-- [ ] Within seconds the Mac toasts `Phone: 1 change applied`, the task
-      completes there, and `state.json` regenerates with that op's `id` as
-      `meta.ingestedThroughOpId`.
-- [ ] The phone re-renders from canonical and `ops-phone.jsonl` gets compacted
-      back down (the ingested line disappears on the phone's next append).
-- [ ] **Offline:** put the phone in Airplane Mode, tick two more rows, confirm
-      they show as done locally. Turn Airplane Mode off — both land on the Mac,
-      in order, and neither double-applies.
-- [ ] **Cold container:** delete the app from the phone and reinstall. First
-      launch should reach "ready", not "never synced" — that is the
-      `startDownloadingUbiquitousItem` wait doing its job. If it lands on
-      "never synced" and then flips to ready a moment later, that is the
-      `filesChanged` metadata query catching up; acceptable, but worth noting
-      in the log.
-- [ ] **Conflict:** delete a task on the Mac that the phone still shows, then
-      tick it on the phone. The Mac must toast
-      `Phone: 0 changes applied, 1 couldn't` and stay unbroken.
+Moved, and extended: **`PhasePhone/README.md` → Device smoke checklist**. It is
+the same run in the same order, plus the two cases this document predates — a
+tick made between local midnight and your UTC offset, and a read that fails
+while the last good day stays on screen.
 
 ## Troubleshooting
 
@@ -332,6 +324,6 @@ Run in order and confirm each before moving on:
 | --- | --- |
 | `readStateFile` always `null` on device | Container not created — the iCloud capability is missing, or the device is signed out of iCloud. Check Settings → [name] → iCloud → Apps Using iCloud. |
 | Container folder never appears in Finder | The `NSUbiquitousContainers` block is missing, or `CFBundleVersion` was not bumped after adding it. |
-| `pod install` cannot find `PhaseICloud.podspec` | npm symlinked the `file:` dep somewhere CocoaPods will not follow — reinstall with `npm install --install-links`. |
+| `pod install` cannot find `PhaseIcloud.podspec` | npm symlinked the `file:` dep somewhere CocoaPods will not follow — reinstall with `npm install --install-links`. |
 | Ops appear in the journal but the Mac never reacts | `PHASE_SYNC_DIR` is not set in the environment the desktop app actually launched from (a GUI launch does not read your shell profile). |
 | `filesChanged` never fires | `NSMetadataQuery` only reports the app's own container's `Documents` scope. If you moved to Option B, confirm the shared container is **first** in the entitlement array, since the plugin passes `nil`. |

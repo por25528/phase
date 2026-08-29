@@ -1,5 +1,5 @@
 import type { Goal, GoalNode, Session, Task } from '../../db/types';
-import type { CompanionOp } from './ops';
+import { opDay, type CompanionOp } from './ops';
 import type { SyncSlices } from './stateFile';
 import { cloneGoals, findNode, isLeafNode } from '../tree';
 import { applyStatus } from '../status';
@@ -23,6 +23,11 @@ import { applyStatus } from '../status';
  * off the op id is what stops a second replay of the same journal from
  * appending the row twice.
  *
+ * The DAY a branch stamps comes from `opDay`, which the Mac's ingest spends on
+ * the same op. That one shared definition is the whole cross-midnight
+ * guarantee: the day this projection predicts is the day the Mac will actually
+ * write, whatever hour it is opened at and whatever zone it is in.
+ *
  * Pure: the input slices are never mutated. `habits` and `lives` are shared by
  * reference because no companion verb touches them.
  */
@@ -37,11 +42,6 @@ export function replayOps(slices: SyncSlices, ops: readonly CompanionOp[]): Sync
   };
   for (const op of ops) apply(out, op);
   return out;
-}
-
-/** The op's own day, which is what a completion or an unstated log is stamped with. */
-function dayOf(op: CompanionOp): string {
-  return op.ts.slice(0, 10);
 }
 
 /** An ACTIVE project — a completed one is frozen, exactly as `agentWrites` has it. */
@@ -89,12 +89,12 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       if (request.ref.kind === 'step') {
         const leaf = activeLeaf(out, request.ref.id, request.ref.goalId);
         if (!leaf) return;
-        writeStatus(leaf, 'done', dayOf(op));
+        writeStatus(leaf, 'done', opDay(op));
         return;
       }
       const at = out.tasks.findIndex((t) => t.id === request.ref.id);
       if (at === -1) return;
-      out.tasks[at] = { ...out.tasks[at], done: true, doneAt: dayOf(op) };
+      out.tasks[at] = { ...out.tasks[at], done: true, doneAt: opDay(op) };
       return;
     }
 
@@ -104,7 +104,7 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       if (request.blockedOn !== undefined && request.status !== 'blocked') return;
       const leaf = activeLeaf(out, request.nodeId);
       if (!leaf) return;
-      writeStatus(leaf, request.status, dayOf(op), request.blockedOn);
+      writeStatus(leaf, request.status, opDay(op), request.blockedOn);
       return;
     }
 
@@ -141,7 +141,7 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       const session: Session = {
         id: op.id,
         goalId: request.ref.goalId,
-        date: request.date ?? dayOf(op),
+        date: request.date ?? opDay(op),
         minutes: request.minutes,
         note: '',
         ...(request.ref.kind === 'step' ? { nodeId: request.ref.id } : { taskId: request.ref.id }),
