@@ -35,11 +35,16 @@ npm run verify:mac # check what that build actually produced
 
 `npm run build:mac` needs no Apple account, so it produces an **ad-hoc
 signature**: valid on the Mac that built it and rejected on every other one.
-That is the right trade for a build you are testing yourself, and it is the one
-case where a Gatekeeper override is honest — you are the one who made the app.
+That is the right trade for a build you are testing yourself.
+
+It also means macOS will not open your own DMG without being told to. That
+override is legitimate here and nowhere else — you compiled the code, so you
+are not being asked to trust a stranger. The steps are in
+[`docs/macos-signing.md`](docs/macos-signing.md#opening-your-own-ad-hoc-build).
 
 Never hand that DMG to anyone else, and never publish one. Anything on the
-releases page goes through the signed, notarized path below.
+releases page goes through the signed, notarized path below, where a user is
+asked to trust nothing and to override nothing.
 
 ## Releasing
 

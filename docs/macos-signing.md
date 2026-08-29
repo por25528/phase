@@ -24,7 +24,7 @@ which `electron-builder.cjs` calls. `scripts/releaseConfig.test.ts` and
 
 ```bash
 cd PhaseApp
-npm run build:mac     # → PhaseApp/release/Phase-<version>-arm64.dmg (and x64)
+npm run build:mac     # → PhaseApp/release/, one folder per architecture
 npm run verify:mac    # asserts ad-hoc + hardened runtime + entitlements
 ```
 
@@ -33,27 +33,56 @@ is an **ad-hoc signature**: valid on the machine that produced it, and rejected
 everywhere else. That is fine for testing your own build, and it is the reason
 this path must never be what a user downloads.
 
-If you hand an ad-hoc DMG to someone else, they will have to override Gatekeeper
-to open it. Do not publish one and do not write override instructions for one:
-the published DMG is notarized and opens by double-clicking.
+`verify:mac` does not name a path. electron-builder writes `release/mac` for
+x64 and `release/mac-arm64` for arm64, so which folders exist depends on the
+machine and the flags; `scripts/verify-build.cjs` asks the filesystem and checks
+every bundle it finds. A run that finds nothing fails — a verifier that
+silently checks zero artifacts is indistinguishable from one that passed.
+
+### Opening your own ad-hoc build
+
+An ad-hoc signature carries no Developer ID and no notarization ticket, so
+Gatekeeper will refuse the first launch. Overriding it here is legitimate: you
+compiled the code, and the app you are being warned about is your own build.
+
+1. Open the DMG and drag **Phase** to **Applications** as usual.
+2. Launch it once. macOS refuses and offers only **Done**.
+3. Open **System Settings → Privacy & Security**, scroll to the message naming
+   Phase, and click **Open Anyway**.
+4. Launch it again and confirm.
+
+One approval per build, per machine. Equivalently, from a terminal:
+
+```sh
+xattr -d com.apple.quarantine /Applications/Phase.app
+```
+
+**This is the developer exception and it stays here.** It does not belong in
+the README's download section or in the release notes: those describe the
+published DMG, which is notarized and opens by double-clicking. Anyone who
+needs these steps for a build they did not compile is being handed a build that
+should never have been published — `scripts/releasePackaging.test.ts` fails the
+suite if this copy reappears on an end-user install path.
 
 ## The release build
 
 Tag and push; `.github/workflows/release.yml` does the rest:
 
-1. `npm ci`, `npm test`, `npm run build`.
-2. **Preflight** — `scripts/check-release-credentials.cjs` fails the job in
-   seconds if a secret is missing, blank, or belongs to the wrong notarization
-   method. It prints names only.
-3. Materialise the App Store Connect key into `$RUNNER_TEMP` (never the
-   workspace).
+1. **Preflight** — `scripts/check-release-credentials.cjs`, before `npm ci`,
+   so a bad secret costs seconds rather than an install, a suite and a build.
+   It fails if a secret is missing, blank, or belongs to the wrong notarization
+   method, and for `api-key` it decodes the key in memory and checks it really
+   is a PKCS#8 file. It prints names only.
+2. `npm ci`, `npm test`, `npm run build`.
+3. `scripts/write-apple-api-key.cjs` decodes the key into `$RUNNER_TEMP` — never
+   the workspace — at mode 0600.
 4. `electron-builder` imports the certificate into a throwaway keychain, signs
    with the hardened runtime and the entitlements, then notarizes and staples
    the `.app`.
 5. `scripts/notarize-dmg.sh` notarizes and staples each DMG — electron-builder
    staples the app but not the image around it, and Gatekeeper assesses the
    downloaded image on its own.
-6. `scripts/verify-macos-artifacts.sh release …` proves what was produced.
+6. `node scripts/verify-build.cjs release` proves what was produced.
 7. The key file is deleted (`if: always()`).
 8. Only then is the GitHub release created.
 
@@ -68,6 +97,21 @@ The verifier asserts, on the `.app` and on each DMG:
 - `Authority=Developer ID Application`, and not `Signature=adhoc`
 - `xcrun stapler validate` finds a ticket
 - `spctl --assess` reports `accepted, source=Notarized Developer ID`
+
+It names no path: the bundles and images are discovered under `release/`, so
+every architecture that was built is checked, and finding none fails the job.
+
+### The two names for the App Store Connect key
+
+`APPLE_API_KEY_P8_BASE64` is the **repository secret** — base64 of the `.p8`.
+`APPLE_API_KEY` is what electron-builder and `notarytool --key` read, and it is
+a **path**. They are separate on purpose: one name for both is how a build ends
+up handing notarytool a base64 blob as a filename and getting an error that
+names neither. `scripts/releaseConfig.cjs` keeps the two contracts apart —
+`requiredReleaseSecrets` for the preflight, `requiredBuilderVars` for
+electron-builder — and `assertBuilderEnv` additionally checks that the path
+names a file that exists, so a skipped materialise step fails at the config seam
+rather than becoming an unnotarized DMG.
 
 ## The Apple-account seam
 
@@ -146,9 +190,13 @@ reason: it is a sandbox key with nothing to inherit.
 
 - No credential is written to `$GITHUB_ENV`, to the workspace, or to the log.
   Every workflow step passes them through `env:` straight into the tool.
-- The `.p8` is decoded with `printenv … | base64 --decode`, so the value never
-  appears in the rendered `run:` script, and lands in `$RUNNER_TEMP` under
-  `umask 077`.
+- The `.p8` is decoded by `scripts/write-apple-api-key.cjs`, which reads the
+  secret from the environment — so the value never appears in the rendered
+  `run:` script — validates the base64 alphabet, the round trip and the PKCS#8
+  header, and only then writes to `$RUNNER_TEMP` at mode 0600. A corrupted
+  secret leaves no file behind rather than a plausible-looking broken one.
+  `base64 --decode` was doing this before and it accepts corrupted input
+  silently; the failure then surfaced inside notarytool, one signed app later.
 - `scripts/notarize-dmg.sh` passes credentials as `notarytool` arguments only
   and never enables `set -x`; a test asserts that.
 - `scripts/check-release-credentials.cjs` and `releaseConfig.cjs` report

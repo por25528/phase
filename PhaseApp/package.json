@@ -15,7 +15,7 @@
     "tray-icon": "bash scripts/make-tray-icon.sh",
     "app:dev": "VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
     "build:mac": "npm run build && electron-builder --mac",
-    "verify:mac": "bash scripts/verify-macos-artifacts.sh dev release/mac-arm64/Phase.app"
+    "verify:mac": "node scripts/verify-build.cjs dev"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -5,6 +5,12 @@
 // then produces a DMG every user's Gatekeeper will reject. This runs first, in
 // its own step, so a missing secret costs seconds instead of a bad release.
 //
+// It checks the REPOSITORY SECRETS, which is a different set from what
+// electron-builder later reads: here the App Store Connect key is base64
+// (APPLE_API_KEY_P8_BASE64), and it is decoded in memory and thrown away, so a
+// truncated or mistyped secret fails now rather than inside notarytool. Nothing
+// is written; the file the build uses is materialised by its own step.
+//
 // It prints names. It never prints, logs or writes a value.
 
 const {
@@ -13,8 +19,9 @@ const {
   signingMode,
   notaryMethod,
   requiredReleaseSecrets,
-  assertReleaseCredentials,
+  assertReleaseSecrets,
 } = require('./releaseConfig.cjs');
+const { API_KEY_BASE64_ENV, decodeApiKey } = require('./appleApiKey.cjs');
 
 const env = process.env;
 
@@ -27,9 +34,22 @@ if (signingMode(env) !== 'developer-id') {
 
 try {
   const method = notaryMethod(env);
-  assertReleaseCredentials(env);
-  console.log(`Release signing on, notarization method "${method}".`);
-  for (const name of requiredReleaseSecrets(env)) console.log(`  ${name}: present`);
+  assertReleaseSecrets(env);
+
+  if (method === 'api-key') {
+    // Decoded and discarded. Proving the secret is a real PKCS#8 key here is
+    // the difference between a 10-second failure and a 20-minute one.
+    const bytes = decodeApiKey(env[API_KEY_BASE64_ENV]);
+    console.log(`Release signing on, notarization method "${method}".`);
+    console.log(`  ${API_KEY_BASE64_ENV}: decodes to a ${bytes.length}-byte PKCS#8 key`);
+  } else {
+    console.log(`Release signing on, notarization method "${method}".`);
+  }
+
+  for (const name of requiredReleaseSecrets(env)) {
+    if (name === API_KEY_BASE64_ENV) continue; // already reported, in more detail
+    console.log(`  ${name}: present`);
+  }
 } catch (err) {
   console.error(`\nRelease credentials are not usable.\n\n${err.message}\n`);
   console.error(

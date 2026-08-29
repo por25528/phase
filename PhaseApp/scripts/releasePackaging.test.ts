@@ -1,6 +1,7 @@
 // Guards the parts of the release path that are files rather than functions:
-// the entitlements the hardened runtime is signed with, and the workflow that
-// drives signing, notarization, verification and cleanup.
+// the entitlements the hardened runtime is signed with, the workflow that
+// drives signing, notarization, verification and cleanup, and the install copy
+// a user actually reads.
 //
 // These are the failures that only show up in a user's Console or on a
 // Gatekeeper prompt weeks after the tag, so they are worth pinning here.
@@ -13,7 +14,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
-const { NOTARY_SECRETS, SIGNING_SECRETS } =
+const { NOTARY_SOURCE_SECRETS, NOTARY_BUILDER_VARS, SIGNING_SECRETS } =
   nativeRequire('./releaseConfig.cjs') as typeof import('./releaseConfig.cjs');
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -21,7 +22,8 @@ const appDir = path.dirname(scriptsDir);
 const repoRoot = path.dirname(appDir);
 
 const read = (relativeToApp: string) => readFileSync(path.join(appDir, relativeToApp), 'utf8');
-const workflow = readFileSync(path.join(repoRoot, '.github/workflows/release.yml'), 'utf8');
+const readRepo = (relativeToRoot: string) => readFileSync(path.join(repoRoot, relativeToRoot), 'utf8');
+const workflow = readRepo('.github/workflows/release.yml');
 
 /** Every hardened-runtime exception an Electron app needs to launch at all. */
 const REQUIRED_ENTITLEMENTS = [
@@ -70,14 +72,21 @@ describe('release workflow', () => {
   });
 
   it('wires every secret both notarization methods can need', () => {
-    for (const name of [...SIGNING_SECRETS, ...NOTARY_SECRETS['api-key'], ...NOTARY_SECRETS['apple-id']]) {
+    const names = new Set([
+      ...SIGNING_SECRETS,
+      ...NOTARY_SOURCE_SECRETS['api-key'],
+      ...NOTARY_SOURCE_SECRETS['apple-id'],
+      ...NOTARY_BUILDER_VARS['api-key'],
+      ...NOTARY_BUILDER_VARS['apple-id'],
+    ]);
+    for (const name of names) {
       expect(workflow, `${name} is never exported`).toContain(`${name}:`);
     }
   });
 
   it('takes every credential from secrets, never from a literal', () => {
     for (const line of workflow.split('\n')) {
-      const assignment = /^\s*(CSC_LINK|CSC_KEY_PASSWORD|APPLE_API_KEY_ID|APPLE_API_ISSUER|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|APPLE_TEAM_ID):\s*(.+)$/.exec(line);
+      const assignment = /^\s*(CSC_LINK|CSC_KEY_PASSWORD|APPLE_API_KEY_P8_BASE64|APPLE_API_KEY_ID|APPLE_API_ISSUER|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|APPLE_TEAM_ID):\s*(.+)$/.exec(line);
       if (!assignment) continue;
       expect(assignment[2], `${assignment[1]} is not read from secrets`).toContain('secrets.');
     }
@@ -91,13 +100,31 @@ describe('release workflow', () => {
   });
 
   it('keeps the App Store Connect key outside the workspace, in the runner temp', () => {
-    expect(workflow).toMatch(/runner\.temp|RUNNER_TEMP/);
+    expect(workflow).toMatch(/runner\.temp/);
+    expect(workflow).toMatch(/\$RUNNER_TEMP/);
+    // The workspace is what gets packed and uploaded; a key there could ship.
+    expect(workflow).not.toMatch(/APPLE_API_KEY:.*PhaseApp\//);
+  });
+
+  it('reads `runner` only where GitHub actually provides it', () => {
+    // Workflow-level `env` may use github, secrets, inputs and vars — and NOT
+    // runner. `${{ runner.temp }}` there silently resolves to nothing, which
+    // would have put the key at /apple-api-key.p8.
+    const beforeJobs = workflow.slice(0, indexOf('\njobs:'));
+    expect(beforeJobs, '`runner` is not available to a workflow-level env key')
+      .not.toContain('runner.');
+    for (const line of workflow.split('\n')) {
+      if (!line.includes('runner.')) continue;
+      // Step keys are indented far deeper than a job-level `env:` entry.
+      expect(line.search(/\S/), `runner. used outside a step: ${line.trim()}`)
+        .toBeGreaterThanOrEqual(10);
+    }
   });
 
   it('deletes the materialised key even when the build fails', () => {
     const cleanup = /- name: [^\n]*\n(?:[^\n]*\n)*?\s*if: always\(\)/.test(workflow);
     expect(cleanup, 'no `if: always()` cleanup step').toBe(true);
-    expect(workflow).toMatch(/rm -f/);
+    expect(workflow).toMatch(/rm -f "\$RUNNER_TEMP\/\$PHASE_API_KEY_NAME"/);
   });
 
   it('fails on missing credentials before it spends an install, a suite or a build', () => {
@@ -107,17 +134,126 @@ describe('release workflow', () => {
   });
 
   it('verifies the artifacts before it publishes them', () => {
-    expect(indexOf('verify-macos-artifacts.sh')).toBeLessThan(indexOf('action-gh-release'));
+    expect(indexOf('verify-build.cjs release')).toBeLessThan(indexOf('action-gh-release'));
   });
 
   it('no longer accepts an ad-hoc signature as a releasable one', () => {
     expect(workflow).not.toContain('Signature=adhoc');
+  });
+
+  describe('the App Store Connect key has two names, and they are not swapped', () => {
+    /** Text of one step, from its `- name:` to the next step at that indent. */
+    const step = (name: string) => {
+      const start = workflow.indexOf(`- name: ${name}`);
+      expect(start, `no step named ${name}`).toBeGreaterThan(-1);
+      const rest = workflow.slice(start + 1);
+      const end = rest.indexOf('\n      - ');
+      return rest.slice(0, end === -1 ? undefined : end);
+    };
+
+    it('gives the preflight the base64 secret and no path', () => {
+      const preflight = step('Preflight — release credentials');
+      expect(preflight).toContain('APPLE_API_KEY_P8_BASE64:');
+      expect(preflight).not.toMatch(/^\s*APPLE_API_KEY:/m);
+    });
+
+    it('gives electron-builder the path and never the base64', () => {
+      const build = step('Build, sign and notarize');
+      expect(build).toMatch(/^\s*APPLE_API_KEY: .*runner\.temp/m);
+      expect(build).not.toContain('APPLE_API_KEY_P8_BASE64');
+    });
+
+    it('gives notarytool the path and never the base64', () => {
+      const notarize = step('Notarize and staple the disk images');
+      expect(notarize).toMatch(/^\s*APPLE_API_KEY: .*runner\.temp/m);
+      expect(notarize).not.toContain('APPLE_API_KEY_P8_BASE64');
+    });
+
+    it('decodes the secret through the validating writer, not a shell pipeline', () => {
+      const materialise = step('Materialise the App Store Connect key');
+      expect(materialise).toContain('write-apple-api-key.cjs');
+      expect(materialise, 'base64 --decode accepts a corrupted secret silently')
+        .not.toContain('base64 --decode');
+    });
+  });
+});
+
+/**
+ * The end-user install path must never tell anyone to override Gatekeeper. The
+ * published DMG is notarized and opens by double-clicking; copy that says
+ * otherwise is either wrong or describes a build that should not be published.
+ *
+ * The developer build IS the exception, and it is documented — in the developer
+ * docs, which is why the ban is scoped rather than repo-wide.
+ */
+const BYPASS_COPY = [
+  'Open Anyway',
+  'Privacy & Security',
+  'Privacy and Security',
+  'com.apple.quarantine',
+  'xattr',
+  'right-click',
+  'Control-click',
+];
+
+/** The README, split into its `## ` sections, keyed by heading. */
+function readmeSections() {
+  const readme = readRepo('README.md');
+  const sections: Record<string, string> = {};
+  let heading = '';
+  for (const line of readme.split('\n')) {
+    const match = /^## (.+)$/.exec(line);
+    if (match) {
+      heading = match[1];
+      sections[heading] = '';
+    } else if (heading) {
+      sections[heading] += `${line}\n`;
+    }
+  }
+  return sections;
+}
+
+describe('install copy', () => {
+  it('the release notes tell nobody to bypass Gatekeeper', () => {
+    const notes = readRepo('.github/release-notes.md');
+    for (const phrase of BYPASS_COPY) {
+      expect(notes, `bypass copy is back in the release notes: ${phrase}`).not.toContain(phrase);
+    }
+  });
+
+  it("the README's download section tells nobody to bypass Gatekeeper", () => {
+    const download = readmeSections()['Download'];
+    expect(download, 'the README has no ## Download section').toBeTruthy();
+    for (const phrase of BYPASS_COPY) {
+      expect(download, `bypass copy is back in the download section: ${phrase}`)
+        .not.toContain(phrase);
+    }
+  });
+
+  it('the release notes say the build is notarized, so no override is expected', () => {
+    expect(readRepo('.github/release-notes.md')).toMatch(/notariz/i);
+  });
+
+  it('the developer build documents its exception, rather than leaving it folklore', () => {
+    const doc = readRepo('docs/macos-signing.md');
+    expect(doc).toContain('Opening your own ad-hoc build');
+    // The exception is only honest if the actual steps are there to follow.
+    expect(doc).toContain('Open Anyway');
+    expect(doc).toContain('com.apple.quarantine');
+  });
+
+  it('the README sends developers to that section instead of repeating it', () => {
+    const development = readmeSections()['Development'];
+    expect(development).toContain('ad-hoc');
+    expect(development).toContain('macos-signing.md#opening-your-own-ad-hoc-build');
   });
 });
 
 describe('release scripts', () => {
   it.each([
     'scripts/check-release-credentials.cjs',
+    'scripts/write-apple-api-key.cjs',
+    'scripts/verify-build.cjs',
     'scripts/verify-macos-artifacts.sh',
     'scripts/notarize-dmg.sh',
   ])('%s is present and executable', (file) => {
@@ -136,26 +272,12 @@ describe('release scripts', () => {
   });
 });
 
-describe('packaging config', () => {
-  it('lives in electron-builder.cjs, not a static package.json block', () => {
-    const pkg = JSON.parse(read('package.json'));
-    expect(pkg.build, 'a static `build` block would shadow the env-driven config').toBeUndefined();
-    expect(read('electron-builder.cjs')).toContain('releaseConfig.cjs');
-  });
-
-  it('keeps `npm run build:mac` as the ad-hoc developer path', () => {
-    const pkg = JSON.parse(read('package.json'));
-    expect(pkg.scripts['build:mac']).not.toContain('PHASE_RELEASE_SIGNING');
-  });
-});
-
 /**
  * The shell scripts' refusal paths, run for real. None of these need a build
  * artifact, so they run in CI before anything is packaged.
  *
  * `/bin/bash` deliberately, not `bash`: a macOS runner's /bin/bash is 3.2, and
- * 3.2 is where `"${empty[@]}"` under `set -u` is an unbound-variable error —
- * the reason the verifier iterates positional parameters instead of an array.
+ * 3.2 is where `"${empty[@]}"` under `set -u` is an unbound-variable error.
  */
 function runScript(file: string, args: string[], env: NodeJS.ProcessEnv = {}) {
   return spawnSync('/bin/bash', [path.join(appDir, file), ...args], {
@@ -179,17 +301,22 @@ describe('verify-macos-artifacts.sh', () => {
   it('refuses an unknown mode before it touches codesign', () => {
     const r = runScript(script, ['bogus', appDir]);
     expect(r.status).toBe(2);
-    expect(r.stderr).toContain('mode must be release or dev');
+    expect(r.stderr).toContain('mode must be dev, release or dmg');
   });
   it('exits 1 when the app bundle is not there', () => {
     const r = runScript(script, ['release', '/nope.app']);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('no such app bundle');
   });
-  it('reads the disk images as positional parameters, never an array', () => {
-    // `for dmg in "${dmgs[@]}"` is the bash 3.2 unbound-variable trap: the
-    // workflow verifies the x64 app with no images at all.
-    expect(read(script)).toContain('for dmg in "$@"');
+  it('exits 1 when the disk image is not there', () => {
+    const r = runScript(script, ['dmg', '/nope.dmg']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('no such disk image');
+  });
+  it('takes one app per app mode, so no caller has to guess what it consumes', () => {
+    const r = runScript(script, ['dev', appDir, 'an-extra.dmg']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('usage:');
   });
 });
 
@@ -221,13 +348,15 @@ describe('notarize-dmg.sh', () => {
   });
 });
 
+const runNode = (script: string, args: string[], env: NodeJS.ProcessEnv = {}) =>
+  spawnSync(process.execPath, [path.join(appDir, script), ...args], {
+    cwd: appDir,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
+
 describe('check-release-credentials.cjs', () => {
-  const run = (env: NodeJS.ProcessEnv) =>
-    spawnSync(process.execPath, [path.join(appDir, 'scripts/check-release-credentials.cjs')], {
-      cwd: appDir,
-      encoding: 'utf8',
-      env: { ...process.env, ...env },
-    });
+  const script = 'scripts/check-release-credentials.cjs';
 
   /** A release env with one hole in it, so the failure message can be read. */
   const holed = {
@@ -235,7 +364,7 @@ describe('check-release-credentials.cjs', () => {
     PHASE_NOTARY_METHOD: 'api-key',
     CSC_LINK: 'base64-of-a-p12',
     CSC_KEY_PASSWORD: 'p12-passphrase',
-    APPLE_API_KEY: '/tmp/AuthKey.p8',
+    APPLE_API_KEY_P8_BASE64: 'base64-of-the-p8',
     APPLE_API_KEY_ID: '',
     APPLE_API_ISSUER: 'an-issuer-uuid',
     APPLE_ID: '',
@@ -244,19 +373,82 @@ describe('check-release-credentials.cjs', () => {
   };
 
   it('passes without credentials when release signing is off', () => {
-    const r = run({ PHASE_RELEASE_SIGNING: '' });
-    expect(r.status).toBe(0);
+    expect(runNode(script, [], { PHASE_RELEASE_SIGNING: '' }).status).toBe(0);
   });
   it('fails naming the missing secret', () => {
-    const r = run(holed);
+    const r = runNode(script, [], holed);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('APPLE_API_KEY_ID');
   });
+  it('rejects a key secret that is not really a key, before anything is built', () => {
+    const r = runNode(script, [], {
+      ...holed,
+      APPLE_API_KEY_ID: 'ABC123',
+      APPLE_API_KEY_P8_BASE64: Buffer.from('not a key at all').toString('base64'),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('BEGIN PRIVATE KEY');
+  });
   it('leaks no secret value on either stream, even the ones it found', () => {
-    const r = run(holed);
+    const r = runNode(script, [], holed);
     const output = r.stdout + r.stderr;
-    for (const value of ['base64-of-a-p12', 'p12-passphrase', 'an-issuer-uuid']) {
-      expect(output, `the value of a secret reached the log`).not.toContain(value);
+    for (const value of ['base64-of-a-p12', 'p12-passphrase', 'an-issuer-uuid', 'base64-of-the-p8']) {
+      expect(output, 'the value of a secret reached the log').not.toContain(value);
     }
+  });
+});
+
+describe('write-apple-api-key.cjs', () => {
+  const script = 'scripts/write-apple-api-key.cjs';
+
+  it('refuses to run without a destination, rather than inventing one', () => {
+    const r = runNode(script, []);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('usage:');
+  });
+  it('fails on a malformed secret and says which variable is wrong', () => {
+    const r = runNode(script, ['/tmp/phase-should-not-exist.p8'], {
+      APPLE_API_KEY_P8_BASE64: 'not base64 !!!',
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('APPLE_API_KEY_P8_BASE64');
+    expect(r.stderr).not.toContain('not base64 !!!');
+  });
+});
+
+describe('verify-build.cjs', () => {
+  const script = 'scripts/verify-build.cjs';
+
+  it('refuses an unknown mode', () => {
+    const r = runNode(script, ['bogus']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('usage:');
+  });
+  it('fails, rather than passing quietly, when the build produced nothing', () => {
+    const r = runNode(script, ['dev'], { PHASE_RELEASE_DIR: '/tmp/phase-no-such-release-dir' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('npm run build:mac');
+  });
+});
+
+describe('packaging config', () => {
+  it('lives in electron-builder.cjs, not a static package.json block', () => {
+    const pkg = JSON.parse(read('package.json'));
+    expect(pkg.build, 'a static `build` block would shadow the env-driven config').toBeUndefined();
+    expect(read('electron-builder.cjs')).toContain('releaseConfig.cjs');
+  });
+
+  it('keeps `npm run build:mac` as the ad-hoc developer path', () => {
+    const pkg = JSON.parse(read('package.json'));
+    expect(pkg.scripts['build:mac']).not.toContain('PHASE_RELEASE_SIGNING');
+  });
+
+  it('never names an architecture directory, which exists on only some Macs', () => {
+    const pkg = JSON.parse(read('package.json'));
+    for (const command of Object.values(pkg.scripts as Record<string, string>)) {
+      expect(command, 'a hard-coded arch path verifies nothing on the other architecture')
+        .not.toMatch(/mac-arm64|release\/mac\b/);
+    }
+    expect(pkg.scripts['verify:mac']).toContain('verify-build.cjs');
   });
 });
