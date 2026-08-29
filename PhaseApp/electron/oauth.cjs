@@ -67,14 +67,26 @@ function tokenErrorDetail(res) {
 }
 
 function createOAuth(deps) {
-  const { secrets, httpPost, now, createServer, setTimer, openExternal, createPkce } = deps;
+  const { secrets, httpPost, now, createServer, setTimer, openExternal, createPkce, managedClient } = deps;
 
+  /**
+   * The OAuth client to authenticate as: the user's own if they saved one,
+   * otherwise the pair this build manages.
+   *
+   * Stored wins. Saving your own client is a deliberate act, and quietly
+   * authenticating against the shipped one instead would send the consent
+   * screen to a different Cloud project with nothing on screen to say so.
+   *
+   * The managed pair is consulted on every use rather than copied into the
+   * secret store once: it belongs to the BUILD, so a release that rotates it
+   * must take effect without a stale copy on disk overriding it.
+   */
   function client() {
     const stored = secrets.get('client');
-    if (!stored || !stored.clientId || !stored.clientSecret) {
-      throw new CredentialsNotConfiguredError();
-    }
-    return stored;
+    if (stored && stored.clientId && stored.clientSecret) return stored;
+    const managed = managedClient ? managedClient() : null;
+    if (managed && managed.clientId && managed.clientSecret) return managed;
+    throw new CredentialsNotConfiguredError();
   }
 
   async function postForTokens(body) {

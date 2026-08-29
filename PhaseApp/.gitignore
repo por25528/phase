@@ -6,6 +6,11 @@ build/icon.png
 .DS_Store
 *.local
 
+# The OAuth client this build ships. Written by `npm run calendar:credentials`
+# from the environment; never committed, so the credential is rotatable
+# without a code change and a fork does not inherit somebody else's client.
+electron/calendar-credentials.json
+
 # Brainstorming visual companion mockups
 .superpowers/
 

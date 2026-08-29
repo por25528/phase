@@ -18,6 +18,12 @@ export interface LoopbackServer {
 
 export interface OAuthDeps {
   secrets: SecretStore;
+  /**
+   * The OAuth client this build ships, consulted only when the user has saved
+   * none of their own. Absent in tests that do not care; `null` when the build
+   * manages no credentials.
+   */
+  managedClient?: () => { clientId: string; clientSecret: string } | null;
   httpPost(url: string, body: URLSearchParams): Promise<HttpResponse>;
   createServer(): LoopbackServer;
   openExternal(url: string): Promise<void>;

@@ -123,6 +123,37 @@ describe('exchangeCode', () => {
       .rejects.toBeInstanceOf(CredentialsNotConfiguredError);
   });
 
+  // The build can ship its own OAuth client so nobody has to create a Google
+  // Cloud project before planning a week. Nothing is stored in that case —
+  // there is no user-supplied pair to store — so the fallback has to be
+  // consulted at every use, not once at setup.
+  it("falls back to the build's managed credentials when none are stored", async () => {
+    const d = deps({
+      secrets: fakeSecrets({}),
+      managedClient: () => ({ clientId: 'managed-id', clientSecret: 'managed-secret' }),
+    });
+    await createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
+    expect(d._posts[0].body.get('client_id')).toBe('managed-id');
+    expect(d._posts[0].body.get('client_secret')).toBe('managed-secret');
+  });
+
+  // The discriminating test. Saving your own client is a deliberate act, and
+  // silently authenticating against the shipped one instead would send the
+  // consent screen to the wrong Cloud project with no way to tell.
+  it("prefers a stored pair over the build's managed one", async () => {
+    const d = deps({
+      managedClient: () => ({ clientId: 'managed-id', clientSecret: 'managed-secret' }),
+    });
+    await createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' });
+    expect(d._posts[0].body.get('client_id')).toBe(CLIENT.clientId);
+  });
+
+  it('still refuses when neither a stored nor a managed pair exists', async () => {
+    const d = deps({ secrets: fakeSecrets({}), managedClient: () => null });
+    await expect(createOAuth(d).exchangeCode({ code: 'C', verifier: 'V', redirectUri: 'r' }))
+      .rejects.toBeInstanceOf(CredentialsNotConfiguredError);
+  });
+
   // Google returns a refresh token only when it feels like it. Treating its
   // absence as success would leave a connection that dies within the hour.
   it('fails when Google returns no refresh token', async () => {

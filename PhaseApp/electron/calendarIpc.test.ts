@@ -17,6 +17,7 @@ const {
 } = nativeRequire('./oauth.cjs') as typeof import('./oauth.cjs');
 
 const CLIENT = { clientId: 'cid', clientSecret: 'sec' };
+const MANAGED = { clientId: 'managed-id', clientSecret: 'managed-secret' };
 const RANGE = { rangeStart: '2026-08-03', rangeEnd: '2026-08-10', calendarIds: ['primary'] };
 const GOOGLE_ERROR = 'Google Calendar request failed: Bearer ya29.SECRET rejected';
 const EVENT = {
@@ -80,13 +81,45 @@ describe('status', () => {
     const h = handlers({ secrets: fakeSecrets({ client: CLIENT, account: { accountId: 'me@example.com' } }) });
     expect(await h.status()).toEqual({
       configured: true, connected: true, corrupt: false, available: true,
+      managed: false, custom: true,
       accountId: 'me@example.com', timeZone: 'America/New_York',
     });
   });
 
   it('reports not configured before credentials are saved', async () => {
     const h = handlers({ secrets: fakeSecrets({}) });
-    expect(await h.status()).toMatchObject({ configured: false, connected: false, available: true, accountId: null });
+    expect(await h.status()).toMatchObject({
+      configured: false, connected: false, available: true, accountId: null,
+      managed: false, custom: false,
+    });
+  });
+
+  // A build that ships its own OAuth client is already configured. Asking for
+  // a client id at that point sends the user to the Google Cloud Console to
+  // recreate something the app already has.
+  it('is configured by the credentials the build manages, with nothing stored', async () => {
+    const h = handlers({ secrets: fakeSecrets({}), managedClient: () => MANAGED });
+    expect(await h.status()).toMatchObject({ configured: true, managed: true, custom: false });
+  });
+
+  // The discriminating pair. `custom` is what tells the settings surface
+  // whether "use the built-in credentials instead" has anything to undo, and
+  // conflating it with `configured` would offer that on every install.
+  it('separates a saved pair from the managed one', async () => {
+    const h = handlers({ secrets: fakeSecrets({ client: CLIENT }), managedClient: () => MANAGED });
+    expect(await h.status()).toMatchObject({ configured: true, managed: true, custom: true });
+  });
+
+  it('still reports the managed pair when the store is corrupt, so a reset can be offered honestly', async () => {
+    const secrets = fakeSecrets({});
+    secrets.get = () => { throw new CorruptSecretStoreError(new Error('bad key')); };
+    const h = handlers({ secrets, managedClient: () => MANAGED });
+    expect(await h.status()).toMatchObject({ corrupt: true, configured: false, managed: true, custom: false });
+  });
+
+  it('never returns the managed credential either', async () => {
+    const h = handlers({ secrets: fakeSecrets({}), managedClient: () => MANAGED });
+    expect(JSON.stringify(await h.status())).not.toContain('managed-secret');
   });
 
   it('reports when the OS keychain cannot encrypt secrets', async () => {
@@ -217,6 +250,14 @@ describe('connect', () => {
     const h = handlers({ secrets: fakeSecrets({ client: { clientId: 'cid' } }) });
     expect(await h.connect()).toEqual({ ok: false, reason: 'not-configured' });
     expect(h._calls).not.toContain('connect');
+  });
+
+  // With a managed pair there is nothing for the user to paste, so refusing
+  // here would make the Connect button permanently inert on a shipped build.
+  it('opens consent on the managed credentials with nothing stored', async () => {
+    const h = handlers({ secrets: fakeSecrets({}), managedClient: () => MANAGED });
+    expect(await h.connect()).toEqual({ ok: true });
+    expect(h._calls).toContain('connect');
   });
 
   it('maps a reauthentication failure to a typed result', async () => {
@@ -461,6 +502,11 @@ describe('fetch', () => {
     const h = handlers({ secrets: fakeSecrets({ client: { clientId: 'cid' } }) });
     expect((await h.status()).configured).toBe(false);
     expect(await h.fetch(RANGE)).toEqual({ ok: false, reason: 'not-configured' });
+  });
+
+  it('fetches on the managed credentials with nothing stored', async () => {
+    const h = handlers({ secrets: fakeSecrets({}), managedClient: () => MANAGED });
+    expect(await h.fetch(RANGE)).toMatchObject({ ok: true });
   });
 
   it('reports a corrupt secret store as corrupt', async () => {
