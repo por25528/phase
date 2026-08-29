@@ -61,7 +61,19 @@ export interface OAuth {
   connect(): Promise<void>;
   /** Revoke with Google and forget the token locally even when revocation fails. */
   disconnect(): Promise<void>;
-  /** Returns a valid access token, refreshing when stale, and throws `NotConnectedError` when none is stored, `ReauthRequiredError` when Google rejects the refresh token OR the stored token belongs to a different OAuth client, and plain `Error` for other failures. */
+  /**
+   * Returns a valid access token, refreshing when stale.
+   *
+   * Throws `NotConnectedError` when none is stored. Throws
+   * `ReauthRequiredError` in three cases, all of which mean a reconnect is the
+   * only cure: the stored token belongs to a different OAuth client (caught
+   * before the request), Google answers `invalid_grant` (the grant is revoked
+   * or expired), or Google answers `invalid_client` / `unauthorized_client` /
+   * a bare 401 (the client is gone or its secret was rotated). The last of
+   * those is the only way to discover a rotation under a token stored before
+   * `Tokens.clientId` existed. Plain `Error` for everything else, which is
+   * transient by elimination and must not prompt for reauth.
+   */
   getAccessToken(): Promise<string>;
   isConnected(): boolean;
   /**

@@ -101,6 +101,12 @@ instrument (checking that a socket closed, forcing a bad range).
       with the Network tab open, **no fetch fires** however many weeks you page
       through out there.
 
+- [ ] **17c. The back edge says something else again.** Page back more than one
+      week. The header reads `calendar only reaches one week back` — NOT the
+      six-months sentence, which would be simply false about last month — and
+      no fetch fires there either. One week back is still covered and still
+      shows its meetings.
+
 - [ ] **18. Focus refresh.** Leave the app unfocused for over fifteen minutes,
       then click back in. One fetch fires. Click away and back immediately — no
       second fetch.
@@ -185,6 +191,15 @@ instrument (checking that a socket closed, forcing a bad range).
       `npm run app:dev` with a different one exported. The header reads
       `calendar needs reconnecting` — NOT a silent failure and not
       `calendar didn't refresh` — and Connect repairs it.
+
+- [ ] **28d. A rotated SECRET asks for one too.** With your own client
+      connected, reset the client secret in the Google Cloud console without
+      touching Phase, then wait for the access token to expire (or quit and
+      relaunch after an hour) and Refresh. Google refuses with
+      `invalid_client`, and the header must read `calendar needs reconnecting`
+      rather than `calendar didn't refresh`. Save the new secret and Connect to
+      repair it. This is the path that also covers a token stored before Phase
+      recorded which client issued it.
 
 - [ ] **29. Browser is unaffected.** `npm run dev` alone, in a browser: Plan
       renders with no blocks and no console errors, Settings → Calendar reads

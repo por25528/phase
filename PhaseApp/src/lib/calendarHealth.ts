@@ -1,4 +1,5 @@
 import type { CalendarStatus, CalendarFetchFailure } from './calendarBridge';
+import type { HorizonMiss } from './calendarRange';
 
 /**
  * How old a cache may get before a window focus is worth a refetch.
@@ -55,7 +56,8 @@ export type CalendarHealth =
   | 'not-configured'  // no OAuth client at all: none shipped, none saved
   | 'not-connected'   // configured, but no account has consented
   | 'reauth-required' // the refresh token was revoked, expired, or is for another client
-  | 'beyond-horizon'  // connected and healthy, but this week is past what a fetch reaches
+  | 'before-horizon'  // this week is behind the range's fixed back edge
+  | 'beyond-horizon'  // this week is past the range's forward cap
   | 'out-of-range'    // this week is not in the cache yet, and could be
   | 'refresh-failed'  // the blocks on screen are real, but the last refresh did not land
   | 'out-of-date'     // nothing failed by name; the data is simply old
@@ -68,14 +70,19 @@ export interface CalendarHealthInput {
   lastError: CalendarFetchFailure | null;
   /** Whether the cached range covers the week being rendered. */
   coversWeek: boolean;
-  /** Whether that week is past anything a fetch could ever reach. */
-  beyondHorizon: boolean;
+  /**
+   * Which edge of the fetchable window that week fell outside of, or `null`.
+   *
+   * The direction, not a bare "out of reach": the forward cap is six months
+   * away and the back edge is last week, so one sentence cannot serve both.
+   */
+  horizon: HorizonMiss | null;
   fetchedAt: string | null;
   nowMs: number;
 }
 
 export function calendarHealth(input: CalendarHealthInput): CalendarHealth {
-  const { status, lastError, coversWeek, beyondHorizon, fetchedAt, nowMs } = input;
+  const { status, lastError, coversWeek, horizon, fetchedAt, nowMs } = input;
   if (!status) return 'no-integration';
   if (!status.configured) return 'not-configured';
   // Before `connected`, because a revoked token — or one issued for an OAuth
@@ -83,7 +90,11 @@ export function calendarHealth(input: CalendarHealthInput): CalendarHealth {
   // stored connection it can no longer spend.
   if (lastError === 'reauth-required') return 'reauth-required';
   if (!status.connected) return 'not-connected';
-  if (!coversWeek) return beyondHorizon ? 'beyond-horizon' : 'out-of-range';
+  if (!coversWeek) {
+    if (horizon === 'before') return 'before-horizon';
+    if (horizon === 'after') return 'beyond-horizon';
+    return 'out-of-range';
+  }
 
   // A timestamp that will not parse is not evidence of freshness. `NaN` fails
   // every comparison, so it has to be caught rather than compared.
@@ -114,8 +125,11 @@ export function calendarCaveat(health: CalendarHealth): string | null {
     case 'reauth-required': return 'calendar needs reconnecting';
     case 'out-of-range': return 'no calendar data for this week';
     // NOT "no data for this week", which reads as a promise that more is on
-    // the way. Nothing is: the fetch range stops here by design.
+    // the way. Nothing is: the fetch range stops at both ends by design, and
+    // the two ends need different sentences because one is six months out and
+    // the other is the week before last. `BASE_BACK_DAYS` is that one week.
     case 'beyond-horizon': return 'calendar reaches six months out';
+    case 'before-horizon': return 'calendar only reaches one week back';
     case 'refresh-failed': return "calendar didn't refresh";
     case 'out-of-date': return 'calendar may be out of date';
     // 'stale' is deliberately silent: the blocks shown were true minutes ago.

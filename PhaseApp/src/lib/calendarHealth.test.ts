@@ -22,7 +22,7 @@ function input(over: Partial<CalendarHealthInput> = {}): CalendarHealthInput {
     },
     lastError: null,
     coversWeek: true,
-    beyondHorizon: false,
+    horizon: null,
     fetchedAt: FRESH,
     nowMs: NOW,
     ...over,
@@ -70,11 +70,22 @@ describe('calendarHealth', () => {
   // A week past the cap will NEVER be covered, so "no data for this week"
   // reads as a promise that more is on the way. It is not.
   it('distinguishes a week past the horizon from one merely not fetched yet', () => {
-    expect(calendarHealth(input({ coversWeek: false, beyondHorizon: true }))).toBe('beyond-horizon');
+    expect(calendarHealth(input({ coversWeek: false, horizon: 'after' }))).toBe('beyond-horizon');
+  });
+
+  /*
+   * The discriminating test for direction. Both edges suppress a refetch, and
+   * a single flag had them share one sentence — so the header told a user
+   * looking at last month that the calendar "reaches six months out". True of
+   * the other edge, false of this one, and useless either way.
+   */
+  it('tells a week before the range from a week past it', () => {
+    expect(calendarHealth(input({ coversWeek: false, horizon: 'before' }))).toBe('before-horizon');
   });
 
   it('ignores the horizon for a week that IS covered', () => {
-    expect(calendarHealth(input({ beyondHorizon: true }))).toBe('ok');
+    expect(calendarHealth(input({ horizon: 'after' }))).toBe('ok');
+    expect(calendarHealth(input({ horizon: 'before' }))).toBe('ok');
   });
 
   it('treats a never-fetched but connected calendar as out of range', () => {
@@ -162,6 +173,18 @@ describe('calendarCaveat', () => {
   // Not "no data for this week", which reads as a promise that more is coming.
   it('says a week past the horizon is out of reach, not merely missing', () => {
     expect(calendarCaveat('beyond-horizon')).toBe('calendar reaches six months out');
+  });
+
+  // And says something TRUE about the other edge, which is a week away rather
+  // than six months.
+  it('names the back edge for what it is', () => {
+    expect(calendarCaveat('before-horizon')).toBe('calendar only reaches one week back');
+  });
+
+  it("never describes one edge with the other edge's sentence", () => {
+    expect(calendarCaveat('before-horizon')).not.toBe(calendarCaveat('beyond-horizon'));
+    expect(calendarCaveat('before-horizon')).not.toMatch(/six months/);
+    expect(calendarCaveat('beyond-horizon')).not.toMatch(/back/);
   });
 
   it('names a refresh that will not land, and how old what is shown is', () => {

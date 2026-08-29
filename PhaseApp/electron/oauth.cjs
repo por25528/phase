@@ -175,10 +175,40 @@ function createOAuth(deps) {
       grant_type: 'refresh_token',
     }));
     if (!res.ok) {
-      // invalid_grant means revoked or expired — a DIFFERENT user-facing
-      // state from "never connected", per spec §10. Anything else (503,
-      // offline) is transient and must not prompt for reauth.
+      // invalid_grant means the GRANT is revoked or expired — a DIFFERENT
+      // user-facing state from "never connected", per spec §10. The token is
+      // left in place: it is the thing the user is being asked to renew.
       if (res.json?.error === 'invalid_grant') throw new ReauthRequiredError();
+
+      /*
+       * invalid_client means the CLIENT is gone or its secret was rotated in
+       * the Cloud console, and a bare 401 is the same refusal with a body that
+       * would not parse. Neither is transient, and neither used to be caught:
+       * they became a plain Error, which the renderer reads as
+       * `request-failed` — a state the UI is right to shrug at and that will
+       * never clear on its own.
+       *
+       * This is the ONLY way to discover a rotation under a token stored
+       * before `clientId` was recorded, since there is no id on it to compare.
+       * Catching it here closes that gap without forcing every existing
+       * installation to reconnect on upgrade.
+       *
+       * The token IS dropped, unlike on invalid_grant: it is bound to a client
+       * that no longer exists, so nothing can renew it and keeping it only
+       * means retrying a request that cannot succeed.
+       */
+      if (
+        res.status === 401
+        || res.json?.error === 'invalid_client'
+        || res.json?.error === 'unauthorized_client'
+      ) {
+        secrets.remove('token');
+        throw new ReauthRequiredError();
+      }
+
+      // Everything else — a 503, a captive portal, a dropped association — is
+      // transient. Prompting for a reconnect that would not fix it teaches
+      // people to reconnect at every hiccup until the prompt means nothing.
       throw new Error(`Google token refresh failed: ${tokenErrorDetail(res)}`);
     }
     if (!res.json?.access_token || !Number.isFinite(Number(res.json?.expires_in))) {

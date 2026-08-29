@@ -143,10 +143,21 @@ the cached blocks stop being displayed rather than being shown as current fact.
 
 The token carries provenance of its own — the OAuth client id it was issued
 for. If a release rotates the shipped client, the stored token can no longer be
-spent, and Google's answer to that (`invalid_client`, or a bare 400) is
-indistinguishable at the call site from a dropped connection. Phase compares
-the ids before it asks, so a rotation surfaces as **calendar needs
-reconnecting** rather than as a refresh that quietly never succeeds again.
+spent, and Google's refusal is indistinguishable at the call site from a
+dropped connection. Phase catches that two ways, which between them cover every
+rotation:
+
+- It compares the stored client id against the current one **before** it asks,
+  so a rotation costs no request at all.
+- It reads `invalid_client`, `unauthorized_client` and a bare 401 out of a
+  refused refresh as the same verdict. That is what covers a token stored
+  before the id was recorded, and a **custom client whose secret you rotated in
+  the Cloud console** without re-saving it in Phase — neither has an id
+  mismatch to find.
+
+Both surface as **calendar needs reconnecting**, and the unusable token and the
+cached events are dropped, rather than a refresh that quietly never succeeds
+again.
 
 [google-calendar-verification.md](google-calendar-verification.md) is the manual
 checklist for the parts no test can reach — the OAuth round trip, `safeStorage`

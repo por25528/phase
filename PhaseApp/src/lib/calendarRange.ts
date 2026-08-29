@@ -49,27 +49,43 @@ export function fetchRange(
   return { rangeStart, rangeEnd: wanted > cap ? cap : wanted };
 }
 
+/**
+ * Which side of the fetchable window a week fell out of. `'before'` is the
+ * fixed back edge — `BASE_BACK_DAYS`, one week — and `'after'` is the forward
+ * cap at `MAX_FORWARD_DAYS`.
+ */
+export type HorizonMiss = 'before' | 'after';
+
 /** True when every day of the week beginning `monday` is inside `range`. */
 export function coversWeek(range: DateRange, monday: string): boolean {
   return monday >= range.rangeStart && addDays(monday, 7) <= range.rangeEnd;
 }
 
 /**
- * Whether a week is outside anything `fetchRange` could ever return, so asking
- * for it again is futile.
+ * Which edge a week falls outside of, or `null` when a fetch could cover it.
  *
- * `fetchRange` clamps forward at `MAX_FORWARD_DAYS` and never grows backward,
- * so a week past the cap — or before the range's fixed back edge — comes back
- * uncovered however many times it is asked for. Without this, paging out to
- * next year fires one fetch per week navigated, each returning the identical
- * clamped range, and the header keeps saying "no calendar data for this week"
- * as though more were on the way.
+ * `fetchRange` clamps forward at `MAX_FORWARD_DAYS` and never grows backward —
+ * history is not planning input — so a week outside either edge comes back
+ * uncovered however many times it is asked for. Without this, paging out fires
+ * one fetch per week navigated, each returning the identical clamped range,
+ * and every one of them spends a Google quota to re-learn that the answer is
+ * no.
+ *
+ * The DIRECTION is returned rather than a bare boolean because the two edges
+ * are nothing alike. One is six months out; the other is the week before last.
+ * A single flag made the header say "calendar reaches six months out" about
+ * last month, which is not merely unhelpful — it is false.
  *
  * Defined against `fetchRange`'s own arithmetic rather than restating it, and
- * `calendarRange.test.ts` walks every week across the cap asserting the two
+ * `calendarRange.test.ts` walks every week across both edges asserting the two
  * agree — a guard that suppressed a fetch which WOULD have worked is the one
  * failure this must not have.
  */
-export function beyondHorizon(mondayOfCurrentWeek: string, monday: string): boolean {
-  return !coversWeek(fetchRange(mondayOfCurrentWeek, monday), monday);
+export function outsideHorizon(
+  mondayOfCurrentWeek: string,
+  monday: string,
+): HorizonMiss | null {
+  const range = fetchRange(mondayOfCurrentWeek, monday);
+  if (coversWeek(range, monday)) return null;
+  return monday < range.rangeStart ? 'before' : 'after';
 }

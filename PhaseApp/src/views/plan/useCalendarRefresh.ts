@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { actions } from '../../state/store';
-import { beyondHorizon, coversWeek, type DateRange } from '../../lib/calendarRange';
+import { outsideHorizon, coversWeek, type DateRange } from '../../lib/calendarRange';
 import { CALENDAR_STALE_MS } from '../../lib/calendarHealth';
 import { weekOf } from '../../lib/plan';
 import { todayStr } from '../../lib/dates';
@@ -8,15 +8,19 @@ import { todayStr } from '../../lib/dates';
 /**
  * Whether asking for `weekStart` again could change anything.
  *
- * Two ways it cannot: the cache already covers the week, or the week is past
- * what `fetchRange` will ever return. The second is the one worth a guard —
- * without it, paging out to next year fires one fetch per week navigated, each
- * returning the identical clamped range, and every one of them spends a Google
- * quota to re-learn that the answer is no.
+ * Two ways it cannot: the cache already covers the week, or the week is
+ * outside what `fetchRange` will ever return. The second is the one worth a
+ * guard — without it, paging out to next year fires one fetch per week
+ * navigated, each returning the identical clamped range, and every one of them
+ * spends a Google quota to re-learn that the answer is no.
+ *
+ * BOTH edges are suppressed. Which one it is matters to the header, which has
+ * to say something true about six months out or about last month; it does not
+ * matter here, where either answer is the same "do not ask again".
  */
 function worthFetching(weekStart: string, range: DateRange | null): boolean {
   if (range && coversWeek(range, weekStart)) return false;
-  return !beyondHorizon(weekOf(todayStr()), weekStart);
+  return outsideHorizon(weekOf(todayStr()), weekStart) === null;
 }
 
 /**

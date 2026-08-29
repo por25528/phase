@@ -138,6 +138,20 @@ describe('useCalendarRefresh', () => {
     expect(refreshCalendar).not.toHaveBeenCalled();
   });
 
+  // The other edge is just as futile: the range never grows backward, so a
+  // week before it is uncoverable for a different reason and the same cost.
+  it('does not chase a week before the horizon either', () => {
+    const past = weekOf(addDays(todayStr(), -60));
+    render(<Harness weekStart={past} range={COVERING} fetchedAt={null} />);
+    expect(refreshCalendar).not.toHaveBeenCalled();
+  });
+
+  it('still fetches for the one week back the range does hold', () => {
+    const lastWeek = weekOf(addDays(todayStr(), -7));
+    render(<Harness weekStart={lastWeek} range={null} fetchedAt={null} />);
+    expect(refreshCalendar).toHaveBeenCalledWith(lastWeek);
+  });
+
   it('still fetches for a week that is merely not cached yet', () => {
     const near = weekOf(addDays(todayStr(), 90));
     render(<Harness weekStart={near} range={COVERING} fetchedAt={null} />);

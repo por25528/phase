@@ -25,7 +25,7 @@ import { boardCollision } from '../lib/boardCollision';
 import { scheduledByDate, spansOn } from '../lib/scheduled';
 import { aimFor, longestFreeGap, DEFAULT_SLOT_MIN, WHOLE_DAY, NO_PAST_LIMIT } from '../lib/slot';
 import { weekCapacity, type Now } from '../lib/capacity';
-import { beyondHorizon, coversWeek } from '../lib/calendarRange';
+import { outsideHorizon, coversWeek } from '../lib/calendarRange';
 import { calendarHealth, calendarCaveat } from '../lib/calendarHealth';
 import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
@@ -196,9 +196,11 @@ export function Plan() {
       status: calendarStatus,
       lastError: calendarError,
       coversWeek: weekIsCovered,
-      // A week past what a fetch reaches is not "not fetched yet" — nothing is
-      // coming, and the caveat has to say so rather than imply patience.
-      beyondHorizon: beyondHorizon(weekOf(today), weekStart),
+      // A week outside what a fetch reaches is not "not fetched yet" — nothing
+      // is coming, and the caveat has to say so rather than imply patience.
+      // The DIRECTION travels with it: the forward cap is six months out and
+      // the back edge is last week, and one sentence cannot be true of both.
+      horizon: outsideHorizon(weekOf(today), weekStart),
       fetchedAt: calendarFetchedAt,
       nowMs: Date.now(),
     })),
