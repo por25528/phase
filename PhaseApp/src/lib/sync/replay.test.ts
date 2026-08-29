@@ -242,6 +242,18 @@ describe('the day an op is stamped with', () => {
     expect(out.sessions[0].date).toBe('2026-08-30');
   });
 
+  it('is the day the OP carries, when it carries one', () => {
+    // The phone recorded the 29th; this reader's zone would make the same
+    // instant the 30th. The phone is where the tap happened, so it wins.
+    const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
+      op(
+        { tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } },
+        { ts: '2026-08-29T17:30:00.000Z', day: '2026-08-29' },
+      ),
+    ]));
+    expect(out.tasks[0].doneAt).toBe('2026-08-29');
+  });
+
   it('falls back to today when the timestamp is unreadable, rather than stamping NaN', () => {
     const out = replayOps(slices(), [
       op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: 'not-a-timestamp' }),

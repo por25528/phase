@@ -73,6 +73,33 @@ describe('work the Mac has not taken yet', () => {
   });
 });
 
+describe('before the Mac has ever exported', () => {
+  it('still counts what the phone is holding for it', async () => {
+    let journal = '';
+    const store = createPhoneStore({
+      readStateFile: async () => null,
+      readJournal: async () => journal,
+      appendOp: async (line) => {
+        journal += `${line}\n`;
+      },
+      rewriteJournal: async (text) => {
+        journal = text;
+      },
+      onChange: () => () => {},
+    });
+    await store.refresh();
+    render(<SyncBar store={store} />);
+    expect(bar()).toBeNull();
+
+    await store.ops.addLooseTask('Call the bank');
+
+    // "Nothing synced yet" and a silent bar together would read as "nothing
+    // was kept" to somebody who has been capturing all week.
+    expect(store.getState().status).toBe('never-synced');
+    expect(bar()!.textContent).toContain('1 change waiting for your Mac');
+  });
+});
+
 describe('a read that failed', () => {
   it('says the screen is stale rather than wrong, and carries the reason', async () => {
     render(<SyncBar store={await failing('read')} />);

@@ -18,6 +18,11 @@ ingested yet. There is no merge, no Dexie, and no second writer — which is why
 `src/bridge/FileBridge.ts` has no `writeStateFile` and never will. If you find
 yourself wanting one, the answer is an op.
 
+Each op carries the phone's own local day (`CompanionOp.day`). Both sides read
+it through `opDay`, so a tick made at 23:50 and ingested at 00:10 lands on the
+day it was made — the day the phone had already shown it under — rather than
+on whichever day the Mac happened to wake up on.
+
 ## Layout
 
 ```
@@ -151,7 +156,8 @@ the step before it.
       `Phase` folder. If not, the `NSUbiquitousContainers` block is missing or
       `CURRENT_PROJECT_VERSION` was not bumped after it was added.
 - [ ] **The phone writes.** Tick a row on the phone. The sync bar reads
-      `1 change waiting for your Mac`, and the journal gains one line:
+      `1 change waiting for your Mac`, and the journal gains one line carrying
+      today's `day`:
       `tail -3 "$PHASE_SYNC_DIR/ops-phone.jsonl"`
 - [ ] **The Mac ingests.** Within seconds the Mac toasts
       `Phone: 1 change applied`, the task completes there, and `state.json`
@@ -164,8 +170,15 @@ the step before it.
       in order, and neither double-applies.
 - [ ] **A tick after midnight.** Between local midnight and your UTC offset,
       tick something on the phone. It must appear under `Done today` and stay
-      there — that is the local-day stamp in `replay.ts`, and slicing the op's
-      UTC timestamp instead is the bug that used to put it under yesterday.
+      there — that is `opDay`, and slicing the op's UTC timestamp instead is
+      the bug that used to put it under yesterday.
+- [ ] **A tick that crosses midnight, offline.** Quit Phase on the Mac. On the
+      phone, shortly before local midnight, tick something; confirm it shows
+      under `Done today`. Wait past midnight, then open the Mac. The row must
+      complete there stamped with **yesterday**, and the phone must not move it
+      when it re-renders from canonical. This is the end-to-end case `day` on
+      the op exists for; both sides reading their own clock is what it
+      replaces.
 - [ ] **Cold container.** Delete the app and reinstall. First launch reaches
       Today with real work, not `Nothing synced yet` — that is
       `startDownloadingUbiquitousItem` doing its job. Landing on "never synced"

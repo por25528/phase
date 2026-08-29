@@ -1,8 +1,7 @@
 import type { Goal, GoalNode, Session, Task } from '../../db/types';
-import type { CompanionOp } from './ops';
+import { opDay, type CompanionOp } from './ops';
 import type { SyncSlices } from './stateFile';
 import { cloneGoals, findNode, isLeafNode } from '../tree';
-import { localDay, todayStr } from '../dates';
 import { applyStatus } from '../status';
 
 /**
@@ -24,6 +23,11 @@ import { applyStatus } from '../status';
  * off the op id is what stops a second replay of the same journal from
  * appending the row twice.
  *
+ * The DAY a branch stamps comes from `opDay`, which the Mac's ingest spends on
+ * the same op. That one shared definition is the whole cross-midnight
+ * guarantee: the day this projection predicts is the day the Mac will actually
+ * write, whatever hour it is opened at and whatever zone it is in.
+ *
  * Pure: the input slices are never mutated. `habits` and `lives` are shared by
  * reference because no companion verb touches them.
  */
@@ -38,28 +42,6 @@ export function replayOps(slices: SyncSlices, ops: readonly CompanionOp[]): Sync
   };
   for (const op of ops) apply(out, op);
   return out;
-}
-
-/**
- * The op's own day — its LOCAL calendar day, which is what a completion or an
- * unstated log is stamped with.
- *
- * Local because the Mac's stamp is local: `toggleTask` and `applyStatus` are
- * both handed `todayStr()` when this same op is ingested, and a projection that
- * predicted a different day than the Mac will write is exactly the flicker this
- * module exists to prevent. `op.ts` is a UTC instant, so its first ten
- * characters are the UTC day — yesterday's, for every user east of Greenwich
- * between midnight and their offset. A row ticked at 00:30 in Bangkok would be
- * stamped yesterday and drop straight out of `Done today`, which reads
- * `doneAt === today`.
- *
- * An unreadable timestamp falls back to now. The envelope check accepts any
- * string for `ts`, and the alternative is stamping `Invalid Date` into a field
- * every date comparison in the app then silently fails against.
- */
-function dayOf(op: CompanionOp): string {
-  const at = new Date(op.ts);
-  return Number.isNaN(at.getTime()) ? todayStr() : localDay(at);
 }
 
 /** An ACTIVE project — a completed one is frozen, exactly as `agentWrites` has it. */
@@ -107,12 +89,12 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       if (request.ref.kind === 'step') {
         const leaf = activeLeaf(out, request.ref.id, request.ref.goalId);
         if (!leaf) return;
-        writeStatus(leaf, 'done', dayOf(op));
+        writeStatus(leaf, 'done', opDay(op));
         return;
       }
       const at = out.tasks.findIndex((t) => t.id === request.ref.id);
       if (at === -1) return;
-      out.tasks[at] = { ...out.tasks[at], done: true, doneAt: dayOf(op) };
+      out.tasks[at] = { ...out.tasks[at], done: true, doneAt: opDay(op) };
       return;
     }
 
@@ -122,7 +104,7 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       if (request.blockedOn !== undefined && request.status !== 'blocked') return;
       const leaf = activeLeaf(out, request.nodeId);
       if (!leaf) return;
-      writeStatus(leaf, request.status, dayOf(op), request.blockedOn);
+      writeStatus(leaf, request.status, opDay(op), request.blockedOn);
       return;
     }
 
@@ -159,7 +141,7 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       const session: Session = {
         id: op.id,
         goalId: request.ref.goalId,
-        date: request.date ?? dayOf(op),
+        date: request.date ?? opDay(op),
         minutes: request.minutes,
         note: '',
         ...(request.ref.kind === 'step' ? { nodeId: request.ref.id } : { taskId: request.ref.id }),

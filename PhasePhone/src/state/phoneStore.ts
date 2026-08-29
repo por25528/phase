@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import type { WorkRef } from '@app/lib/expectedTime';
 import { parseStateFile, type StateFile, type SyncSlices } from '@app/lib/sync/stateFile';
+import { todayStr } from '@app/lib/dates';
 import {
   opsAfter,
   parseOpsJournal,
@@ -113,9 +114,19 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
 
   function recompute(): void {
     if (!canonical) {
-      journal = journal.slice();
-      pending = journal;
-      publish({ status: 'never-synced', projected: null, writtenAt: null, pendingCount: 0, error });
+      // With no state file there is no `ingestedThroughOpId` that could have
+      // named any of these ops, so EVERYTHING in the journal is pending. It is
+      // counted, not silently zeroed: somebody who captured all week before
+      // first opening the Mac is owed the number, and "never synced" plus
+      // nothing waiting reads as "nothing was kept".
+      pending = journal.slice();
+      publish({
+        status: 'never-synced',
+        projected: null,
+        writtenAt: null,
+        pendingCount: pending.length,
+        error,
+      });
       return;
     }
     // `ingestedThroughOpId` and never `baseGeneration` arithmetic: the Mac
@@ -157,7 +168,13 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
     // would otherwise blank out mid-sync and read as data loss.
     const parsed = stateText === null ? null : parseStateFile(stateText);
     if (parsed) canonical = parsed;
-    error = null;
+    // A read that worked clears a READ error and nothing else. A tick that
+    // failed to reach the journal is still a tick that did not happen, and
+    // this refresh is very often one nobody asked for — `onChange` fires
+    // whenever iCloud lands any file at all. Letting it clear the write notice
+    // would make the failure vanish on a timer the person does not control,
+    // leaving them looking at a screen that never mentions their tap again.
+    if (error?.kind === 'read') error = null;
     recompute();
   }
 
@@ -165,6 +182,11 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
     const op: CompanionOp = {
       id: crypto.randomUUID(),
       ts: new Date().toISOString(),
+      // The local day, recorded HERE, because this is the only moment anything
+      // knows it. The Mac ingests whenever it is next opened — possibly after
+      // a midnight, possibly in another timezone — and `opDay` is what makes
+      // its stamp agree with the projection this phone has already drawn.
+      day: todayStr(),
       baseGeneration: canonical?.meta.generation ?? 0,
       request,
     };
@@ -192,7 +214,11 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
       publish({ ...snapshot, error });
       return false;
     }
-    error = null;
+    // Symmetrically: a write that landed clears a WRITE error and leaves a
+    // read error standing. Appending to the journal proves the container is
+    // writable; it says nothing about whether the projection on screen is
+    // current, and the stamp may still be hours old.
+    if (error?.kind === 'write') error = null;
     recompute();
     return true;
   }

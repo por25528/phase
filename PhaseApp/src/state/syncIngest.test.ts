@@ -56,8 +56,15 @@ function harness(opts: { goals?: Goal[]; tasks?: Task[]; ingestedThrough?: strin
 }
 
 let n = 0;
+/** The day `op()`'s timestamp falls on — the same in every zone this repo runs in. */
+const OP_DAY = '2026-08-25';
 function op(request: CompanionRequest, id = `op-${++n}`): CompanionOp {
   return { id, ts: '2026-08-25T09:00:00.000Z', baseGeneration: 1, request };
+}
+
+/** The same op, carrying the local day the phone made it on. */
+function opOn(day: string, request: CompanionRequest, id = `op-${++n}`): CompanionOp {
+  return { ...op(request, id), day };
 }
 
 function journal(...ops: CompanionOp[]): string {
@@ -76,7 +83,7 @@ describe('ingestJournal', () => {
       h.deps,
     );
     expect(result).toEqual({ applied: 1, skipped: 0 });
-    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1');
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1', OP_DAY);
   });
 
   it('maps add_loose_task onto actions.addTask — the one verb the agent protocol lacks', () => {
@@ -105,7 +112,7 @@ describe('ingestJournal', () => {
       h.deps,
     );
     expect(result).toEqual({ applied: 1, skipped: 1 });
-    expect(h.spies.toggleTask).toHaveBeenCalledWith('t2');
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t2', OP_DAY);
     expect(h.mark()).toBe('op-b');
   });
 
@@ -141,7 +148,7 @@ describe('ingestJournal', () => {
     );
     expect(result).toEqual({ applied: 1, skipped: 0 });
     expect(h.spies.toggleTask).toHaveBeenCalledTimes(1);
-    expect(h.spies.toggleTask).toHaveBeenCalledWith('t2');
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t2', OP_DAY);
   });
 
   it('reads an empty or garbage journal as nothing to do, never a throw', () => {
@@ -168,7 +175,7 @@ describe('ingestJournal', () => {
       op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, 'op-good'),
     );
     expect(ingestJournal(text, h.deps)).toEqual({ applied: 1, skipped: 1 });
-    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1');
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1', OP_DAY);
     expect(h.mark()).toBe('op-good');
     expect(warn).toHaveBeenCalled();
   });
@@ -181,5 +188,95 @@ describe('ingestJournal', () => {
     );
     expect(result).toEqual({ applied: 0, skipped: 1 });
     expect(h.spies.toggleTask).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The cross-midnight case, which is the whole reason `day` is on the wire.
+ *
+ * The phone ticks something at 23:50 and projects it under the 29th. The Mac
+ * is asleep and ingests at 00:10 — a moment at which `todayStr()` on this side
+ * reads the 30th. Stamping the ingest's own clock would move the row to a day
+ * the person was asleep for, and would silently disagree with the projection
+ * the phone had ALREADY drawn and shown them.
+ */
+describe('the day an ingested op is stamped with', () => {
+  it('is the op’s day, not the moment the Mac happened to read it', () => {
+    const h = harness({ tasks: [task('t1')] });
+    ingestJournal(
+      journal(opOn('2026-08-29', { tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } })),
+      h.deps,
+    );
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1', '2026-08-29');
+  });
+
+  it('reaches a step completion too', () => {
+    const h = harness({
+      goals: [{ id: 'g1', title: 'Ship it', nodes: [{ id: 'n1', title: 'Step one' }] }] as Goal[],
+    });
+    ingestJournal(
+      journal(opOn('2026-08-29', { tool: 'complete_task', ref: { kind: 'step', id: 'n1', goalId: 'g1' } })),
+      h.deps,
+    );
+    expect(h.spies.toggleLeaf).toHaveBeenCalledWith('n1', '2026-08-29');
+  });
+
+  it('reaches a `done` status change, which routes through toggleLeaf', () => {
+    const h = harness({
+      goals: [{ id: 'g1', title: 'Ship it', nodes: [{ id: 'n1', title: 'Step one' }] }] as Goal[],
+    });
+    ingestJournal(
+      journal(opOn('2026-08-29', { tool: 'set_status', nodeId: 'n1', status: 'done' })),
+      h.deps,
+    );
+    expect(h.spies.toggleLeaf).toHaveBeenCalledWith('n1', '2026-08-29');
+  });
+
+  it('reaches every other status change through setNodeStatus', () => {
+    const h = harness({
+      goals: [{ id: 'g1', title: 'Ship it', nodes: [{ id: 'n1', title: 'Step one' }] }] as Goal[],
+    });
+    ingestJournal(
+      journal(opOn('2026-08-29', { tool: 'set_status', nodeId: 'n1', status: 'parked' })),
+      h.deps,
+    );
+    expect(h.spies.setNodeStatus).toHaveBeenCalledWith('n1', 'parked', undefined, '2026-08-29');
+  });
+
+  it('dates an unstated log_time session with it', () => {
+    const h = harness({ tasks: [task('t1')] });
+    ingestJournal(
+      journal(opOn('2026-08-29', {
+        tool: 'log_time',
+        ref: { kind: 'task', id: 't1', goalId: null },
+        minutes: 25,
+      })),
+      h.deps,
+    );
+    expect(h.spies.logSession).toHaveBeenCalledWith('task', 't1', 25, '2026-08-29');
+  });
+
+  it('leaves a stated log_time date alone — the op asked for that day', () => {
+    const h = harness({ tasks: [task('t1')] });
+    ingestJournal(
+      journal(opOn('2026-08-29', {
+        tool: 'log_time',
+        ref: { kind: 'task', id: 't1', goalId: null },
+        minutes: 25,
+        date: '2026-08-27',
+      })),
+      h.deps,
+    );
+    expect(h.spies.logSession).toHaveBeenCalledWith('task', 't1', 25, '2026-08-27');
+  });
+
+  it('falls back to the op’s timestamp when an older journal carries no day', () => {
+    const h = harness({ tasks: [task('t1')] });
+    ingestJournal(
+      journal(op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } })),
+      h.deps,
+    );
+    // '2026-08-25T09:00:00.000Z' — the same day in every zone this repo runs in.
+    expect(h.spies.toggleTask).toHaveBeenCalledWith('t1', OP_DAY);
   });
 });

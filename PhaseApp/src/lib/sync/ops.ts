@@ -1,4 +1,6 @@
 import type { AgentRequest } from '../agentProtocol';
+import { localDay, todayStr } from '../dates';
+import { isValidLocalDate } from '../schedule';
 
 /**
  * The sync contract between the Mac app and the PhasePhone companion.
@@ -41,9 +43,43 @@ export interface CompanionOp {
   id: string;
   /** ISO timestamp, audit only — ordering is the journal's line order. */
   ts: string;
+  /**
+   * The phone's LOCAL calendar day when the op was made — `YYYY-MM-DD`.
+   *
+   * On the wire rather than derived, because the two sides read this op at
+   * different moments and from different clocks. The phone projects it the
+   * instant of the tap; the Mac ingests it whenever it is next opened, which
+   * may be after a midnight the person slept through, and may be in another
+   * timezone entirely. Deriving the day from `ts` would give each side its own
+   * answer, and a completion the phone had already SHOWN under Tuesday would
+   * land on the Mac under Wednesday.
+   *
+   * Optional so a journal written before this field existed still ingests —
+   * `opDay` falls back for those.
+   */
+  day?: string;
   /** `generation` of the state file the phone was rendering when the op was made. */
   baseGeneration: number;
   request: CompanionRequest;
+}
+
+/**
+ * The day an op belongs to. The ONE answer, spent by the phone's projection
+ * (`replay.ts`) and by the Mac's ingest (`syncIngest.ts`) alike — they have to
+ * agree or a row moves between days when the Mac catches up.
+ *
+ * Order of preference, and each fallback is a degradation:
+ * 1. `op.day` — what the phone recorded. Correct by construction.
+ * 2. The local day of `op.ts`, for a journal written before `day` existed.
+ *    Correct whenever the reader shares the phone's timezone.
+ * 3. Today, for an op whose timestamp is unreadable too. Stamping
+ *    `Invalid Date` into a field every date comparison then fails against is
+ *    the one outcome worse than being a day out.
+ */
+export function opDay(op: CompanionOp): string {
+  if (isValidLocalDate(op.day)) return op.day;
+  const at = new Date(op.ts);
+  return Number.isNaN(at.getTime()) ? todayStr() : localDay(at);
 }
 
 /**
