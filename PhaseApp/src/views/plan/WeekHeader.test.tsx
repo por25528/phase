@@ -128,4 +128,54 @@ describe('WeekHeader', () => {
     render(<WeekHeader {...base} capacity={unpriced} />);
     expect(screen.getByLabelText('4 unestimated')).toBeTruthy();
   });
+
+  /*
+   * The calendar caveat. `WeekHeader` used to take a `calendarAvailable`
+   * boolean that nobody ever passed, and derive the string 'calendar not
+   * connected' from `hasData` — a statement that becomes false the moment a
+   * calendar CAN be connected and still be short of data. The header renders
+   * the finished string now; `calendarHealth` decides it.
+   */
+  it('shows the caveat it is given', () => {
+    render(<WeekHeader {...base} caveat="calendar needs reconnecting" />);
+    expect(screen.getByText('calendar needs reconnecting')).toBeTruthy();
+  });
+
+  it('shows nothing when there is no caveat', () => {
+    render(<WeekHeader {...base} caveat={null} />);
+    expect(screen.queryByText(/calendar/i)).toBeNull();
+  });
+
+  it('shows no caveat when it is not given one at all', () => {
+    render(<WeekHeader {...base} />);
+    expect(screen.queryByText(/calendar/i)).toBeNull();
+  });
+
+  // The trap the old `capacityNote` comment warned about: the caveat must NOT
+  // be conditional on having no blocks. A stale or partially-covered cache
+  // produces blockedBy entries AND a caveat at the same time — exactly when it
+  // matters most.
+  it('still shows the caveat on a week that has busy blocks', () => {
+    const withBlocks: WeekCapacity = {
+      ...cap,
+      days: [{
+        date: '2026-08-10', plannedMin: 60, backlogMin: 0, unestimated: 0,
+        blockedBy: ['standup'], hasData: false,
+      }],
+    };
+    render(<WeekHeader {...base} capacity={withBlocks} caveat="no calendar data for this week" />);
+    expect(screen.getByText('no calendar data for this week')).toBeTruthy();
+  });
+
+  it('still reports the week figures alongside the caveat', () => {
+    render(<WeekHeader {...base} caveat="calendar not connected" />);
+    expect(document.querySelector('[data-fig="planned"]')?.textContent).toContain('2h');
+  });
+
+  // Month mode reports a month, and a week's caveat under a month's heading
+  // would be the same category error the figures already avoid.
+  it('states no week caveat in month mode', () => {
+    render(<WeekHeader {...base} mode="month" monthCapacity={cap} caveat="calendar not connected" />);
+    expect(screen.queryByText('calendar not connected')).toBeNull();
+  });
 });

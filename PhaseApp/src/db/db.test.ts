@@ -9,6 +9,7 @@ import {
   resetCheckpointMigration, loadCheckpointMigrationSnapshot,
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   loadPlanMode, savePlanMode,
+  loadCalendarIds, saveCalendarIds,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
 import { loadCalendarCache, saveCalendarCache } from './calendarCache';
@@ -794,5 +795,36 @@ describe('sync meta', () => {
     const { loadSyncMeta } = await import('./db');
     await db.settings.put({ key: 'syncMeta', value: JSON.stringify({ generation: 4 }) });
     expect(await loadSyncMeta()).toEqual({ generation: 4, ingestedThroughOpId: null });
+  });
+});
+
+describe('calendar selection', () => {
+  it('defaults to the primary calendar before anything is chosen', async () => {
+    expect(await loadCalendarIds()).toEqual(['primary']);
+  });
+
+  it('round-trips a saved selection', async () => {
+    await saveCalendarIds(['primary', 'work@example.com']);
+    expect(await loadCalendarIds()).toEqual(['primary', 'work@example.com']);
+  });
+
+  // The discriminating test. An empty selection fetches nothing, and nothing
+  // renders a fully-booked week as a free one — so a stored empty list has to
+  // degrade to the default rather than be honoured.
+  it('falls back to the default rather than fetching no calendars at all', async () => {
+    await db.settings.put({ key: 'calendarIds', value: JSON.stringify([]) });
+    expect(await loadCalendarIds()).toEqual(['primary']);
+  });
+
+  it('drops non-string and empty entries', async () => {
+    await db.settings.put({ key: 'calendarIds', value: JSON.stringify(['primary', 7, '', null]) });
+    expect(await loadCalendarIds()).toEqual(['primary']);
+  });
+
+  it('degrades a malformed row to the default rather than failing hydration', async () => {
+    await db.settings.put({ key: 'calendarIds', value: 'not json' });
+    expect(await loadCalendarIds()).toEqual(['primary']);
+    await db.settings.put({ key: 'calendarIds', value: JSON.stringify({ id: 'primary' }) });
+    expect(await loadCalendarIds()).toEqual(['primary']);
   });
 });

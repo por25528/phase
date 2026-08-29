@@ -4,7 +4,7 @@ import { SegmentedSwitch } from '../../components/SegmentedControl';
 import { IconChevronLeft, IconChevronRight } from '../../components/Icons';
 import { fmtD, addDays, isoWeekNumber, MO, parseD } from '../../lib/dates';
 import { ymOf, ymLabel } from '../../lib/calendar';
-import { weekLoadCells, capacityNote } from './capacityLabel';
+import { weekLoadCells } from './capacityLabel';
 import { LoadRule } from './LoadRule';
 import { stampLabel } from '../../components/sectionLabel';
 
@@ -39,7 +39,7 @@ const PLAN_RANGES = [
  * in Plan.tsx; this component only reflects that state, it does not create it.
  */
 export function WeekHeader({
-  weekStart, isPast, capacity, calendarAvailable = false, onPrev, onNext, onToday,
+  weekStart, isPast, capacity, caveat = null, onPrev, onNext, onToday,
   unestimatedOpen, onToggleUnestimated, mode = 'week', onModeChange,
   monthCapacity, monthSpanLabel,
 }: {
@@ -63,13 +63,19 @@ export function WeekHeader({
   /** Omitted where there is no mode to switch (tests, future hosts). */
   onModeChange?: (mode: PlanMode) => void;
   /**
-   * Whether a calendar integration exists at all. Until one does, the
-   * "calendar not connected" caveat is a permanent notice about a feature that
-   * has not shipped — noise rather than information. Once slice 2 lands this
-   * flips true and the caveat becomes meaningful again (it then distinguishes
-   * "connected but empty" from "not connected").
+   * The calendar caveat to show beside the figures, or `null`.
+   *
+   * A finished string, decided by `calendarCaveat` in
+   * `src/lib/calendarHealth.ts` — this component renders it and does not
+   * derive it. Its predecessor was a boolean the header turned into the fixed
+   * words "calendar not connected", which stopped being true the moment a
+   * calendar could be connected AND short of data for the week on screen.
+   *
+   * Deliberately NOT conditional on `blockedBy`: a stale or partially-covered
+   * cache produces blocks AND a caveat simultaneously, which is exactly when
+   * the caveat matters most.
    */
-  calendarAvailable?: boolean;
+  caveat?: string | null;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -88,7 +94,9 @@ export function WeekHeader({
   monthSpanLabel?: string;
 }) {
   const isMonth = mode === 'month';
-  const note = calendarAvailable && !isMonth ? capacityNote(capacity) : null;
+  // Month mode reports a month; a week's caveat under a month's heading
+  // would be the same category error the figures already avoid.
+  const note = isMonth ? null : caveat;
   /*
    * Month mode reports the MONTH's figures, not the week's.
    *

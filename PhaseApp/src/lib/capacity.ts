@@ -173,7 +173,7 @@ export interface DayCapacity {
   // Whether the cached calendar data covers this range — NOT whether a
   // calendar is connected. It suppresses no figure: everything here is a
   // commitment, which is known whatever the calendar cache holds. The caveat
-  // is surfaced separately via `capacityNote` (capacityLabel.ts).
+  // is surfaced separately via `calendarCaveat` (lib/calendarHealth.ts).
   hasData: boolean;
 }
 

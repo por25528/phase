@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { DayCapacity, WeekCapacity } from '../../lib/capacity';
 import {
-  formatMinutes, capacityParts, capacityNote, dayLoadLabel, dayLoadHint,
+  formatMinutes, capacityParts, dayLoadLabel, dayLoadHint,
   loadParts, unestimatedLabel, weekLoadCells, weekLoadParts,
 } from './capacityLabel';
 
@@ -84,16 +84,6 @@ describe('loadParts / unestimatedLabel', () => {
   it('composes to exactly the priced parts when nothing is unestimated', () => {
     const c = day({ unestimated: 0 });
     expect(capacityParts(c)).toEqual(loadParts(c));
-  });
-});
-
-describe('capacityNote', () => {
-  it('flags calendar not connected when hasData is false', () => {
-    expect(capacityNote({ hasData: false })).toBe('calendar not connected');
-  });
-
-  it('is null when hasData is true', () => {
-    expect(capacityNote({ hasData: true })).toBeNull();
   });
 });
 

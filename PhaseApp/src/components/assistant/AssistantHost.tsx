@@ -50,7 +50,7 @@ export function AssistantHost({ open, onClose, theme }: {
   theme: 'light' | 'dark';
 }) {
   const {
-    goals, tasks, sessions, allDayBlocks, activeFocusSession,
+    goals, tasks, sessions, allDayBlocks, busyBlocks, activeFocusSession,
     assistantAccelerator, timeLevel, focusLevel, hydration, actions,
   } = useAppStore();
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -78,7 +78,7 @@ export function AssistantHost({ open, onClose, theme }: {
     if (hydration !== 'ready') return { status: 'loading' };
     const today = todayStr();
     const advice = promoteWork(executionAdvice({
-      goals, tasks, sessions, blocks: [],
+      goals, tasks, sessions, blocks: busyBlocks,
       placedOn: (date: string) => spansOn(goals, tasks, date),
       allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute() },

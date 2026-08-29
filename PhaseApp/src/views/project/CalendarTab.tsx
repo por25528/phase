@@ -19,6 +19,7 @@ import { aimMinuteFor, type PlanDragData } from '../plan/dropTarget';
 import { boardCollision } from '../../lib/boardCollision';
 import { scheduledByDate, spansOn, type ScheduledItem } from '../../lib/scheduled';
 import { weekCapacity } from '../../lib/capacity';
+import { coversWeek } from '../../lib/calendarRange';
 import { plannedLeaves, walkLeaves, weekOf } from '../../lib/plan';
 import { tasksForWeek } from '../../lib/dailyWork';
 import { isPlaced } from '../../lib/blocks';
@@ -47,7 +48,7 @@ import { sectionLabel } from '../../components/sectionLabel';
  * the size of everything else you committed to.
  */
 export function CalendarTab({ goal }: { goal: Goal }) {
-  const { goals, tasks, allDayBlocks, actions } = useAppStore();
+  const { goals, tasks, allDayBlocks, busyBlocks, calendarRange, actions } = useAppStore();
   const today = todayStr();
   const [weekStart, setWeekStart] = useState(() => weekOf(today));
   const [dragTitle, setDragTitle] = useState<string | null>(null);
@@ -68,22 +69,22 @@ export function CalendarTab({ goal }: { goal: Goal }) {
     () => (dragDuration === null
       ? undefined
       : days.map((date) => longestFreeGap(
-        date, WHOLE_DAY, [], spansOn(goals, tasks, date), NO_PAST_LIMIT, allDayBlocks,
+        date, WHOLE_DAY, busyBlocks, spansOn(goals, tasks, date), NO_PAST_LIMIT, allDayBlocks,
       ))),
-    [dragDuration, days, goals, tasks, allDayBlocks],
+    [dragDuration, days, goals, tasks, allDayBlocks, busyBlocks],
   );
   const scheduled = useMemo(() => scheduledByDate(goals, tasks, days), [goals, tasks, days]);
 
   // The whole dataset, not this goal's slice: free time is free time.
   const capacity = useMemo(() => weekCapacity({
     week: weekStart,
-    blocks: [],
+    blocks: busyBlocks,
     leaves: plannedLeaves(goals, weekStart),
     tasks: tasksForWeek(tasks, weekStart),
     now: { date: today, minute: 0 },
     allDayBlocks,
-    hasData: false,
-  }), [goals, tasks, weekStart, allDayBlocks, today]);
+    hasData: calendarRange !== null && coversWeek(calendarRange, weekStart),
+  }), [goals, tasks, weekStart, allDayBlocks, busyBlocks, calendarRange, today]);
 
   /** This goal's open work with nothing on the calendar — the tab's own rail. */
   const unplaced = useMemo(() => {
@@ -212,7 +213,7 @@ export function CalendarTab({ goal }: { goal: Goal }) {
                 <DayBlocks
                   date={date}
                   items={dim(scheduled.get(date) ?? [])}
-                  blocks={[]}
+                  blocks={busyBlocks}
                   allDayBlocks={allDayBlocks}
                   onRemove={(kind, id, goalId, blockId) => {
                     if (kind === 'task') actions.unscheduleTask(id, blockId);

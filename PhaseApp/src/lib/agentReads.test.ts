@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { handleAgentRead } from './agentReads';
 import type { FullState } from '../state/store';
+import { todayStr } from './dates';
 
 /** The smallest state a read can be asked about: nothing planned, nothing due. */
 function emptyState(): FullState {
   return {
     goals: [], tasks: [], habits: [], sessions: [], lives: [],
     availability: [], hydration: 'ready', persistFailed: false,
-    pendingUndo: null,
+    pendingUndo: null, busyBlocks: [],
   } as unknown as FullState;
 }
 
@@ -112,5 +113,36 @@ describe('propose_replan', () => {
     expect(data.moves).toHaveLength(1);
     expect(data.moves[0]).toMatchObject({ blockId: 'b1', from: '2000-01-03' });
     expect(data.moves[0].to > '2000-01-03').toBe(true);
+  });
+});
+
+/**
+ * The assistant answers out of the SAME state the planner does, cached busy
+ * time included. An assistant that proposed an hour the planner would refuse
+ * would be worse than one that proposed nothing.
+ *
+ * Anchored on the real clock rather than a fixed date: `week` answers about
+ * the week it is asked in, so a hardcoded August would fall outside it.
+ */
+describe('the calendar reaches the assistant', () => {
+  const today = todayStr();
+
+  const booked = (): FullState => ({
+    ...emptyState(),
+    busyBlocks: [
+      { date: today, startMin: 540, endMin: 600, title: 'conference', allDay: false },
+    ],
+  } as unknown as FullState);
+
+  it("names the day's meetings in the week readout", () => {
+    const res = handleAgentRead({ tool: 'week' }, booked());
+    expect(JSON.stringify(res)).toContain('conference');
+  });
+
+  // The discriminating half: without the wiring the same call answers with an
+  // empty `blockedBy`, which reads as a clear day.
+  it('says nothing about meetings when the cache holds none', () => {
+    const res = handleAgentRead({ tool: 'week' }, emptyState());
+    expect(JSON.stringify(res)).not.toContain('conference');
   });
 });

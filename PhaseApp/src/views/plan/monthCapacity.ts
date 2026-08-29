@@ -1,4 +1,4 @@
-import type { Goal, Task } from '../../db/types';
+import type { BusyBlock, Goal, Task } from '../../db/types';
 import { weekCapacity, type Now, type WeekCapacity } from '../../lib/capacity';
 import { monthGrid } from '../../lib/calendar';
 import { weekOf, plannedLeaves } from '../../lib/plan';
@@ -25,8 +25,16 @@ export interface MonthCapacityInput {
   ym: string;
   goals: Goal[];
   tasks: Task[];
+  /** The same busy time the week grid draws — not a second opinion about it. */
+  blocks: BusyBlock[];
   now: Now;
   allDayBlocks: boolean;
+  /**
+   * Whether the cached calendar covers what this month draws. Threaded to the
+   * rows AND the total, or the gutter and the header disagree about the same
+   * month.
+   */
+  hasData: boolean;
 }
 
 /**
@@ -59,7 +67,7 @@ export interface MonthCapacityInput {
  * starts on 27 July. A figure whose span is not the heading's has to say so.
  */
 export function monthCapacity(input: MonthCapacityInput): MonthCapacity {
-  const { ym, goals, tasks, now, allDayBlocks } = input;
+  const { ym, goals, tasks, blocks, now, allDayBlocks, hasData } = input;
   const grid = monthGrid(ym);
   // `monthGrid` is Monday-first, so the first cell of each row IS that row's
   // Monday — no need to re-derive it. `weekOf` is used anyway as the single
@@ -72,12 +80,12 @@ export function monthCapacity(input: MonthCapacityInput): MonthCapacity {
     isoWeekLabel: `W${isoWeekNumber(week)}`,
     capacity: weekCapacity({
       week,
-      blocks: [],
+      blocks,
       leaves: plannedLeaves(goals, week),
       tasks: tasksForWeek(tasks, week),
       now,
       allDayBlocks,
-      hasData: false,
+      hasData,
     }),
   }));
 
@@ -86,7 +94,7 @@ export function monthCapacity(input: MonthCapacityInput): MonthCapacity {
     plannedMin: rows.reduce((n, r) => n + r.capacity.plannedMin, 0),
     backlogMin: rows.reduce((n, r) => n + r.capacity.backlogMin, 0),
     unestimated: rows.reduce((n, r) => n + r.capacity.unestimated, 0),
-    hasData: false,
+    hasData,
   };
 
   const first = grid[0][0];

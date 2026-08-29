@@ -25,6 +25,8 @@ import { boardCollision } from '../lib/boardCollision';
 import { scheduledByDate, spansOn } from '../lib/scheduled';
 import { aimFor, longestFreeGap, DEFAULT_SLOT_MIN, WHOLE_DAY, NO_PAST_LIMIT } from '../lib/slot';
 import { weekCapacity, type Now } from '../lib/capacity';
+import { coversWeek } from '../lib/calendarRange';
+import { calendarHealth, calendarCaveat } from '../lib/calendarHealth';
 import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
 import { resolvePlanKey } from '../lib/planKeyboard';
@@ -46,6 +48,7 @@ import { PlanSidebar, SidebarSection } from './plan/PlanSidebar';
 import { RecapPanel } from './plan/RecapPanel';
 import { PlanNotice } from './plan/PlanNotice';
 import { PlanSkeleton } from './plan/PlanSkeleton';
+import { useCalendarRefresh } from './plan/useCalendarRefresh';
 import { Backlog } from './plan/sidebar/Backlog';
 import { Habits } from './plan/sidebar/Habits';
 import { aimFromDrag, type PlanDragData } from './plan/dropTarget';
@@ -85,7 +88,10 @@ function liveNow(): Now {
 }
 
 export function Plan() {
-  const { goals, tasks, habits, hydration, allDayBlocks, revealItem, planMode } = useAppStore();
+  const {
+    goals, tasks, habits, hydration, allDayBlocks, revealItem, planMode,
+    busyBlocks, calendarRange, calendarFetchedAt, calendarStatus, calendarError,
+  } = useAppStore();
   const today = todayStr();
   const reducedMotion = useReducedMotion();
   const habitsDone = habits.filter((h) => h.checkins.includes(today)).length;
@@ -156,15 +162,46 @@ export function Plan() {
   // 60-second now-line tick included — two hundred lines below the note
   // claiming those scans had been eliminated.
   const planHint = useMemo(() => showPlanHint(goals, tasks), [goals, tasks]);
+  /*
+   * Whether the cached calendar actually reaches this week. It is not "is a
+   * calendar connected" — a connected account whose fetched range stops eight
+   * weeks out says nothing about week twelve, and claiming otherwise would
+   * present an unknown week as a clear one.
+   */
+  const weekIsCovered = calendarRange !== null && coversWeek(calendarRange, weekStart);
   const capacity = weekCapacity({
     week: weekStart,
-    blocks: [],
+    blocks: busyBlocks,
     leaves: weekLeaves,
     tasks: weekTasks,
     now,
     allDayBlocks,
-    hasData: false, // slice 2 flips this when a calendar is connected
+    hasData: weekIsCovered,
   });
+
+  /*
+   * Fetch triggers: the planner opening, navigation past the cached range, and
+   * a focus onto a stale cache. Not a poll — see `useCalendarRefresh`.
+   */
+  useCalendarRefresh(weekStart, calendarRange, calendarFetchedAt);
+
+  /*
+   * What is wrong with the calendar, said as the thing to do about it. The
+   * decision is a tested pure function; the header only renders the sentence.
+   * `nowMs` is read from `nowMinute` rather than from `Date.now()` at memo
+   * time so the staleness verdict actually re-evaluates on the now-line tick.
+   */
+  const caveat = useMemo(
+    () => calendarCaveat(calendarHealth({
+      status: calendarStatus,
+      lastError: calendarError,
+      coversWeek: weekIsCovered,
+      fetchedAt: calendarFetchedAt,
+      nowMs: Date.now(),
+    })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [calendarStatus, calendarError, weekIsCovered, calendarFetchedAt, nowMinute],
+  );
 
   /*
    * Month mode's figures. Memoised so this does not recompute on every
@@ -182,9 +219,15 @@ export function Plan() {
    */
   const monthCap = useMemo(
     () => (planMode === 'month'
-      ? monthCapacity({ ym, goals, tasks, now: { date: today, minute: nowMinute }, allDayBlocks })
+      ? monthCapacity({
+        ym, goals, tasks, blocks: busyBlocks,
+        now: { date: today, minute: nowMinute }, allDayBlocks,
+        // The month draws six week rows and the cache is one contiguous range,
+        // so a month is covered only if the LAST row it draws is.
+        hasData: calendarRange !== null && coversWeek(calendarRange, weekOf(monthGrid(ym).at(-1)!.at(-1)!)),
+      })
       : null),
-    [planMode, ym, goals, tasks, today, nowMinute, allDayBlocks],
+    [planMode, ym, goals, tasks, today, nowMinute, allDayBlocks, busyBlocks, calendarRange],
   );
 
   /**
@@ -665,6 +708,7 @@ export function Plan() {
             weekStart={weekStart}
             isPast={isPast}
             capacity={capacity}
+            caveat={caveat}
             mode={planMode}
             onModeChange={actions.setPlanMode}
             onPrev={() => shiftCursor(-1)}
@@ -744,7 +788,7 @@ export function Plan() {
               <DayBlocks
                 date={date}
                 items={scheduledByDay.get(date) ?? []}
-                blocks={[]}
+                blocks={busyBlocks}
                 allDayBlocks={allDayBlocks}
                 readOnly={isPast}
                 reveal={revealItem}

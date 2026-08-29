@@ -48,7 +48,7 @@ function adviceInput(state: FullState, now: Now): ExecutionAdviceInput {
     goals: state.goals,
     tasks: state.tasks,
     sessions: state.sessions,
-    blocks: [],
+    blocks: state.busyBlocks,
     placedOn: (date: string) => spansOn(state.goals, state.tasks, date),
     allDayBlocks: state.allDayBlocks,
     today: now.date,
@@ -62,12 +62,16 @@ function capacityInput(state: FullState, now: Now): CapacityInput {
   const week = weekOf(now.date);
   return {
     week,
-    blocks: [],
+    blocks: state.busyBlocks,
     leaves: plannedLeaves(state.goals, week),
     tasks: tasksForWeek(state.tasks, week),
     now,
     allDayBlocks: state.allDayBlocks,
-    hasData: false, // no calendar cache reaches this module — see `nowOf`
+    // The store's own coverage flag is not reachable from here without the
+    // week's range, and this module answers one week at a time. Reporting
+    // `false` understates a covered week rather than overstating an uncovered
+    // one, which is the safe direction: it suppresses no figure.
+    hasData: false,
   };
 }
 
@@ -170,15 +174,16 @@ export function handleAgentRead(
       return okResponse({ project: goal });
     }
     case 'propose_replan': {
-      // `Today.tsx`'s call, verbatim: `blocks: []` for the reason `nowOf`
-      // gives. Proposes only — `apply_replan` is the write, and it takes
-      // these moves back rather than recomputing them.
+      // `Today.tsx`'s call, verbatim — the store's cached busy time included,
+      // so the assistant never proposes an hour the planner would refuse.
+      // Proposes only: `apply_replan` is the write, and it takes these moves
+      // back rather than recomputing them.
       const now = nowOf();
       return okResponse(proposeReplan({
         goals: state.goals,
         tasks: state.tasks,
         today: now.date,
-        blocks: [],
+        blocks: state.busyBlocks,
         allDayBlocks: state.allDayBlocks,
         now,
       }));

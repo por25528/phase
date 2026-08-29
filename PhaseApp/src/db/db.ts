@@ -251,6 +251,36 @@ export async function saveAllDayBlocks(value: boolean): Promise<void> {
   await db.settings.put({ key: 'allDayBlocks', value: String(value) });
 }
 
+const CALENDAR_IDS_KEY = 'calendarIds';
+/** Google's own name for the signed-in account's own calendar. */
+const DEFAULT_CALENDAR_IDS = ['primary'];
+
+/**
+ * Which Google calendars a fetch queries.
+ *
+ * Total, and never empty: fetching zero calendars returns zero blocks, and
+ * zero blocks render a fully-booked week as a free one. A malformed row, an
+ * empty list, or entries of the wrong type all degrade to the primary
+ * calendar rather than to silence.
+ */
+export async function loadCalendarIds(): Promise<string[]> {
+  const row = await db.settings.get(CALENDAR_IDS_KEY);
+  if (!row) return [...DEFAULT_CALENDAR_IDS];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.value);
+  } catch {
+    return [...DEFAULT_CALENDAR_IDS];
+  }
+  if (!Array.isArray(parsed)) return [...DEFAULT_CALENDAR_IDS];
+  const ids = parsed.filter((v): v is string => typeof v === 'string' && v.length > 0);
+  return ids.length > 0 ? ids : [...DEFAULT_CALENDAR_IDS];
+}
+
+export async function saveCalendarIds(ids: string[]): Promise<void> {
+  await db.settings.put({ key: CALENDAR_IDS_KEY, value: JSON.stringify(ids) });
+}
+
 /**
  * The collapsible sections in the Plan rail.
  *

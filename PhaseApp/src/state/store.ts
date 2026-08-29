@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useCallback } from 'react';
-import type { Goal, GoalNode, Habit, AppState, PlanReview, Task, Session, Asset, Life } from '../db/types';
+import type { Goal, GoalNode, Habit, AppState, BusyBlock, CalendarCache, PlanReview, Task, Session, Asset, Life } from '../db/types';
 import {
   loadState, persist, exportState, importStateFromFile, loadScale, saveScale,
   loadPlanReview, savePlanReview,
@@ -14,7 +14,17 @@ import {
   loadAssistantAccelerator, saveAssistantAccelerator,
   loadStoredTimeLevel, saveStoredTimeLevel,
   loadStoredFocusLevel, saveStoredFocusLevel,
+  loadCalendarIds, saveCalendarIds,
 } from '../db/db';
+import { loadCalendarCache, saveCalendarCache, clearCalendarCache } from '../db/calendarCache';
+import {
+  calendarBridge,
+  type CalendarStatus,
+  type CalendarFetchFailure,
+  type CalendarFetchResult,
+} from '../lib/calendarBridge';
+import { usableCache } from '../lib/calendarCacheState';
+import { fetchRange, type DateRange } from '../lib/calendarRange';
 import { allAssetIds, deleteAssets, getAsset, putAsset } from '../db/assets';
 import { clampScale } from '../lib/timeline';
 import { todayStr, addDays, fmtD } from '../lib/dates';
@@ -182,6 +192,22 @@ interface UIState {
   theme: Theme; // per-device UI preference (localStorage, not Dexie)
   planReview: PlanReview | null; // previous-week snapshot — review metadata, not app data
   allDayBlocks: boolean;              // do all-day calendar events consume the day?
+  /*
+   * Google Calendar — read-only derived state.
+   *
+   * Hydrated from the device-local cache at boot and replaced WHOLESALE on a
+   * successful fetch. No action edits a block: a pulled block is a fact about
+   * another system, and Phase never writes to Google. Deliberately outside
+   * `AppState` and outside `persist()` — `persist` is a full clear + bulkPut of
+   * the four app-data tables, and a block array in there would be rewritten on
+   * every checkbox tick.
+   */
+  busyBlocks: BusyBlock[];
+  calendarRange: DateRange | null;        // what the cached blocks actually cover
+  calendarFetchedAt: string | null;       // ISO instant; drives the stale-on-focus refresh
+  calendarStatus: CalendarStatus | null;  // null in a browser, or when status() failed
+  calendarIds: string[];                  // which calendars a fetch queries
+  calendarError: CalendarFetchFailure | null; // why the last fetch failed
   sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
   planMode: PlanMode;                 // week or month shape for the Plan view (device preference)
   goalsMode: GoalsMode;               // board or timeline shape for the Goals view (device preference)
@@ -270,6 +296,12 @@ let state: FullState = {
   dateReviewDismissed: false,
   planReview: null,
   allDayBlocks: true,
+  busyBlocks: [],
+  calendarRange: null,
+  calendarFetchedAt: null,
+  calendarStatus: null,
+  calendarIds: ['primary'],
+  calendarError: null,
   sidebarPanels: [],
   planMode: 'week',
   goalsMode: 'board',
@@ -603,6 +635,74 @@ function collectContainers(goals: Goal[]): Set<string> {
   return ids;
 }
 
+/**
+ * The producer's current status, or `null` if there is no producer or it could
+ * not answer. Never throws: a calendar that cannot be reached must not fail
+ * hydration, because every other thing Phase does still works without it.
+ */
+async function readCalendarStatus(): Promise<CalendarStatus | null> {
+  const bridge = calendarBridge();
+  if (!bridge) return null;
+  try {
+    return await bridge.status();
+  } catch {
+    return null;
+  }
+}
+
+/** The provenance to compare a cache against, or `null` when nothing is connected. */
+function currentProvenance(
+  status: CalendarStatus | null,
+  calendarIds: string[],
+): { accountId: string; calendarIds: string[]; timeZone: string } | null {
+  if (!status || !status.connected || !status.accountId) return null;
+  return { accountId: status.accountId, calendarIds, timeZone: status.timeZone };
+}
+
+/** The calendar fields implied by a cache row and the live status. */
+function calendarFields(
+  cache: CalendarCache | undefined,
+  status: CalendarStatus | null,
+  calendarIds: string[],
+): Pick<UIState, 'busyBlocks' | 'calendarRange' | 'calendarFetchedAt' | 'calendarStatus'> {
+  const usable = usableCache(cache, currentProvenance(status, calendarIds));
+  return {
+    busyBlocks: usable ? usable.blocks : [],
+    calendarRange: usable ? { rangeStart: usable.rangeStart, rangeEnd: usable.rangeEnd } : null,
+    calendarFetchedAt: usable ? usable.fetchedAt : null,
+    calendarStatus: status,
+  };
+}
+
+/**
+ * Everything the calendar contributes to the boot state, or empty.
+ *
+ * Its own step, outside the main `Promise.all`, and total. The calendar is the
+ * one optional thing Phase loads: a cache row that will not read, a settings
+ * row that will not parse, or a producer that will not answer must leave the
+ * planner opening normally with no blocks, because every other thing the app
+ * does still works without it. Folding these reads into the hydration barrier
+ * would let an empty calendar refuse to render a board full of goals.
+ */
+async function hydrateCalendar(): Promise<
+  Pick<UIState, 'busyBlocks' | 'calendarRange' | 'calendarFetchedAt' | 'calendarStatus' | 'calendarIds'>
+> {
+  try {
+    const [calendarIds, cached, status] = await Promise.all([
+      loadCalendarIds(), loadCalendarCache(), readCalendarStatus(),
+    ]);
+    return { calendarIds, ...calendarFields(cached, status, calendarIds) };
+  } catch {
+    return {
+      calendarIds: ['primary'],
+      busyBlocks: [],
+      calendarRange: null,
+      calendarFetchedAt: null,
+      calendarStatus: null,
+    };
+  }
+}
+
 export async function initStore(): Promise<void> {
   if (initialized) return;
   initialized = true;
@@ -676,12 +776,17 @@ export async function initStore(): Promise<void> {
     const blocked = migrateWorkBlocks(migrated.goals, migrated.tasks);
     migrated = { ...migrated, goals: blocked.goals, tasks: blocked.tasks };
 
+    // After the migrations, so a producer that is slow to answer does not hold
+    // up the repair passes. Never throws — see `hydrateCalendar`.
+    const calendar = await hydrateCalendar();
+
     state = {
       ...state,
       ...migrated,
       pxPerDay,
       planReview,
       allDayBlocks,
+      ...calendar,
       sidebarPanels,
       planMode,
       goalsMode,
@@ -1019,7 +1124,7 @@ function resolvePlacement(
     aimMin,
     durationMin,
     span: WHOLE_DAY,
-    blocks: [], // slice 2 supplies real busy blocks
+    blocks: state.busyBlocks,
     placed,
     now: NO_PAST_LIMIT,
     allDayBlocks: state.allDayBlocks,
@@ -2575,6 +2680,188 @@ export const actions = {
     ifOwner(() => saveAllDayBlocks(value));
   },
 
+  /**
+   * Fetch the range that covers this week's planning horizon, plus
+   * `visitedWeek` if the user has navigated past it.
+   *
+   * Gated on `ownsTabLock` before the fetch, not merely before the write: a
+   * second tab must never spend a Google quota or race the owner's cache row.
+   *
+   * A failed fetch KEEPS whatever blocks were already believed. Presenting a
+   * booked week as free because the network hiccuped is worse than showing
+   * data a few minutes old. The exceptions are the two reasons that mean the
+   * data is genuinely gone rather than momentarily unreachable.
+   */
+  async refreshCalendar(visitedWeek?: string): Promise<void> {
+    if (!ownsTabLock) return;
+    const bridge = calendarBridge();
+    if (!bridge) return;
+
+    let status: CalendarStatus;
+    try {
+      status = await bridge.status();
+    } catch {
+      return;
+    }
+    set({ calendarStatus: status });
+    if (!status.connected || !status.accountId) {
+      set({ busyBlocks: [], calendarRange: null, calendarFetchedAt: null });
+      return;
+    }
+
+    const currentMonday = weekOf(todayStr());
+    const range = fetchRange(
+      currentMonday,
+      visitedWeek ?? currentMonday,
+      state.calendarRange?.rangeEnd,
+    );
+    const calendarIds = state.calendarIds;
+
+    let result: CalendarFetchResult;
+    try {
+      result = await bridge.fetch({ ...range, calendarIds });
+    } catch {
+      return;
+    }
+
+    if (!result.ok) {
+      set({ calendarError: result.reason });
+      if (result.reason === 'not-connected' || result.reason === 'reauth-required') {
+        set({ busyBlocks: [], calendarRange: null, calendarFetchedAt: null });
+      }
+      return;
+    }
+
+    const cache: CalendarCache = {
+      rangeStart: range.rangeStart,
+      rangeEnd: range.rangeEnd,
+      blocks: result.blocks,
+      fetchedAt: result.fetchedAt,
+      // Stamped from the RESULT, not from `status`: the handler reports what
+      // the blocks were actually flattened against, and a zone that changed
+      // mid-fetch must invalidate rather than be papered over.
+      accountId: result.accountId ?? status.accountId,
+      calendarIds: [...calendarIds].sort(),
+      timeZone: result.timeZone,
+    };
+
+    set({
+      busyBlocks: cache.blocks,
+      calendarRange: { rangeStart: cache.rangeStart, rangeEnd: cache.rangeEnd },
+      calendarFetchedAt: cache.fetchedAt,
+      calendarError: null,
+    });
+    ifOwner(() => saveCalendarCache(cache));
+  },
+
+  /**
+   * Hand the OAuth client credentials to the producer.
+   *
+   * Returns whether it landed. The secret never comes back — `status()`
+   * reports only whether one is configured — so there is nothing to read back
+   * into the field, and the UI must not pretend otherwise.
+   */
+  async configureCalendar(clientId: string, clientSecret: string): Promise<boolean> {
+    if (!ownsTabLock) return false;
+    const bridge = calendarBridge();
+    if (!bridge) return false;
+    try {
+      await bridge.configure({ clientId, clientSecret });
+    } catch {
+      return false;
+    }
+    set({ calendarStatus: await readCalendarStatus() });
+    return true;
+  },
+
+  /**
+   * Open Google's consent flow, then fetch immediately.
+   *
+   * The fetch is not optional: connecting and then showing an empty grid until
+   * some other trigger fires reads as a failed connection.
+   */
+  async connectCalendar(): Promise<boolean> {
+    if (!ownsTabLock) return false;
+    const bridge = calendarBridge();
+    if (!bridge) return false;
+    let result: Awaited<ReturnType<typeof bridge.connect>>;
+    try {
+      result = await bridge.connect();
+    } catch {
+      return false;
+    }
+    set({ calendarStatus: await readCalendarStatus() });
+    if (!result.ok) return false;
+    set({ calendarError: null });
+    await actions.refreshCalendar();
+    return true;
+  },
+
+  /**
+   * Revoke the grant and forget everything derived from it.
+   *
+   * The cache row IS deleted here, unlike on a provenance mismatch: this is a
+   * user asking to be forgotten, not a transient failure, so keeping the
+   * blocks to re-evaluate later would be exactly wrong.
+   */
+  async disconnectCalendar(): Promise<void> {
+    if (!ownsTabLock) return;
+    const bridge = calendarBridge();
+    if (!bridge) return;
+    try {
+      await bridge.disconnect();
+    } catch {
+      // Fall through: local state must be cleared even if the revoke failed,
+      // or the UI keeps showing an account the user has asked to remove.
+    }
+    set({
+      busyBlocks: [], calendarRange: null, calendarFetchedAt: null,
+      calendarError: null, calendarStatus: await readCalendarStatus(),
+    });
+    ifOwner(() => clearCalendarCache());
+  },
+
+  /**
+   * Wipe the local credential store, so setup can start over.
+   *
+   * The recovery for a store that cannot be decrypted, and also the way back
+   * to the build's own OAuth client after saving a custom one — both are the
+   * same operation, because what makes the custom client win is simply that it
+   * is stored.
+   */
+  async resetCalendar(): Promise<void> {
+    if (!ownsTabLock) return;
+    const bridge = calendarBridge();
+    if (!bridge) return;
+    try {
+      await bridge.reset();
+    } catch {
+      return;
+    }
+    set({
+      busyBlocks: [], calendarRange: null, calendarFetchedAt: null,
+      calendarError: null, calendarStatus: await readCalendarStatus(),
+    });
+    ifOwner(() => clearCalendarCache());
+  },
+
+  /**
+   * Change which calendars a fetch queries, and refetch.
+   *
+   * The refetch is not a nicety: the cached blocks came from a different
+   * selection, so `usableCache` would reject them on the next boot anyway.
+   * Refetching now means the grid agrees with the picker immediately.
+   */
+  setCalendarIds(ids: string[]): void {
+    const clean = [...new Set(ids.filter((id) => typeof id === 'string' && id.length > 0))];
+    // An empty selection fetches nothing, and nothing renders a fully-booked
+    // week as a free one. Refuse rather than accept it.
+    if (clean.length === 0) return;
+    set({ calendarIds: clean });
+    ifOwner(() => saveCalendarIds(clean));
+    void actions.refreshCalendar();
+  },
+
   // A device preference, like the all-day setting: set() plus
   // its own save, never setAndPersist — this is not app data.
   setSidebarPanels(panels: SidebarPanel[]): void {
@@ -2716,7 +3003,7 @@ export const actions = {
     if (startMin === null) {
       // Same region and `now` as the search above, or the refusal describes
       // gaps the search was never allowed to use.
-      const gaps = freeIntervals(day, WHOLE_DAY, [], placed, NO_PAST_LIMIT, state.allDayBlocks);
+      const gaps = freeIntervals(day, WHOLE_DAY, state.busyBlocks, placed, NO_PAST_LIMIT, state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
       return false;
     }
@@ -2762,7 +3049,7 @@ export const actions = {
     // `placed` is what still keeps two bars off the same minutes.
     const { startMin, durationMin, placed } = resolvePlacement(task, date, aimMin, opts);
     if (startMin === null) {
-      const gaps = freeIntervals(date, WHOLE_DAY, [], placed, NO_PAST_LIMIT, state.allDayBlocks);
+      const gaps = freeIntervals(date, WHOLE_DAY, state.busyBlocks, placed, NO_PAST_LIMIT, state.allDayBlocks);
       actions.showToast(describeNoRoom(durationMin, gaps));
       return false;
     }
@@ -2817,7 +3104,7 @@ export const actions = {
       aimMin: startMin,
       durationMin: minutes,
       span: WHOLE_DAY,
-      blocks: [],
+      blocks: state.busyBlocks,
       placed,
       now,
       allDayBlocks: state.allDayBlocks,
@@ -2825,7 +3112,7 @@ export const actions = {
     if (resolved === null) {
       // Same region and `now` as the search above, or the refusal describes
       // gaps the search was never allowed to use.
-      const gaps = freeIntervals(date, WHOLE_DAY, [], placed, now, state.allDayBlocks);
+      const gaps = freeIntervals(date, WHOLE_DAY, state.busyBlocks, placed, now, state.allDayBlocks);
       actions.showToast(describeNoRoom(minutes, gaps));
       return false;
     }
@@ -2880,7 +3167,7 @@ export const actions = {
          * `WHOLE_DAY` instead; see `scheduleNode`.
          */
         span: ORDINARY_DAY,
-        blocks: [],
+        blocks: state.busyBlocks,
         placed: spansOn(state.goals, state.tasks, date, nodeId),
         now: nowMoment(),
         allDayBlocks: state.allDayBlocks,
@@ -3026,7 +3313,7 @@ export const actions = {
       date: block.date,
       startMin: block.startMin,
       requestedMin: minutes,
-      blocks: [],
+      blocks: state.busyBlocks,
       placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,
     });
@@ -3050,7 +3337,7 @@ export const actions = {
       date: block.date,
       startMin: block.startMin,
       requestedMin: minutes,
-      blocks: [],
+      blocks: state.busyBlocks,
       placed: spansOn(state.goals, state.tasks, block.date, blockId),
       allDayBlocks: state.allDayBlocks,
     });

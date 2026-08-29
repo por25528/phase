@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { monthCapacity } from './monthCapacity';
 import { makeBlock } from '../../lib/blocks';
-import type { Goal, Task } from '../../db/types';
+import type { BusyBlock, Goal, Task } from '../../db/types';
 
 const input = {
   ym: '2026-08',
   goals: [] as Goal[],
   tasks: [] as Task[],
+  blocks: [] as BusyBlock[],
   now: { date: '2026-08-16', minute: 600 },
   allDayBlocks: false,
+  hasData: false,
 };
 
 // August 2026's grid draws six Monday-first rows starting 2026-07-27, which
@@ -134,5 +136,35 @@ describe('monthCapacity', () => {
   it('numbers its rows', () => {
     const m = monthCapacity(input);
     expect(m.rows.every((r) => /^W\d{1,2}$/.test(r.isoWeekLabel))).toBe(true);
+  });
+});
+
+/**
+ * The month grid draws the same busy time the week grid does. Passing `[]`
+ * here while the week passes real blocks would make the two views disagree
+ * about the same Tuesday.
+ */
+describe('monthCapacity and the calendar', () => {
+  const MEETING: BusyBlock = {
+    date: '2026-07-28', startMin: 540, endMin: 600, title: 'standup', allDay: false,
+  };
+
+  it("names the day's meetings on the row that draws it", () => {
+    const out = monthCapacity({ ...input, blocks: [MEETING] });
+    const day = out.rows.flatMap((r) => r.capacity.days).find((d) => d.date === '2026-07-28');
+    expect(day?.blockedBy).toEqual(['standup']);
+  });
+
+  it('says it has no calendar data when it was handed none', () => {
+    const out = monthCapacity({ ...input, blocks: [MEETING] });
+    expect(out.total.hasData).toBe(false);
+  });
+
+  // The discriminating test: `hasData` has to be threaded to BOTH the rows and
+  // the sum, or the header and the gutter disagree about the same month.
+  it('reports coverage on every row and on the total', () => {
+    const out = monthCapacity({ ...input, blocks: [MEETING], hasData: true });
+    expect(out.total.hasData).toBe(true);
+    expect(out.rows.every((r) => r.capacity.hasData)).toBe(true);
   });
 });

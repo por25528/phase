@@ -37,9 +37,9 @@ describe('the month grid', () => {
 
 const cap = monthCapacity({
   ym: '2026-08',
-  goals: [], tasks: [],
+  goals: [], tasks: [], blocks: [],
   now: { date: '2026-08-16', minute: 600 },
-  allDayBlocks: false,
+  allDayBlocks: false, hasData: false,
 });
 
 describe('MonthGrid gutter', () => {
