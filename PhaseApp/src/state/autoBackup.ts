@@ -82,7 +82,17 @@ export function createAutoBackup(deps: AutoBackupDeps): AutoBackup {
   let ready = false;
   let armWhenReady = false;
 
+  /**
+   * Withdraw the pending snapshot request, in BOTH the shapes it can take.
+   *
+   * Before `start()` resolves a held request is `armWhenReady`; after it, it
+   * is a live timer. They are one thing in two representations, so anything
+   * that withdraws one has to withdraw the other — clearing only the timer let
+   * a flush during start-up be chased by an automatic snapshot of the state it
+   * had just captured.
+   */
   const cancel = () => {
+    armWhenReady = false;
     if (timer === null) return;
     clearTimeout(timer);
     timer = null;
@@ -157,14 +167,16 @@ export function createAutoBackup(deps: AutoBackupDeps): AutoBackup {
     async flush(reason) {
       if (stopped) return null;
       // Cancel first: a pending automatic snapshot behind a manual one would
-      // write the same state twice for no reason.
+      // write the same state twice for no reason — and this snapshot captures
+      // whatever that pending one was waiting to capture. A request held
+      // across an unresolved `start()` counts, which is why `cancel` clears
+      // `armWhenReady` as well as the timer.
       cancel();
       return write(reason);
     },
 
     stop() {
       stopped = true;
-      armWhenReady = false;
       cancel();
     },
   };

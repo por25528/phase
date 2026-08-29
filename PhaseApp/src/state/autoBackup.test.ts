@@ -269,6 +269,55 @@ describe('createAutoBackup', () => {
       expect(h.write).toHaveBeenCalledTimes(2);
     });
 
+    /**
+     * `flush()` cancels a pending TIMER so a manual snapshot is not chased by
+     * an automatic one writing the same state — but before `start()` resolves
+     * a held request is not a timer, it is `armWhenReady`, and cancelling one
+     * representation while leaving the other means the edit gets snapshotted
+     * twice: once by the flush that already captured it, and again when
+     * `start()` lands and arms the request nobody withdrew.
+     */
+    it('a flush clears a deferred arm too, not just a pending timer', async () => {
+      const gate = deferredStart();
+      const h = harness({ lastBackupAt: gate.lastBackupAt });
+      const backup = createAutoBackup(h.deps);
+      const started = backup.start();
+
+      // An edit lands while the disk read is still out, then a manual snapshot
+      // captures the very state that edit produced.
+      backup.schedule();
+      await backup.flush('manual');
+      expect(h.write).toHaveBeenCalledTimes(1);
+
+      gate.release(h.at() - 5 * 60_000);
+      await started;
+
+      // The held request is already satisfied. Anything further would be a
+      // duplicate of state nobody edited — the same waste `cancel()` exists to
+      // prevent in the non-racing case.
+      await tick(h, AUTO_BACKUP_MIN_INTERVAL_MS * 2);
+      expect(h.write).toHaveBeenCalledTimes(1);
+    });
+
+    it('still serves an edit that arrives after the flush', async () => {
+      const gate = deferredStart();
+      const h = harness({ lastBackupAt: gate.lastBackupAt });
+      const backup = createAutoBackup(h.deps);
+      const started = backup.start();
+
+      backup.schedule();
+      await backup.flush('manual');
+      gate.release(null);
+      await started;
+
+      // Clearing the held request must not deafen the scheduler: a REAL edit
+      // after the flush is new work, and it still gets its snapshot once the
+      // interval the flush started has run out.
+      backup.schedule();
+      await tick(h, AUTO_BACKUP_MIN_INTERVAL_MS);
+      expect(h.write).toHaveBeenCalledTimes(2);
+    });
+
     it('drops a deferred arm when the scheduler stopped before the read landed', async () => {
       const gate = deferredStart();
       const h = harness({ lastBackupAt: gate.lastBackupAt });
