@@ -16,7 +16,7 @@
   "files": [
     "dist/",
     "ios/Plugin/",
-    "PhaseICloud.podspec"
+    "PhaseIcloud.podspec"
   ],
   "scripts": {
     "build": "tsc -b",

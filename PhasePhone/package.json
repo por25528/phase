@@ -6,9 +6,13 @@
   "description": "PhasePhone \u2014 the iPhone companion to Phase",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc -b",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "ios:sync": "npm run build && cap sync ios",
+    "ios:pods": "cd ios/App && pod install",
+    "ios:open": "cap open ios"
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.2.9",

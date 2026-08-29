@@ -24,6 +24,7 @@ Phase is a local-first goal/habit/task planner — React 19 + TypeScript + Vite 
 - `src/views/<View>.tsx` orchestrates a top-level view; its components live in a per-view subfolder (`plan/`, `timeline/`, `goals/`, `project/`, `today/`).
 - `src/lib/commands.ts` describes the command palette's verbs — ids, labels and the words people actually type — and nothing else. The handlers live in `App.tsx` because they need the store; keeping them apart is what lets the matching be tested without mounting anything.
 - `src/components/` — shared visual primitives.
+- `src/lib/sync/*` + `src/state/syncIngest.ts`, `src/state/syncExport.ts` — the file contract with the PhasePhone companion. The Mac is the ONLY writer of `state.json` and the phone the only writer of `ops-phone.jsonl`; ingest maps each op onto `handleAgentWrite`, so the companion opens no new door into the store. `src/lib/sync/replay.ts` is the phone's projection and every branch of it MIRRORS the matching branch of `agentWrites` — including the day it stamps, which is the LOCAL day (`localDay` in `dates.ts`), because that is what `todayStr()` will hand the Mac when it ingests the same op.
 - `electron/main.cjs` — desktop shell (BrowserWindow, dev-server/dist URL switch).
 
 ## Invariants

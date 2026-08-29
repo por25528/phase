@@ -2,8 +2,14 @@ require 'json'
 
 package = JSON.parse(File.read(File.join(__dir__, 'package.json')))
 
+# The pod's NAME is `PhaseIcloud`, not `PhaseICloud`, and it is not a choice.
+# Capacitor derives the pod it writes into the Podfile from the npm package name
+# — `phase-icloud` → `PhaseIcloud`, via `fixName` in @capacitor/cli — and
+# CocoaPods refuses a podspec whose `s.name` disagrees with the file it was
+# asked for. The Swift class stays `PhaseICloud`; a pod name and a class name
+# have never had to match.
 Pod::Spec.new do |s|
-  s.name = 'PhaseICloud'
+  s.name = 'PhaseIcloud'
   s.version = package['version']
   s.summary = package['description']
   s.license = 'MIT'

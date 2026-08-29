@@ -74,7 +74,12 @@ export function Today({ store }: { store: PhoneStore }) {
       {/* ── The day ──
           The app's stamp at phone measure, with the sync's one honest caveat
           beside it: how old the canonical file is. It appears only when the
-          answer is interesting — see `asOfLabel`. */}
+          answer is interesting — see `asOfLabel`.
+
+          What is still WAITING to reach the Mac is not drawn here: it is the
+          shell's `SyncBar`, because a capture made on the Capture screen is
+          the op most likely to be outstanding and Today is the wrong place to
+          tell anyone about it. */}
       <header className="px-[18px] pt-[18px] pb-[16px] border-b border-line">
         <span className="inline-flex items-stretch rounded-[4px] border border-line-2 overflow-hidden">
           <span className="section-label px-[8px] py-[3px] bg-fill text-paper font-semibold">
@@ -134,12 +139,6 @@ export function Today({ store }: { store: PhoneStore }) {
             </section>
           )}
         </>
-      )}
-
-      {state.pendingCount > 0 && (
-        <p className="px-[18px] py-[14px] text-meta text-muted">
-          {state.pendingCount} change{state.pendingCount === 1 ? '' : 's'} waiting for your Mac
-        </p>
       )}
     </div>
   );

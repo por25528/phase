@@ -2,6 +2,7 @@ import type { Goal, GoalNode, Session, Task } from '../../db/types';
 import type { CompanionOp } from './ops';
 import type { SyncSlices } from './stateFile';
 import { cloneGoals, findNode, isLeafNode } from '../tree';
+import { localDay, todayStr } from '../dates';
 import { applyStatus } from '../status';
 
 /**
@@ -39,9 +40,26 @@ export function replayOps(slices: SyncSlices, ops: readonly CompanionOp[]): Sync
   return out;
 }
 
-/** The op's own day, which is what a completion or an unstated log is stamped with. */
+/**
+ * The op's own day — its LOCAL calendar day, which is what a completion or an
+ * unstated log is stamped with.
+ *
+ * Local because the Mac's stamp is local: `toggleTask` and `applyStatus` are
+ * both handed `todayStr()` when this same op is ingested, and a projection that
+ * predicted a different day than the Mac will write is exactly the flicker this
+ * module exists to prevent. `op.ts` is a UTC instant, so its first ten
+ * characters are the UTC day — yesterday's, for every user east of Greenwich
+ * between midnight and their offset. A row ticked at 00:30 in Bangkok would be
+ * stamped yesterday and drop straight out of `Done today`, which reads
+ * `doneAt === today`.
+ *
+ * An unreadable timestamp falls back to now. The envelope check accepts any
+ * string for `ts`, and the alternative is stamping `Invalid Date` into a field
+ * every date comparison in the app then silently fails against.
+ */
 function dayOf(op: CompanionOp): string {
-  return op.ts.slice(0, 10);
+  const at = new Date(op.ts);
+  return Number.isNaN(at.getTime()) ? todayStr() : localDay(at);
 }
 
 /** An ACTIVE project — a completed one is frozen, exactly as `agentWrites` has it. */

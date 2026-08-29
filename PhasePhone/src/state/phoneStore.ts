@@ -21,6 +21,20 @@ import type { FileBridge } from '../bridge/FileBridge';
  * offline, correct while the Mac is asleep, and incapable of disagreeing with
  * the Mac about who owns state.
  */
+/**
+ * The last thing the bridge refused to do.
+ *
+ * The KIND is the whole point, because the two failures mean opposite things
+ * to the person holding the phone: a `read` that failed leaves what is on
+ * screen stale but true, while a `write` that failed means the gesture they
+ * just made did not happen at all. One asks for patience, the other asks them
+ * to do it again.
+ */
+export interface SyncError {
+  kind: 'read' | 'write';
+  message: string;
+}
+
 export interface PhoneState {
   status: 'loading' | 'ready' | 'never-synced';
   /** Canonical + pending replay. `null` only before the first good read. */
@@ -28,6 +42,8 @@ export interface PhoneState {
   /** `meta.writtenAt` of the canonical file — what the "as of" stamp reads. */
   writtenAt: string | null;
   pendingCount: number;
+  /** The last failure, or `null`. Any success on the same path clears it. */
+  error: SyncError | null;
 }
 
 export interface PhoneStore {
@@ -35,12 +51,18 @@ export interface PhoneStore {
   /** The snapshot outside React — for tests and for the ops' own bookkeeping. */
   getState(): PhoneState;
   refresh(): Promise<void>;
+  /**
+   * Every op answers the one question a companion has to answer: did that
+   * reach the journal? `false` means the file write failed and NOTHING
+   * happened — no projection change, no pending op. A screen that says
+   * "captured" regardless is the bug this return value exists to prevent.
+   */
   ops: {
-    completeTask(ref: WorkRef): Promise<void>;
-    setStatus(nodeId: string, status: 'parked' | 'todo' | 'done'): Promise<void>;
-    addStep(goalId: string, title: string, parentId?: string): Promise<void>;
-    addLooseTask(title: string, date?: string): Promise<void>;
-    logTime(ref: WorkRef, minutes: number): Promise<void>;
+    completeTask(ref: WorkRef): Promise<boolean>;
+    setStatus(nodeId: string, status: 'parked' | 'todo' | 'done'): Promise<boolean>;
+    addStep(goalId: string, title: string, parentId?: string): Promise<boolean>;
+    addLooseTask(title: string, date?: string): Promise<boolean>;
+    logTime(ref: WorkRef, minutes: number): Promise<boolean>;
   };
   /** Stop listening to the bridge. */
   dispose(): void;
@@ -51,7 +73,13 @@ const LOADING: PhoneState = {
   projected: null,
   writtenAt: null,
   pendingCount: 0,
+  error: null,
 };
+
+/** What to show a person about a failure they did not cause and cannot read. */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 /** The five entity arrays, without the `meta` block that rides beside them. */
 function slicesOf(file: StateFile): SyncSlices {
@@ -72,6 +100,9 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
   /** The tail of `journal` the Mac has not ingested. */
   let pending: CompanionOp[] = [];
 
+  /** The last failure, held outside the snapshot so `recompute` can carry it. */
+  let error: SyncError | null = null;
+
   let snapshot: PhoneState = LOADING;
   const listeners = new Set<() => void>();
 
@@ -84,7 +115,7 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
     if (!canonical) {
       journal = journal.slice();
       pending = journal;
-      publish({ status: 'never-synced', projected: null, writtenAt: null, pendingCount: 0 });
+      publish({ status: 'never-synced', projected: null, writtenAt: null, pendingCount: 0, error });
       return;
     }
     // `ingestedThroughOpId` and never `baseGeneration` arithmetic: the Mac
@@ -98,24 +129,39 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
       projected: replayOps(slicesOf(canonical), pending),
       writtenAt: canonical.meta.writtenAt,
       pendingCount: pending.length,
+      error,
     });
   }
 
   async function refresh(): Promise<void> {
-    const [stateText, journalText] = await Promise.all([
-      bridge.readStateFile(),
-      bridge.readJournal(),
-    ]);
+    let stateText: string | null;
+    let journalText: string;
+    try {
+      [stateText, journalText] = await Promise.all([
+        bridge.readStateFile(),
+        bridge.readJournal(),
+      ]);
+    } catch (err) {
+      // A read that THREW is iCloud unreachable, not a file that is absent —
+      // and it says nothing about whether the work is still there. So the last
+      // good projection stands untouched and only the error is published. This
+      // never rethrows: the callers are an effect and the bridge's own change
+      // callback, neither of which can catch.
+      error = { kind: 'read', message: messageOf(err) };
+      publish({ ...snapshot, error });
+      return;
+    }
     journal = parseOpsJournal(journalText);
     // A file that is absent is a first run; one that is unparseable is iCloud
     // caught mid-write. Neither may discard the last good copy — the phone
     // would otherwise blank out mid-sync and read as data loss.
     const parsed = stateText === null ? null : parseStateFile(stateText);
     if (parsed) canonical = parsed;
+    error = null;
     recompute();
   }
 
-  async function push(request: CompanionRequest): Promise<void> {
+  async function push(request: CompanionRequest): Promise<boolean> {
     const op: CompanionOp = {
       id: crypto.randomUUID(),
       ts: new Date().toISOString(),
@@ -128,14 +174,27 @@ export function createPhoneStore(bridge: FileBridge): PhoneStore {
     // anyway. The phone is the journal's ONLY writer, so rewriting from the
     // in-memory copy cannot lose somebody else's line.
     const stale = journal.length > pending.length;
-    if (stale) {
-      await bridge.rewriteJournal([...pending, op].map(serializeOp).map((l) => `${l}\n`).join(''));
-      journal = [...pending, op];
-    } else {
-      await bridge.appendOp(serializeOp(op));
-      journal = [...journal, op];
+    try {
+      if (stale) {
+        await bridge.rewriteJournal([...pending, op].map(serializeOp).map((l) => `${l}\n`).join(''));
+        journal = [...pending, op];
+      } else {
+        await bridge.appendOp(serializeOp(op));
+        journal = [...journal, op];
+      }
+    } catch (err) {
+      // The in-memory journal is assigned only AFTER the write resolves, so a
+      // failure leaves it agreeing with the file — which is what lets the next
+      // append still compact correctly. Nothing is recomputed: an op that
+      // never reached the file is not pending, and rendering it as done would
+      // be a promise the next refresh silently breaks.
+      error = { kind: 'write', message: messageOf(err) };
+      publish({ ...snapshot, error });
+      return false;
     }
+    error = null;
     recompute();
+    return true;
   }
 
   const off = bridge.onChange(() => {

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { replayOps } from './replay';
+import { todayStr } from '../dates';
 import type { CompanionOp, CompanionRequest } from './ops';
 import type { SyncSlices } from './stateFile';
 
@@ -193,6 +194,59 @@ describe('append_note', () => {
       op({ tool: 'append_note', ref: { kind: 'step', id: 'gone' }, markdown: 'lost' }),
     ]);
     expect(out.goals).toEqual(slices().goals);
+  });
+});
+
+/**
+ * The day a stamp names is the LOCAL calendar day, because that is the day
+ * `todayStr()` hands `toggleTask` and `applyStatus` when the Mac ingests the
+ * same op. `op.ts` is a UTC instant: its first ten characters name a DIFFERENT
+ * day for everyone east of Greenwich between midnight and their offset, and
+ * west of it after their evening. A row ticked at 00:30 in Bangkok would be
+ * stamped yesterday, and `buildDailyWork` — which matches `doneAt` against
+ * today — would drop it out of "Done today" the instant it was ticked.
+ */
+describe('the day an op is stamped with', () => {
+  const ORIGINAL_TZ = process.env.TZ;
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  /** Node re-reads `TZ` per `Date` call, so a zone can be pinned per case. */
+  function inZone<T>(tz: string, fn: () => T): T {
+    process.env.TZ = tz;
+    return fn();
+  }
+
+  it('is the local day east of Greenwich, where UTC is still yesterday', () => {
+    // 00:30 on the 30th in Bangkok; 17:30 on the 29th in UTC.
+    const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
+      op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: '2026-08-29T17:30:00.000Z' }),
+    ]));
+    expect(out.tasks[0].doneAt).toBe('2026-08-30');
+  });
+
+  it('is the local day west of Greenwich, where UTC is already tomorrow', () => {
+    // 21:30 on the 29th in Los Angeles; 04:30 on the 30th in UTC.
+    const out = inZone('America/Los_Angeles', () => replayOps(slices(), [
+      op({ tool: 'complete_task', ref: { kind: 'step', id: 'n1', goalId: 'g1' } }, { ts: '2026-08-30T04:30:00.000Z' }),
+    ]));
+    expect(node(out, 'n1')).toMatchObject({ status: 'done', doneAt: '2026-08-29' });
+  });
+
+  it('dates an unstated log_time session the same way', () => {
+    const out = inZone('Asia/Bangkok', () => replayOps(slices(), [
+      op({ tool: 'log_time', ref: { kind: 'task', id: 't1', goalId: null }, minutes: 30 }, { ts: '2026-08-29T17:30:00.000Z' }),
+    ]));
+    expect(out.sessions[0].date).toBe('2026-08-30');
+  });
+
+  it('falls back to today when the timestamp is unreadable, rather than stamping NaN', () => {
+    const out = replayOps(slices(), [
+      op({ tool: 'complete_task', ref: { kind: 'task', id: 't1', goalId: null } }, { ts: 'not-a-timestamp' }),
+    ]);
+    expect(out.tasks[0].doneAt).toBe(todayStr());
   });
 });
 

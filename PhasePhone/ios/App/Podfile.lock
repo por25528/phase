@@ -1,0 +1,28 @@
+PODS:
+  - Capacitor (7.6.8):
+    - CapacitorCordova
+  - CapacitorCordova (7.6.8)
+  - PhaseIcloud (0.0.1):
+    - Capacitor
+
+DEPENDENCIES:
+  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - PhaseIcloud (from `../../plugin-icloud`)
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorCordova:
+    :path: "../../node_modules/@capacitor/ios"
+  PhaseIcloud:
+    :path: "../../plugin-icloud"
+
+SPEC CHECKSUMS:
+  Capacitor: ff6bf01336ac353098378828aff465095a89e459
+  CapacitorCordova: e61ee8c40101b8cd011d0224261606a290c082cf
+  PhaseIcloud: 4aa18b13f4d3e11cb5ee3a03190338ed7156373b
+
+PODFILE CHECKSUM: 94195ddf5bad3ae6668dc63f135d32c1374b9518
+
+COCOAPODS: 1.17.0

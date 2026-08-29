@@ -8,9 +8,22 @@ export function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-export function todayStr(): string {
-  const d = new Date();
+/**
+ * The LOCAL calendar day of an instant, in the `YYYY-MM-DD` form every date
+ * field in this app carries.
+ *
+ * Local and never UTC: `toISOString().slice(0, 10)` names a different day than
+ * the person in front of the screen does for part of every day — the whole
+ * night east of Greenwich, the whole evening west of it — and every comparison
+ * here (`plannedWeek`, `doneAt === today`, `date < today`) is against a day the
+ * user picked in their own zone.
+ */
+export function localDay(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function todayStr(): string {
+  return localDay(new Date());
 }
 
 export function millisecondsUntilNextLocalMidnight(now: Date): number {
