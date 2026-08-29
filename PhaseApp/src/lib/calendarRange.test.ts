@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fetchRange, coversWeek,
+  fetchRange, coversWeek, beyondHorizon,
   BASE_BACK_DAYS, BASE_FORWARD_DAYS, MAX_FORWARD_DAYS,
 } from './calendarRange';
 import { addDays } from './dates';
@@ -95,5 +95,59 @@ describe('coversWeek', () => {
 
   it('accepts the last week that fits exactly', () => {
     expect(coversWeek(base, addDays(base.rangeEnd, -7))).toBe(true);
+  });
+});
+
+/**
+ * A week the range can never reach. `fetchRange` clamps at `MAX_FORWARD_DAYS`,
+ * so a visited week beyond the cap comes back uncovered no matter how many
+ * times it is asked for — and asking again on every navigation is a fetch per
+ * keystroke that cannot possibly change the answer.
+ */
+describe('beyondHorizon', () => {
+  const MONDAY = '2026-08-03';
+
+  it('is false for the current week', () => {
+    expect(beyondHorizon(MONDAY, MONDAY)).toBe(false);
+  });
+
+  it('is false for a week the base window already covers', () => {
+    expect(beyondHorizon(MONDAY, addDays(MONDAY, 21))).toBe(false);
+  });
+
+  it('is false for a week past the base window but inside the cap', () => {
+    expect(beyondHorizon(MONDAY, addDays(MONDAY, BASE_FORWARD_DAYS + 7))).toBe(false);
+  });
+
+  // The boundary is the week's END, not its start: a Monday exactly at the cap
+  // still needs six more days that the range cannot hold.
+  it('is true for the last week that does not fit whole', () => {
+    expect(beyondHorizon(MONDAY, addDays(MONDAY, MAX_FORWARD_DAYS))).toBe(true);
+  });
+
+  it('is false for the last week that does fit whole', () => {
+    expect(beyondHorizon(MONDAY, addDays(MONDAY, MAX_FORWARD_DAYS - 7))).toBe(false);
+  });
+
+  it('is true far beyond the cap', () => {
+    expect(beyondHorizon(MONDAY, addDays(MONDAY, 400))).toBe(true);
+  });
+
+  // History is not planning input, so the range never grows backward — but a
+  // past week is not "beyond the horizon" either; it is simply outside, and
+  // `coversWeek` already says so. Refetching for it would be just as futile.
+  it('is true for a week before the range can reach back', () => {
+    expect(beyondHorizon(MONDAY, addDays(MONDAY, -14))).toBe(true);
+  });
+
+  // The discriminating test. Whatever `beyondHorizon` says is true must agree
+  // with what `fetchRange` actually returns, or the guard would suppress a
+  // fetch that would have worked.
+  it('agrees with fetchRange for every week across the cap', () => {
+    for (let d = -21; d <= MAX_FORWARD_DAYS + 21; d += 7) {
+      const week = addDays(MONDAY, d);
+      const reachable = coversWeek(fetchRange(MONDAY, week), week);
+      expect(beyondHorizon(MONDAY, week)).toBe(!reachable);
+    }
   });
 });

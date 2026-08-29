@@ -208,6 +208,18 @@ interface UIState {
   calendarStatus: CalendarStatus | null;  // null in a browser, or when status() failed
   calendarIds: string[];                  // which calendars a fetch queries
   calendarError: CalendarFetchFailure | null; // why the last fetch failed
+  /**
+   * The week the planner is showing, published by `useCalendarRefresh`.
+   *
+   * A refresh started from anywhere else — Connect, Settings' Refresh — has no
+   * other way to know it. Without it those fetched the base window only, so a
+   * connect made while parked on week +30 left that week permanently caveated:
+   * the navigate trigger had already fired for it and would not fire again.
+   *
+   * In-memory only. It is where the user is looking right now, not a
+   * preference, so it takes no settings row and no `ifOwner` write.
+   */
+  calendarWeek: string | null;
   sidebarPanels: SidebarPanel[];      // which Plan-view sidebar panels are expanded (device preference)
   planMode: PlanMode;                 // week or month shape for the Plan view (device preference)
   goalsMode: GoalsMode;               // board or timeline shape for the Goals view (device preference)
@@ -302,6 +314,7 @@ let state: FullState = {
   calendarStatus: null,
   calendarIds: ['primary'],
   calendarError: null,
+  calendarWeek: null,
   sidebarPanels: [],
   planMode: 'week',
   goalsMode: 'board',
@@ -368,6 +381,29 @@ let writingUndoableEdit = false;
  * refuse a write during hydration.
  */
 let ownsTabLock = true;
+
+/**
+ * Which refresh is the current one, and how wide the widest in-flight request
+ * asked to be.
+ *
+ * Two refreshes at once is ordinary: Settings' Refresh and the planner's
+ * navigate-past-the-range effect fire from different places and neither waits
+ * for the other. Both hazards it creates are real.
+ *
+ * `calendarFetchSeq` settles ORDER — a result from a superseded fetch is
+ * dropped rather than allowed to land after the newer one and undo it.
+ *
+ * `calendarPendingEnd` settles WIDTH. `fetchRange` decides how far to ask from
+ * the range already held, and a second call reads that before the first has
+ * written anything — so it asks for the narrow base window, lands last, and a
+ * week that was covered a moment ago goes back to being caveated. Remembering
+ * the widest request still in flight is what stops the second call from
+ * asking for less than the first. It is released when the last fetch settles,
+ * so a week rollover can still move the anchor forward.
+ */
+let calendarFetchSeq = 0;
+let calendarFetchesInFlight = 0;
+let calendarPendingEnd: string | null = null;
 
 let activeNoteFlush: (() => void) | null = null;
 
@@ -633,6 +669,13 @@ function collectContainers(goals: Goal[]): Set<string> {
   }
   goals.forEach((g) => walk(g.nodes));
   return ids;
+}
+
+/** The later of two ISO dates, ignoring absent ones. `null` when both are absent. */
+function maxIso(a: string | undefined | null, b: string | undefined | null): string | undefined {
+  if (!a) return b ?? undefined;
+  if (!b) return a;
+  return a > b ? a : b;
 }
 
 /**
@@ -2710,24 +2753,52 @@ export const actions = {
     }
 
     const currentMonday = weekOf(todayStr());
+    // `calendarWeek` is where the planner is parked. A bare `refreshCalendar()`
+    // — Settings' Refresh, and the fetch after Connect — has no argument to
+    // give, and asking only about the current week is how a connect made on
+    // week +30 left that week caveated with nothing left to clear it.
+    const wanted = visitedWeek ?? state.calendarWeek ?? currentMonday;
     const range = fetchRange(
       currentMonday,
-      visitedWeek ?? currentMonday,
-      state.calendarRange?.rangeEnd,
+      wanted,
+      // The widest END anyone is currently asking for, so a second call in
+      // flight cannot ask for less than the first — see `calendarPendingEnd`.
+      maxIso(state.calendarRange?.rangeEnd, calendarPendingEnd),
     );
     const calendarIds = state.calendarIds;
+
+    const seq = ++calendarFetchSeq;
+    calendarPendingEnd = maxIso(calendarPendingEnd, range.rangeEnd) ?? null;
+    calendarFetchesInFlight += 1;
 
     let result: CalendarFetchResult;
     try {
       result = await bridge.fetch({ ...range, calendarIds });
     } catch {
       return;
+    } finally {
+      calendarFetchesInFlight -= 1;
+      // Released only when the last one settles: the stored range keeps the
+      // window wide from here, and a marker that outlived every fetch would
+      // survive a disconnect that clears it.
+      if (calendarFetchesInFlight === 0) calendarPendingEnd = null;
     }
+
+    // A newer refresh has started since this one asked. Its answer is the one
+    // to keep; letting this land would undo it.
+    if (seq !== calendarFetchSeq) return;
 
     if (!result.ok) {
       set({ calendarError: result.reason });
       if (result.reason === 'not-connected' || result.reason === 'reauth-required') {
         set({ busyBlocks: [], calendarRange: null, calendarFetchedAt: null });
+        // The row goes too, and this is the one place a failed fetch deletes
+        // it. Its provenance — account, calendars, timezone — all still MATCH,
+        // so the "leave the row, re-evaluate next boot" rule would have the
+        // next launch believe a fortnight of blocks that no token can refresh.
+        // A rotated OAuth client reaches here, which is exactly the case that
+        // rule cannot tell from a healthy one.
+        ifOwner(() => clearCalendarCache());
       }
       return;
     }
@@ -2770,7 +2841,17 @@ export const actions = {
     } catch {
       return false;
     }
-    set({ calendarStatus: await readCalendarStatus() });
+    // A new client is a new Cloud project and a new grant. Everything on
+    // screen was fetched under the old one and is now unattributable — showing
+    // it would be another account's meetings drawn as this one's — and the row
+    // on disk would be believed again on the next boot, because its provenance
+    // records the account and not the client that reached it. The producer has
+    // already revoked the old grant by this point; this is the renderer's half.
+    set({
+      busyBlocks: [], calendarRange: null, calendarFetchedAt: null,
+      calendarError: null, calendarStatus: await readCalendarStatus(),
+    });
+    ifOwner(() => clearCalendarCache());
     return true;
   },
 
@@ -2834,6 +2915,17 @@ export const actions = {
     const bridge = calendarBridge();
     if (!bridge) return;
     try {
+      // Revoke BEFORE forgetting. `reset` wipes the local store, which holds
+      // the only copy of the refresh token — after it there is nothing left
+      // that can revoke anything, and the grant survives at Google with no way
+      // to reach it. Best-effort: a store that cannot be decrypted has no
+      // readable token to revoke, and being offline must not block the reset
+      // that exists to recover from exactly that.
+      await bridge.disconnect();
+    } catch {
+      // Fall through — see above.
+    }
+    try {
       await bridge.reset();
     } catch {
       return;
@@ -2852,6 +2944,21 @@ export const actions = {
    * selection, so `usableCache` would reject them on the next boot anyway.
    * Refetching now means the grid agrees with the picker immediately.
    */
+  /**
+   * Publish the week the planner is showing, so a refresh started from
+   * anywhere else can make sure of it.
+   *
+   * In-memory and unpersisted — this is where the user is looking, not a
+   * preference — so it is deliberately outside `ifOwner`: a non-owning tab
+   * still renders the planner and still needs its own view to be coherent, and
+   * this writes nothing to disk. It does NOT fetch; `useCalendarRefresh` owns
+   * that decision and knows when asking again would be futile.
+   */
+  setCalendarWeek(week: string): void {
+    if (week === state.calendarWeek) return;
+    set({ calendarWeek: week });
+  },
+
   setCalendarIds(ids: string[]): void {
     const clean = [...new Set(ids.filter((id) => typeof id === 'string' && id.length > 0))];
     // An empty selection fetches nothing, and nothing renders a fully-booked

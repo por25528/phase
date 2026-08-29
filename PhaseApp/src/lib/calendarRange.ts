@@ -53,3 +53,23 @@ export function fetchRange(
 export function coversWeek(range: DateRange, monday: string): boolean {
   return monday >= range.rangeStart && addDays(monday, 7) <= range.rangeEnd;
 }
+
+/**
+ * Whether a week is outside anything `fetchRange` could ever return, so asking
+ * for it again is futile.
+ *
+ * `fetchRange` clamps forward at `MAX_FORWARD_DAYS` and never grows backward,
+ * so a week past the cap — or before the range's fixed back edge — comes back
+ * uncovered however many times it is asked for. Without this, paging out to
+ * next year fires one fetch per week navigated, each returning the identical
+ * clamped range, and the header keeps saying "no calendar data for this week"
+ * as though more were on the way.
+ *
+ * Defined against `fetchRange`'s own arithmetic rather than restating it, and
+ * `calendarRange.test.ts` walks every week across the cap asserting the two
+ * agree — a guard that suppressed a fetch which WOULD have worked is the one
+ * failure this must not have.
+ */
+export function beyondHorizon(mondayOfCurrentWeek: string, monday: string): boolean {
+  return !coversWeek(fetchRange(mondayOfCurrentWeek, monday), monday);
+}

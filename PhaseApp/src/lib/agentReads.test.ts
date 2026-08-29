@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { handleAgentRead } from './agentReads';
 import type { FullState } from '../state/store';
-import { todayStr } from './dates';
+import { addDays, todayStr } from './dates';
+import { weekOf } from './plan';
 
 /** The smallest state a read can be asked about: nothing planned, nothing due. */
 function emptyState(): FullState {
   return {
     goals: [], tasks: [], habits: [], sessions: [], lives: [],
     availability: [], hydration: 'ready', persistFailed: false,
-    pendingUndo: null, busyBlocks: [],
+    pendingUndo: null, busyBlocks: [], calendarRange: null,
   } as unknown as FullState;
 }
 
@@ -126,12 +127,15 @@ describe('propose_replan', () => {
  */
 describe('the calendar reaches the assistant', () => {
   const today = todayStr();
+  const week = weekOf(today);
 
-  const booked = (): FullState => ({
+  const booked = (over: Partial<FullState> = {}): FullState => ({
     ...emptyState(),
     busyBlocks: [
       { date: today, startMin: 540, endMin: 600, title: 'conference', allDay: false },
     ],
+    calendarRange: { rangeStart: addDays(week, -7), rangeEnd: addDays(week, 56) },
+    ...over,
   } as unknown as FullState);
 
   it("names the day's meetings in the week readout", () => {
@@ -144,5 +148,32 @@ describe('the calendar reaches the assistant', () => {
   it('says nothing about meetings when the cache holds none', () => {
     const res = handleAgentRead({ tool: 'week' }, emptyState());
     expect(JSON.stringify(res)).not.toContain('conference');
+  });
+
+  /**
+   * `hasData` is the assistant's only way to tell "this week has no meetings"
+   * from "nobody has fetched this week". Hardcoding it false said the second
+   * about a week it had every block for, which is the more damaging error:
+   * it invites a caveat on an answer that needs none.
+   */
+  it('reports coverage from the range it actually holds', () => {
+    const res = handleAgentRead({ tool: 'week' }, booked()) as {
+      ok: true; data: { capacity: { hasData: boolean } };
+    };
+    expect(res.data.capacity.hasData).toBe(true);
+  });
+
+  it('does not claim coverage for a week the range stops short of', () => {
+    const res = handleAgentRead({ tool: 'week' }, booked({
+      calendarRange: { rangeStart: addDays(week, -70), rangeEnd: addDays(week, -14) },
+    })) as { ok: true; data: { capacity: { hasData: boolean } } };
+    expect(res.data.capacity.hasData).toBe(false);
+  });
+
+  it('claims no coverage at all with nothing cached', () => {
+    const res = handleAgentRead({ tool: 'week' }, emptyState()) as {
+      ok: true; data: { capacity: { hasData: boolean } };
+    };
+    expect(res.data.capacity.hasData).toBe(false);
   });
 });

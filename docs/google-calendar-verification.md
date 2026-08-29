@@ -91,8 +91,15 @@ instrument (checking that a socket closed, forcing a bad range).
 - [ ] **16. Navigation past the window fetches once.** Page to a week beyond
       eight weeks out. Exactly one fetch, and the blocks appear.
 
-- [ ] **17. Out of range says so.** Page beyond six months. The header reads
-      `no calendar data for this week`, and the week's figures are still shown.
+- [ ] **17. Out of range says so.** Page to a week past the cached window but
+      inside six months. The header reads `no calendar data for this week`, one
+      fetch fires, and the caveat clears.
+
+- [ ] **17b. Past the horizon says something different.** Page beyond six
+      months. The header reads `calendar reaches six months out` — not "no data
+      for this week", which would promise something that is never coming — and
+      with the Network tab open, **no fetch fires** however many weeks you page
+      through out there.
 
 - [ ] **18. Focus refresh.** Leave the app unfocused for over fifteen minutes,
       then click back in. One fetch fires. Click away and back immediately — no
@@ -100,6 +107,18 @@ instrument (checking that a socket closed, forcing a bad range).
 
 - [ ] **19. Refresh and the age label.** The `fetched …` line shows a plausible
       local time. Click **Refresh**; it updates.
+
+- [ ] **19b. Refresh reaches the week you are on.** Page to a week beyond the
+      cached window so the header caveats, then — without navigating away —
+      open Settings and press **Refresh**. The caveat clears. The same must be
+      true of **Connect**: disconnect, page out to an uncovered week, reconnect,
+      and that week's meetings appear without any further navigation.
+
+- [ ] **19c. A refresh that will not land eventually says so.** With the
+      calendar connected and the week covered, turn off the network and leave
+      the app for a quarter of an hour, then focus it. The header reads
+      `calendar didn't refresh` — and the blocks already on screen are still
+      there, because the last known good data is worth more than freshness.
 
 - [ ] **20. Restart.** Quit and relaunch. The blocks are there before any fetch
       completes, from the cache, and no re-consent is asked. This is what proves
@@ -124,8 +143,12 @@ instrument (checking that a socket closed, forcing a bad range).
 ## The picker and the preferences
 
 - [ ] **23. Picker.** Tick a second calendar. Its events appear on the grid
-      within a moment. Untick it; they go. Try to untick the last remaining
-      one — it must refuse.
+      within a moment. Untick it; they go.
+
+- [ ] **23b. The last calendar is disabled, not springy.** With one calendar
+      ticked, its checkbox is greyed and cannot be clicked, and a line under
+      the list says Phase reads at least one. Tick a second — the first becomes
+      clickable again and the line goes.
 
 - [ ] **24. Offline.** Turn off the network and Refresh. The blocks already on
       screen stay. A booked week must never be redrawn as a free one because a
@@ -145,8 +168,23 @@ instrument (checking that a socket closed, forcing a bad range).
       Google account. The old account's blocks must not appear even for a frame.
 
 - [ ] **28. Back to the built-in client.** On a managed build with a custom
-      client saved, **Use the built-in client instead** forgets yours; Connect
-      then consents against the shipped one.
+      client saved, **Use the built-in client instead** revokes the grant your
+      client held — confirm it is gone from
+      https://myaccount.google.com/permissions — and leaves the section showing
+      **Connect**, not the credentials fields. Press Connect: consent now goes
+      to the shipped client's project.
+
+- [ ] **28b. Saving a new client disconnects the old one.** With an account
+      connected, save a DIFFERENT client id and secret. The blocks vanish
+      immediately, the header reads `calendar not connected`, and the old grant
+      is gone from the permissions page. Quit and relaunch: the blocks must not
+      come back from the cache.
+
+- [ ] **28c. A rotated client asks for a reconnect.** *(packagers only)*
+      Connect on a build made with one `PHASE_GOOGLE_CLIENT_ID`, then relaunch
+      `npm run app:dev` with a different one exported. The header reads
+      `calendar needs reconnecting` — NOT a silent failure and not
+      `calendar didn't refresh` — and Connect repairs it.
 
 - [ ] **29. Browser is unaffected.** `npm run dev` alone, in a browser: Plan
       renders with no blocks and no console errors, Settings → Calendar reads

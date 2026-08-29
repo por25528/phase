@@ -10,6 +10,7 @@ import { goalPct } from './pct';
 import { todayStr } from './dates';
 import { HORIZON_LABELS } from './horizons';
 import { plannedLeaves, weekOf } from './plan';
+import { coversWeek } from './calendarRange';
 import { tasksForWeek } from './dailyWork';
 import { spansOn } from './scheduled';
 import { findNode } from './tree';
@@ -67,11 +68,12 @@ function capacityInput(state: FullState, now: Now): CapacityInput {
     tasks: tasksForWeek(state.tasks, week),
     now,
     allDayBlocks: state.allDayBlocks,
-    // The store's own coverage flag is not reachable from here without the
-    // week's range, and this module answers one week at a time. Reporting
-    // `false` understates a covered week rather than overstating an uncovered
-    // one, which is the safe direction: it suppresses no figure.
-    hasData: false,
+    // Derived from the range the store actually holds, exactly as `Plan.tsx`
+    // does it. It was hardcoded `false`, which said "nobody has fetched this
+    // week" about a week every block was already in hand for — the more
+    // damaging of the two errors, because it invites a caveat on an answer
+    // that needs none.
+    hasData: !!state.calendarRange && coversWeek(state.calendarRange, week),
   };
 }
 

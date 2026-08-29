@@ -83,8 +83,14 @@ export function CalendarSettings() {
     // `setCalendarIds` refuses one, and the rule — that fetching zero
     // calendars returns zero blocks, which renders a booked week as a free one
     // — belongs where every caller meets it rather than restated per surface.
+    // What this surface owns is EXPLAINING it, which the disabled checkbox and
+    // the line below the list do; a control that takes a click and then springs
+    // back reads as a bug rather than as a rule.
     actions.setCalendarIds(on ? [...calendarIds, id] : calendarIds.filter((c) => c !== id));
   }
+
+  /** The one calendar left cannot be unticked — see `toggleCalendar`. */
+  const lockedId = calendarIds.length === 1 ? calendarIds[0] : null;
 
   return (
     <div className="flex flex-col gap-[10px]">
@@ -117,21 +123,32 @@ export function CalendarSettings() {
           </div>
 
           {calendars.length > 0 && (
-            <ul className="flex flex-col gap-[2px]">
-              {calendars.map((cal) => (
-                <li key={cal.id}>
-                  <label className="flex items-center gap-[8px] text-ui min-w-0">
-                    <input
-                      type="checkbox"
-                      className="flex-none accent-accent w-[16px] h-[16px]"
-                      checked={calendarIds.includes(cal.id)}
-                      onChange={(e) => toggleCalendar(cal.id, e.target.checked)}
-                    />
-                    <span className="truncate min-w-0 text-ink">{cal.summary}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-col gap-[4px]">
+              <ul className="flex flex-col gap-[2px]">
+                {calendars.map((cal) => (
+                  <li key={cal.id}>
+                    <label className="flex items-center gap-[8px] text-ui min-w-0">
+                      <input
+                        type="checkbox"
+                        className="flex-none accent-accent w-[16px] h-[16px] disabled:opacity-50"
+                        checked={calendarIds.includes(cal.id)}
+                        disabled={cal.id === lockedId}
+                        onChange={(e) => toggleCalendar(cal.id, e.target.checked)}
+                      />
+                      <span className={`truncate min-w-0 ${cal.id === lockedId ? 'text-muted' : 'text-ink'}`}>
+                        {cal.summary}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              {lockedId !== null && calendars.some((cal) => cal.id === lockedId) && (
+                <p className="text-meta text-muted leading-[1.5]">
+                  Phase reads at least one calendar. Tick another before
+                  unticking this one.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="flex items-center justify-between gap-[8px]">

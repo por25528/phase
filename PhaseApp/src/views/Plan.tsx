@@ -25,7 +25,7 @@ import { boardCollision } from '../lib/boardCollision';
 import { scheduledByDate, spansOn } from '../lib/scheduled';
 import { aimFor, longestFreeGap, DEFAULT_SLOT_MIN, WHOLE_DAY, NO_PAST_LIMIT } from '../lib/slot';
 import { weekCapacity, type Now } from '../lib/capacity';
-import { coversWeek } from '../lib/calendarRange';
+import { beyondHorizon, coversWeek } from '../lib/calendarRange';
 import { calendarHealth, calendarCaveat } from '../lib/calendarHealth';
 import { unestimatedCommitments } from '../lib/unestimated';
 import { tasksForWeek } from '../lib/dailyWork';
@@ -196,11 +196,14 @@ export function Plan() {
       status: calendarStatus,
       lastError: calendarError,
       coversWeek: weekIsCovered,
+      // A week past what a fetch reaches is not "not fetched yet" — nothing is
+      // coming, and the caveat has to say so rather than imply patience.
+      beyondHorizon: beyondHorizon(weekOf(today), weekStart),
       fetchedAt: calendarFetchedAt,
       nowMs: Date.now(),
     })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [calendarStatus, calendarError, weekIsCovered, calendarFetchedAt, nowMinute],
+    [calendarStatus, calendarError, weekIsCovered, calendarFetchedAt, nowMinute, weekStart, today],
   );
 
   /*
@@ -222,9 +225,10 @@ export function Plan() {
       ? monthCapacity({
         ym, goals, tasks, blocks: busyBlocks,
         now: { date: today, minute: nowMinute }, allDayBlocks,
-        // The month draws six week rows and the cache is one contiguous range,
-        // so a month is covered only if the LAST row it draws is.
-        hasData: calendarRange !== null && coversWeek(calendarRange, weekOf(monthGrid(ym).at(-1)!.at(-1)!)),
+        // The RANGE, not a verdict computed here: a month draws six week rows
+        // and the cache is one contiguous span, so coverage is per row and
+        // `monthCapacity` is the one place that knows which rows it drew.
+        range: calendarRange,
       })
       : null),
     [planMode, ym, goals, tasks, today, nowMinute, allDayBlocks, busyBlocks, calendarRange],

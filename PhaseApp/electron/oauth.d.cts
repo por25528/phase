@@ -43,6 +43,16 @@ export interface Tokens {
   accessToken: string;
   /** Absolute epoch-ms expiry, derived from `now()` + `expires_in`. */
   expiresAt: number;
+  /**
+   * The OAuth client id this token was issued for. Not a secret — the id is
+   * public in every consent URL — and it is what lets a ROTATED client be told
+   * from a revoked grant, so the user is asked to reconnect rather than shown
+   * an opaque refresh failure that never clears.
+   *
+   * Absent on a token stored before this field existed; such a token is
+   * trusted and stamped on its next refresh.
+   */
+  clientId?: string;
 }
 
 export interface OAuth {
@@ -51,7 +61,7 @@ export interface OAuth {
   connect(): Promise<void>;
   /** Revoke with Google and forget the token locally even when revocation fails. */
   disconnect(): Promise<void>;
-  /** Returns a valid access token, refreshing when stale, and throws `NotConnectedError` when none is stored, `ReauthRequiredError` when Google rejects the refresh token, and plain `Error` for other failures. */
+  /** Returns a valid access token, refreshing when stale, and throws `NotConnectedError` when none is stored, `ReauthRequiredError` when Google rejects the refresh token OR the stored token belongs to a different OAuth client, and plain `Error` for other failures. */
   getAccessToken(): Promise<string>;
   isConnected(): boolean;
   /**

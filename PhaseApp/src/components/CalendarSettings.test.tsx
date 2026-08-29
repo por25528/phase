@@ -258,13 +258,39 @@ describe('CalendarSettings', () => {
     expect(store.getState().calendarIds).toEqual(['primary', 'work@example.com']);
   });
 
-  // Unchecking the last calendar would fetch nothing, and nothing renders a
-  // fully-booked week as a free one. The rule lives in `setCalendarIds` — this
-  // asserts it survives the round trip through the checkbox.
-  it('refuses to uncheck the last remaining calendar', async () => {
-    const { user, store } = await mount();
+  /**
+   * Unchecking the last calendar would fetch nothing, and nothing renders a
+   * fully-booked week as a free one. The rule lives in `setCalendarIds` — but
+   * a control that accepts a click and then springs back reads as a bug, so
+   * the last one left is disabled and says why.
+   */
+  it('disables the last remaining calendar instead of letting it spring back', async () => {
+    const { store } = await mount();
 
-    await user.click(await screen.findByLabelText('Me'));
+    const only = await screen.findByLabelText('Me');
+    expect((only as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByText(/at least one calendar/i)).toBeTruthy();
+    expect(store.getState().calendarIds).toEqual(['primary']);
+  });
+
+  it('re-enables it as soon as a second calendar is chosen', async () => {
+    const { user } = await mount();
+
+    await user.click(await screen.findByLabelText('Work'));
+
+    expect((screen.getByLabelText('Me') as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByLabelText('Work') as HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByText(/at least one calendar/i)).toBeNull();
+  });
+
+  // The store's refusal is the rule; the disabled state is only how it is
+  // explained. Both have to hold, or a keyboard route around the control
+  // would empty the selection.
+  it('still refuses an empty selection at the store', async () => {
+    const { store } = await mount();
+    await screen.findByLabelText('Work');
+
+    store.actions.setCalendarIds([]);
 
     expect(store.getState().calendarIds).toEqual(['primary']);
   });

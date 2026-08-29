@@ -123,6 +123,10 @@ function createOAuth(deps) {
       refreshToken: json.refresh_token,
       accessToken: json.access_token,
       expiresAt: now() + Number(json.expires_in) * 1000,
+      // Which OAuth client issued this. Not a secret — the id is public in
+      // every consent URL — and it is what lets a rotated client be told from
+      // a revoked grant. See `getAccessToken`.
+      clientId,
     };
   }
 
@@ -134,11 +138,36 @@ function createOAuth(deps) {
   async function getAccessToken() {
     const token = storedToken();
     if (!token) throw new NotConnectedError();
+
+    const { clientId, clientSecret } = client();
+
+    /*
+     * A token issued by a different OAuth client buys nothing.
+     *
+     * The build's own client can rotate — a new release, a revoked Cloud
+     * credential — and Google then answers the refresh with `invalid_client`
+     * or a bare 400, which reaches the renderer as `request-failed`: a
+     * transient-looking error the UI is right to shrug at and that will never
+     * clear on its own. Caught here, before the request, it becomes the one
+     * thing the user can act on.
+     *
+     * The token is dropped rather than kept, so nothing retries it and
+     * `status()` stops claiming a connection that cannot be spent.
+     *
+     * A token stored before this field existed carries no client id and is
+     * TRUSTED: forcing every existing installation to reconnect on upgrade
+     * would be a worse bug than the one this fixes. The refresh below stamps
+     * it, after which rotation is caught like any other.
+     */
+    if (token.clientId && token.clientId !== clientId) {
+      secrets.remove('token');
+      throw new ReauthRequiredError();
+    }
+
     // Refresh a minute early: a token that expires mid-flight produces a 401
     // on a request that held a valid token when it was chosen.
     if (token.accessToken && now() < token.expiresAt - REFRESH_SKEW_MS) return token.accessToken;
 
-    const { clientId, clientSecret } = client();
     const res = await httpPost(TOKEN_ENDPOINT, new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
@@ -161,6 +190,9 @@ function createOAuth(deps) {
       refreshToken: res.json.refresh_token || token.refreshToken,
       accessToken: res.json.access_token,
       expiresAt: now() + Number(res.json.expires_in) * 1000,
+      // Stamped on every refresh, which is what upgrades a token stored before
+      // the field existed into one whose client can be checked.
+      clientId,
     };
     // A disconnect may have landed while this refresh was in flight. Writing
     // now would restore the credential the user just asked to delete.

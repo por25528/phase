@@ -24,8 +24,20 @@ Settings → Calendar tells you without jargon:
 | **Use my own Google OAuth client** (collapsed) | The advanced fallback, when you want your own project anyway. |
 
 A saved client always wins over the shipped one. Once you have saved your own,
-the disclosure offers **Use the built-in client instead**, which forgets yours
-and reconnects against the shipped one.
+the disclosure offers **Use the built-in client instead**.
+
+**That button disconnects you.** It revokes the grant your own client holds and
+then forgets the credentials — in that order, because the local store holds the
+only copy of the refresh token and after it is gone there is nothing left that
+could revoke anything. What it leaves behind is a build back on its shipped
+client with no account consented, so **press Connect afterwards**. The same is
+true of **Reset calendar setup**, which is the same operation reached from the
+corrupt-store warning.
+
+Changing the client the other way — saving your own over the shipped one —
+disconnects you too, and for the same reason: a new client is a new Cloud
+project and a new grant. The cached events go with it rather than being shown
+as though they belonged to the new one.
 
 ---
 
@@ -122,12 +134,19 @@ present would make Phase claim to be configured and then fail at consent.
 | Thing | Where | In a backup? |
 |---|---|---|
 | Client id and secret | OS encrypted store (`safeStorage`), in the app's user-data directory | No |
-| Refresh and access tokens | Same | No |
+| Refresh and access tokens | Same, stamped with the client id that issued them | No |
 | Fetched busy blocks | The `calendarCache` table in IndexedDB, on this device | **No** — it is a cache, not data |
 
 The cache carries its own provenance: the account, the selected calendars and
 the machine timezone the events were flattened against. If any of those changes,
 the cached blocks stop being displayed rather than being shown as current fact.
+
+The token carries provenance of its own — the OAuth client id it was issued
+for. If a release rotates the shipped client, the stored token can no longer be
+spent, and Google's answer to that (`invalid_client`, or a bare 400) is
+indistinguishable at the call site from a dropped connection. Phase compares
+the ids before it asks, so a rotation surfaces as **calendar needs
+reconnecting** rather than as a refresh that quietly never succeeds again.
 
 [google-calendar-verification.md](google-calendar-verification.md) is the manual
 checklist for the parts no test can reach — the OAuth round trip, `safeStorage`
