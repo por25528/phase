@@ -6,7 +6,17 @@ import { inflateSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
-const { createMenuBar } = nativeRequire('./menuBar.cjs') as typeof import('./menuBar.cjs');
+const { createMenuBar, trayTitle, REPAINT_MS } =
+  nativeRequire('./menuBar.cjs') as typeof import('./menuBar.cjs');
+
+type FocusStatus = Parameters<ReturnType<typeof createMenuBar>['setFocusStatus']>[0];
+
+const MIN = 60_000;
+const T0 = 1_700_000_000_000;
+
+const active = (over: Partial<NonNullable<FocusStatus>> = {}): NonNullable<FocusStatus> => ({
+  phase: 'active', activeSinceMs: T0, accumulatedMs: 0, title: 'Problem set 4', ...over,
+});
 
 interface TemplateItem {
   label?: string;
@@ -20,6 +30,7 @@ function menuBar(over: {
   createTrayThrows?: boolean;
   buildMenuThrows?: boolean;
   setContextMenuThrows?: boolean;
+  setTitleThrows?: boolean;
 } = {}) {
   const image = {
     isEmpty: vi.fn(() => over.imageEmpty === true),
@@ -28,6 +39,9 @@ function menuBar(over: {
   const tray = {
     destroy: vi.fn(),
     setToolTip: vi.fn(),
+    setTitle: vi.fn(() => {
+      if (over.setTitleThrows) throw new Error('set title failed');
+    }),
     setContextMenu: vi.fn(() => {
       if (over.setContextMenuThrows) throw new Error('set context menu failed');
     }),
@@ -44,8 +58,21 @@ function menuBar(over: {
   const onOpenAssistant = vi.fn();
   const onOpenSettings = vi.fn();
   const onQuit = vi.fn();
+  const onTakeBreak = vi.fn();
+  const onResume = vi.fn();
+  const onFinishSession = vi.fn();
   const logError = vi.fn();
   const loadImage = vi.fn(() => image);
+  // A hand-driven one-shot timer: the module re-arms it itself, so `fire()`
+  // is exactly one repaint and `pending()` says whether a clock is running.
+  let scheduled: (() => void) | null = null;
+  const cancel = vi.fn(() => { scheduled = null; });
+  const setTimer = vi.fn((fn: () => void, _ms: number) => {
+    scheduled = fn;
+    return cancel;
+  });
+  let clock = T0;
+  const now = vi.fn(() => clock);
   const controller = createMenuBar({
     createTray,
     buildMenu: buildFromTemplate,
@@ -55,6 +82,11 @@ function menuBar(over: {
     onOpenAssistant,
     onOpenSettings,
     onQuit,
+    onTakeBreak,
+    onResume,
+    onFinishSession,
+    now,
+    setTimer,
     logError,
   });
   return {
@@ -68,7 +100,28 @@ function menuBar(over: {
     onOpenAssistant,
     onOpenSettings,
     onQuit,
+    onTakeBreak,
+    onResume,
+    onFinishSession,
+    setTimer,
+    cancel,
     logError,
+    pending: () => scheduled !== null,
+    fire: () => {
+      const fn = scheduled;
+      scheduled = null;
+      fn?.();
+    },
+    advance: (ms: number) => { clock += ms; },
+    labels: () => {
+      const calls = buildFromTemplate.mock.calls;
+      const template = calls[calls.length - 1][0];
+      return template.map((item) => (item.type === 'separator' ? 'separator' : item.label));
+    },
+    lastTemplate: () => {
+      const calls = buildFromTemplate.mock.calls;
+      return calls[calls.length - 1][0];
+    },
   };
 }
 
@@ -186,6 +239,182 @@ describe('createMenuBar', () => {
     const fixture = menuBar();
     expect(() => fixture.controller.dispose()).not.toThrow();
     expect(fixture.tray.destroy).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('trayTitle', () => {
+  it('states elapsed whole minutes while active, and floors rather than rounds', () => {
+    expect(trayTitle(active({ accumulatedMs: 0 }), T0)).toBe('▶ 0m');
+    // 41m30s is not 42 minutes of work, and a clock may not claim one.
+    expect(trayTitle(active({ accumulatedMs: 0 }), T0 + 41 * MIN + 30_000)).toBe('▶ 41m');
+    expect(trayTitle(active({ accumulatedMs: 42 * MIN }), T0)).toBe('▶ 42m');
+  });
+
+  it('adds banked stretches to the running one and never counts a break', () => {
+    const resumed = active({ accumulatedMs: 20 * MIN, activeSinceMs: T0 + 50 * MIN });
+    expect(trayTitle(resumed, T0 + 60 * MIN)).toBe('▶ 30m');
+  });
+
+  it('never runs backwards when the clock does', () => {
+    expect(trayTitle(active({ accumulatedMs: 5 * MIN }), T0 - 10 * MIN)).toBe('▶ 5m');
+  });
+
+  it('says on a break in words, and says nothing at all otherwise', () => {
+    expect(trayTitle({ ...active(), phase: 'break', activeSinceMs: null }, T0)).toBe('⏸ on break');
+    // The shelf owns the confirming question, and the icon alone is the
+    // whole signal when nothing is running.
+    expect(trayTitle({ ...active(), phase: 'confirming', activeSinceMs: null }, T0)).toBe('');
+    expect(trayTitle(null, T0)).toBe('');
+  });
+});
+
+describe('the menu-bar timer', () => {
+  it('paints the elapsed title and repaints once a minute while active', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus(active());
+    expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('▶ 0m');
+    expect(fixture.setTimer).toHaveBeenCalledWith(expect.any(Function), REPAINT_MS);
+
+    fixture.advance(MIN);
+    fixture.fire();
+    expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('▶ 1m');
+    // And it re-armed itself: one repaint is not a clock.
+    expect(fixture.pending()).toBe(true);
+  });
+
+  it('stops the clock on a break — static text needs no timer', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus(active());
+    expect(fixture.pending()).toBe(true);
+
+    fixture.controller.setFocusStatus({ ...active(), phase: 'break', activeSinceMs: null });
+    expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('⏸ on break');
+    expect(fixture.pending()).toBe(false);
+    expect(fixture.cancel).toHaveBeenCalled();
+  });
+
+  it('clears the title and the clock when the session ends', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus(active());
+    fixture.controller.setFocusStatus(null);
+    expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('');
+    expect(fixture.pending()).toBe(false);
+  });
+
+  it('disposes the repaint with the tray, so nothing paints a destroyed handle', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus(active());
+    expect(fixture.pending()).toBe(true);
+
+    fixture.controller.dispose();
+    expect(fixture.pending()).toBe(false);
+    expect(fixture.cancel).toHaveBeenCalled();
+    expect(fixture.tray.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('a title the tray refuses stops the clock and leaves the menu alone', () => {
+    const fixture = menuBar({ setTitleThrows: true });
+    fixture.controller.create();
+    expect(() => fixture.controller.setFocusStatus(active())).not.toThrow();
+    expect(fixture.pending()).toBe(false);
+    expect(fixture.logError).toHaveBeenCalledWith(
+      '[phase-shell] menu bar timer unavailable',
+      expect.any(Error),
+    );
+    // The menu still went up: a tray without a title is still a tray.
+    expect(fixture.labels()).toContain('Take break');
+  });
+
+  it('drops a snapshot that arrives with no tray, without throwing', () => {
+    const fixture = menuBar({ createTrayThrows: true });
+    fixture.controller.create();
+    expect(() => fixture.controller.setFocusStatus(active())).not.toThrow();
+    expect(fixture.tray.setTitle).not.toHaveBeenCalled();
+    expect(fixture.pending()).toBe(false);
+  });
+});
+
+describe('the session menu items', () => {
+  it('offers Take break and Finish session above the standing four while active', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus(active());
+    expect(fixture.labels()).toEqual([
+      'Take break',
+      'Finish session',
+      'separator',
+      'Open Phase',
+      'Open assistant',
+      'Settings',
+      'separator',
+      'Quit Phase',
+    ]);
+  });
+
+  it('offers Resume instead of Take break on a break', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus({ ...active(), phase: 'break', activeSinceMs: null });
+    expect(fixture.labels().slice(0, 3)).toEqual(['Resume', 'Finish session', 'separator']);
+  });
+
+  it('offers nothing while confirming — the shelf owns that question', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus({ ...active(), phase: 'confirming', activeSinceMs: null });
+    expect(fixture.labels()).toEqual([
+      'Open Phase',
+      'Open assistant',
+      'Settings',
+      'separator',
+      'Quit Phase',
+    ]);
+  });
+
+  it('takes the items away again when the session ends', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.controller.setFocusStatus(active());
+    fixture.controller.setFocusStatus(null);
+    expect(fixture.labels()).not.toContain('Take break');
+    expect(fixture.labels()).not.toContain('Finish session');
+  });
+
+  it('routes each session click to its injected callback and writes nothing itself', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+
+    fixture.controller.setFocusStatus(active());
+    const running = fixture.lastTemplate();
+    running[0].click?.();
+    running[1].click?.();
+    expect(fixture.onTakeBreak).toHaveBeenCalledTimes(1);
+    expect(fixture.onFinishSession).toHaveBeenCalledTimes(1);
+
+    fixture.controller.setFocusStatus({ ...active(), phase: 'break', activeSinceMs: null });
+    const paused = fixture.lastTemplate();
+    paused[0].click?.();
+    expect(fixture.onResume).toHaveBeenCalledTimes(1);
+    expect(fixture.onTakeBreak).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the previous menu when the rebuild fails, rather than tearing the tray down', () => {
+    const fixture = menuBar();
+    fixture.controller.create();
+    fixture.buildFromTemplate.mockImplementationOnce(() => { throw new Error('menu build failed'); });
+    expect(() => fixture.controller.setFocusStatus(active())).not.toThrow();
+    expect(fixture.tray.destroy).not.toHaveBeenCalled();
+    expect(fixture.logError).toHaveBeenCalledWith(
+      '[phase-shell] menu bar unavailable',
+      expect.any(Error),
+    );
+    // The clock still started: the title and the menu fail independently.
+    expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('▶ 0m');
   });
 });
 

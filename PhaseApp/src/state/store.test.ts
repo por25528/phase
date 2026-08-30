@@ -5110,6 +5110,100 @@ describe('focus sessions', () => {
     expect(dbMocks.saveActiveFocusSession).toHaveBeenLastCalledWith(null);
   });
 
+  it('an auto-break banks only up to idle start, and marks itself', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+
+    // Away from t0+20m; the watcher only noticed at t0+25m.
+    expect(actions.autoBreakFocus(t0 + 20 * MIN)).toBe(true);
+
+    const draft = getState().activeFocusSession;
+    expect(draft?.phase).toBe('break');
+    expect(draft?.autoBreak).toBe(true);
+    expect(draft?.accumulatedMs).toBe(20 * MIN);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(2);
+
+    // Completing now logs the twenty minutes worked, not the thirty-two that
+    // passed on the clock.
+    actions.completeFocus(t0 + 32 * MIN);
+    expect(getState().sessions[0].minutes).toBe(20);
+  });
+
+  it('a manual break is never marked, and an auto-break is refused off active', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+    actions.pauseFocus(t0 + 20 * MIN);
+    expect(getState().activeFocusSession?.autoBreak).toBeUndefined();
+
+    // Already on a break: the watcher's message loses the race, harmlessly.
+    expect(actions.autoBreakFocus(t0 + 21 * MIN)).toBe(false);
+    expect(getState().activeFocusSession?.autoBreak).toBeUndefined();
+  });
+
+  it('an auto-break is refused with no draft, or with an unusable timestamp', async () => {
+    const { actions } = await focusStore();
+    expect(actions.autoBreakFocus(t0)).toBe(false);
+    actions.startFocus(ref, starter, t0);
+    expect(actions.autoBreakFocus(Number.NaN)).toBe(false);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('the return freezes the absence and reports that it landed', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+    actions.autoBreakFocus(t0 + 20 * MIN);
+
+    expect(actions.markFocusReturned(12 * MIN)).toBe(true);
+    expect(getState().activeFocusSession?.awayMs).toBe(12 * MIN);
+  });
+
+  /**
+   * The caller reads a refusal as "do not raise the shelf". A `returned` that
+   * lost its race describes a state that no longer exists, and summoning a
+   * shelf to explain it would answer a question nobody asked.
+   */
+  it('the return is refused over a manual break, a resumed session, or none', async () => {
+    const { actions, getState } = await focusStore();
+    expect(actions.markFocusReturned(12 * MIN)).toBe(false);
+
+    actions.startFocus(ref, starter, t0);
+    actions.pauseFocus(t0 + 20 * MIN);
+    expect(actions.markFocusReturned(12 * MIN)).toBe(false);
+
+    actions.resumeFocus(t0 + 32 * MIN);
+    actions.autoBreakFocus(t0 + 40 * MIN);
+    actions.resumeFocus(t0 + 52 * MIN);
+    expect(actions.markFocusReturned(12 * MIN)).toBe(false);
+    expect(getState().activeFocusSession?.awayMs).toBeUndefined();
+  });
+
+  it('resuming after an auto-break clears the mark and the figure', async () => {
+    const { actions, getState } = await focusStore();
+    actions.startFocus(ref, starter, t0);
+    actions.autoBreakFocus(t0 + 20 * MIN);
+    actions.markFocusReturned(12 * MIN);
+
+    actions.resumeFocus(t0 + 32 * MIN);
+    const draft = getState().activeFocusSession;
+    expect(draft?.phase).toBe('active');
+    expect(draft?.autoBreak).toBeUndefined();
+    expect(draft?.awayMs).toBeUndefined();
+  });
+
+  it('hydrates a draft written before the idle watcher existed', async () => {
+    const legacy: ActiveFocusSession = {
+      id: 'f1', ref, title: 'Problem set 4', goalTitle: 'Algorithms',
+      startedAtMs: t0, activeSinceMs: null, accumulatedMs: 20 * MIN,
+      phase: 'break', expected: starter, focusLevel: 'medium',
+    };
+    dbMocks.loadActiveFocusSession.mockResolvedValueOnce(legacy);
+    const store = await freshStore();
+    await store.initStore();
+    const draft = store.getState().activeFocusSession;
+    expect(draft).toEqual(legacy);
+    expect(draft?.autoBreak).toBeUndefined();
+  });
+
   it('focus completion preserves an already armed destructive undo', async () => {
     const errand: Task = { id: 't1', title: 'Return library book', done: false, goalId: null };
     const { actions, getState } = await focusStore({ tasks: [errand] });

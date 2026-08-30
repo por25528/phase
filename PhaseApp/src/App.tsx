@@ -40,6 +40,7 @@ import {
   type TaskCaptureHostState,
 } from './lib/taskCapture';
 import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
+import { focusStatusOf, validFocusRequest } from './lib/focusStatus';
 import { updateBridge } from './lib/updateBridge';
 import { UpdateBanner } from './components/UpdateBanner';
 import { createAgentBridge } from './lib/agentBridge';
@@ -298,6 +299,84 @@ export function App() {
 
   // The menu bar's Settings item asks for this surface over the shell bridge.
   useEffect(() => shell.onOpenSettings(actions.openSettings), [shell]);
+
+  /**
+   * The focus seam, outbound: what the menu-bar timer and the idle watcher
+   * know about the running session.
+   *
+   * It lives HERE and not in `setFocusDraft` for the reason every other
+   * preload bridge does: the store is platform-free, and a `phaseShell` call
+   * inside it would make one of the app's purest modules depend on a window
+   * that may not exist. The subscription is the same shape the sync exporter
+   * and the backup scheduler use — compared BY REFERENCE, on one slice — and
+   * that reference is what makes this fire on TRANSITIONS only. `setFocusDraft`
+   * is the single chokepoint every transition passes through and the only
+   * thing that ever replaces the draft object, so a new reference IS a
+   * transition; the one-second interval that paints the elapsed figure never
+   * touches it, and nothing here rides a tick.
+   *
+   * The push at the top of the effect is what re-arms the tray and the watcher
+   * for a draft restored from the settings row: hydration is the moment a
+   * reloaded window learns it had a session at all.
+   */
+  useEffect(() => {
+    if (hydration !== 'ready' || !shell.available) return;
+    let last = getState().activeFocusSession;
+    shell.publishFocusStatus(focusStatusOf(last));
+    return subscribe(() => {
+      const next = getState().activeFocusSession;
+      if (next === last) return;
+      last = next;
+      shell.publishFocusStatus(focusStatusOf(next));
+    });
+  }, [hydration, shell]);
+
+  /**
+   * The focus seam, inbound: the menu bar's three verbs and the idle watcher's
+   * two observations, landing on the actions the buttons already call.
+   *
+   * `validFocusRequest` runs HERE and nowhere earlier, exactly as
+   * `validAgentRequest` does: `shellIpc.cjs`, `menuBar.cjs` and
+   * `idleWatch.cjs` import nothing from `src/`, so this renderer is the first
+   * side of the process seam that can spend it — and it is still the only
+   * writer, which is the whole reason main asks rather than acts.
+   *
+   * `storeActions` and not the destructured `actions`: the effect subscribes
+   * ONCE, so a handler closed over this render's object would be reading a
+   * snapshot from whenever the window last mounted.
+   *
+   * Two answers raise the shelf, and both because a question needs somewhere
+   * to be asked. `finish` on an implausibly long sitting parks in
+   * `confirming`, which is a question only the shelf knows how to put; and a
+   * return from an auto-break has an absence to explain. Every other outcome
+   * is silent — a menu click that worked needs no window.
+   */
+  useEffect(() => {
+    if (!shell.available) return;
+    return shell.onFocusRequest((raw) => {
+      if (!validFocusRequest(raw)) return;
+      switch (raw.type) {
+        case 'take-break':
+          storeActions.pauseFocus();
+          return;
+        case 'resume':
+          storeActions.resumeFocus();
+          return;
+        case 'finish':
+          if (storeActions.completeFocus() === 'needs-confirmation') void shell.openAssistant();
+          return;
+        case 'auto-break':
+          storeActions.autoBreakFocus(raw.idleStartMs);
+          return;
+        case 'returned':
+          // The action refuses unless the live draft is still the auto-break
+          // it describes, so a message that lost its race — resumed,
+          // completed, reconciled away — drops here rather than summoning a
+          // shelf to explain an absence nothing is on.
+          if (storeActions.markFocusReturned(raw.awayMs)) void shell.openAssistant();
+      }
+    });
+  }, [shell]);
 
   const reclaimSpace = () => {
     void actions.reclaimSpace()

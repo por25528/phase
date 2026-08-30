@@ -19,6 +19,11 @@ describe('shellBridge', () => {
     expect(await bridge.setLaunchAtLogin(true)).toBeNull();
     const unsubscribe = bridge.onOpenSettings(() => {});
     expect(() => unsubscribe()).not.toThrow();
+    // No tray and no idle watcher in a browser tab: publishing is a no-op and
+    // nothing ever fires, so the caller needs no branch of its own.
+    expect(() => bridge.publishFocusStatus(null)).not.toThrow();
+    const offFocus = bridge.onFocusRequest(() => {});
+    expect(() => offFocus()).not.toThrow();
   });
 
   it('wraps the preload and passes all four calls plus unsubscribe through', async () => {
@@ -63,10 +68,55 @@ describe('shellBridge', () => {
       'available',
       'getLaunchAtLogin',
       'insetTitleBar',
+      'onFocusRequest',
       'onOpenSettings',
       'openAssistant',
+      'publishFocusStatus',
       'setLaunchAtLogin',
     ]);
+  });
+
+  it('passes the focus status through and hands back the real unsubscribe', () => {
+    const off = vi.fn();
+    const preload = {
+      openAssistant: vi.fn(async () => true),
+      onOpenSettings: vi.fn(() => vi.fn()),
+      getLaunchAtLogin: vi.fn(async () => null),
+      setLaunchAtLogin: vi.fn(async () => null),
+      publishFocusStatus: vi.fn(),
+      onFocusRequest: vi.fn(() => off),
+    };
+    (window as unknown as AnyWindow).phaseShell = preload;
+
+    const bridge = shellBridge();
+    const status = {
+      phase: 'active' as const, activeSinceMs: 1, accumulatedMs: 0, title: 'PS4',
+    };
+    bridge.publishFocusStatus(status);
+    expect(preload.publishFocusStatus).toHaveBeenCalledWith(status);
+
+    const fn = vi.fn();
+    bridge.onFocusRequest(fn);
+    expect(preload.onFocusRequest).toHaveBeenCalledWith(fn);
+    bridge.onFocusRequest(vi.fn())();
+    expect(off).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A preload built before the menu bar learned about sessions is missing both
+   * verbs, and a missing verb here would be a TypeError on every session
+   * transition rather than a feature quietly not being there.
+   */
+  it('tolerates a preload that predates the focus seam', () => {
+    (window as unknown as AnyWindow).phaseShell = {
+      openAssistant: vi.fn(async () => true),
+      onOpenSettings: vi.fn(() => vi.fn()),
+      getLaunchAtLogin: vi.fn(async () => null),
+      setLaunchAtLogin: vi.fn(async () => null),
+    };
+    const bridge = shellBridge();
+    expect(() => bridge.publishFocusStatus(null)).not.toThrow();
+    expect(() => bridge.onFocusRequest(vi.fn())()).not.toThrow();
   });
 
   /**

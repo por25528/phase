@@ -1,3 +1,5 @@
+import type { FocusStatusSnapshot } from './focusStatus';
+
 /**
  * The renderer-side wrapper around the preload bridge for the desktop shell —
  * the sibling of assistantBridge.ts with the same shape of rules. In the
@@ -30,6 +32,15 @@ export interface PhaseShellBridge {
   getLaunchAtLogin(): Promise<boolean | null>;
   /** Set whether the app starts at login. Null in the browser, or on refusal. */
   setLaunchAtLogin(enabled: boolean): Promise<boolean | null>;
+  /**
+   * Tell the shell what the focus draft is doing. Fire-and-forget, and a
+   * no-op in the browser — the tray and the idle watcher are desktop facts,
+   * and a caller that had to ask whether they exist would grow a branch at
+   * every transition.
+   */
+  publishFocusStatus(snapshot: FocusStatusSnapshot): void;
+  /** Subscribe to the shell asking for something. Returns unsubscribe. */
+  onFocusRequest(fn: (request: unknown) => void): () => void;
 }
 
 interface ShellPreload {
@@ -39,6 +50,10 @@ interface ShellPreload {
   onOpenSettings(fn: () => void): () => void;
   getLaunchAtLogin(): Promise<boolean | null>;
   setLaunchAtLogin(enabled: boolean): Promise<boolean | null>;
+  /** Absent on any preload built before the menu bar learned about sessions. */
+  publishFocusStatus?(snapshot: FocusStatusSnapshot): void;
+  /** Absent on the same older preloads; the stub's unsubscribe stands in. */
+  onFocusRequest?(fn: (request: unknown) => void): () => void;
 }
 
 function preloadOf<T>(name: string): T | undefined {
@@ -58,6 +73,8 @@ export function shellBridge(): PhaseShellBridge {
       onOpenSettings: () => noop,
       getLaunchAtLogin: async () => null,
       setLaunchAtLogin: async () => null,
+      publishFocusStatus: noop,
+      onFocusRequest: () => noop,
     };
   }
   return {
@@ -69,5 +86,12 @@ export function shellBridge(): PhaseShellBridge {
     onOpenSettings: (fn) => preload.onOpenSettings(fn),
     getLaunchAtLogin: () => preload.getLaunchAtLogin(),
     setLaunchAtLogin: (enabled) => preload.setLaunchAtLogin(enabled),
+    // Guarded rather than called straight through, for the same reason
+    // `insetTitleBar` is defaulted: a packaged app can outlive the preload it
+    // was built beside only in development, but a missing verb here would be a
+    // TypeError on every session transition rather than a feature quietly not
+    // being there.
+    publishFocusStatus: (snapshot) => preload.publishFocusStatus?.(snapshot),
+    onFocusRequest: (fn) => preload.onFocusRequest?.(fn) ?? noop,
   };
 }

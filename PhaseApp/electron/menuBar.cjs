@@ -1,15 +1,64 @@
-// Owns the macOS menu-bar item and its four actions, as a deep module.
+// Owns the macOS menu-bar item — its four standing actions, the live session
+// timer, and the session verbs that appear beside them — as a deep module.
 //
-// Every Electron capability is injected — Tray, Menu, nativeImage all stay in
-// the main.cjs composition root — so the creation ordering, the template
-// contract, and the failure isolation below are unit-testable without
-// Electron. The one rule that matters: a menu-bar item is a nicety, never a
-// requirement, so any failure in creation is caught, the partial Tray is
-// destroyed, the handle is cleared, and the exact log line is the only trace
-// the app shows — the Hub, the global shortcut, and the shelf all keep
-// working. Quit Phase routes through the injected onQuit callback, never
-// Electron's role: 'quit', because the lifecycle module must observe one
+// Every Electron capability is injected — Tray, Menu, nativeImage and the
+// repaint timer all stay in the main.cjs composition root — so the creation
+// ordering, the template contract, and the failure isolation below are
+// unit-testable without Electron. The one rule that matters: a menu-bar item
+// is a nicety, never a requirement, so any failure in creation is caught, the
+// partial Tray is destroyed, the handle is cleared, and the exact log line is
+// the only trace the app shows — the Hub, the global shortcut, and the shelf
+// all keep working. Quit Phase routes through the injected onQuit callback,
+// never Electron's role: 'quit', because the lifecycle module must observe one
 // deliberate route out of the app.
+//
+// **The timer is arithmetic over a snapshot, not a clock the renderer feeds.**
+// A status arrives on a TRANSITION — started, paused, resumed, finished — and
+// carries `activeSinceMs` and `accumulatedMs`, so this module can repaint the
+// title every minute while the store performs no transition and writes
+// nothing. That is the calm-session rule restated on this side of the process
+// seam: "how long" is arithmetic at read time, and the one thing a menu bar
+// does is read.
+//
+// **It observes and never writes.** Take break / Resume / Finish session are
+// injected callbacks that ask the RENDERER — still the only writer — to do it,
+// exactly as the agent relay does. Nothing here mutates a session, and nothing
+// here remembers one: the last snapshot is the whole of its memory.
+
+// Whole minutes, and FLOOR rather than round. A timer that reads `1m` after
+// thirty seconds is claiming a minute that has not happened; the cost is that
+// this figure can sit one minute under the shelf's rounded readout for up to
+// thirty seconds, which is the right way round for a clock you watch.
+const MS_PER_MIN = 60_000;
+
+// One repaint a minute, unaligned to the minute boundary on purpose: aligning
+// would buy a title that changes on the second, and cost a second timer to
+// compute the offset after every transition.
+const REPAINT_MS = 60_000;
+
+/** Elapsed active milliseconds, clamped so a backwards clock reports nothing extra. */
+function elapsedMs(status, nowMs) {
+  const stretch = status.activeSinceMs === null
+    ? 0
+    : Math.max(0, nowMs - status.activeSinceMs);
+  return status.accumulatedMs + stretch;
+}
+
+/**
+ * What the menu bar says, and what it says by staying quiet.
+ *
+ * An empty title is not a missing case: outside a session the icon alone is
+ * the whole signal, and the PRESENCE of text is what tells you something is
+ * running from across the room. `confirming` is empty for a different reason —
+ * that question belongs to the shelf, which is already asking it, and a menu
+ * bar restating it would offer no way to answer.
+ */
+function trayTitle(status, nowMs) {
+  if (!status) return '';
+  if (status.phase === 'active') return `▶ ${Math.floor(elapsedMs(status, nowMs) / MS_PER_MIN)}m`;
+  if (status.phase === 'break') return '⏸ on break';
+  return '';
+}
 
 function createMenuBar(deps) {
   const {
@@ -21,10 +70,109 @@ function createMenuBar(deps) {
     onOpenAssistant,
     onOpenSettings,
     onQuit,
+    onTakeBreak,
+    onResume,
+    onFinishSession,
+    now,
+    setTimer,
     logError,
   } = deps;
 
   let tray = null;
+  /** The last snapshot the renderer published, or null for "no session". */
+  let status = null;
+  /** The live repaint's cancel function, or null when nothing is scheduled. */
+  let stopRepaint = null;
+
+  // The four that are always there, in the approved order. Built fresh each
+  // time rather than held as a constant, because a Menu template is consumed
+  // by `buildMenu` and reusing item objects across builds invites Electron to
+  // hold on to the older menu's handlers.
+  function standingItems() {
+    return [
+      { label: 'Open Phase', click: onOpenPhase },
+      { label: 'Open assistant', click: onOpenAssistant },
+      { label: 'Settings', click: onOpenSettings },
+      { type: 'separator' },
+      { label: 'Quit Phase', click: onQuit },
+    ];
+  }
+
+  /**
+   * The session verbs, ABOVE the standing four and present only while there is
+   * a session to act on. `confirming` contributes nothing: the shelf owns that
+   * question, and a menu offering "Finish session" for a sitting already
+   * awaiting an answer would be a second way to answer it.
+   */
+  function sessionItems() {
+    if (!status) return [];
+    if (status.phase === 'active') {
+      return [
+        { label: 'Take break', click: onTakeBreak },
+        { label: 'Finish session', click: onFinishSession },
+        { type: 'separator' },
+      ];
+    }
+    if (status.phase === 'break') {
+      return [
+        { label: 'Resume', click: onResume },
+        { label: 'Finish session', click: onFinishSession },
+        { type: 'separator' },
+      ];
+    }
+    return [];
+  }
+
+  function cancelRepaint() {
+    if (!stopRepaint) return;
+    const cancel = stopRepaint;
+    stopRepaint = null;
+    try {
+      cancel();
+    } catch {
+      // Nothing to recover: the timer is either gone or was never real.
+    }
+  }
+
+  /**
+   * Repaint the title, and schedule the next repaint only while it can change.
+   *
+   * A break and a finished session are STATIC text, so the timer stops with
+   * them — a menu bar that woke every minute to rewrite the same two words
+   * would be the one part of a calm session that never rests.
+   */
+  function paintTitle() {
+    if (!tray) return;
+    try {
+      tray.setTitle(trayTitle(status, now()));
+    } catch (error) {
+      // A tray that cannot carry a title is still a tray: the menu keeps
+      // working, so this stops the clock rather than tearing anything down.
+      cancelRepaint();
+      logError('[phase-shell] menu bar timer unavailable', error);
+      return;
+    }
+    if (status && status.phase === 'active') {
+      cancelRepaint();
+      stopRepaint = setTimer(() => {
+        stopRepaint = null;
+        paintTitle();
+      }, REPAINT_MS);
+    } else {
+      cancelRepaint();
+    }
+  }
+
+  function paintMenu() {
+    if (!tray) return;
+    try {
+      tray.setContextMenu(buildMenu([...sessionItems(), ...standingItems()]));
+    } catch (error) {
+      // Same reasoning as the title: the tray that is already up keeps its
+      // previous menu rather than being destroyed under the user's cursor.
+      logError('[phase-shell] menu bar unavailable', error);
+    }
+  }
 
   function create() {
     // Idempotent: a live tray is already installed; a cleared handle (failed
@@ -39,24 +187,40 @@ function createMenuBar(deps) {
       const nativeTray = createTray(image);
       tray = nativeTray;
       nativeTray.setToolTip('Phase');
-      nativeTray.setContextMenu(buildMenu([
-        { label: 'Open Phase', click: onOpenPhase },
-        { label: 'Open assistant', click: onOpenAssistant },
-        { label: 'Settings', click: onOpenSettings },
-        { type: 'separator' },
-        { label: 'Quit Phase', click: onQuit },
-      ]));
+      nativeTray.setContextMenu(buildMenu([...sessionItems(), ...standingItems()]));
     } catch (error) {
       // Any partial Tray must not outlive the failed attempt.
       if (tray) {
         try { tray.destroy(); } catch { /* already gone */ }
         tray = null;
       }
+      cancelRepaint();
       logError('[phase-shell] menu bar unavailable', error);
     }
   }
 
+  /**
+   * Adopt what the renderer says the session is doing.
+   *
+   * A snapshot that arrives with no tray is DROPPED rather than banked. The
+   * tray is created at launch, long before the renderer has hydrated, so the
+   * only way here is a tray that failed to come up — and the spec for that
+   * case is the one this module has always kept: the menu bar is missing and
+   * everything else carries on. Banking it would leave a stale session
+   * painting itself onto a tray created much later for some other reason.
+   */
+  function setFocusStatus(next) {
+    if (!tray) return;
+    status = next ?? null;
+    paintMenu();
+    paintTitle();
+  }
+
   function dispose() {
+    // Before the tray goes, and unconditionally: a timer outliving its tray
+    // would repaint a destroyed handle once a minute for the life of the app.
+    cancelRepaint();
+    status = null;
     if (!tray) return;
     const nativeTray = tray;
     tray = null;
@@ -67,7 +231,7 @@ function createMenuBar(deps) {
     }
   }
 
-  return { create, dispose };
+  return { create, dispose, setFocusStatus };
 }
 
-module.exports = { createMenuBar };
+module.exports = { createMenuBar, trayTitle, REPAINT_MS };

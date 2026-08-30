@@ -71,6 +71,14 @@ const STATES = {
   },
   // Gains the checkbox in this change.
   active: { ...base, activeFocus: focus({ phase: 'active', elapsedMin: 12 }) },
+  // The auto-break, which is `active` plus one line — the away notice, the
+  // only sentence on this surface the user did not ask for. Measured as its
+  // own state because it is the only break that draws it, and a manual break
+  // is `active`'s height exactly.
+  autoBreak: {
+    ...base,
+    activeFocus: focus({ phase: 'break', elapsedMin: 12, autoBreak: true, awayMin: 12 }),
+  },
   sidecar: base,
   // beyondWindow always slices visible to one item, so alternatives is empty
   // whenever it fires — the fifth combination cannot occur.

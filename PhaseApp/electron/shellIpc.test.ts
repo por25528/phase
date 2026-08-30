@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
-const { createShellIpc, SHELL_CHANNEL_PREFIX } =
+const { createShellIpc, SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL } =
   nativeRequire('./shellIpc.cjs') as typeof import('./shellIpc.cjs');
 
 type Listener = (event: { sender: { id: number } }, payload?: unknown) => unknown;
@@ -10,14 +11,18 @@ type Listener = (event: { sender: { id: number } }, payload?: unknown) => unknow
 /** A fake ipcMain that records handle registrations and lets tests invoke them. */
 function fakeIpcMain() {
   const handles = new Map<string, Listener>();
+  const listeners = new Map<string, Listener>();
   return {
-    on: vi.fn(),
+    on: vi.fn((channel: string, listener: Listener) => listeners.set(channel, listener)),
     handle: vi.fn((channel: string, listener: Listener) => handles.set(channel, listener)),
-    removeAllListeners: vi.fn(),
+    removeAllListeners: vi.fn((channel: string) => listeners.delete(channel)),
     removeHandler: vi.fn((channel: string) => handles.delete(channel)),
     invoke: (channel: string, senderId: number, payload?: unknown) =>
       handles.get(channel)?.({ sender: { id: senderId } }, payload),
+    send: (channel: string, senderId: number, payload?: unknown) =>
+      listeners.get(channel)?.({ sender: { id: senderId } }, payload),
     channels: () => [...handles.keys()],
+    listenerChannels: () => [...listeners.keys()],
   };
 }
 
@@ -43,6 +48,7 @@ function shell() {
   const showMainWindow = vi.fn();
   const getLaunchAtLogin = vi.fn();
   const setLaunchAtLogin = vi.fn();
+  const onFocusStatus = vi.fn();
   const ipcMain = fakeIpcMain();
   const ipc = createShellIpc({
     getMainWindow: () => main,
@@ -50,9 +56,13 @@ function shell() {
     showMainWindow,
     getLaunchAtLogin,
     setLaunchAtLogin,
+    onFocusStatus,
   });
   ipc.register(ipcMain);
-  return { main, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin, ipcMain, ipc };
+  return {
+    main, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
+    onFocusStatus, ipcMain, ipc,
+  };
 }
 
 describe('channel surface', () => {
@@ -60,22 +70,122 @@ describe('channel surface', () => {
     expect(SHELL_CHANNEL_PREFIX).toBe('phase-shell');
   });
 
-  it('register installs exactly the three fixed invoke handlers and no listeners', () => {
+  it('names the two focus channels under the same fixed prefix', () => {
+    expect(FOCUS_STATUS_CHANNEL).toBe('phase-shell:focus-status');
+    expect(FOCUS_REQUEST_CHANNEL).toBe('phase-shell:focus-request');
+  });
+
+  it('register installs exactly the three invoke handlers and the one listener', () => {
     const { ipcMain } = shell();
     expect(ipcMain.handle).toHaveBeenCalledTimes(3);
-    expect(ipcMain.on).not.toHaveBeenCalled();
     expect(ipcMain.channels()).toEqual([
       'phase-shell:open-assistant',
       'phase-shell:get-launch-at-login',
       'phase-shell:set-launch-at-login',
     ]);
+    // The status is a send and not an invoke: nothing answers it, and a
+    // transition must never wait on a tray.
+    expect(ipcMain.on).toHaveBeenCalledTimes(1);
+    expect(ipcMain.listenerChannels()).toEqual(['phase-shell:focus-status']);
   });
 
-  it('dispose removes all three handlers', () => {
+  it('dispose removes all three handlers and the listener', () => {
     const { ipcMain, ipc } = shell();
     ipc.dispose(ipcMain);
     expect(ipcMain.removeHandler).toHaveBeenCalledTimes(3);
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:focus-status');
     expect(ipcMain.channels()).toEqual([]);
+    expect(ipcMain.listenerChannels()).toEqual([]);
+  });
+});
+
+describe('focus-status', () => {
+  const snapshot = {
+    phase: 'active' as const, activeSinceMs: 1_700_000_000_000, accumulatedMs: 0, title: 'PS4',
+  };
+
+  it('hands a well-formed snapshot from the main window straight through', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    ipcMain.send('phase-shell:focus-status', MAIN_ID, snapshot);
+    expect(onFocusStatus).toHaveBeenCalledWith(snapshot);
+  });
+
+  it('passes null through — "no session" is a real answer', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    ipcMain.send('phase-shell:focus-status', MAIN_ID, null);
+    expect(onFocusStatus).toHaveBeenCalledWith(null);
+  });
+
+  it('ignores any other sender', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    ipcMain.send('phase-shell:focus-status', STRANGER_ID, snapshot);
+    expect(onFocusStatus).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A malformed payload is DROPPED rather than read as "no session": nobody in
+   * this repo sends one, so the only way to see one is a renderer that has gone
+   * wrong, and clearing a running timer on that basis would hide the session
+   * rather than report the fault.
+   */
+  it('drops a malformed payload instead of clearing the session', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    for (const bad of [
+      'active',
+      42,
+      {},
+      { ...snapshot, phase: 'paused' },
+      { ...snapshot, accumulatedMs: -1 },
+      { ...snapshot, accumulatedMs: Number.NaN },
+      { ...snapshot, activeSinceMs: 'now' },
+      { ...snapshot, title: 7 },
+    ]) {
+      ipcMain.send('phase-shell:focus-status', MAIN_ID, bad);
+    }
+    expect(onFocusStatus).not.toHaveBeenCalled();
+  });
+
+  it('keeps only the four declared fields, whatever else a renderer sends', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    ipcMain.send('phase-shell:focus-status', MAIN_ID, { ...snapshot, ref: { id: 'n1' }, expected: {} });
+    expect(onFocusStatus).toHaveBeenCalledWith(snapshot);
+  });
+
+  it('accepts a break, whose active stretch is null', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    const paused = { ...snapshot, phase: 'break' as const, activeSinceMs: null };
+    ipcMain.send('phase-shell:focus-status', MAIN_ID, paused);
+    expect(onFocusStatus).toHaveBeenCalledWith(paused);
+  });
+});
+
+describe('sendFocusRequest', () => {
+  it('sends on the one fixed channel and reports that it landed', () => {
+    const { main, ipc } = shell();
+    expect(ipc.sendFocusRequest({ type: 'take-break' })).toBe(true);
+    expect(main.webContents.send)
+      .toHaveBeenCalledWith('phase-shell:focus-request', { type: 'take-break' });
+  });
+
+  /**
+   * Deliberately not `openSettings`' wait for `did-finish-load`. Every request
+   * is about a session running right now, and replaying a menu click a page
+   * load later would pause a session the user has since resumed.
+   */
+  it('never waits for a load, and answers false when the window is gone', () => {
+    const { main, ipc } = shell();
+    ipc.sendFocusRequest({ type: 'resume' });
+    expect(main.webContents.once).not.toHaveBeenCalled();
+
+    const gone = createShellIpc({
+      getMainWindow: () => null,
+      openAssistant: vi.fn(),
+      showMainWindow: vi.fn(),
+      getLaunchAtLogin: vi.fn(),
+      setLaunchAtLogin: vi.fn(),
+      onFocusStatus: vi.fn(),
+    });
+    expect(gone.sendFocusRequest({ type: 'finish' })).toBe(false);
   });
 });
 
@@ -146,6 +256,7 @@ describe('live main window', () => {
       showMainWindow: vi.fn(),
       getLaunchAtLogin,
       setLaunchAtLogin: vi.fn(() => true),
+      onFocusStatus: vi.fn(),
     });
     ipc.register(ipcMain);
     expect(ipcMain.invoke('phase-shell:open-assistant', MAIN_ID)).toBe(false);
@@ -176,6 +287,7 @@ describe('openSettings', () => {
       showMainWindow: vi.fn(),
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
+      onFocusStatus: vi.fn(),
     });
     ipc.register(ipcMain);
     ipc.openSettings();
@@ -195,9 +307,42 @@ describe('openSettings', () => {
       showMainWindow,
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
+      onFocusStatus: vi.fn(),
     });
     ipc.register(fakeIpcMain());
     ipc.openSettings();
     expect(showMainWindow).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A sandboxed preload cannot `require` this module for the prefix, so
+ * preload.cjs writes the channel names out by hand — and drift would be a
+ * silent "function is not a function" in the renderer rather than a build
+ * error. agentIpc.test.ts guards the agent door the same way.
+ */
+describe('preload drift', () => {
+  const preload = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
+
+  it('exposes exactly the shell channels this module installs', () => {
+    for (const channel of [
+      `${SHELL_CHANNEL_PREFIX}:open-assistant`,
+      `${SHELL_CHANNEL_PREFIX}:open-settings`,
+      `${SHELL_CHANNEL_PREFIX}:get-launch-at-login`,
+      `${SHELL_CHANNEL_PREFIX}:set-launch-at-login`,
+      FOCUS_STATUS_CHANNEL,
+      FOCUS_REQUEST_CHANNEL,
+    ]) {
+      expect(preload).toContain(channel);
+    }
+  });
+
+  it('publishes the status with send, never invoke — nothing answers it', () => {
+    expect(preload).toContain(`ipcRenderer.send('${FOCUS_STATUS_CHANNEL}'`);
+    expect(preload).not.toContain(`ipcRenderer.invoke('${FOCUS_STATUS_CHANNEL}'`);
+  });
+
+  it('never hands the renderer a channel-name parameter', () => {
+    expect(preload).not.toMatch(/phaseShell[\s\S]*?ipcRenderer\.(invoke|send|on)\(\s*channel/);
   });
 });

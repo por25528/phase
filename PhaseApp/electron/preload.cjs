@@ -74,6 +74,22 @@ contextBridge.exposeInMainWorld('phaseShell', {
   getLaunchAtLogin: () => ipcRenderer.invoke('phase-shell:get-launch-at-login'),
   /** Set the OS login-item state; resolves the applied state, or null when refused. */
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke('phase-shell:set-launch-at-login', enabled),
+  /**
+   * Publish the focus draft's status to the shell — the menu-bar timer and the
+   * idle watcher both read it.
+   *
+   * A `send` and not an `invoke`, because there is no answer to wait for and
+   * the renderer must never block on the tray: a menu-bar item is a nicety.
+   * Sent on TRANSITIONS only, never on a tick, so this channel carries about
+   * as much traffic in an afternoon as a settings write does.
+   */
+  publishFocusStatus: (snapshot) => ipcRenderer.send('phase-shell:focus-status', snapshot),
+  /** Fires when the shell wants something done to the session. Returns unsubscribe. */
+  onFocusRequest: (fn) => {
+    const listener = (_event, request) => fn(request);
+    ipcRenderer.on('phase-shell:focus-request', listener);
+    return () => ipcRenderer.removeListener('phase-shell:focus-request', listener);
+  },
 });
 
 // The MAIN renderer's half of the agent bridge: hear a request that arrived

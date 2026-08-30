@@ -6,6 +6,8 @@ import {
   resumeFocusSession,
   finishFocusSession,
   discardFocusSession,
+  autoPauseFocusSession,
+  markFocusReturn,
   elapsedFocusMinutes,
   parseActiveFocusSession,
   serializeActiveFocusSession,
@@ -222,5 +224,87 @@ describe('reconcileFocusDraft', () => {
     const confirming = { ...draft, phase: 'confirming' as const, activeSinceMs: null, proposedMinutes: 5 };
     expect(reconcileFocusDraft(confirming, goals('done'), tasks(), t0)).toBe(confirming);
     expect(reconcileFocusDraft(null, goals('done'), tasks(), t0)).toBeNull();
+  });
+});
+
+describe('the break the app takes for you', () => {
+  it('banks time up to the moment input stopped, never up to the threshold', () => {
+    const s = autoPauseFocusSession(start(), t0 + 20 * MIN);
+    expect(s.phase).toBe('break');
+    expect(s.accumulatedMs).toBe(20 * MIN);
+    // Five minutes later the threshold fired, and none of it was banked.
+    expect(elapsedFocusMinutes(s, t0 + 25 * MIN)).toBe(20);
+  });
+
+  it('marks itself, so the shelf can tell it from a break you pressed', () => {
+    expect(autoPauseFocusSession(start(), t0 + 20 * MIN).autoBreak).toBe(true);
+    expect(pauseFocusSession(start(), t0 + 20 * MIN).autoBreak).toBeUndefined();
+  });
+
+  /**
+   * `stretchMs` already refuses to bank a negative stretch, so the clamp is
+   * about the REPORT: a pause stamped before the stretch began would make the
+   * away figure describe time the session had not started for.
+   */
+  it('clamps an idle start that precedes the active stretch', () => {
+    const resumed = resumeFocusSession(pauseFocusSession(start(), t0 + 10 * MIN), t0 + 40 * MIN);
+    const s = autoPauseFocusSession(resumed, t0 + 30 * MIN);
+    expect(s.accumulatedMs).toBe(10 * MIN);
+    expect(markFocusReturn(s, 5 * MIN).awayMs).toBe(5 * MIN);
+  });
+
+  it('refuses anything that is not an active session', () => {
+    const paused = pauseFocusSession(start(), t0 + 10 * MIN);
+    expect(autoPauseFocusSession(paused, t0 + 20 * MIN)).toBe(paused);
+  });
+
+  it('freezes the absence only for an auto-break, and never below zero', () => {
+    const auto = autoPauseFocusSession(start(), t0 + 20 * MIN);
+    expect(markFocusReturn(auto, 12 * MIN).awayMs).toBe(12 * MIN);
+    expect(markFocusReturn(auto, -1).awayMs).toBe(0);
+
+    const manual = pauseFocusSession(start(), t0 + 20 * MIN);
+    expect(markFocusReturn(manual, 12 * MIN)).toBe(manual);
+
+    const running = start();
+    expect(markFocusReturn(running, 12 * MIN)).toBe(running);
+  });
+
+  it('resuming spends both the mark and the figure', () => {
+    const back = markFocusReturn(autoPauseFocusSession(start(), t0 + 20 * MIN), 12 * MIN);
+    const resumed = resumeFocusSession(back, t0 + 32 * MIN);
+    expect(resumed.phase).toBe('active');
+    expect('autoBreak' in resumed).toBe(false);
+    expect('awayMs' in resumed).toBe(false);
+    // And a break taken later is an ordinary one.
+    expect(pauseFocusSession(resumed, t0 + 40 * MIN).autoBreak).toBeUndefined();
+  });
+
+  it('survives a serialize round trip', () => {
+    const back = markFocusReturn(autoPauseFocusSession(start(), t0 + 20 * MIN), 12 * MIN);
+    expect(parseActiveFocusSession(serializeActiveFocusSession(back))).toEqual(back);
+  });
+
+  /**
+   * A draft written before the idle watcher existed reads as an ordinary
+   * manual break, which is the safe direction: the pair is an EXPLANATION, and
+   * losing an explanation must never cost someone the session it hangs on.
+   */
+  it('reads an older draft, and any malformed pair, as a manual break', () => {
+    const manual = pauseFocusSession(start(), t0 + 20 * MIN);
+    const parsed = parseActiveFocusSession(serializeActiveFocusSession(manual));
+    expect(parsed).toEqual(manual);
+    expect(parsed?.autoBreak).toBeUndefined();
+
+    const odd = parseActiveFocusSession(JSON.stringify({
+      ...manual, autoBreak: 'yes', awayMs: 12 * MIN,
+    }));
+    expect(odd?.phase).toBe('break');
+    expect(odd?.autoBreak).toBeUndefined();
+    expect(odd?.awayMs).toBeUndefined();
+
+    // The figure never travels without the mark it explains.
+    const orphan = parseActiveFocusSession(JSON.stringify({ ...manual, awayMs: 12 * MIN }));
+    expect(orphan?.awayMs).toBeUndefined();
   });
 });

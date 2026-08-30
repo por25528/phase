@@ -681,10 +681,33 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
     </p>
   ) : (
-    <p className="text-meta tabular-nums text-muted">
-      {elapsedAgainstExpected(focus.elapsedMin, focus.expected, focusLevel)}
-      {focus.phase === 'break' ? ' · On a break' : ''}
-    </p>
+    <>
+      <p className="text-meta tabular-nums text-muted">
+        {elapsedAgainstExpected(focus.elapsedMin, focus.expected, focusLevel)}
+        {focus.phase === 'break' ? ' · On a break' : ''}
+      </p>
+      {/* The one thing the shelf says that the user did not ask for.
+          It appears ONLY on an auto-break, because a break someone pressed
+          needs no explanation, and its whole job is to answer the question you
+          come back with — "did that count?" — before you go looking for the
+          figure. It sits above the buttons rather than in the snapshot's
+          `notice` slot because it is a fact about THIS session, not a report
+          about the last thing you pressed, and the notice line is spent the
+          moment anything else happens.
+
+          `text-ink` where the readout above it is `text-muted`: the elapsed
+          figure is a reading you take, and this is a statement about your
+          time that you have to be able to trust without hunting for it. The
+          figure is absent while the machine was still asleep when the shelf
+          last drew, and the sentence stays true without it. */}
+      {focus.phase === 'break' && focus.autoBreak === true && (
+        <p className="text-meta text-ink">
+          {focus.awayMin === undefined
+            ? 'Break not counted'
+            : `Away ${fmtMinutes(focus.awayMin)} — break not counted`}
+        </p>
+      )}
+    </>
   );
   // The filled button is whatever moves the session forward from where you
   // are: on a break you came back to resume, mid-session you came to finish,

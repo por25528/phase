@@ -29,6 +29,15 @@ export interface AssistantFocusView {
   expected: ExpectedTime;
   /** Set while confirming: the figure the user is being asked about. */
   proposedMinutes?: number;
+  /**
+   * `break` only: the app took this break because you had gone, rather than
+   * because you pressed anything. The surface owes an explanation for the
+   * first and nothing at all for the second, and the phase alone cannot tell
+   * them apart.
+   */
+  autoBreak?: true;
+  /** Whole minutes away, once the return was observed. Absent until then. */
+  awayMin?: number;
 }
 
 export type AssistantSnapshot =

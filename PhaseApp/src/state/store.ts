@@ -73,7 +73,8 @@ import {
 import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status';
 import {
   startFocusSession, pauseFocusSession, resumeFocusSession, finishFocusSession,
-  discardFocusSession, type ActiveFocusSession,
+  discardFocusSession, autoPauseFocusSession, markFocusReturn,
+  type ActiveFocusSession,
   reconcileFocusDraft,
 } from '../lib/focusSession';
 import {
@@ -2374,6 +2375,47 @@ export const actions = {
     const draft = state.activeFocusSession;
     if (!draft || draft.phase !== 'break') return false;
     setFocusDraft(resumeFocusSession(draft, nowMs));
+    return true;
+  },
+
+  /**
+   * The break the app took on your behalf, after it noticed you had gone.
+   *
+   * A separate action from `pauseFocus` and not a flag on it, because the two
+   * differ in what they MEAN and not merely in when they happened: one is a
+   * decision, the other is an observation, and only the second owes the user
+   * an explanation when they come back. A boolean parameter would put both
+   * behind one name and let the shelf's notice appear over a break somebody
+   * pressed for themselves.
+   *
+   * `idleStartMs` is when input stopped, not when the threshold fired, so the
+   * whole absence stays out of the banked minutes — that retroactivity is the
+   * entire point of the feature, and `pauseFocusSession` already accepts an
+   * arbitrary timestamp for it.
+   */
+  autoBreakFocus(idleStartMs: number): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft || draft.phase !== 'active') return false;
+    if (!Number.isFinite(idleStartMs)) return false;
+    setFocusDraft(autoPauseFocusSession(draft, idleStartMs));
+    return true;
+  },
+
+  /**
+   * Freeze how long the absence lasted, once the watcher saw the user back.
+   *
+   * Refuses unless the live draft is an auto-break still on its break — a
+   * message that arrives after the session was resumed, completed or
+   * reconciled into `confirming` is dropped, because the state it described no
+   * longer exists and reopening it would answer a question nobody asked. The
+   * caller reads the refusal as "do not raise the shelf".
+   */
+  markFocusReturned(awayMs: number): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft || !Number.isFinite(awayMs)) return false;
+    const marked = markFocusReturn(draft, awayMs);
+    if (marked === draft) return false;
+    setFocusDraft(marked);
     return true;
   },
 

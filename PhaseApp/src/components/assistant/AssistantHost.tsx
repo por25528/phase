@@ -94,6 +94,13 @@ export function AssistantHost({ open, onClose, theme }: {
           elapsedMin: elapsedFocusMinutes(activeFocusSession, Date.now()),
           expected: activeFocusSession.expected,
           ...(activeFocusSession.proposedMinutes === undefined ? {} : { proposedMinutes: activeFocusSession.proposedMinutes }),
+          // The absence, projected the same way the elapsed figure is: the
+          // draft holds milliseconds, the surface is handed minutes, and no
+          // arithmetic crosses into the overlay.
+          ...(activeFocusSession.autoBreak === true ? { autoBreak: true as const } : {}),
+          ...(activeFocusSession.awayMs === undefined
+            ? {}
+            : { awayMin: Math.round(activeFocusSession.awayMs / 60_000) }),
         }
       : null;
     return {

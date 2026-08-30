@@ -18,6 +18,8 @@ function fixture(over: Partial<PhaseShellBridge> = {}): PhaseShellBridge {
     onOpenSettings: vi.fn(() => () => {}),
     getLaunchAtLogin: vi.fn(async () => false),
     setLaunchAtLogin: vi.fn(async () => true),
+    publishFocusStatus: vi.fn(),
+    onFocusRequest: vi.fn(() => () => {}),
     ...over,
   };
 }

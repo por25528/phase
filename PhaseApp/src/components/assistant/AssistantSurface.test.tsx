@@ -474,6 +474,80 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'confirm-focus', minutes: null });
   });
 
+  /**
+   * The one thing the shelf says that you did not ask for. It exists to answer
+   * the question you come back with — "did that count?" — before you go
+   * looking for the figure, and it must never appear over a break somebody
+   * pressed for themselves.
+   */
+  it('explains an auto-break with the rounded minutes away', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'break',
+            elapsedMin: 25, expected: { kind: 'starter', minutes: 30 },
+            autoBreak: true, awayMin: 12,
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByText('Away 12m — break not counted')).toBeTruthy();
+    // Continue is still the filled primary: the notice explains, it does not
+    // become the reason you are here.
+    expect(screen.getByRole('button', { name: 'Continue' }).className).toBe(primaryBtn);
+  });
+
+  it('states the fact without a figure while the absence is still running', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'break',
+            elapsedMin: 25, expected: { kind: 'starter', minutes: 30 },
+            autoBreak: true,
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.getByText('Break not counted')).toBeTruthy();
+  });
+
+  it('says nothing over a break the user took, or over any other phase', () => {
+    const { rerender } = render(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'break',
+            elapsedMin: 25, expected: { kind: 'starter', minutes: 30 },
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/not counted/)).toBeNull();
+
+    rerender(
+      <AssistantSurface
+        snapshot={ready({
+          activeFocus: {
+            ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+            title: 'Problem set 4', phase: 'active',
+            elapsedMin: 25, expected: { kind: 'starter', minutes: 30 },
+            autoBreak: true, awayMin: 12,
+          },
+        })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/not counted/)).toBeNull();
+  });
+
   it('states progress on a running session instead of inviting a start', () => {
     render(
       <AssistantSurface

@@ -545,6 +545,37 @@ GitHub Actions secrets; see `../docs/macos-signing.md`.
   logging there would be a second write sweeping the undo the completing write
   just armed, and the shelf already knows how to ask. It spends `set()` via
   `setFocusDraft`, so it cannot re-enter the sweep.
+- **The app can notice you left, and the menu bar can say a session is running
+  — and neither of them writes anything.** `src/lib/focusStatus.ts` is the one
+  vocabulary for the seam: `focusStatusOf` projects the draft down to a phase,
+  two TIMESTAMPS and a title, and `validFocusRequest` is the five verbs that
+  may come back. Timestamps and never a duration, because that is the calm
+  session restated across a process boundary — `menuBar.cjs` repaints `▶ 42m`
+  once a minute out of `accumulatedMs` and `activeSinceMs` while the store
+  performs no transition and writes nothing, and a snapshot carrying an elapsed
+  figure would have to be re-sent to stay true. It is published from an
+  `App.tsx` effect comparing the draft BY REFERENCE, not from `setFocusDraft`:
+  the store is platform-free and every preload bridge lives in `App.tsx`, and
+  the reference IS the transition, since `setFocusDraft` is the only thing that
+  ever replaces the object. The push at hydrate is what re-arms the tray and
+  the watcher for a draft restored from the settings row. Coming back,
+  `validFocusRequest` runs in the renderer and nowhere earlier, for the reason
+  `validAgentRequest` does — the electron modules import nothing from `src/`,
+  so this is the first side of the seam that can spend it — and every verb
+  lands on an action the buttons already call. **`idleWatch.cjs` polls only
+  when there is something to notice**: an active session, or the stretch
+  between an auto-break and the return that ends it, and nothing else. It fires
+  at `IDLE_BREAK_SEC` (300, deliberately not a setting) with the moment input
+  STOPPED, not the moment the threshold fired, so the whole absence is excluded
+  — retroactivity is what makes the exact threshold cheap to be wrong about.
+  Suspend and lock skip the wait entirely: a closed lid is already certain.
+  `ActiveFocusSession.autoBreak` is what lets the shelf tell "I pressed Take
+  break" from "the app noticed I had gone" — the same `break` phase, and only
+  one of them owes an explanation — and `awayMs` is the figure beside it,
+  FROZEN when the return was seen rather than derived from the clock, or the
+  notice would state a longer absence every second the shelf sat open. Both are
+  spent by `resumeFocusSession`, both are absent on every older draft, and
+  neither ever reaches `Session` history.
 - **`focusLens.ts` is the one vocabulary for how much focus the room supports**,
   and it is a LENS, never a ranking: order never changes, membership does, the
   same move `lifeScope` makes on the board. The caps (`low` 25, `medium` 60,

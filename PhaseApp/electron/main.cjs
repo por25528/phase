@@ -4,7 +4,7 @@
 // a prewarmed read-only panel behind a controller, and the menu bar plus
 // login-item access sit behind the validated shell bridge. main.cjs is the
 // only module that may know BrowserWindow, screen, Tray, Menu, and nativeImage.
-const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage, nativeTheme } = require('electron')
+const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage, nativeTheme, powerMonitor } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -23,6 +23,7 @@ const { createAssistantWindowController } = require('./assistantWindowController
 const { createAppLifecycle, shouldShowMainAtLaunch } = require('./appLifecycle.cjs')
 const { createShellIpc } = require('./shellIpc.cjs')
 const { createMenuBar } = require('./menuBar.cjs')
+const { createIdleWatch } = require('./idleWatch.cjs')
 const { createAgentIpc } = require('./agentIpc.cjs')
 const { createAgentSocket } = require('./agentSocket.cjs')
 const { createSyncFiles } = require('./syncFiles.cjs')
@@ -47,6 +48,46 @@ let assistantController = null
 
 /** @type {ReturnType<typeof createMenuBar> | null} */
 let menuBar = null
+
+/**
+ * What the renderer last said the focus session was doing, fanned out to the
+ * two things outside the window that care.
+ *
+ * Main holds this ONE snapshot and nothing else — no history, no writes, no
+ * database. Both consumers only ever read it, and every state change goes back
+ * through the renderer's own actions, which is the same promise the agent
+ * surface makes about the socket.
+ */
+function publishFocusStatus(status) {
+  menuBar?.setFocusStatus(status)
+  idleWatch.setFocusStatus(status)
+}
+
+/**
+ * The idle watcher. Composed here with powerMonitor because this is the only
+ * module allowed to know it; everything the watcher does with it is a plain
+ * function it was handed.
+ *
+ * `getSystemIdleTime` is guarded by the watcher itself — an OS that refuses to
+ * answer once must not end the watch — and the two events are subscribed
+ * through closures that return their own removal, so `dispose` cannot leave a
+ * listener behind on a powerMonitor that outlives the app's windows.
+ */
+const idleWatch = createIdleWatch({
+  getIdleSeconds: () => powerMonitor.getSystemIdleTime(),
+  onSuspend: (fn) => {
+    powerMonitor.on('suspend', fn)
+    return () => powerMonitor.removeListener('suspend', fn)
+  },
+  onLockScreen: (fn) => {
+    powerMonitor.on('lock-screen', fn)
+    return () => powerMonitor.removeListener('lock-screen', fn)
+  },
+  setTimer: (fn, ms) => { const id = setTimeout(fn, ms); return () => clearTimeout(id) },
+  now: () => Date.now(),
+  notifyRenderer: (request) => shellIpc.sendFocusRequest(request),
+  logError: (...args) => console.error(...args),
+})
 
 // The relay between the main renderer (the one store owner) and the shelf
 // renderer. Window getters, not references: the Hub can be recreated and the
@@ -90,6 +131,10 @@ const lifecycle = createAppLifecycle({
     globalShortcut.unregisterAll()
     assistantController?.dispose()
     menuBar.dispose()
+    // A poller left running would keep asking the OS how long an app that is
+    // gone has been idle — the same reason the socket and the sync watcher
+    // close here.
+    idleWatch.dispose()
     assistantIpc.dispose(ipcMain)
     shellIpc.dispose(ipcMain)
     backupIpc.dispose(ipcMain)
@@ -193,6 +238,7 @@ const shellIpc = createShellIpc({
       return null
     }
   },
+  onFocusStatus: publishFocusStatus,
 })
 
 // The agent bridge: a Unix socket in userData is the only door into the app
@@ -490,7 +536,19 @@ app.whenReady().then(() => {
     onOpenAssistant: openAssistant,
     onOpenSettings: () => shellIpc.openSettings(),
     onQuit: () => app.quit(),
+    // The menu bar asks; the renderer decides and writes. `finish` may land on
+    // a session too long to log unasked, and the renderer raises the shelf for
+    // that question rather than answering it from a menu.
+    onTakeBreak: () => shellIpc.sendFocusRequest({ type: 'take-break' }),
+    onResume: () => shellIpc.sendFocusRequest({ type: 'resume' }),
+    onFinishSession: () => shellIpc.sendFocusRequest({ type: 'finish' }),
+    now: () => Date.now(),
+    setTimer: (fn, ms) => { const id = setTimeout(fn, ms); return () => clearTimeout(id) },
     logError: (...args) => console.error(...args),
   })
   menuBar.create()
+
+  // After the tray, so a status arriving in the same tick has somewhere to
+  // land; the watcher itself needs no window and starts either way.
+  idleWatch.start()
 })

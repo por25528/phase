@@ -42,6 +42,25 @@ export interface ActiveFocusSession {
   focusLevel: TimeLevel;
   /** Set while confirming: the elapsed minutes the user is being asked about. */
   proposedMinutes?: number;
+  /**
+   * Set only by the idle watcher's retroactive pause, cleared by any resume.
+   *
+   * It is what lets a surface tell "I pressed Take break" from "the app
+   * noticed I had gone", which are the same `break` phase and must not read
+   * the same. It never reaches `Session` history — a draft is not history —
+   * and an older draft that predates the field is an ordinary manual break,
+   * which is the safe reading: the notice is an explanation, and explaining a
+   * break the user took themselves would be noise.
+   */
+  autoBreak?: true;
+  /**
+   * How long the absence lasted, FROZEN at the moment the watcher saw the
+   * user come back. Deliberately not derived from the clock at read time:
+   * away time stops when you return, so a figure that kept growing while the
+   * shelf sat open would state a longer absence every second you looked at it.
+   * Absent until the return is observed — a lid still shut has no answer yet.
+   */
+  awayMs?: number;
 }
 
 /**
@@ -99,7 +118,52 @@ export function pauseFocusSession(session: ActiveFocusSession, nowMs: number): A
 
 export function resumeFocusSession(session: ActiveFocusSession, nowMs: number): ActiveFocusSession {
   if (session.phase !== 'break') return session;
-  return { ...session, activeSinceMs: nowMs, phase: 'active' };
+  const { autoBreak: _autoBreak, awayMs: _awayMs, ...rest } = session;
+  // Both fields describe THIS break and nothing else, so resuming spends them.
+  // Leaving them on the draft would have the next manual break inherit an
+  // explanation about an absence that ended a session-stretch ago.
+  return { ...rest, activeSinceMs: nowMs, phase: 'active' };
+}
+
+/**
+ * The retroactive pause the idle watcher asks for.
+ *
+ * `idleStartMs` is when input STOPPED, not when the five-minute threshold
+ * fired, which is the whole point: the minutes spent away are never banked.
+ * `pauseFocusSession` already accepts an arbitrary `nowMs`, so this is that
+ * transition plus the clamp and the mark.
+ *
+ * The clamp matters for the report rather than for the arithmetic —
+ * `stretchMs` already refuses to bank a negative stretch — but a pause stamped
+ * before the stretch began would make `awayMs` describe time the session had
+ * not started for.
+ */
+export function autoPauseFocusSession(
+  session: ActiveFocusSession,
+  idleStartMs: number,
+): ActiveFocusSession {
+  if (session.phase !== 'active') return session;
+  const at = session.activeSinceMs === null
+    ? idleStartMs
+    : Math.max(idleStartMs, session.activeSinceMs);
+  return { ...pauseFocusSession(session, at), autoBreak: true };
+}
+
+/**
+ * Freeze how long the absence lasted, once the watcher has seen the user back.
+ *
+ * Only an auto-break can carry the figure: a break someone took on purpose is
+ * not an absence to be explained. A draft that moved on while the machine was
+ * asleep — resumed, completed, reconciled into `confirming` — is returned
+ * untouched, so a late message is dropped rather than reopening a settled
+ * question.
+ */
+export function markFocusReturn(
+  session: ActiveFocusSession,
+  awayMs: number,
+): ActiveFocusSession {
+  if (session.phase !== 'break' || session.autoBreak !== true) return session;
+  return { ...session, awayMs: Math.max(0, awayMs) };
 }
 
 /** Whole minutes of active work so far — breaks excluded, rounded to the nearest minute. */
@@ -267,5 +331,12 @@ export function parseActiveFocusSession(raw: unknown): ActiveFocusSession | null
     // losing it would cost the user time they actually worked.
     focusLevel: isTimeLevel(s.focusLevel) ? s.focusLevel : DEFAULT_TIME_LEVEL,
     ...(s.proposedMinutes === undefined ? {} : { proposedMinutes: s.proposedMinutes }),
+    // Both absent on every draft written before the idle watcher existed, and
+    // absent on every manual break after it. Anything but the exact expected
+    // shape reads as "not an auto-break" rather than as a corrupt draft: the
+    // pair is an EXPLANATION, and losing an explanation must never cost
+    // someone the session it was attached to.
+    ...(s.autoBreak === true ? { autoBreak: true as const } : {}),
+    ...(s.autoBreak === true && isFiniteNonNegative(s.awayMs) ? { awayMs: s.awayMs } : {}),
   };
 }

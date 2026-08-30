@@ -36,6 +36,7 @@ const path = require('node:path')
 // nineteenth-century industrialization"):
 //
 //   confirming   378.48px
+//   autoBreak    375.48px
 //   active       354.48px
 //   sidecar      333.48px
 //   beyondWindow 239.98px
@@ -44,6 +45,13 @@ const path = require('node:path')
 // Re-measured 2026-08-23 when MAX_ALTERNATIVES went from two to three: the
 // band's third row added 36px to every state that draws it (the previous
 // figures were 342.48 / 318.48 / 297.48).
+//
+// Re-measured 2026-08-30 when the idle auto-break added its away notice.
+// `autoBreak` is a NEW state in the list and not a taller `active`: it is the
+// only break that draws that line, and a break the user pressed measures
+// exactly `active`. It came within 3px of the budget and did not take it, so
+// this number is unchanged — but the margin is now thin enough that the next
+// line added to any running state will move it.
 //
 // `confirming` is still the tallest, and still for the reason it always was:
 // it is the only state whose body is a QUESTION under the title rather than a
