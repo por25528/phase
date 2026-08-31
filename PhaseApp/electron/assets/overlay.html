@@ -1,0 +1,50 @@
+<!-- The running-session pill. Deliberately dumb: main computes the text and
+     pushes { glyph, text }; this page paints it and nothing else. Colors are
+     hardcoded because a static file cannot import theme tokens — the pill
+     mirrors the app's dark panel (bg-panel dark) and ink. -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+  /* The whole pill drags; the glyph opts back out below to stay clickable. */
+  #pill {
+    display: none; align-items: center; gap: 8px;
+    height: 36px; box-sizing: border-box; padding: 0 14px 0 8px;
+    border-radius: 18px;
+    background: rgba(28, 27, 26, 0.92);
+    color: #f5f2ec;
+    font: 500 13px -apple-system, BlinkMacSystemFont, sans-serif;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    -webkit-app-region: drag;
+  }
+  #pill.shown { display: flex; }
+  #glyph {
+    -webkit-app-region: no-drag; cursor: pointer;
+    border: none; background: none; color: inherit;
+    font-size: 12px; line-height: 1; padding: 6px;
+  }
+  #text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+  <div id="pill" title="Drag to move · click the glyph to open Phase">
+    <button id="glyph" aria-label="Open Phase"></button>
+    <span id="text"></span>
+  </div>
+  <script>
+    const pill = document.getElementById('pill');
+    const glyph = document.getElementById('glyph');
+    const text = document.getElementById('text');
+    glyph.addEventListener('click', () => window.phaseOverlay.openPhase());
+    window.phaseOverlay.onModel((model) => {
+      glyph.textContent = model.glyph;
+      text.textContent = model.text;
+      pill.classList.add('shown');
+    });
+  </script>
+</body>
+</html>
