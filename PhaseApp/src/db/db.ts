@@ -208,6 +208,23 @@ export async function saveAssistantAccelerator(value: string): Promise<void> {
   await db.settings.put({ key: ASSISTANT_ACCELERATOR_KEY, value });
 }
 
+/**
+ * Whether the floating running-session pill may show. A device preference,
+ * not user work, so it lives in `settings` beside the accelerator and stays
+ * out of backup export/import. Absent reads as ON — the pill is the default,
+ * and only an explicit 'false' turns it off.
+ */
+const SHOW_OVERLAY_KEY = 'showOverlay';
+
+export async function loadShowOverlay(): Promise<boolean> {
+  const row = await db.settings.get(SHOW_OVERLAY_KEY);
+  return row?.value !== 'false';
+}
+
+export async function saveShowOverlay(value: boolean): Promise<void> {
+  await db.settings.put({ key: SHOW_OVERLAY_KEY, value: String(value) });
+}
+
 // The settings KEY keeps its original spelling: it names a row that already
 // exists in every database, and renaming it would silently reset the dial.
 const FOCUS_LEVEL_KEY = 'focusLevel';

@@ -41,6 +41,11 @@ export interface PhaseShellBridge {
   publishFocusStatus(snapshot: FocusStatusSnapshot): void;
   /** Subscribe to the shell asking for something. Returns unsubscribe. */
   onFocusRequest(fn: (request: unknown) => void): () => void;
+  /**
+   * Tell the shell whether the floating pill may show. Fire-and-forget and a
+   * no-op in the browser, for the same reason publishFocusStatus is.
+   */
+  setOverlayEnabled(enabled: boolean): void;
 }
 
 interface ShellPreload {
@@ -54,6 +59,8 @@ interface ShellPreload {
   publishFocusStatus?(snapshot: FocusStatusSnapshot): void;
   /** Absent on the same older preloads; the stub's unsubscribe stands in. */
   onFocusRequest?(fn: (request: unknown) => void): () => void;
+  /** Absent on any preload built before the overlay pill existed. */
+  setOverlayEnabled?(enabled: boolean): void;
 }
 
 function preloadOf<T>(name: string): T | undefined {
@@ -75,6 +82,7 @@ export function shellBridge(): PhaseShellBridge {
       setLaunchAtLogin: async () => null,
       publishFocusStatus: noop,
       onFocusRequest: () => noop,
+      setOverlayEnabled: noop,
     };
   }
   return {
@@ -93,5 +101,6 @@ export function shellBridge(): PhaseShellBridge {
     // being there.
     publishFocusStatus: (snapshot) => preload.publishFocusStatus?.(snapshot),
     onFocusRequest: (fn) => preload.onFocusRequest?.(fn) ?? noop,
+    setOverlayEnabled: (enabled) => preload.setOverlayEnabled?.(enabled),
   };
 }

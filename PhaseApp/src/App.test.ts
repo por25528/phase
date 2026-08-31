@@ -85,6 +85,7 @@ describe('desktop entry-point routing', () => {
       setLaunchAtLogin: async () => (available ? true : null),
       publishFocusStatus: () => {},
       onFocusRequest: () => () => {},
+      setOverlayEnabled: () => {},
     };
   }
 
@@ -122,6 +123,7 @@ describe('desktop entry-point routing', () => {
         setLaunchAtLogin: async () => true,
         publishFocusStatus: () => {},
         onFocusRequest: () => () => {},
+        setOverlayEnabled: () => {},
       };
       const openEmbedded = vi.fn();
       openAssistantForEnvironment(desktop, openEmbedded);

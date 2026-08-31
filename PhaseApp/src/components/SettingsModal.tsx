@@ -3,6 +3,7 @@ import { sectionLabel } from './sectionLabel';
 import { LivesSettings } from '../views/goals/LivesSettings';
 import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings';
 import { LaunchAtLoginSettings } from './assistant/LaunchAtLoginSettings';
+import { OverlaySettings } from './assistant/OverlaySettings';
 import { BackupsSettings } from './BackupsSettings';
 import type { BackupNowResult } from '../state/autoBackup';
 import { CalendarSettings } from './CalendarSettings';
@@ -69,6 +70,7 @@ export function SettingsModal({
       />
       {/* Desktop only: the row renders nothing in the plain browser. */}
       <LaunchAtLoginSettings />
+      <OverlaySettings />
 
       {/* Same rule, and the same reason it is HERE: a backup is provider-style
           configuration you look at twice a year, not routine editing. It sits

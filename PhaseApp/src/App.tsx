@@ -52,7 +52,7 @@ import { createSyncExporter } from './state/syncExport';
 import type { SyncSlices } from './lib/sync/stateFile';
 import {
   loadSyncMeta, saveSyncMeta, buildBackupText,
-  loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot,
+  loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot, loadShowOverlay,
 } from './db/db';
 import { backupBridge, stampToLocalMs } from './lib/backupBridge';
 import { createAutoBackup, writeBackupNow, type AutoBackup } from './state/autoBackup';
@@ -330,6 +330,17 @@ export function App() {
       shell.publishFocusStatus(focusStatusOf(next));
     });
   }, [hydration, shell]);
+
+  // Electron cannot read Dexie, so the hydrated pill preference is pushed
+  // once at startup — the same reason the assistant shortcut is.
+  useEffect(() => {
+    if (!shell.available) return;
+    let cancelled = false;
+    void loadShowOverlay().then((value) => {
+      if (!cancelled) shell.setOverlayEnabled(value);
+    });
+    return () => { cancelled = true; };
+  }, [shell]);
 
   /**
    * The focus seam, inbound: the menu bar's three verbs and the idle watcher's

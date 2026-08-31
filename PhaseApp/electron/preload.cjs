@@ -84,6 +84,11 @@ contextBridge.exposeInMainWorld('phaseShell', {
    * as much traffic in an afternoon as a settings write does.
    */
   publishFocusStatus: (snapshot) => ipcRenderer.send('phase-shell:focus-status', snapshot),
+  /**
+   * Whether the floating pill may show. A send, like publishFocusStatus, and
+   * for the same reason: the renderer must never block on a nicety.
+   */
+  setOverlayEnabled: (enabled) => ipcRenderer.send('phase-shell:overlay-enabled', enabled),
   /** Fires when the shell wants something done to the session. Returns unsubscribe. */
   onFocusRequest: (fn) => {
     const listener = (_event, request) => fn(request);

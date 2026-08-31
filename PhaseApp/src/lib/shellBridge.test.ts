@@ -73,6 +73,7 @@ describe('shellBridge', () => {
       'openAssistant',
       'publishFocusStatus',
       'setLaunchAtLogin',
+      'setOverlayEnabled',
     ]);
   });
 
@@ -142,5 +143,31 @@ describe('shellBridge', () => {
     // An older preload, with no such key.
     (window as unknown as AnyWindow).phaseShell = base;
     expect(shellBridge().insetTitleBar).toBe(false);
+  });
+
+  /**
+   * The pill's preference is pushed at startup and on every toggle, from code
+   * that has no branch for which world it is in — so all three worlds have to
+   * answer without throwing: the browser, a preload built before the pill
+   * existed, and the real thing.
+   */
+  it('setOverlayEnabled is a guarded no-op in the browser and forwards on desktop', () => {
+    delete (window as unknown as AnyWindow).phaseShell;
+    expect(() => shellBridge().setOverlayEnabled(true)).not.toThrow();
+
+    const older = {
+      openAssistant: vi.fn(async () => true),
+      onOpenSettings: vi.fn(() => vi.fn()),
+      getLaunchAtLogin: vi.fn(async () => null),
+      setLaunchAtLogin: vi.fn(async () => null),
+    };
+    (window as unknown as AnyWindow).phaseShell = older;
+    expect(() => shellBridge().setOverlayEnabled(true)).not.toThrow();
+
+    const setOverlayEnabled = vi.fn();
+    (window as unknown as AnyWindow).phaseShell = { ...older, setOverlayEnabled };
+    shellBridge().setOverlayEnabled(false);
+    expect(setOverlayEnabled).toHaveBeenCalledTimes(1);
+    expect(setOverlayEnabled).toHaveBeenCalledWith(false);
   });
 });
