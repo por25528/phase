@@ -59,3 +59,187 @@ describe('position math', () => {
     expect(clampToWorkArea({ x: 100, y: 100 }, workArea)).toEqual({ x: 100, y: 100 });
   });
 });
+
+function overlayWindow(over: {
+  createWindowThrows?: boolean;
+  loadFileRejects?: boolean;
+  storedPosition?: { x: number; y: number } | null;
+} = {}) {
+  const listeners: Record<string, () => void> = {};
+  const win = {
+    isDestroyed: vi.fn(() => false),
+    showInactive: vi.fn(),
+    hide: vi.fn(),
+    destroy: vi.fn(),
+    setAlwaysOnTop: vi.fn(),
+    setVisibleOnAllWorkspaces: vi.fn(),
+    getPosition: vi.fn(() => [300, 200]),
+    on: vi.fn((event: string, fn: () => void) => { listeners[event] = fn; }),
+    loadFile: vi.fn(() =>
+      over.loadFileRejects ? Promise.reject(new Error('load failed')) : Promise.resolve()),
+    webContents: {
+      id: 77,
+      send: vi.fn(),
+      on: vi.fn((event: string, fn: () => void) => { listeners[event] = fn; }),
+    },
+  };
+  const createWindow = vi.fn(() => {
+    if (over.createWindowThrows) throw new Error('window creation failed');
+    return win;
+  });
+  const timers: Array<{ fn: () => void; ms: number; cancelled: boolean }> = [];
+  const setTimer = vi.fn((fn: () => void, ms: number) => {
+    const entry = { fn, ms, cancelled: false };
+    timers.push(entry);
+    return () => { entry.cancelled = true; };
+  });
+  let nowMs = T0;
+  const deps = {
+    createWindow,
+    htmlPath: '/app/electron/assets/overlay.html',
+    preloadPath: '/app/electron/overlayPreload.cjs',
+    getPrimaryWorkArea: vi.fn(() => ({ x: 0, y: 25, width: 1440, height: 875 })),
+    workAreaNearest: vi.fn(() => ({ x: 0, y: 25, width: 1440, height: 875 })),
+    readPosition: vi.fn(() => over.storedPosition ?? null),
+    writePosition: vi.fn(),
+    now: () => nowMs,
+    setTimer,
+    logError: vi.fn(),
+  };
+  const overlay = createOverlayWindow(deps);
+  return {
+    overlay, win, deps, timers, listeners,
+    advance(ms: number) { nowMs += ms; },
+    /** Run every pending un-cancelled timer once, as time passing would. */
+    fire() { for (const t of timers.splice(0)) if (!t.cancelled) t.fn(); },
+    lastSent() { return win.webContents.send.mock.calls.at(-1); },
+  };
+}
+
+describe('createOverlayWindow', () => {
+  it('creates hidden at the default corner when nothing is stored', () => {
+    const { overlay, deps } = overlayWindow();
+    overlay.create();
+    const options = (deps.createWindow.mock.calls[0] as unknown[])[0] as { x: number; y: number; show: boolean };
+    expect(options.x).toBe(1440 - OVERLAY_WIDTH - 16);
+    expect(options.y).toBe(25 + 16);
+    expect(options.show).toBe(false);
+  });
+
+  it('creates at the stored position, clamped to its nearest display', () => {
+    const { overlay, deps } = overlayWindow({ storedPosition: { x: 5000, y: 100 } });
+    overlay.create();
+    const options = (deps.createWindow.mock.calls[0] as unknown[])[0] as { x: number; y: number };
+    expect(options.x).toBe(1440 - OVERLAY_WIDTH);
+    expect(options.y).toBe(100);
+  });
+
+  it('pins the window above everything, on every Space', () => {
+    const { overlay, win } = overlayWindow();
+    overlay.create();
+    expect(win.setAlwaysOnTop).toHaveBeenCalledWith(true, 'status');
+    expect(win.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, { visibleOnFullScreen: true });
+  });
+
+  it('shows without focus and sends the model on an active snapshot', () => {
+    const { overlay, win, lastSent } = overlayWindow();
+    overlay.create();
+    overlay.setFocusStatus(active());
+    expect(lastSent()).toEqual(['phase-overlay:model', { glyph: '▶', text: '0m · Problem set 4' }]);
+    expect(win.showInactive).toHaveBeenCalled();
+  });
+
+  it('repaints a minute later with the next floor minute', () => {
+    const { overlay, advance, fire, lastSent } = overlayWindow();
+    overlay.create();
+    overlay.setFocusStatus(active());
+    advance(REPAINT_MS);
+    fire();
+    expect(lastSent()).toEqual(['phase-overlay:model', { glyph: '▶', text: '1m · Problem set 4' }]);
+  });
+
+  it('shows a static break and schedules no repaint for it', () => {
+    const { overlay, timers, lastSent } = overlayWindow();
+    overlay.create();
+    overlay.setFocusStatus(active({ phase: 'break', activeSinceMs: null }));
+    expect(lastSent()).toEqual(['phase-overlay:model', { glyph: '⏸', text: 'on break' }]);
+    expect(timers.filter((t) => !t.cancelled)).toHaveLength(0);
+  });
+
+  it('hides while confirming and when the session ends', () => {
+    const { overlay, win } = overlayWindow();
+    overlay.create();
+    overlay.setFocusStatus(active());
+    overlay.setFocusStatus(active({ phase: 'confirming', activeSinceMs: null }));
+    expect(win.hide).toHaveBeenCalledTimes(1);
+    overlay.setFocusStatus(null);
+    expect(win.hide).toHaveBeenCalledTimes(2);
+  });
+
+  it('setEnabled(false) hides a running pill; setEnabled(true) re-shows from the remembered snapshot', () => {
+    const { overlay, win } = overlayWindow();
+    overlay.create();
+    overlay.setFocusStatus(active());
+    overlay.setEnabled(false);
+    expect(win.hide).toHaveBeenCalled();
+    win.showInactive.mockClear();
+    overlay.setEnabled(true);
+    expect(win.showInactive).toHaveBeenCalled();
+  });
+
+  it('repaints after did-finish-load so a snapshot never races the page', () => {
+    const { overlay, listeners, win } = overlayWindow();
+    overlay.create();
+    overlay.setFocusStatus(active());
+    win.webContents.send.mockClear();
+    listeners['did-finish-load']();
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      'phase-overlay:model', { glyph: '▶', text: '0m · Problem set 4' });
+  });
+
+  it('debounces the drag into one position write', () => {
+    const { overlay, deps, listeners, fire } = overlayWindow();
+    overlay.create();
+    listeners['moved']();
+    listeners['moved']();
+    expect(deps.writePosition).not.toHaveBeenCalled();
+    fire();
+    expect(deps.writePosition).toHaveBeenCalledTimes(1);
+    expect(deps.writePosition).toHaveBeenCalledWith({ x: 300, y: 200 });
+  });
+
+  it('a failed creation logs once and every later call is a no-op', () => {
+    const { overlay, deps } = overlayWindow({ createWindowThrows: true });
+    overlay.create();
+    expect(deps.logError).toHaveBeenCalledTimes(1);
+    expect(() => overlay.setFocusStatus(active())).not.toThrow();
+    expect(() => overlay.setEnabled(false)).not.toThrow();
+    expect(overlay.isSender(77)).toBe(false);
+  });
+
+  it('a failed page load tears the window down rather than floating an empty rect', async () => {
+    const { overlay, win, deps } = overlayWindow({ loadFileRejects: true });
+    overlay.create();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(win.destroy).toHaveBeenCalled();
+    expect(deps.logError).toHaveBeenCalledTimes(1);
+    expect(() => overlay.setFocusStatus(active())).not.toThrow();
+  });
+
+  it('knows its own page and nobody else', () => {
+    const { overlay } = overlayWindow();
+    overlay.create();
+    expect(overlay.isSender(77)).toBe(true);
+    expect(overlay.isSender(78)).toBe(false);
+  });
+
+  it('dispose cancels the repaint and destroys the window', () => {
+    const { overlay, win, timers } = overlayWindow();
+    overlay.create();
+    overlay.setFocusStatus(active());
+    overlay.dispose();
+    expect(win.destroy).toHaveBeenCalled();
+    expect(timers.every((t) => t.cancelled)).toBe(true);
+  });
+});

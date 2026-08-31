@@ -59,8 +59,130 @@ function defaultPosition(workArea) {
 }
 
 function createOverlayWindow(deps) {
-  // Task 2 fills this in.
-  throw new Error('not implemented');
+  const {
+    createWindow, htmlPath, preloadPath,
+    getPrimaryWorkArea, workAreaNearest,
+    readPosition, writePosition,
+    now, setTimer, logError,
+  } = deps;
+
+  let win = null;
+  /** The last snapshot the renderer published, or null for "no session". */
+  let status = null;
+  /** The Settings toggle; hidden-regardless when false. */
+  let enabled = true;
+  let stopRepaint = null;
+  let stopSaveDebounce = null;
+
+  function cancel(stop) {
+    if (!stop) return null;
+    try { stop(); } catch { /* timer already gone */ }
+    return null;
+  }
+
+  function live() {
+    return win && !win.isDestroyed() ? win : null;
+  }
+
+  /** Tear down after a failure; the overlay is a nicety, never a requirement. */
+  function teardown(error) {
+    if (win) {
+      try { win.destroy(); } catch { /* already gone */ }
+      win = null;
+    }
+    stopRepaint = cancel(stopRepaint);
+    stopSaveDebounce = cancel(stopSaveDebounce);
+    logError('[phase-shell] overlay unavailable', error);
+  }
+
+  /**
+   * One place decides visibility and text. Hidden is a real answer: outside a
+   * session, and while the shelf asks its question, the pill's absence is the
+   * signal — same rule as trayTitle.
+   */
+  function paint() {
+    const w = live();
+    if (!w) return;
+    const model = enabled ? pillModel(status, now()) : null;
+    stopRepaint = cancel(stopRepaint);
+    if (!model) {
+      w.hide();
+      return;
+    }
+    w.webContents.send('phase-overlay:model', model);
+    w.showInactive();
+    if (status && status.phase === 'active') {
+      stopRepaint = setTimer(() => {
+        stopRepaint = null;
+        paint();
+      }, REPAINT_MS);
+    }
+  }
+
+  function scheduleSave() {
+    stopSaveDebounce = cancel(stopSaveDebounce);
+    stopSaveDebounce = setTimer(() => {
+      stopSaveDebounce = null;
+      const w = live();
+      if (!w) return;
+      const [x, y] = w.getPosition();
+      writePosition({ x, y });
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  function create() {
+    if (win) return;
+    try {
+      const stored = readPosition();
+      const position = stored
+        ? clampToWorkArea(stored, workAreaNearest(stored))
+        : defaultPosition(getPrimaryWorkArea());
+      const w = createWindow({
+        x: position.x, y: position.y,
+        width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT,
+        frame: false, transparent: true, resizable: false, hasShadow: false,
+        focusable: false, skipTaskbar: true, alwaysOnTop: true, show: false,
+        webPreferences: { preload: preloadPath, contextIsolation: true, sandbox: true },
+      });
+      win = w;
+      w.setAlwaysOnTop(true, 'status');
+      w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      w.on('moved', scheduleSave);
+      // A snapshot can arrive while the page still loads; repaint on load so
+      // the first thing the page hears is the current truth.
+      w.webContents.on('did-finish-load', paint);
+      w.loadFile(htmlPath).catch((error) => teardown(error));
+    } catch (error) {
+      teardown(error);
+    }
+  }
+
+  function setFocusStatus(next) {
+    if (!live()) return;
+    status = next ?? null;
+    paint();
+  }
+
+  function setEnabled(next) {
+    enabled = next === true;
+    if (live()) paint();
+  }
+
+  function isSender(webContentsId) {
+    const w = live();
+    return !!w && w.webContents.id === webContentsId;
+  }
+
+  function dispose() {
+    stopRepaint = cancel(stopRepaint);
+    stopSaveDebounce = cancel(stopSaveDebounce);
+    if (win) {
+      try { win.destroy(); } catch { /* already gone */ }
+      win = null;
+    }
+  }
+
+  return { create, dispose, setFocusStatus, setEnabled, isSender };
 }
 
 module.exports = {
