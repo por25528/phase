@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal, GoalNode } from '../db/types';
 import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
+import type { BacklogGroup, BacklogItem } from './backlog';
 import {
   MAX_ATTENTION, MAX_CARRY_OVER, attentionItems, carriedFrom, carryOverRows, nowFocus, surfaceReason,
+  MAX_LOOSE, looseRows,
 } from './todaySurface';
 
 const TODAY = '2026-08-12';
@@ -254,5 +256,52 @@ describe('carryOverRows', () => {
     expect(out.rows.map((r) => r.id)).not.toContain('t0');
     expect(out.rows).toHaveLength(MAX_CARRY_OVER);
     expect(out.overflow).toBe(1);
+  });
+});
+
+describe('looseRows', () => {
+  const loose = (id: string, over: Partial<BacklogItem> = {}): BacklogItem =>
+    ({ kind: 'task', id, goalId: null, title: id, ...over });
+  const group = (items: BacklogItem[]): BacklogGroup =>
+    ({ goalId: null, goalTitle: 'Loose tasks', pct: 0, items });
+  const projectGroup: BacklogGroup = {
+    goalId: 'g1', goalTitle: 'Thesis', pct: 0,
+    items: [{ kind: 'step', id: 's1', goalId: 'g1', title: 's1' }],
+  };
+
+  it('lists the undated loose bucket and nothing from any project', () => {
+    const out = looseRows([projectGroup, group([loose('a'), loose('b')])]);
+    expect(out.rows.map((r) => r.id)).toEqual(['a', 'b']);
+    expect(out.overflow).toBe(0);
+  });
+
+  /**
+   * A dated task already reaches the page through its date — a commitment
+   * today, a carry-over when it slipped, another day's page when it is ahead.
+   * Listing it here as well would say the same task twice, or surface work the
+   * user filed on a future day.
+   */
+  it('leaves dated tasks to the sections their dates already reach', () => {
+    const out = looseRows([group([loose('dated', { due: '2026-08-14' }), loose('open')])]);
+    expect(out.rows.map((r) => r.id)).toEqual(['open']);
+  });
+
+  it('caps the list and reports what it withheld', () => {
+    const many = Array.from({ length: MAX_LOOSE + 3 }, (_, i) => loose(`t${i}`));
+    const out = looseRows([group(many)]);
+    expect(out.rows).toHaveLength(MAX_LOOSE);
+    expect(out.overflow).toBe(3);
+  });
+
+  it('leaves out a row already on screen, and never counts it as withheld', () => {
+    const many = Array.from({ length: MAX_LOOSE + 1 }, (_, i) => loose(`t${i}`));
+    const out = looseRows([group(many)], new Set(['task:t0']));
+    expect(out.rows.map((r) => r.id)).not.toContain('t0');
+    expect(out.rows).toHaveLength(MAX_LOOSE);
+    expect(out.overflow).toBe(0);
+  });
+
+  it('is empty and silent when no loose bucket exists', () => {
+    expect(looseRows([projectGroup])).toEqual({ rows: [], overflow: 0 });
   });
 });

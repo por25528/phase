@@ -3,6 +3,7 @@ import type { DailyWorkItem, DailyWorkSections } from './dailyWork';
 import { parseD } from './dates';
 import { isFullyBlocked } from './plan';
 import { firstBlockedLeaf } from './board';
+import type { BacklogGroup, BacklogItem } from './backlog';
 
 /**
  * What Today puts in front of you, and what it refuses to.
@@ -206,5 +207,41 @@ export function carryOverRows(
   return {
     rows: ordered.slice(0, MAX_CARRY_OVER),
     overflow: Math.max(0, ordered.length - MAX_CARRY_OVER),
+  };
+}
+
+// ── Loose tasks ───────────────────────────────────────────────────────────────
+
+/**
+ * The most loose rows Today will draw — `MAX_CARRY_OVER`'s number, for its
+ * reason: past five, a list stops being a decision and starts being the
+ * backlog rail this page must not become.
+ */
+export const MAX_LOOSE = 5;
+
+/**
+ * The loose tasks Today lists, and the count it withheld.
+ *
+ * A loose task with no date used to reach this page only through the free-time
+ * offer — five rows shared with every project, shown only when the day had
+ * room. A task captured with no project and no date was otherwise invisible
+ * here, on the one surface that answers "what do I do now".
+ *
+ * The input is `backlogGroups`' own loose bucket, never a second membership
+ * rule: everything Today shows must agree with the rail about what is worth
+ * doing. Undated only — a dated task already reaches the page through its
+ * date (a commitment today, a carry-over when it slipped, another day's page
+ * when it is ahead). `exclude` carries the keys the page is already showing,
+ * dropped BEFORE the cap so they are never counted as withheld.
+ */
+export function looseRows(
+  groups: BacklogGroup[],
+  exclude: ReadonlySet<string> = new Set(),
+): { rows: BacklogItem[]; overflow: number } {
+  const bucket = groups.find((g) => g.goalId === null)?.items ?? [];
+  const open = bucket.filter((i) => i.due === undefined && !exclude.has(`${i.kind}:${i.id}`));
+  return {
+    rows: open.slice(0, MAX_LOOSE),
+    overflow: Math.max(0, open.length - MAX_LOOSE),
   };
 }

@@ -7,7 +7,7 @@ import { TaskRow } from '../components/TaskRow';
 import { NowDivider } from './today/NowDivider';
 import { IconArrowRight, IconWarning } from '../components/Icons';
 import { buildDailyWork, nowDividerIndex, type DailyWorkItem } from '../lib/dailyWork';
-import { attentionItems, carriedFrom, carryOverRows, surfaceReason } from '../lib/todaySurface';
+import { attentionItems, carriedFrom, carryOverRows, looseRows, surfaceReason } from '../lib/todaySurface';
 import { spansOn } from '../lib/scheduled';
 import { executionAdvice } from '../lib/executionAdvisor';
 import { expectedTimeFor, type WorkRef } from '../lib/expectedTime';
@@ -20,7 +20,7 @@ import { loggedForItemOn } from '../lib/actuals';
 import { dayStamp, greeting } from '../lib/today';
 import { useLocalDate } from '../hooks/useLocalDate';
 import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '../lib/todayPlan';
-import { dueChip } from '../lib/backlog';
+import { backlogGroups, dueChip, type BacklogItem } from '../lib/backlog';
 import { weekOf } from '../lib/plan';
 import { aimFor } from '../lib/slot';
 import { primaryBtn, rowBtn, rowBtnPrimary } from '../components/dialogStyles';
@@ -165,9 +165,28 @@ export function Today({
     [sections, today, primary],
   );
 
+  /**
+   * The loose tasks with no date on them — work that used to reach this page
+   * only if the free-time offer happened to have room for it. Fed by
+   * `backlogGroups`' own loose bucket, so this section cannot disagree with
+   * the rail about membership; excluded is everything the page already shows,
+   * offer rows included, so a task never appears twice.
+   */
+  const loose = useMemo(() => {
+    const seen = new Set(shown);
+    if (primary) seen.add(primary.key);
+    if (offer.kind === 'offer') for (const row of offer.rows) seen.add(row.key);
+    return looseRows(backlogGroups(goals, tasks, weekOf(today), today), seen);
+  }, [goals, tasks, today, shown, offer, primary]);
+
   function complete(item: DailyWorkItem): void {
     if (item.kind === 'task') actions.toggleTask(item.id);
     else actions.toggleLeaf(item.id);
+  }
+
+  /** A loose row is always a task — a step cannot be loose; it has a tree. */
+  function completeLoose(item: BacklogItem): void {
+    if (item.kind === 'task') actions.toggleTask(item.id);
   }
 
   /**
@@ -627,6 +646,64 @@ export function Today({
                retires — five rows have already been shown. */
             <p className="px-[18px] mt-[4px] text-meta text-muted">
               +{carried.overflow} more
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ── Loose tasks ──
+          Work captured with no project and no date. It used to reach this page
+          only through the free-time offer — five rows shared with every
+          project, drawn only when the day had room — so a bare captured task
+          was invisible on the one surface that answers "what now". Below the
+          committed sections, because unfiled work outranks nothing you agreed
+          to; the verb is the same `place` every other section uses. */}
+      {loose.rows.length > 0 && (
+        <section aria-label="Loose tasks" className="pb-[10px]">
+          {/* Capped like `Carried over`, so the total says what the rows cannot. */}
+          <RuleHeader label="Loose tasks" right={loose.rows.length + loose.overflow} />
+          {/* Unnumbered: a rank is a claim about order, and undated loose
+              tasks arrive in capture order, which claims nothing. */}
+          <ul className="px-[10px] pt-[6px]">
+            {loose.rows.map((item) => (
+              <li key={`${item.kind}:${item.id}`}>
+                <TaskRow
+                  index={null}
+                  title={item.title}
+                  onOpen={() => openItem(item)}
+                  lead={
+                    <TodayCheckbox
+                      checked={false}
+                      onToggle={() => completeLoose(item)}
+                      ariaLabel={`Mark "${item.title}" as done`}
+                    />
+                  }
+                  meta={
+                    <>
+                      {item.estimateMin !== undefined && (
+                        <span className="tabular-nums">{fmtMinutes(item.estimateMin)}</span>
+                      )}
+                      {planButton(
+                        {
+                          key: `${item.kind}:${item.id}`,
+                          kind: item.kind,
+                          id: item.id,
+                          ...(item.goalId ? { goalId: item.goalId } : {}),
+                          title: item.title,
+                          goalTitle: '',
+                        },
+                        today,
+                      )}
+                    </>
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+          {loose.overflow > 0 && (
+            /* Static, like `Carried over`'s: five rows are already a decision. */
+            <p className="px-[18px] mt-[4px] text-meta text-muted">
+              +{loose.overflow} more
             </p>
           )}
         </section>
