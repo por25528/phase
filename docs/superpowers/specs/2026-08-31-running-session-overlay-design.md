@@ -72,14 +72,16 @@ Renderer → `phase-shell:focus-status` (existing channel, unchanged) →
 `publishFocusStatus` in `main.cjs` fans out to a THIRD consumer:
 `overlay?.setFocusStatus(status)`.
 
-`overlayWindow.cjs` forwards the snapshot into the page via
-`webContents.send('overlay:status', snapshot)`; a tiny dedicated
-preload (`electron/overlayPreload.cjs`) exposes exactly two things:
-`onStatus(cb)` and `openPhase()`. The page computes elapsed minutes
-itself from `activeSinceMs` + `accumulatedMs` — timestamps, never a
-duration — repainting on a 60s interval that runs only while a session
-is active (cleared on break/hide). Floor, not round, matching
-`trayTitle`.
+`overlayWindow.cjs` computes the pill text itself — arithmetic over the
+snapshot's `activeSinceMs` + `accumulatedMs` at read time, floor not
+round, repainted once a minute by the same one-shot-timer pattern
+`menuBar.cjs` uses — and pushes a rendered model
+(`{ glyph, text }`) into the page via
+`webContents.send('phase-overlay:model', model)`. The page is dumb: a
+tiny dedicated preload (`electron/overlayPreload.cjs`) exposes exactly
+two things, `onModel(cb)` and `openPhase()`, and the page paints what
+arrives. Keeping the arithmetic in the module keeps it unit-testable
+and leaves the page with nothing to get wrong.
 
 ### Position persistence
 
