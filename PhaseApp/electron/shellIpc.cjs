@@ -24,6 +24,7 @@
 const SHELL_CHANNEL_PREFIX = 'phase-shell';
 const FOCUS_STATUS_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-status`;
 const FOCUS_REQUEST_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-request`;
+const OVERLAY_ENABLED_CHANNEL = `${SHELL_CHANNEL_PREFIX}:overlay-enabled`;
 
 const FOCUS_PHASES = ['active', 'break', 'confirming'];
 
@@ -58,7 +59,7 @@ function normalizeFocusStatus(raw) {
 function createShellIpc(deps) {
   const {
     getMainWindow, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus,
+    onFocusStatus, onOverlayEnabled,
   } = deps;
 
   // The live-window helper: a destroyed handle is no handle at all.
@@ -98,18 +99,29 @@ function createShellIpc(deps) {
     onFocusStatus(snapshot);
   }
 
+  // The Settings toggle, and a send for the same reason the status is: the
+  // renderer flips a switch and moves on, and a pill that failed to come up
+  // must never be something a preference waits for.
+  function onOverlayEnabledMessage(event, enabled) {
+    if (!isMainSender(event)) return;
+    if (typeof enabled !== 'boolean') return;
+    onOverlayEnabled(enabled);
+  }
+
   return {
     register(ipcMain) {
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:open-assistant`, onOpenAssistant);
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:get-launch-at-login`, onGetLaunchAtLogin);
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:set-launch-at-login`, onSetLaunchAtLogin);
       ipcMain.on(FOCUS_STATUS_CHANNEL, onFocusStatusMessage);
+      ipcMain.on(OVERLAY_ENABLED_CHANNEL, onOverlayEnabledMessage);
     },
     dispose(ipcMain) {
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:open-assistant`);
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:get-launch-at-login`);
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:set-launch-at-login`);
       ipcMain.removeAllListeners(FOCUS_STATUS_CHANNEL);
+      ipcMain.removeAllListeners(OVERLAY_ENABLED_CHANNEL);
     },
     /**
      * Ask the main renderer — still the only writer — to do something to the
@@ -145,4 +157,7 @@ function createShellIpc(deps) {
   };
 }
 
-module.exports = { SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL, createShellIpc };
+module.exports = {
+  SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL,
+  OVERLAY_ENABLED_CHANNEL, createShellIpc,
+};

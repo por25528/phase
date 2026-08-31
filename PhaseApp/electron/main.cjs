@@ -23,6 +23,7 @@ const { createAssistantWindowController } = require('./assistantWindowController
 const { createAppLifecycle, shouldShowMainAtLaunch } = require('./appLifecycle.cjs')
 const { createShellIpc } = require('./shellIpc.cjs')
 const { createMenuBar } = require('./menuBar.cjs')
+const { createOverlayWindow } = require('./overlayWindow.cjs')
 const { createIdleWatch } = require('./idleWatch.cjs')
 const { createAgentIpc } = require('./agentIpc.cjs')
 const { createAgentSocket } = require('./agentSocket.cjs')
@@ -49,9 +50,12 @@ let assistantController = null
 /** @type {ReturnType<typeof createMenuBar> | null} */
 let menuBar = null
 
+/** @type {ReturnType<typeof createOverlayWindow> | null} */
+let overlay = null
+
 /**
  * What the renderer last said the focus session was doing, fanned out to the
- * two things outside the window that care.
+ * three things outside the window that care.
  *
  * Main holds this ONE snapshot and nothing else — no history, no writes, no
  * database. Both consumers only ever read it, and every state change goes back
@@ -61,6 +65,31 @@ let menuBar = null
 function publishFocusStatus(status) {
   menuBar?.setFocusStatus(status)
   idleWatch.setFocusStatus(status)
+  overlay?.setFocusStatus(status)
+}
+
+// Where the pill last sat. userData, not the store: a window position is a
+// device fact, exactly as the assistant accelerator is.
+function overlayPositionFile() {
+  return path.join(app.getPath('userData'), 'overlay-position.json')
+}
+
+function readOverlayPosition() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(overlayPositionFile(), 'utf8'))
+    if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+      return { x: parsed.x, y: parsed.y }
+    }
+  } catch { /* absent or malformed reads as "never saved" */ }
+  return null
+}
+
+function writeOverlayPosition(point) {
+  try {
+    fs.writeFileSync(overlayPositionFile(), JSON.stringify(point))
+  } catch (error) {
+    console.error('[phase-shell] overlay position not saved', error)
+  }
 }
 
 /**
@@ -131,6 +160,7 @@ const lifecycle = createAppLifecycle({
     globalShortcut.unregisterAll()
     assistantController?.dispose()
     menuBar.dispose()
+    overlay?.dispose()
     // A poller left running would keep asking the OS how long an app that is
     // gone has been idle — the same reason the socket and the sync watcher
     // close here.
@@ -148,8 +178,10 @@ const lifecycle = createAppLifecycle({
     ipcMain.removeHandler('phase-sync:write-state')
     ipcMain.removeHandler('phase-sync:request-journal')
     ipcMain.removeHandler('phase-updates:check')
+    ipcMain.removeAllListeners('phase-overlay:open-phase')
     assistantController = null
     menuBar = null
+    overlay = null
   },
 })
 
@@ -239,6 +271,7 @@ const shellIpc = createShellIpc({
     }
   },
   onFocusStatus: publishFocusStatus,
+  onOverlayEnabled: (enabled) => overlay?.setEnabled(enabled),
 })
 
 // The agent bridge: a Unix socket in userData is the only door into the app
@@ -547,6 +580,29 @@ app.whenReady().then(() => {
     logError: (...args) => console.error(...args),
   })
   menuBar.create()
+
+  // The overlay pill is the menu-bar timer's sibling for hidden menu bars,
+  // and the same rule holds: a nicety, never a requirement — createOverlayWindow
+  // catches its own failures and everything else keeps working.
+  overlay = createOverlayWindow({
+    createWindow: (options) => new BrowserWindow(options),
+    htmlPath: path.join(__dirname, 'assets', 'overlay.html'),
+    preloadPath: path.join(__dirname, 'overlayPreload.cjs'),
+    getPrimaryWorkArea: () => screen.getPrimaryDisplay().workArea,
+    workAreaNearest: (point) => screen.getDisplayNearestPoint(point).workArea,
+    readPosition: readOverlayPosition,
+    writePosition: writeOverlayPosition,
+    now: () => Date.now(),
+    setTimer: (fn, ms) => { const id = setTimeout(fn, ms); return () => clearTimeout(id) },
+    logError: (...args) => console.error(...args),
+  })
+  overlay.create()
+
+  // The pill's one verb. Sender-validated against the overlay's own page —
+  // the same exact-id discipline shellIpc applies to the main window.
+  ipcMain.on('phase-overlay:open-phase', (event) => {
+    if (overlay?.isSender(event.sender.id)) openPhase()
+  })
 
   // After the tray, so a status arriving in the same tick has somewhere to
   // land; the watcher itself needs no window and starts either way.

@@ -49,6 +49,7 @@ function shell() {
   const getLaunchAtLogin = vi.fn();
   const setLaunchAtLogin = vi.fn();
   const onFocusStatus = vi.fn();
+  const onOverlayEnabled = vi.fn();
   const ipcMain = fakeIpcMain();
   const ipc = createShellIpc({
     getMainWindow: () => main,
@@ -57,11 +58,12 @@ function shell() {
     getLaunchAtLogin,
     setLaunchAtLogin,
     onFocusStatus,
+    onOverlayEnabled,
   });
   ipc.register(ipcMain);
   return {
     main, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, ipcMain, ipc,
+    onFocusStatus, onOverlayEnabled, ipcMain, ipc,
   };
 }
 
@@ -75,7 +77,7 @@ describe('channel surface', () => {
     expect(FOCUS_REQUEST_CHANNEL).toBe('phase-shell:focus-request');
   });
 
-  it('register installs exactly the three invoke handlers and the one listener', () => {
+  it('register installs exactly the three invoke handlers and the two listeners', () => {
     const { ipcMain } = shell();
     expect(ipcMain.handle).toHaveBeenCalledTimes(3);
     expect(ipcMain.channels()).toEqual([
@@ -83,13 +85,16 @@ describe('channel surface', () => {
       'phase-shell:get-launch-at-login',
       'phase-shell:set-launch-at-login',
     ]);
-    // The status is a send and not an invoke: nothing answers it, and a
-    // transition must never wait on a tray.
-    expect(ipcMain.on).toHaveBeenCalledTimes(1);
-    expect(ipcMain.listenerChannels()).toEqual(['phase-shell:focus-status']);
+    // Both are sends and not invokes: nothing answers either, and neither a
+    // transition nor a preference must wait on a tray or a pill.
+    expect(ipcMain.on).toHaveBeenCalledTimes(2);
+    expect(ipcMain.listenerChannels()).toEqual([
+      'phase-shell:focus-status',
+      'phase-shell:overlay-enabled',
+    ]);
   });
 
-  it('dispose removes all three handlers and the listener', () => {
+  it('dispose removes all three handlers and both listeners', () => {
     const { ipcMain, ipc } = shell();
     ipc.dispose(ipcMain);
     expect(ipcMain.removeHandler).toHaveBeenCalledTimes(3);
@@ -184,6 +189,7 @@ describe('sendFocusRequest', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
+      onOverlayEnabled: vi.fn(),
     });
     expect(gone.sendFocusRequest({ type: 'finish' })).toBe(false);
   });
@@ -257,6 +263,7 @@ describe('live main window', () => {
       getLaunchAtLogin,
       setLaunchAtLogin: vi.fn(() => true),
       onFocusStatus: vi.fn(),
+      onOverlayEnabled: vi.fn(),
     });
     ipc.register(ipcMain);
     expect(ipcMain.invoke('phase-shell:open-assistant', MAIN_ID)).toBe(false);
@@ -288,6 +295,7 @@ describe('openSettings', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
+      onOverlayEnabled: vi.fn(),
     });
     ipc.register(ipcMain);
     ipc.openSettings();
@@ -308,6 +316,7 @@ describe('openSettings', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
+      onOverlayEnabled: vi.fn(),
     });
     ipc.register(fakeIpcMain());
     ipc.openSettings();
@@ -321,6 +330,32 @@ describe('openSettings', () => {
  * silent "function is not a function" in the renderer rather than a build
  * error. agentIpc.test.ts guards the agent door the same way.
  */
+describe('overlay-enabled', () => {
+  it('forwards a boolean from the main window to onOverlayEnabled', () => {
+    const { ipcMain, onOverlayEnabled } = shell();
+    ipcMain.send('phase-shell:overlay-enabled', MAIN_ID, false);
+    expect(onOverlayEnabled).toHaveBeenCalledTimes(1);
+    expect(onOverlayEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it('refuses a non-boolean and a foreign sender', () => {
+    const { ipcMain, onOverlayEnabled } = shell();
+    ipcMain.send('phase-shell:overlay-enabled', MAIN_ID, 'yes');
+    expect(onOverlayEnabled).not.toHaveBeenCalled();
+    ipcMain.send('phase-shell:overlay-enabled', STRANGER_ID, true);
+    expect(onOverlayEnabled).not.toHaveBeenCalled();
+  });
+
+  it('registers and disposes the channel symmetrically', () => {
+    const { ipcMain, ipc } = shell();
+    expect(ipcMain.on).toHaveBeenCalledWith('phase-shell:overlay-enabled', expect.any(Function));
+    expect(ipcMain.listenerChannels()).toContain('phase-shell:overlay-enabled');
+    ipc.dispose(ipcMain);
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:overlay-enabled');
+    expect(ipcMain.listenerChannels()).toEqual([]);
+  });
+});
+
 describe('preload drift', () => {
   const preload = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
 
