@@ -107,16 +107,25 @@ describe('creating a goal', () => {
   it('treats a picked deadline as already confirmed', async () => {
     const { onAdd, user } = mount();
 
+    // The grid runs on the real clock, so "next month" is computed rather
+    // than named — a hardcoded "Sep 24" only passed when the suite ran in
+    // August.
+    const next = new Date();
+    next.setDate(1);
+    next.setMonth(next.getMonth() + 1);
+    const monthShort = next.toLocaleString('en-US', { month: 'short' });
+    const iso = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-24`;
+
     await user.type(title(), 'Physics Final');
     await user.click(screen.getByRole('button', { name: /^Deadline:/ }));
     await user.click(screen.getByRole('button', { name: 'Next month' }));
-    await user.click(screen.getByRole('button', { name: /^Sep 24, / }));
+    await user.click(screen.getByRole('button', { name: new RegExp(`^${monthShort} 24, `) }));
 
     await user.click(title());
     await user.keyboard('{Enter}');
 
     const created = onAdd.mock.calls[0][0];
-    expect(created.deadline).toMatch(/^\d{4}-09-24$/);
+    expect(created.deadline).toBe(iso);
     expect(created.datesConfirmed).toBe(true);
   });
 
