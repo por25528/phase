@@ -64,6 +64,8 @@ export interface ShellIpc {
   }): void;
   /** Raise the app and ask the main renderer to open settings once it can. */
   openSettings(): void;
+  /** Raise the app on Today — what a click on the floating pill means. */
+  openToday(): void;
   /** Ask the main renderer to act on the running session. False when it is gone. */
   sendFocusRequest(request: unknown): boolean;
 }

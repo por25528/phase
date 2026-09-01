@@ -116,6 +116,12 @@ export interface OverlayWindow {
   setPrefs(prefs: unknown): void;
   /** Recompute against the injected clock and OS palette; main calls it on `nativeTheme` updates. */
   repaint(): void;
+  /** The page reports a press at this screen point; the window's own position is banked. */
+  dragStart(point: OverlayPoint): void;
+  /** Move to windowStart + (point − pointerStart), clamped to the nearest display. */
+  dragTo(point: OverlayPoint): void;
+  /** The hand lifted; further moves do nothing until the next press. */
+  dragEnd(): void;
   /** Whether the given webContents id is this overlay's page. */
   isSender(webContentsId: number): boolean;
 }

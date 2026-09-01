@@ -178,7 +178,10 @@ const lifecycle = createAppLifecycle({
     ipcMain.removeHandler('phase-sync:write-state')
     ipcMain.removeHandler('phase-sync:request-journal')
     ipcMain.removeHandler('phase-updates:check')
-    ipcMain.removeAllListeners('phase-overlay:open-phase')
+    ipcMain.removeAllListeners('phase-overlay:drag-start')
+    ipcMain.removeAllListeners('phase-overlay:drag-to')
+    ipcMain.removeAllListeners('phase-overlay:drag-end')
+    ipcMain.removeAllListeners('phase-overlay:open-today')
     assistantController = null
     menuBar = null
     overlay = null
@@ -616,10 +619,25 @@ app.whenReady().then(() => {
   // whichever palette was true the moment it came up.
   nativeTheme.on('updated', () => overlay?.repaint())
 
-  // The pill's one verb. Sender-validated against the overlay's own page —
-  // the same exact-id discipline shellIpc applies to the main window.
-  ipcMain.on('phase-overlay:open-phase', (event) => {
-    if (overlay?.isSender(event.sender.id)) openPhase()
+  // The pill's four verbs, every one sender-validated against the overlay's
+  // own page — the same exact-id discipline shellIpc applies to the main
+  // window. Three of them are the hand-rolled drag: the page reports screen
+  // points and the window arithmetic lives in overlayWindow.cjs.
+  ipcMain.on('phase-overlay:drag-start', (event, point) => {
+    if (overlay?.isSender(event.sender.id)) overlay.dragStart(point)
+  })
+  ipcMain.on('phase-overlay:drag-to', (event, point) => {
+    if (overlay?.isSender(event.sender.id)) overlay.dragTo(point)
+  })
+  ipcMain.on('phase-overlay:drag-end', (event) => {
+    if (overlay?.isSender(event.sender.id)) overlay.dragEnd()
+  })
+  // A click on the pill: raise the app, then ask the renderer for Today once
+  // it can hear — `openToday` owns the did-finish-load wait, exactly as
+  // `openSettings` does.
+  ipcMain.on('phase-overlay:open-today', (event) => {
+    if (!overlay?.isSender(event.sender.id)) return
+    shellIpc.openToday()
   })
 
   // After the tray, so a status arriving in the same tick has somewhere to

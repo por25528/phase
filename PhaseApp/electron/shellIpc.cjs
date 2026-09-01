@@ -177,6 +177,25 @@ function createShellIpc(deps) {
     onFocusNotify({ title: notice.title, body: notice.body });
   }
 
+  /**
+   * Raise the app, then ask the renderer for a view once it can hear.
+   *
+   * A renderer still loading its first frame drops a push on the floor, so the
+   * send waits for the one load and then happens exactly once.
+   */
+  function raiseAndAsk(channel) {
+    showMainWindow();
+    const main = liveMain();
+    if (!main) return;
+    if (main.webContents.isLoadingMainFrame()) {
+      main.webContents.once('did-finish-load', () => {
+        main.webContents.send(channel);
+      });
+    } else {
+      main.webContents.send(channel);
+    }
+  }
+
   return {
     register(ipcMain) {
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:open-assistant`, onOpenAssistant);
@@ -212,18 +231,18 @@ function createShellIpc(deps) {
     },
     /** Raise the app and ask the main renderer to open settings once it can. */
     openSettings() {
-      showMainWindow();
-      const main = liveMain();
-      if (!main) return;
-      // A renderer that is still loading would drop the push on the floor;
-      // wait for the one load to finish, then send exactly once.
-      if (main.webContents.isLoadingMainFrame()) {
-        main.webContents.once('did-finish-load', () => {
-          main.webContents.send(`${SHELL_CHANNEL_PREFIX}:open-settings`);
-        });
-      } else {
-        main.webContents.send(`${SHELL_CHANNEL_PREFIX}:open-settings`);
-      }
+      raiseAndAsk(`${SHELL_CHANNEL_PREFIX}:open-settings`);
+    },
+    /**
+     * Raise the app on Today — what a click on the floating pill means.
+     *
+     * The same shape as `openSettings` and deliberately the same FUNCTION
+     * underneath: both raise the window and then ask the renderer for a view,
+     * and both have to survive a renderer still loading its first frame. Two
+     * near-copies is how one of them quietly loses the wait.
+     */
+    openToday() {
+      raiseAndAsk(`${SHELL_CHANNEL_PREFIX}:open-today`);
     },
   };
 }

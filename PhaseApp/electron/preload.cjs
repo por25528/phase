@@ -70,6 +70,12 @@ contextBridge.exposeInMainWorld('phaseShell', {
     ipcRenderer.on('phase-shell:open-settings', listener);
     return () => ipcRenderer.removeListener('phase-shell:open-settings', listener);
   },
+  /** Fires when the shell wants Today — the floating pill was clicked. Returns unsubscribe. */
+  onOpenToday: (fn) => {
+    const listener = () => fn();
+    ipcRenderer.on('phase-shell:open-today', listener);
+    return () => ipcRenderer.removeListener('phase-shell:open-today', listener);
+  },
   /** Resolves the OS login-item state, or null when the shell refused. */
   getLaunchAtLogin: () => ipcRenderer.invoke('phase-shell:get-launch-at-login'),
   /** Set the OS login-item state; resolves the applied state, or null when refused. */

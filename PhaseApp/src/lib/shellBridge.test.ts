@@ -20,6 +20,8 @@ describe('shellBridge', () => {
     expect(await bridge.setLaunchAtLogin(true)).toBeNull();
     const unsubscribe = bridge.onOpenSettings(() => {});
     expect(() => unsubscribe()).not.toThrow();
+    // No pill to click in a browser tab, so nothing ever fires.
+    expect(() => bridge.onOpenToday(() => {})()).not.toThrow();
     // No tray and no idle watcher in a browser tab: publishing is a no-op and
     // nothing ever fires, so the caller needs no branch of its own.
     expect(() => bridge.publishFocusStatus(null)).not.toThrow();
@@ -72,6 +74,7 @@ describe('shellBridge', () => {
       'notifyFocus',
       'onFocusRequest',
       'onOpenSettings',
+      'onOpenToday',
       'openAssistant',
       'publishFocusStatus',
       'setLaunchAtLogin',
@@ -120,6 +123,8 @@ describe('shellBridge', () => {
     const bridge = shellBridge();
     expect(() => bridge.publishFocusStatus(null)).not.toThrow();
     expect(() => bridge.onFocusRequest(vi.fn())()).not.toThrow();
+    // And one built before a click on the pill meant anything.
+    expect(() => bridge.onOpenToday(vi.fn())()).not.toThrow();
   });
 
   /**

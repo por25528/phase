@@ -29,6 +29,8 @@ export interface PhaseShellBridge {
   openAssistant(): Promise<boolean>;
   /** Subscribe to the shell asking for the settings surface. Returns unsubscribe. */
   onOpenSettings(fn: () => void): () => void;
+  /** Subscribe to the shell asking for Today — the pill was clicked. Returns unsubscribe. */
+  onOpenToday(fn: () => void): () => void;
   /** Whether the app starts at login. Null in the browser, or on refusal. */
   getLaunchAtLogin(): Promise<boolean | null>;
   /** Set whether the app starts at login. Null in the browser, or on refusal. */
@@ -62,6 +64,8 @@ interface ShellPreload {
   insetTitleBar?: boolean;
   openAssistant(): Promise<boolean>;
   onOpenSettings(fn: () => void): () => void;
+  /** Absent on any preload built before a click on the pill meant anything. */
+  onOpenToday?(fn: () => void): () => void;
   getLaunchAtLogin(): Promise<boolean | null>;
   setLaunchAtLogin(enabled: boolean): Promise<boolean | null>;
   /** Absent on any preload built before the menu bar learned about sessions. */
@@ -89,6 +93,7 @@ export function shellBridge(): PhaseShellBridge {
       insetTitleBar: false,
       openAssistant: async () => false,
       onOpenSettings: () => noop,
+      onOpenToday: () => noop,
       getLaunchAtLogin: async () => null,
       setLaunchAtLogin: async () => null,
       publishFocusStatus: noop,
@@ -104,6 +109,7 @@ export function shellBridge(): PhaseShellBridge {
     insetTitleBar: preload.insetTitleBar === true,
     openAssistant: () => preload.openAssistant(),
     onOpenSettings: (fn) => preload.onOpenSettings(fn),
+    onOpenToday: (fn) => preload.onOpenToday?.(fn) ?? noop,
     getLaunchAtLogin: () => preload.getLaunchAtLogin(),
     setLaunchAtLogin: (enabled) => preload.setLaunchAtLogin(enabled),
     // Guarded rather than called straight through, for the same reason

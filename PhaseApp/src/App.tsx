@@ -302,6 +302,10 @@ export function App() {
   // The menu bar's Settings item asks for this surface over the shell bridge.
   useEffect(() => shell.onOpenSettings(actions.openSettings), [shell]);
 
+  // A click on the floating pill. Main has already raised the window; all this
+  // owes is the view, which is why it is one line beside the one above.
+  useEffect(() => shell.onOpenToday(() => actions.setView('today')), [shell]);
+
   /**
    * The focus seam, outbound: what the menu-bar timer and the idle watcher
    * know about the running session.

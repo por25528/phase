@@ -371,6 +371,63 @@ describe('openSettings', () => {
 });
 
 /**
+ * The pill's click, and it MIRRORS `openSettings` rather than resembling it:
+ * both raise the app and then ask the renderer for a view, and both have to
+ * survive a renderer that is still loading its first frame. Two near-copies
+ * are how one of them quietly loses the `did-finish-load` wait.
+ */
+describe('openToday', () => {
+  it('raises the main window first, then sends immediately when the frame is loaded', () => {
+    const { main, showMainWindow, ipc } = shell();
+    ipc.openToday();
+    expect(showMainWindow).toHaveBeenCalledTimes(1);
+    expect(main.webContents.send).toHaveBeenCalledWith('phase-shell:open-today');
+    expect(main.webContents.once).not.toHaveBeenCalled();
+    expect(showMainWindow.mock.invocationCallOrder[0])
+      .toBeLessThan(main.webContents.send.mock.invocationCallOrder[0]);
+  });
+
+  it('sends once after did-finish-load when the main frame is still loading', () => {
+    const main = fakeWindow(MAIN_ID, { loading: true });
+    const ipcMain = fakeIpcMain();
+    const ipc = createShellIpc({
+      getMainWindow: () => main,
+      openAssistant: vi.fn(),
+      showMainWindow: vi.fn(),
+      getLaunchAtLogin: vi.fn(),
+      setLaunchAtLogin: vi.fn(),
+      onFocusStatus: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+    });
+    ipc.register(ipcMain);
+    ipc.openToday();
+    expect(main.webContents.send).not.toHaveBeenCalled();
+    const finishLoad = main.webContents.once.mock.calls[0][1];
+    finishLoad();
+    expect(main.webContents.send).toHaveBeenCalledWith('phase-shell:open-today');
+    expect(main.webContents.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('still raises the window when no live main exists', () => {
+    const showMainWindow = vi.fn();
+    const ipc = createShellIpc({
+      getMainWindow: () => null,
+      openAssistant: vi.fn(),
+      showMainWindow,
+      getLaunchAtLogin: vi.fn(),
+      setLaunchAtLogin: vi.fn(),
+      onFocusStatus: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+    });
+    ipc.register(fakeIpcMain());
+    ipc.openToday();
+    expect(showMainWindow).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
  * A sandboxed preload cannot `require` this module for the prefix, so
  * preload.cjs writes the channel names out by hand — and drift would be a
  * silent "function is not a function" in the renderer rather than a build
@@ -463,6 +520,7 @@ describe('preload drift', () => {
       `${SHELL_CHANNEL_PREFIX}:open-settings`,
       `${SHELL_CHANNEL_PREFIX}:get-launch-at-login`,
       `${SHELL_CHANNEL_PREFIX}:set-launch-at-login`,
+      `${SHELL_CHANNEL_PREFIX}:open-today`,
       FOCUS_STATUS_CHANNEL,
       FOCUS_REQUEST_CHANNEL,
       FOCUS_NOTIFY_CHANNEL,

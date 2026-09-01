@@ -1,7 +1,14 @@
-<!-- The running-session pill. Deliberately dumb: main computes the text and
-     pushes { glyph, text }; this page paints it and nothing else. Colors are
-     hardcoded because a static file cannot import theme tokens — the pill
-     mirrors the app's dark panel (bg-panel dark) and ink. -->
+<!-- The running-session pill. Deliberately dumb: main computes the text, the
+     geometry and the skin and pushes one model; this page sets custom
+     properties from it and paints. It decides nothing — not a size, not a
+     colour, not whether a press was a click.
+
+     There is no `-webkit-app-region: drag` any more, and that is the one thing
+     to know about this file. A drag region swallows clicks, and the whole pill
+     has to be clickable now that a click opens Today — so the press is
+     tracked here, the screen points are reported, and main moves the window.
+     The 4px threshold below is the only decision the page makes, and it is a
+     measurement rather than a policy: under it a hand did not move. -->
 <!doctype html>
 <html>
 <head>
@@ -10,38 +17,69 @@
       content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
-  /* The whole pill drags; the glyph opts back out below to stay clickable. */
   #pill {
     display: none; align-items: center; gap: 8px;
-    height: 36px; box-sizing: border-box; padding: 0 14px 0 8px;
-    border-radius: 18px;
-    background: rgba(28, 27, 26, 0.92);
-    color: #f5f2ec;
-    font: 500 13px -apple-system, BlinkMacSystemFont, sans-serif;
+    height: var(--h); box-sizing: border-box; padding: 0 var(--pad);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--ink);
+    font: 500 var(--font) -apple-system, BlinkMacSystemFont, sans-serif;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-    -webkit-app-region: drag;
+    cursor: pointer;
   }
   #pill.shown { display: flex; }
-  #glyph {
-    -webkit-app-region: no-drag; cursor: pointer;
-    border: none; background: none; color: inherit;
-    font-size: 12px; line-height: 1; padding: 6px;
-  }
+  /* A plain span, not a button: the whole pill is the target now, and a
+     nested control inside it would be a second thing to hit. */
+  #glyph { font-size: 0.92em; line-height: 1; }
+  #glyph.hidden { display: none; }
   #text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 </head>
 <body>
-  <div id="pill" title="Drag to move · click the glyph to open Phase">
-    <button id="glyph" aria-label="Open Phase"></button>
+  <div id="pill" title="Drag to move · click to open Today">
+    <span id="glyph" aria-hidden="true"></span>
     <span id="text"></span>
   </div>
   <script>
     const pill = document.getElementById('pill');
     const glyph = document.getElementById('glyph');
     const text = document.getElementById('text');
-    glyph.addEventListener('click', () => window.phaseOverlay.openPhase());
+
+    // Under this, a hand did not move: the press was a click.
+    const CLICK_SLOP_PX = 4;
+    let down = null;
+
+    pill.addEventListener('mousedown', (event) => {
+      down = { x: event.screenX, y: event.screenY, moved: false };
+      window.phaseOverlay.dragStart(event.screenX, event.screenY);
+    });
+
+    window.addEventListener('mousemove', (event) => {
+      if (!down) return;
+      if (Math.abs(event.screenX - down.x) >= CLICK_SLOP_PX
+        || Math.abs(event.screenY - down.y) >= CLICK_SLOP_PX) down.moved = true;
+      window.phaseOverlay.dragTo(event.screenX, event.screenY);
+    });
+
+    // On `window`, not on the pill: a drag that leaves the 240px pill behind
+    // still has to end, or the next press would be measured from the last one.
+    window.addEventListener('mouseup', () => {
+      if (!down) return;
+      const wasClick = !down.moved;
+      down = null;
+      window.phaseOverlay.dragEnd();
+      if (wasClick) window.phaseOverlay.openToday();
+    });
+
     window.phaseOverlay.onModel((model) => {
-      glyph.textContent = model.glyph;
+      pill.style.setProperty('--h', model.height + 'px');
+      pill.style.setProperty('--font', model.font + 'px');
+      pill.style.setProperty('--radius', model.radius + 'px');
+      pill.style.setProperty('--pad', model.padX + 'px');
+      pill.style.setProperty('--bg', model.bg);
+      pill.style.setProperty('--ink', model.ink);
+      glyph.textContent = model.glyph || '';
+      glyph.classList.toggle('hidden', !model.glyph);
       text.textContent = model.text;
       pill.classList.add('shown');
     });

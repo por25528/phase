@@ -418,6 +418,45 @@ describe('createOverlayWindow', () => {
       'phase-overlay:model', expect.objectContaining({ glyph: '▶', text: '0m · Problem set 4' }));
   });
 
+  /**
+   * The pill drags by HAND now. `-webkit-app-region: drag` swallows clicks,
+   * and the whole pill has to be clickable for click-to-Today to exist at all,
+   * so the page reports screen points and the controller does the arithmetic.
+   *
+   * It is arithmetic and not "follow the pointer": the window moves by the
+   * DELTA from where the press began, against where the window was when it
+   * began. Setting the window to the pointer would jump the pill's corner
+   * under the cursor on the first millimetre of every drag.
+   */
+  it('moves the window by the pointer delta, from where the press began', () => {
+    const { overlay, win } = overlayWindow();
+    overlay.create();
+    overlay.dragStart({ x: 500, y: 400 });
+    overlay.dragTo({ x: 520, y: 430 });
+    // getPosition is [300, 200] in the fixture.
+    expect(win.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ x: 320, y: 230 }));
+    // A second move is measured from the same origin, never cumulatively.
+    overlay.dragTo({ x: 510, y: 410 });
+    expect(win.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({ x: 310, y: 210 }));
+  });
+
+  it('clamps a drag to the work area of the display it is over', () => {
+    const { overlay, win } = overlayWindow();
+    overlay.create();
+    overlay.dragStart({ x: 500, y: 400 });
+    overlay.dragTo({ x: 5000, y: -5000 });
+    expect(win.setBounds).toHaveBeenLastCalledWith(expect.objectContaining({
+      x: 1440 - OVERLAY_WIDTH, y: 25,
+    }));
+  });
+
+  it('ignores a move that no press started', () => {
+    const { overlay, win } = overlayWindow();
+    overlay.create();
+    overlay.dragTo({ x: 900, y: 900 });
+    expect(win.setBounds).not.toHaveBeenCalled();
+  });
+
   it('debounces the drag into one position write', () => {
     const { overlay, deps, listeners, fire } = overlayWindow();
     overlay.create();

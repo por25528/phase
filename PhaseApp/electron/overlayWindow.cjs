@@ -249,6 +249,15 @@ function createOverlayWindow(deps) {
   let prefs = { ...DEFAULT_PILL_PREFS };
   let stopRepaint = null;
   let stopSaveDebounce = null;
+  /**
+   * Where the pointer and the window were when the press began, or null.
+   *
+   * A drag is ARITHMETIC over these two, not "follow the pointer": the window
+   * moves by the delta from where the press started, against where the window
+   * started. Setting the window to the pointer would snap the pill's corner
+   * under the cursor on the first millimetre of every drag.
+   */
+  let drag = null;
 
   function cancel(stop) {
     if (!stop) return null;
@@ -295,6 +304,40 @@ function createOverlayWindow(deps) {
         paint();
       }, REPAINT_MS);
     }
+  }
+
+  /**
+   * Begin a hand-rolled drag.
+   *
+   * `-webkit-app-region: drag` used to do this, and it had to go: a drag
+   * region swallows clicks, and the whole pill has to be clickable now that a
+   * click means Today. So the page reports SCREEN points and the arithmetic
+   * lives here, where it is testable without a pointer.
+   */
+  function dragStart(point) {
+    const w = live();
+    if (!w || !point || typeof point.x !== 'number' || typeof point.y !== 'number') return;
+    const [x, y] = w.getPosition();
+    drag = { pointer: { x: point.x, y: point.y }, window: { x, y } };
+  }
+
+  /** Move to `windowStart + (point − pointerStart)`, clamped to the nearest display. */
+  function dragTo(point) {
+    const w = live();
+    if (!w || !drag || !point || typeof point.x !== 'number' || typeof point.y !== 'number') return;
+    const footprint = PILL_SIZES[prefs.size];
+    const aim = {
+      x: drag.window.x + (point.x - drag.pointer.x),
+      y: drag.window.y + (point.y - drag.pointer.y),
+    };
+    const at = clampToWorkArea(aim, workAreaNearest(aim), footprint);
+    w.setBounds({ x: at.x, y: at.y, width: footprint.width, height: footprint.height });
+    // The window's own `moved` event still fires and still debounces the
+    // write, so the resting spot is saved by the path that always saved it.
+  }
+
+  function dragEnd() {
+    drag = null;
   }
 
   function scheduleSave() {
@@ -395,7 +438,10 @@ function createOverlayWindow(deps) {
     }
   }
 
-  return { create, dispose, setFocusStatus, setPrefs, repaint, isSender };
+  return {
+    create, dispose, setFocusStatus, setPrefs, repaint, isSender,
+    dragStart, dragTo, dragEnd,
+  };
 }
 
 module.exports = {
