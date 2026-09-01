@@ -75,6 +75,11 @@ const path = require('node:path')
 // So 379 holds at every width, and the ceiling that makes that true is the
 // title's two-line clamp. `scripts/measure-shelf.cjs` takes PHASE_SHELF_WIDTH.
 //
+// The shelf also gained a DENSITY, and that one needs no argument: compact
+// only ever removes padding — 20px off every state, TALLEST 358.48 — so
+// comfortable is the state the budget has to cover, and it is the one measured
+// above. `PHASE_SHELF_DENSITY=compact` runs the other.
+//
 // `confirming` is still the tallest at the default width, and still for the
 // reason it always was:
 // it is the only state whose body is a QUESTION under the title rather than a

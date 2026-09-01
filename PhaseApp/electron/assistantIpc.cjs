@@ -108,6 +108,21 @@ function validFocus(focus) {
     && validFocusCycle(focus.cycle);
 }
 
+/**
+ * The CONTENT half of the shelf's row, as it reaches the far renderer.
+ * Required for the same reason `theme` is: absent is indistinguishable from
+ * the default, which makes a missing field look like a working one.
+ */
+function validShelf(shelf) {
+  return !!shelf
+    && typeof shelf === 'object'
+    && (shelf.density === 'compact' || shelf.density === 'comfortable')
+    && !!shelf.sections
+    && typeof shelf.sections === 'object'
+    && typeof shelf.sections.alternatives === 'boolean'
+    && typeof shelf.sections.dials === 'boolean';
+}
+
 function validNotice(notice) {
   if (notice === undefined) return true;
   return !!notice
@@ -137,6 +152,7 @@ function validSnapshot(snapshot) {
     && validLevel(snapshot.timeLevel)
     && validLevel(snapshot.focusLevel)
     && validTheme(snapshot.theme)
+    && validShelf(snapshot.shelf)
     && validNotice(snapshot.notice);
 }
 

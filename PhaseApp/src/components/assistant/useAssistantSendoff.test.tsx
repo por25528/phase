@@ -15,6 +15,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     timeLevel: 'medium',
     focusLevel: 'medium',
     theme: 'light',
+    shelf: { density: 'comfortable', sections: { alternatives: true, dials: true } },
     ...over,
   };
 }

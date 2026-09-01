@@ -55,6 +55,13 @@ const base = {
   // that a `ready` snapshot always carries it, or the overlay would repaint to
   // light mid-measure.
   theme: 'light',
+  // Compact only ever REMOVES padding, so comfortable is the state the budget
+  // has to cover — but the run is available either way:
+  //   PHASE_SHELF_DENSITY=compact npx electron scripts/measure-shelf.cjs
+  shelf: {
+    density: process.env.PHASE_SHELF_DENSITY === 'compact' ? 'compact' : 'comfortable',
+    sections: { alternatives: true, dials: true },
+  },
   activeFocus: null,
   notice: NOTICE,
   advice: { kind: 'work', primary: work(), alternatives: ALTERNATIVES },

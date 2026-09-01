@@ -51,7 +51,7 @@ export function AssistantHost({ open, onClose, theme }: {
 }) {
   const {
     goals, tasks, sessions, allDayBlocks, busyBlocks, activeFocusSession,
-    assistantAccelerator, timeLevel, focusLevel, cycleConfig, hydration, actions,
+    assistantAccelerator, timeLevel, focusLevel, cycleConfig, shelfPrefs, hydration, actions,
   } = useAppStore();
   const [notice, setNotice] = useState<Notice | null>(null);
   // The row the user PICKED in the `Or` / `Switch to` band. A pick points the
@@ -119,9 +119,12 @@ export function AssistantHost({ open, onClose, theme }: {
       timeLevel,
       focusLevel,
       theme,
+      // The CONTENT half only: width and placement are the window's business
+      // and reach main from `App`, never over this relay.
+      shelf: { density: shelfPrefs.density, sections: shelfPrefs.sections },
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, notice, chosen]);
+  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, shelfPrefs, notice, chosen]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {
@@ -246,7 +249,12 @@ export function AssistantHost({ open, onClose, theme }: {
       data-shelf
       className="fixed right-[16px] top-[64px] z-40 max-h-[70vh] w-[380px] overflow-y-auto rounded-card border border-line bg-panel"
     >
-      <AssistantSurface snapshot={snapshot} onAction={onAction} />
+      <AssistantSurface
+        snapshot={snapshot}
+        onAction={onAction}
+        density={shelfPrefs.density}
+        sections={shelfPrefs.sections}
+      />
     </div>
   );
 }

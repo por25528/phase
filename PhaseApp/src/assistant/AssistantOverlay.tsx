@@ -152,6 +152,9 @@ export function AssistantOverlay() {
           presentation="shelf"
           resetKey={openCycle}
           onSendoffChange={onSendoffChange}
+          {...(snapshot.status === 'ready'
+            ? { density: snapshot.shelf.density, sections: snapshot.shelf.sections }
+            : {})}
         />
       </div>
     </div>

@@ -82,6 +82,7 @@ const SNAPSHOT = {
   timeLevel: 'medium',
   focusLevel: 'medium',
   theme: 'dark',
+  shelf: { density: 'comfortable', sections: { alternatives: true, dials: true } },
 };
 
 const FOCUSED_SNAPSHOT = {
@@ -199,6 +200,29 @@ describe('publish', () => {
    * Required rather than optional, because the failure is silent — an absent
    * theme renders as light, which is exactly the bug this closed.
    */
+  /**
+   * Required for the same reason `theme` is: an absent shelf shape is
+   * indistinguishable from the default, which makes a field that never
+   * crossed look like one that did.
+   */
+  it('requires the shelf shape, and refuses a half-written one', () => {
+    const { ipcMain, ipc } = relay();
+    const bad = [
+      { ...SNAPSHOT, shelf: undefined },
+      { ...SNAPSHOT, shelf: { density: 'comfortable' } },
+      { ...SNAPSHOT, shelf: { density: 'roomy', sections: { alternatives: true, dials: true } } },
+      { ...SNAPSHOT, shelf: { density: 'compact', sections: { alternatives: true } } },
+      { ...SNAPSHOT, shelf: { density: 'compact', sections: 'all' } },
+    ];
+    for (const snapshot of bad) {
+      ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
+      expect(ipc.latest(), JSON.stringify(snapshot)?.slice(0, 60)).toBeNull();
+    }
+
+    ipcMain.emit('phase-assistant:publish', MAIN_ID, SNAPSHOT);
+    expect(ipc.latest()).toEqual(SNAPSHOT);
+  });
+
   it('requires the resolved palette, and refuses the unresolved preference', () => {
     const { ipcMain, ipc } = relay();
     const bad = [

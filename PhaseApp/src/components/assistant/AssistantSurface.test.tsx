@@ -56,6 +56,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     // `.dark` class that flips them is the OVERLAY's job (AssistantOverlay).
     // It is here because the snapshot type requires it.
     theme: 'light',
+    shelf: { density: 'comfortable', sections: { alternatives: true, dials: true } },
     ...over,
   };
 }
@@ -1327,6 +1328,71 @@ describe('choosing the mode at the start', () => {
   it('says nothing about cycles on a calm session', () => {
     render(<AssistantSurface snapshot={ready({ activeFocus: focusView() })} onAction={() => {}} />);
     expect(screen.queryByText(/interval /)).toBeNull();
+  });
+});
+
+describe('the shelf, tuned', () => {
+  /**
+   * Density is a SPACING scale and nothing else: compact compresses each
+   * band's padding one step, and every band takes the step from the same
+   * helper, so the card cannot end up compact in one region and comfortable
+   * in the next.
+   */
+  it('compresses the band insets one step in compact, and leaves the rest alone', () => {
+    const { container: comfy } = render(
+      <AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" />);
+    const { container: dense } = render(
+      <AssistantSurface snapshot={ready()} onAction={() => {}} presentation="shelf" density="compact" />);
+
+    // The comfortable band inset, stated in the one helper that owns it.
+    expect(comfy.innerHTML).toContain('px-4 pt-3.5 pb-3');
+    expect(dense.innerHTML).not.toContain('px-4 pt-3.5 pb-3');
+    // Density is spacing and nothing else: every band is still there.
+    expect(dense.querySelector('[data-gutter]')).toBeTruthy();
+    expect(dense.textContent).toContain('Problem set 4');
+  });
+
+  it('hides the alternatives band when it is switched off', () => {
+    render(<AssistantSurface
+      snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives: [work({ key: 'step:n2', title: 'Second thing' })] } })}
+      onAction={() => {}}
+      sections={{ alternatives: false, dials: true }}
+    />);
+    expect(screen.queryByText('Second thing')).toBeNull();
+    // …and the work band survives it.
+    expect(screen.getByText('Problem set 4')).toBeTruthy();
+  });
+
+  it('hides the dial strip when it is switched off', () => {
+    render(<AssistantSurface
+      snapshot={ready()}
+      onAction={() => {}}
+      sections={{ alternatives: true, dials: false }}
+    />);
+    expect(screen.queryByRole('group', { name: 'How long you have' })).toBeNull();
+    expect(screen.queryByText('Time')).toBeNull();
+  });
+
+  /**
+   * A shelf that cannot control a running session is broken, not customized —
+   * so the work band takes no toggle, and the two that DO are both lists.
+   */
+  it('always draws the work band, whatever the sections say', () => {
+    render(<AssistantSurface
+      snapshot={ready({ activeFocus: focusView() })}
+      onAction={() => {}}
+      sections={{ alternatives: false, dials: false }}
+    />);
+    expect(screen.getByRole('button', { name: 'Complete session' })).toBeTruthy();
+  });
+
+  it('draws both bands by default, so an absent prop changes nothing', () => {
+    render(<AssistantSurface
+      snapshot={ready({ advice: { kind: 'work', primary: work(), alternatives: [work({ key: 'step:n2', title: 'Second thing' })] } })}
+      onAction={() => {}}
+    />);
+    expect(screen.getByText('Second thing')).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'How long you have' })).toBeTruthy();
   });
 });
 

@@ -33,6 +33,7 @@ const WORK: Ready = {
   timeLevel: 'medium',
   focusLevel: 'medium',
   theme: 'light',
+  shelf: { density: 'comfortable', sections: { alternatives: true, dials: true } },
 };
 
 const RUNNING: Ready = {

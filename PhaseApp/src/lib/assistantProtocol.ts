@@ -82,6 +82,21 @@ export type AssistantSnapshot =
        * light, which is the bug wearing a default.
        */
       theme: 'light' | 'dark';
+      /**
+       * How the shelf is shaped — the CONTENT half of `shelfPrefs` and only
+       * that half. Width and placement are the window's business and go
+       * straight to main; what crosses here is what the surface draws.
+       *
+       * It rides the snapshot for exactly the reason `theme` does: the shelf
+       * is a separate renderer that does not own the store, so anything it
+       * must KNOW comes over this relay. REQUIRED, because an absent shelf
+       * shape is indistinguishable from the default — which is the bug the
+       * theme field was made required to close.
+       */
+      shelf: {
+        density: 'compact' | 'comfortable';
+        sections: { alternatives: boolean; dials: boolean };
+      };
       notice?: { tone: 'neutral' | 'warning'; text: string };
     };
 
