@@ -68,6 +68,7 @@ describe('shellBridge', () => {
       'available',
       'getLaunchAtLogin',
       'insetTitleBar',
+      'notifyFocus',
       'onFocusRequest',
       'onOpenSettings',
       'openAssistant',
@@ -169,5 +170,33 @@ describe('shellBridge', () => {
     shellBridge().setOverlayEnabled(false);
     expect(setOverlayEnabled).toHaveBeenCalledTimes(1);
     expect(setOverlayEnabled).toHaveBeenCalledWith(false);
+  });
+
+  /**
+   * A cycle boundary lands in one place and fires the notice from there, with
+   * no branch for which world it is in — so the browser and a preload built
+   * before the notice existed both have to swallow it silently. A notification
+   * is a nicety; the transition it announces has already been written.
+   */
+  it('notifyFocus is a guarded no-op in the browser and forwards on desktop', () => {
+    const notice = { title: 'Time for a break', body: '25 focused minutes down' };
+
+    delete (window as unknown as AnyWindow).phaseShell;
+    expect(() => shellBridge().notifyFocus(notice)).not.toThrow();
+
+    const older = {
+      openAssistant: vi.fn(async () => true),
+      onOpenSettings: vi.fn(() => vi.fn()),
+      getLaunchAtLogin: vi.fn(async () => null),
+      setLaunchAtLogin: vi.fn(async () => null),
+    };
+    (window as unknown as AnyWindow).phaseShell = older;
+    expect(() => shellBridge().notifyFocus(notice)).not.toThrow();
+
+    const notifyFocus = vi.fn();
+    (window as unknown as AnyWindow).phaseShell = { ...older, notifyFocus };
+    shellBridge().notifyFocus(notice);
+    expect(notifyFocus).toHaveBeenCalledTimes(1);
+    expect(notifyFocus).toHaveBeenCalledWith(notice);
   });
 });

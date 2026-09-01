@@ -21,6 +21,7 @@ function fixture(over: Partial<PhaseShellBridge> = {}): PhaseShellBridge {
     publishFocusStatus: vi.fn(),
     onFocusRequest: vi.fn(() => () => {}),
     setOverlayEnabled: vi.fn(),
+    notifyFocus: vi.fn(),
     ...over,
   };
 }

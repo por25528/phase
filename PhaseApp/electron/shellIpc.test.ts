@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
-const { createShellIpc, SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL } =
-  nativeRequire('./shellIpc.cjs') as typeof import('./shellIpc.cjs');
+const {
+  createShellIpc, SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL,
+  FOCUS_NOTIFY_CHANNEL,
+} = nativeRequire('./shellIpc.cjs') as typeof import('./shellIpc.cjs');
 
 type Listener = (event: { sender: { id: number } }, payload?: unknown) => unknown;
 
@@ -50,6 +52,7 @@ function shell() {
   const setLaunchAtLogin = vi.fn();
   const onFocusStatus = vi.fn();
   const onOverlayEnabled = vi.fn();
+  const onFocusNotify = vi.fn();
   const ipcMain = fakeIpcMain();
   const ipc = createShellIpc({
     getMainWindow: () => main,
@@ -59,11 +62,12 @@ function shell() {
     setLaunchAtLogin,
     onFocusStatus,
     onOverlayEnabled,
+    onFocusNotify,
   });
   ipc.register(ipcMain);
   return {
     main, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, onOverlayEnabled, ipcMain, ipc,
+    onFocusStatus, onOverlayEnabled, onFocusNotify, ipcMain, ipc,
   };
 }
 
@@ -72,9 +76,10 @@ describe('channel surface', () => {
     expect(SHELL_CHANNEL_PREFIX).toBe('phase-shell');
   });
 
-  it('names the two focus channels under the same fixed prefix', () => {
+  it('names the three focus channels under the same fixed prefix', () => {
     expect(FOCUS_STATUS_CHANNEL).toBe('phase-shell:focus-status');
     expect(FOCUS_REQUEST_CHANNEL).toBe('phase-shell:focus-request');
+    expect(FOCUS_NOTIFY_CHANNEL).toBe('phase-shell:focus-notify');
   });
 
   it('register installs exactly the three invoke handlers and the two listeners', () => {
@@ -85,16 +90,18 @@ describe('channel surface', () => {
       'phase-shell:get-launch-at-login',
       'phase-shell:set-launch-at-login',
     ]);
-    // Both are sends and not invokes: nothing answers either, and neither a
-    // transition nor a preference must wait on a tray or a pill.
-    expect(ipcMain.on).toHaveBeenCalledTimes(2);
+    // All three are sends and not invokes: nothing answers any of them, and
+    // neither a transition, a preference nor a notice must wait on a tray, a
+    // pill or Notification Centre.
+    expect(ipcMain.on).toHaveBeenCalledTimes(3);
     expect(ipcMain.listenerChannels()).toEqual([
       'phase-shell:focus-status',
       'phase-shell:overlay-enabled',
+      'phase-shell:focus-notify',
     ]);
   });
 
-  it('dispose removes all three handlers and both listeners', () => {
+  it('dispose removes all three handlers and every listener', () => {
     const { ipcMain, ipc } = shell();
     ipc.dispose(ipcMain);
     expect(ipcMain.removeHandler).toHaveBeenCalledTimes(3);
@@ -190,6 +197,7 @@ describe('sendFocusRequest', () => {
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
       onOverlayEnabled: vi.fn(),
+      onFocusNotify: vi.fn(),
     });
     expect(gone.sendFocusRequest({ type: 'finish' })).toBe(false);
   });
@@ -264,6 +272,7 @@ describe('live main window', () => {
       setLaunchAtLogin: vi.fn(() => true),
       onFocusStatus: vi.fn(),
       onOverlayEnabled: vi.fn(),
+      onFocusNotify: vi.fn(),
     });
     ipc.register(ipcMain);
     expect(ipcMain.invoke('phase-shell:open-assistant', MAIN_ID)).toBe(false);
@@ -296,6 +305,7 @@ describe('openSettings', () => {
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
       onOverlayEnabled: vi.fn(),
+      onFocusNotify: vi.fn(),
     });
     ipc.register(ipcMain);
     ipc.openSettings();
@@ -317,6 +327,7 @@ describe('openSettings', () => {
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
       onOverlayEnabled: vi.fn(),
+      onFocusNotify: vi.fn(),
     });
     ipc.register(fakeIpcMain());
     ipc.openSettings();
@@ -356,6 +367,51 @@ describe('overlay-enabled', () => {
   });
 });
 
+describe('focus-notify', () => {
+  const notice = { title: 'Time for a break', body: '25 focused minutes down' };
+
+  it('forwards a well-formed notice from the main window', () => {
+    const { ipcMain, onFocusNotify } = shell();
+    ipcMain.send('phase-shell:focus-notify', MAIN_ID, notice);
+    expect(onFocusNotify).toHaveBeenCalledTimes(1);
+    expect(onFocusNotify).toHaveBeenCalledWith(notice);
+  });
+
+  it('refuses a foreign sender', () => {
+    const { ipcMain, onFocusNotify } = shell();
+    ipcMain.send('phase-shell:focus-notify', STRANGER_ID, notice);
+    expect(onFocusNotify).not.toHaveBeenCalled();
+  });
+
+  // A notice is text the OS puts on screen over every other window, so the
+  // seam is where its shape is settled: empty is not a notification, and a
+  // paragraph is not a title.
+  it('refuses a payload that is not two short non-empty strings', () => {
+    const { ipcMain, onFocusNotify } = shell();
+    for (const bad of [
+      null,
+      'a string',
+      { title: 'Time for a break' },
+      { title: '', body: 'x' },
+      { title: 'x', body: '' },
+      { title: 'x', body: 42 },
+      { title: 'x'.repeat(201), body: 'x' },
+      { title: 'x', body: 'x'.repeat(201) },
+    ]) {
+      ipcMain.send('phase-shell:focus-notify', MAIN_ID, bad);
+    }
+    expect(onFocusNotify).not.toHaveBeenCalled();
+  });
+
+  it('registers and disposes the channel symmetrically', () => {
+    const { ipcMain, ipc } = shell();
+    expect(ipcMain.listenerChannels()).toContain('phase-shell:focus-notify');
+    ipc.dispose(ipcMain);
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:focus-notify');
+    expect(ipcMain.listenerChannels()).toEqual([]);
+  });
+});
+
 describe('preload drift', () => {
   const preload = readFileSync(new URL('./preload.cjs', import.meta.url), 'utf8');
 
@@ -367,6 +423,7 @@ describe('preload drift', () => {
       `${SHELL_CHANNEL_PREFIX}:set-launch-at-login`,
       FOCUS_STATUS_CHANNEL,
       FOCUS_REQUEST_CHANNEL,
+      FOCUS_NOTIFY_CHANNEL,
     ]) {
       expect(preload).toContain(channel);
     }

@@ -86,6 +86,7 @@ describe('desktop entry-point routing', () => {
       publishFocusStatus: () => {},
       onFocusRequest: () => () => {},
       setOverlayEnabled: () => {},
+      notifyFocus: () => {},
     };
   }
 
@@ -123,6 +124,7 @@ describe('desktop entry-point routing', () => {
         setLaunchAtLogin: async () => true,
         publishFocusStatus: () => {},
         onFocusRequest: () => () => {},
+        notifyFocus: () => {},
         setOverlayEnabled: () => {},
       };
       const openEmbedded = vi.fn();

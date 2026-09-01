@@ -41,6 +41,8 @@ import {
 } from './lib/taskCapture';
 import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
 import { focusStatusOf, validFocusRequest } from './lib/focusStatus';
+import { nextBoundaryDelayMs } from './lib/focusCycle';
+import type { ActiveFocusSession } from './lib/focusSession';
 import { updateBridge } from './lib/updateBridge';
 import { UpdateBanner } from './components/UpdateBanner';
 import { createAgentBridge } from './lib/agentBridge';
@@ -329,6 +331,56 @@ export function App() {
       last = next;
       shell.publishFocusStatus(focusStatusOf(next));
     });
+  }, [hydration, shell]);
+
+  /**
+   * The one new timer in the app, and it is a timeout rather than an interval.
+   *
+   * A pomodoro session owes exactly one transition at a time — the end of the
+   * interval it is working, or the end of the break it is resting — so the
+   * clock is armed with `nextBoundaryDelayMs` and re-armed on the next
+   * transition. Landing a boundary replaces the draft object, which re-runs
+   * this subscription, which arms the next one: self-re-arming, with no tick
+   * and no polling, and nothing here writes on a schedule.
+   *
+   * A delay computed as zero or less is not an error — a machine asleep across
+   * a boundary, or a window reloaded mid-overdue interval, both produce one.
+   * It fires on the next tick and `applyCycleBoundary` flips at the TRUE
+   * boundary, so time spent away is never banked as work.
+   *
+   * `storeActions` and `getState`, not this render's `actions` and props, for
+   * the reason the focus-request effect gives: the effect subscribes once.
+   */
+  useEffect(() => {
+    if (hydration !== 'ready') return;
+    let stop: ReturnType<typeof setTimeout> | null = null;
+    const arm = (draft: ActiveFocusSession | null) => {
+      if (stop) { clearTimeout(stop); stop = null; }
+      if (!draft) return;
+      const delay = nextBoundaryDelayMs(draft, Date.now());
+      if (delay === null) return;
+      stop = setTimeout(() => {
+        const event = storeActions.applyCycleBoundary();
+        const current = getState().activeFocusSession;
+        if (event === 'work-ended' && current?.cycle) {
+          shell.notifyFocus({
+            title: 'Time for a break',
+            body: `${current.cycle.completed * current.cycle.workMin} focused minutes down · ${current.cycle.breakKind === 'long' ? 'long' : 'short'} break`,
+          });
+        } else if (event === 'break-ended' && current) {
+          shell.notifyFocus({ title: "Break's over", body: `Ready to get back to “${current.title}”?` });
+        }
+      }, Math.max(0, delay));
+    };
+    let last = getState().activeFocusSession;
+    arm(last);
+    const unsub = subscribe(() => {
+      const next = getState().activeFocusSession;
+      if (next === last) return;
+      last = next;
+      arm(next);
+    });
+    return () => { unsub(); if (stop) clearTimeout(stop); };
   }, [hydration, shell]);
 
   // Electron cannot read Dexie, so the hydrated pill preference is pushed

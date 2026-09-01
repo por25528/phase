@@ -46,6 +46,13 @@ export interface PhaseShellBridge {
    * no-op in the browser, for the same reason publishFocusStatus is.
    */
   setOverlayEnabled(enabled: boolean): void;
+  /**
+   * Announce a cycle boundary — the OS notification, raised by main. Same
+   * fire-and-forget contract: the transition is written before this is called,
+   * and a notice that could not be raised is a log line, never a failed
+   * transition.
+   */
+  notifyFocus(notice: { title: string; body: string }): void;
 }
 
 interface ShellPreload {
@@ -61,6 +68,8 @@ interface ShellPreload {
   onFocusRequest?(fn: (request: unknown) => void): () => void;
   /** Absent on any preload built before the overlay pill existed. */
   setOverlayEnabled?(enabled: boolean): void;
+  /** Absent on any preload built before the cycle boundary had a voice. */
+  notifyFocus?(notice: { title: string; body: string }): void;
 }
 
 function preloadOf<T>(name: string): T | undefined {
@@ -83,6 +92,7 @@ export function shellBridge(): PhaseShellBridge {
       publishFocusStatus: noop,
       onFocusRequest: () => noop,
       setOverlayEnabled: noop,
+      notifyFocus: noop,
     };
   }
   return {
@@ -102,5 +112,6 @@ export function shellBridge(): PhaseShellBridge {
     publishFocusStatus: (snapshot) => preload.publishFocusStatus?.(snapshot),
     onFocusRequest: (fn) => preload.onFocusRequest?.(fn) ?? noop,
     setOverlayEnabled: (enabled) => preload.setOverlayEnabled?.(enabled),
+    notifyFocus: (notice) => preload.notifyFocus?.(notice),
   };
 }

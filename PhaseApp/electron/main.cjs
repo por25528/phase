@@ -4,7 +4,7 @@
 // a prewarmed read-only panel behind a controller, and the menu bar plus
 // login-item access sit behind the validated shell bridge. main.cjs is the
 // only module that may know BrowserWindow, screen, Tray, Menu, and nativeImage.
-const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage, nativeTheme, powerMonitor } = require('electron')
+const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage, nativeTheme, powerMonitor, Notification } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -272,6 +272,17 @@ const shellIpc = createShellIpc({
   },
   onFocusStatus: publishFocusStatus,
   onOverlayEnabled: (enabled) => overlay?.setEnabled(enabled),
+  // A notification is a nicety, exactly as the tray and the pill are: the
+  // boundary it announces is already written, so a Notification Centre that
+  // refuses (permission withheld, no such API on this platform) costs one log
+  // line and the session carries on.
+  onFocusNotify: (notice) => {
+    try {
+      new Notification({ title: notice.title, body: notice.body }).show()
+    } catch (error) {
+      console.error('[phase-shell] notification unavailable', error)
+    }
+  },
 })
 
 // The agent bridge: a Unix socket in userData is the only door into the app

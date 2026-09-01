@@ -1,10 +1,10 @@
 // The validated desktop-shell bridge for the MAIN renderer, as a deep module.
 //
-// Three narrow invoke verbs and one send, all validated at the sender seam:
+// Three narrow invoke verbs and three sends, all validated at the sender seam:
 // the main window's webContents id is the only id allowed to drive the shell,
 // matched exactly against the live window. There are no renderer-supplied
-// channels and no forwarding — `register` installs exactly these four,
-// `dispose` removes exactly those four, and everything else the renderer might
+// channels and no forwarding — `register` installs exactly these six,
+// `dispose` removes exactly those six, and everything else the renderer might
 // try is refused. `openSettings` and `sendFocusRequest` are the two
 // main→renderer pushes and are sent by the MAIN process itself, never by a
 // renderer.
@@ -25,6 +25,16 @@ const SHELL_CHANNEL_PREFIX = 'phase-shell';
 const FOCUS_STATUS_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-status`;
 const FOCUS_REQUEST_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-request`;
 const OVERLAY_ENABLED_CHANNEL = `${SHELL_CHANNEL_PREFIX}:overlay-enabled`;
+const FOCUS_NOTIFY_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-notify`;
+
+// A notice is text the OS paints over every other window, so its shape is
+// settled here rather than trusted: an empty string is not a notification, and
+// a paragraph is not a title.
+const NOTICE_MAX = 200;
+
+function isShortText(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= NOTICE_MAX;
+}
 
 const FOCUS_PHASES = ['active', 'break', 'confirming'];
 
@@ -59,7 +69,7 @@ function normalizeFocusStatus(raw) {
 function createShellIpc(deps) {
   const {
     getMainWindow, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, onOverlayEnabled,
+    onFocusStatus, onOverlayEnabled, onFocusNotify,
   } = deps;
 
   // The live-window helper: a destroyed handle is no handle at all.
@@ -108,6 +118,20 @@ function createShellIpc(deps) {
     onOverlayEnabled(enabled);
   }
 
+  /**
+   * A cycle boundary the renderer has already written, announced.
+   *
+   * A send for the same reason the status is: the transition is banked before
+   * this is called, so a notification that cannot be raised costs a line in
+   * the log and nothing else.
+   */
+  function onFocusNotifyMessage(event, notice) {
+    if (!isMainSender(event)) return;
+    if (!notice || typeof notice !== 'object') return;
+    if (!isShortText(notice.title) || !isShortText(notice.body)) return;
+    onFocusNotify({ title: notice.title, body: notice.body });
+  }
+
   return {
     register(ipcMain) {
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:open-assistant`, onOpenAssistant);
@@ -115,6 +139,7 @@ function createShellIpc(deps) {
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:set-launch-at-login`, onSetLaunchAtLogin);
       ipcMain.on(FOCUS_STATUS_CHANNEL, onFocusStatusMessage);
       ipcMain.on(OVERLAY_ENABLED_CHANNEL, onOverlayEnabledMessage);
+      ipcMain.on(FOCUS_NOTIFY_CHANNEL, onFocusNotifyMessage);
     },
     dispose(ipcMain) {
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:open-assistant`);
@@ -122,6 +147,7 @@ function createShellIpc(deps) {
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:set-launch-at-login`);
       ipcMain.removeAllListeners(FOCUS_STATUS_CHANNEL);
       ipcMain.removeAllListeners(OVERLAY_ENABLED_CHANNEL);
+      ipcMain.removeAllListeners(FOCUS_NOTIFY_CHANNEL);
     },
     /**
      * Ask the main renderer — still the only writer — to do something to the
@@ -159,5 +185,5 @@ function createShellIpc(deps) {
 
 module.exports = {
   SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL,
-  OVERLAY_ENABLED_CHANNEL, createShellIpc,
+  OVERLAY_ENABLED_CHANNEL, FOCUS_NOTIFY_CHANNEL, createShellIpc,
 };

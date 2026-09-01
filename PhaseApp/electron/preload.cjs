@@ -89,6 +89,13 @@ contextBridge.exposeInMainWorld('phaseShell', {
    * for the same reason: the renderer must never block on a nicety.
    */
   setOverlayEnabled: (enabled) => ipcRenderer.send('phase-shell:overlay-enabled', enabled),
+  /**
+   * Announce a cycle boundary the renderer has already written. A send for the
+   * same reason the two above are: the transition is banked before this is
+   * called, so a notification Notification Centre refuses costs a log line and
+   * nothing else.
+   */
+  notifyFocus: (notice) => ipcRenderer.send('phase-shell:focus-notify', notice),
   /** Fires when the shell wants something done to the session. Returns unsubscribe. */
   onFocusRequest: (fn) => {
     const listener = (_event, request) => fn(request);
