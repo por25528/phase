@@ -269,6 +269,57 @@ describe('trayTitle', () => {
   });
 });
 
+describe('trayTitle with a cycle', () => {
+  const cycle = { workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4, completed: 0 };
+
+  /**
+   * CEIL, where the calm figure floors — and the two are the right way round.
+   * A stopwatch that reads 42m before 42 minutes have passed is claiming time
+   * nobody worked; a countdown that reads 17m with 17m30s left is throwing
+   * away a minute that is still there.
+   */
+  it('counts the work interval down, rounding up', () => {
+    expect(trayTitle(active({ cycle }), T0)).toBe('▶ 25m left');
+    expect(trayTitle(active({ cycle }), T0 + 7 * MIN + 30_000)).toBe('▶ 18m left');
+    expect(trayTitle(active({ cycle }), T0 + 25 * MIN)).toBe('▶ 0m left');
+  });
+
+  it('measures the current interval, not the whole session', () => {
+    expect(trayTitle(active({ cycle: { ...cycle, completed: 2 }, accumulatedMs: 55 * MIN }), T0))
+      .toBe('▶ 20m left');
+  });
+
+  it('counts a timed break down, and says which length it is counting', () => {
+    const onBreak = active({
+      phase: 'break', activeSinceMs: null, accumulatedMs: 25 * MIN,
+      cycle: { ...cycle, completed: 1, breakStartedMs: T0, breakKind: 'short' },
+    });
+    expect(trayTitle(onBreak, T0 + 2 * MIN)).toBe('⏸ break 3m');
+
+    const longBreak = { ...onBreak, cycle: { ...cycle, completed: 4, breakStartedMs: T0, breakKind: 'long' as const } };
+    expect(trayTitle(longBreak, T0 + 2 * MIN)).toBe('⏸ break 13m');
+  });
+
+  /**
+   * Work never auto-starts, so a break that has run out sits there until the
+   * user resumes. A countdown pinned at `0m` would read as a stuck clock; the
+   * words the app has always used for an untimed break are the honest answer.
+   */
+  it('falls back to the plain words once the break has run out, and on a manual break', () => {
+    const spent = active({
+      phase: 'break', activeSinceMs: null,
+      cycle: { ...cycle, completed: 1, breakStartedMs: T0, breakKind: 'short' },
+    });
+    expect(trayTitle(spent, T0 + 5 * MIN)).toBe('⏸ on break');
+    // A break the user pressed for themselves carries no start: nothing to count.
+    expect(trayTitle(active({ phase: 'break', activeSinceMs: null, cycle }), T0)).toBe('⏸ on break');
+  });
+
+  it('leaves confirming and no-session exactly as they were', () => {
+    expect(trayTitle(active({ phase: 'confirming', activeSinceMs: null, cycle }), T0)).toBe('');
+  });
+});
+
 describe('the menu-bar timer', () => {
   it('paints the elapsed title and repaints once a minute while active', () => {
     const fixture = menuBar();
@@ -282,6 +333,28 @@ describe('the menu-bar timer', () => {
     expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('▶ 1m');
     // And it re-armed itself: one repaint is not a clock.
     expect(fixture.pending()).toBe(true);
+  });
+
+  /**
+   * A timed break is a COUNTDOWN, so it keeps the clock the calm break has no
+   * use for — the difference is not the phase, it is whether there is a figure
+   * that changes.
+   */
+  it('keeps repainting through a timed break, and stops when it runs out', () => {
+    const fixture = menuBar();
+    const cycle = { workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4, completed: 1 };
+    fixture.controller.create();
+    fixture.controller.setFocusStatus({
+      ...active(), phase: 'break', activeSinceMs: null,
+      cycle: { ...cycle, breakStartedMs: T0, breakKind: 'short' },
+    });
+    expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('⏸ break 5m');
+    expect(fixture.pending()).toBe(true);
+
+    fixture.advance(5 * MIN);
+    fixture.fire();
+    expect(fixture.tray.setTitle).toHaveBeenLastCalledWith('⏸ on break');
+    expect(fixture.pending()).toBe(false);
   });
 
   it('stops the clock on a break — static text needs no timer', () => {

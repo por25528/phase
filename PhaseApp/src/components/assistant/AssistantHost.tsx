@@ -51,7 +51,7 @@ export function AssistantHost({ open, onClose, theme }: {
 }) {
   const {
     goals, tasks, sessions, allDayBlocks, busyBlocks, activeFocusSession,
-    assistantAccelerator, timeLevel, focusLevel, hydration, actions,
+    assistantAccelerator, timeLevel, focusLevel, cycleConfig, shelfPrefs, hydration, actions,
   } = useAppStore();
   const [notice, setNotice] = useState<Notice | null>(null);
   // The row the user PICKED in the `Or` / `Switch to` band. A pick points the
@@ -101,6 +101,15 @@ export function AssistantHost({ open, onClose, theme }: {
           ...(activeFocusSession.awayMs === undefined
             ? {}
             : { awayMin: Math.round(activeFocusSession.awayMs / 60_000) }),
+          // A POSITION and never the durations: the shelf says which sitting
+          // this is, and how long an interval runs is the pill's and the
+          // tray's business. What never crosses cannot disagree.
+          ...(activeFocusSession.cycle === undefined ? {} : {
+            cycle: {
+              completed: activeFocusSession.cycle.completed,
+              longEvery: activeFocusSession.cycle.longEvery,
+            },
+          }),
         }
       : null;
     return {
@@ -110,17 +119,25 @@ export function AssistantHost({ open, onClose, theme }: {
       timeLevel,
       focusLevel,
       theme,
+      // The CONTENT half only: width and placement are the window's business
+      // and reach main from `App`, never over this relay.
+      shelf: { density: shelfPrefs.density, sections: shelfPrefs.sections },
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, notice, chosen]);
+  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, shelfPrefs, notice, chosen]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {
       case 'start-focus': {
         setNotice(null);
+        // The dial is read HERE, at the start, and frozen onto the draft by
+        // the store — never at a boundary. A length edited mid-session must
+        // not retime an interval already half spent.
         const started = actions.startFocus(
           action.ref,
           expectedTimeFor(action.ref, { goals, tasks, sessions }),
+          Date.now(),
+          action.mode === 'pomodoro' ? cycleConfig : undefined,
         );
         if (!started) setNotice({ tone: 'warning', text: 'A session is already running.' });
         else setChosen(null);
@@ -232,7 +249,12 @@ export function AssistantHost({ open, onClose, theme }: {
       data-shelf
       className="fixed right-[16px] top-[64px] z-40 max-h-[70vh] w-[380px] overflow-y-auto rounded-card border border-line bg-panel"
     >
-      <AssistantSurface snapshot={snapshot} onAction={onAction} />
+      <AssistantSurface
+        snapshot={snapshot}
+        onAction={onAction}
+        density={shelfPrefs.density}
+        sections={shelfPrefs.sections}
+      />
     </div>
   );
 }

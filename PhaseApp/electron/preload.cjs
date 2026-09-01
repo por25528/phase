@@ -70,6 +70,12 @@ contextBridge.exposeInMainWorld('phaseShell', {
     ipcRenderer.on('phase-shell:open-settings', listener);
     return () => ipcRenderer.removeListener('phase-shell:open-settings', listener);
   },
+  /** Fires when the shell wants Today — the floating pill was clicked. Returns unsubscribe. */
+  onOpenToday: (fn) => {
+    const listener = () => fn();
+    ipcRenderer.on('phase-shell:open-today', listener);
+    return () => ipcRenderer.removeListener('phase-shell:open-today', listener);
+  },
   /** Resolves the OS login-item state, or null when the shell refused. */
   getLaunchAtLogin: () => ipcRenderer.invoke('phase-shell:get-launch-at-login'),
   /** Set the OS login-item state; resolves the applied state, or null when refused. */
@@ -85,10 +91,24 @@ contextBridge.exposeInMainWorld('phaseShell', {
    */
   publishFocusStatus: (snapshot) => ipcRenderer.send('phase-shell:focus-status', snapshot),
   /**
-   * Whether the floating pill may show. A send, like publishFocusStatus, and
-   * for the same reason: the renderer must never block on a nicety.
+   * How the floating pill should look — the whole settings row at once. A
+   * send, like publishFocusStatus, and for the same reason: the renderer must
+   * never block on a nicety.
    */
-  setOverlayEnabled: (enabled) => ipcRenderer.send('phase-shell:overlay-enabled', enabled),
+  setPillPrefs: (prefs) => ipcRenderer.send('phase-shell:pill-prefs', prefs),
+  /**
+   * How the Cmd+Space shelf should be shaped. A send, for the same reason the
+   * two above are — and the width and placement land on the NEXT show, so
+   * there is nothing here to wait for either.
+   */
+  setShelfPrefs: (prefs) => ipcRenderer.send('phase-shell:shelf-prefs', prefs),
+  /**
+   * Announce a cycle boundary the renderer has already written. A send for the
+   * same reason the two above are: the transition is banked before this is
+   * called, so a notification Notification Centre refuses costs a log line and
+   * nothing else.
+   */
+  notifyFocus: (notice) => ipcRenderer.send('phase-shell:focus-notify', notice),
   /** Fires when the shell wants something done to the session. Returns unsubscribe. */
   onFocusRequest: (fn) => {
     const listener = (_event, request) => fn(request);

@@ -41,6 +41,8 @@ import {
 } from './lib/taskCapture';
 import { shellBridge, type PhaseShellBridge } from './lib/shellBridge';
 import { focusStatusOf, validFocusRequest } from './lib/focusStatus';
+import { nextBoundaryDelayMs } from './lib/focusCycle';
+import type { ActiveFocusSession } from './lib/focusSession';
 import { updateBridge } from './lib/updateBridge';
 import { UpdateBanner } from './components/UpdateBanner';
 import { createAgentBridge } from './lib/agentBridge';
@@ -52,7 +54,7 @@ import { createSyncExporter } from './state/syncExport';
 import type { SyncSlices } from './lib/sync/stateFile';
 import {
   loadSyncMeta, saveSyncMeta, buildBackupText,
-  loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot, loadShowOverlay,
+  loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot, loadPillPrefs,
 } from './db/db';
 import { backupBridge, stampToLocalMs } from './lib/backupBridge';
 import { createAutoBackup, writeBackupNow, type AutoBackup } from './state/autoBackup';
@@ -300,6 +302,10 @@ export function App() {
   // The menu bar's Settings item asks for this surface over the shell bridge.
   useEffect(() => shell.onOpenSettings(actions.openSettings), [shell]);
 
+  // A click on the floating pill. Main has already raised the window; all this
+  // owes is the view, which is why it is one line beside the one above.
+  useEffect(() => shell.onOpenToday(() => actions.setView('today')), [shell]);
+
   /**
    * The focus seam, outbound: what the menu-bar timer and the idle watcher
    * know about the running session.
@@ -331,16 +337,87 @@ export function App() {
     });
   }, [hydration, shell]);
 
+  /**
+   * The one new timer in the app, and it is a timeout rather than an interval.
+   *
+   * A pomodoro session owes exactly one transition at a time — the end of the
+   * interval it is working, or the end of the break it is resting — so the
+   * clock is armed with `nextBoundaryDelayMs` and re-armed on the next
+   * transition. Landing a boundary replaces the draft object, which re-runs
+   * this subscription, which arms the next one: self-re-arming, with no tick
+   * and no polling, and nothing here writes on a schedule.
+   *
+   * A delay computed as zero or less is not an error — a machine asleep across
+   * a boundary, or a window reloaded mid-overdue interval, both produce one.
+   * It fires on the next tick and `applyCycleBoundary` flips at the TRUE
+   * boundary, so time spent away is never banked as work.
+   *
+   * `storeActions` and `getState`, not this render's `actions` and props, for
+   * the reason the focus-request effect gives: the effect subscribes once.
+   */
+  useEffect(() => {
+    if (hydration !== 'ready') return;
+    let stop: ReturnType<typeof setTimeout> | null = null;
+    const arm = (draft: ActiveFocusSession | null) => {
+      if (stop) { clearTimeout(stop); stop = null; }
+      if (!draft) return;
+      const delay = nextBoundaryDelayMs(draft, Date.now());
+      if (delay === null) return;
+      stop = setTimeout(() => {
+        const event = storeActions.applyCycleBoundary();
+        const current = getState().activeFocusSession;
+        if (event === 'work-ended' && current?.cycle) {
+          shell.notifyFocus({
+            title: 'Time for a break',
+            body: `${current.cycle.completed * current.cycle.workMin} focused minutes down · ${current.cycle.breakKind === 'long' ? 'long' : 'short'} break`,
+          });
+        } else if (event === 'break-ended' && current) {
+          shell.notifyFocus({ title: "Break's over", body: `Ready to get back to “${current.title}”?` });
+        }
+      }, Math.max(0, delay));
+    };
+    let last = getState().activeFocusSession;
+    arm(last);
+    const unsub = subscribe(() => {
+      const next = getState().activeFocusSession;
+      if (next === last) return;
+      last = next;
+      arm(next);
+    });
+    return () => { unsub(); if (stop) clearTimeout(stop); };
+  }, [hydration, shell]);
+
   // Electron cannot read Dexie, so the hydrated pill preference is pushed
   // once at startup — the same reason the assistant shortcut is.
   useEffect(() => {
     if (!shell.available) return;
     let cancelled = false;
-    void loadShowOverlay().then((value) => {
-      if (!cancelled) shell.setOverlayEnabled(value);
+    void loadPillPrefs().then((value) => {
+      if (!cancelled) shell.setPillPrefs(value);
     });
     return () => { cancelled = true; };
   }, [shell]);
+
+  /**
+   * The shelf's geometry, pushed at hydrate and on every change.
+   *
+   * Unlike the pill's row this one lives in the STORE — the relay's model is
+   * built from store state, and the shelf's content half rides that — so this
+   * is a subscription rather than a one-shot load, compared BY REFERENCE, the
+   * same shape the focus-status publisher takes. `setShelfPrefs` is the only
+   * thing that ever replaces the object, so a new reference IS a change.
+   */
+  useEffect(() => {
+    if (hydration !== 'ready' || !shell.available) return;
+    let last = getState().shelfPrefs;
+    shell.setShelfPrefs(last);
+    return subscribe(() => {
+      const next = getState().shelfPrefs;
+      if (next === last) return;
+      last = next;
+      shell.setShelfPrefs(next);
+    });
+  }, [hydration, shell]);
 
   /**
    * The focus seam, inbound: the menu bar's three verbs and the idle watcher's

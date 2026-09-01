@@ -9,7 +9,12 @@
 const { app, BrowserWindow } = require('electron')
 const path = require('node:path')
 
-const WIDTH = 620
+// 620 by default, because that is the width HEIGHT was measured at and the one
+// the budget belongs to. The shelf now offers 520 and 760 as well, and both
+// have to keep the card under the SAME budget — so the width is overridable:
+//
+//   PHASE_SHELF_WIDTH=520 npx electron scripts/measure-shelf.cjs
+const WIDTH = Number(process.env.PHASE_SHELF_WIDTH) || 620
 
 // Free text with no length cap, so two wrapped lines under line-clamp-2 is the
 // real worst case, not an edge case to round past.
@@ -50,6 +55,13 @@ const base = {
   // that a `ready` snapshot always carries it, or the overlay would repaint to
   // light mid-measure.
   theme: 'light',
+  // Compact only ever REMOVES padding, so comfortable is the state the budget
+  // has to cover — but the run is available either way:
+  //   PHASE_SHELF_DENSITY=compact npx electron scripts/measure-shelf.cjs
+  shelf: {
+    density: process.env.PHASE_SHELF_DENSITY === 'compact' ? 'compact' : 'comfortable',
+    sections: { alternatives: true, dials: true },
+  },
   activeFocus: null,
   notice: NOTICE,
   advice: { kind: 'work', primary: work(), alternatives: ALTERNATIVES },
@@ -71,6 +83,14 @@ const STATES = {
   },
   // Gains the checkbox in this change.
   active: { ...base, activeFocus: focus({ phase: 'active', elapsedMin: 12 }) },
+  // `active` plus the cycle position line, which only a pomodoro session
+  // draws. Its own state because it is the only running session with two
+  // lines of subtitle, and a budget measured without it would come up short
+  // in the state a pomodoro user is in the whole time.
+  pomodoro: {
+    ...base,
+    activeFocus: focus({ phase: 'active', elapsedMin: 12, cycle: { completed: 3, longEvery: 4 } }),
+  },
   // The auto-break, which is `active` plus one line — the away notice, the
   // only sentence on this surface the user did not ask for. Measured as its
   // own state because it is the only break that draws it, and a manual break

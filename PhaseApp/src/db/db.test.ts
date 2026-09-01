@@ -10,6 +10,9 @@ import {
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   loadPlanMode, savePlanMode,
   loadCalendarIds, saveCalendarIds,
+  loadCycleConfig, saveCycleConfig,
+  loadPillPrefs, savePillPrefs,
+  loadShelfPrefs, saveShelfPrefs,
   downloadBackupText, BLOB_URL_REVOKE_MS,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
@@ -490,6 +493,96 @@ describe('allDayBlocks', () => {
     expect(await loadAllDayBlocks()).toBe(true);
     await saveAllDayBlocks(false);
     expect(await loadAllDayBlocks()).toBe(false);
+  });
+});
+
+describe('the pomodoro dial', () => {
+  it('defaults on a fresh database and round-trips a set of four numbers', async () => {
+    expect(await loadCycleConfig()).toEqual({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 });
+
+    await saveCycleConfig({ workMin: 50, breakMin: 10, longBreakMin: 20, longEvery: 3 });
+
+    expect(await loadCycleConfig()).toEqual({ workMin: 50, breakMin: 10, longBreakMin: 20, longEvery: 3 });
+  });
+
+  // A row someone hand-edited, or one written by a future build, must still
+  // yield four usable numbers: losing the dial cannot cost you the ability to
+  // start a session.
+  it('reads a malformed row field-by-field back to the defaults', async () => {
+    await db.settings.put({ key: 'cycleConfig', value: '{"workMin":45,"breakMin":"soon"}' });
+
+    expect(await loadCycleConfig()).toEqual({ workMin: 45, breakMin: 5, longBreakMin: 15, longEvery: 4 });
+
+    await db.settings.put({ key: 'cycleConfig', value: 'not json at all' });
+
+    expect(await loadCycleConfig()).toEqual({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 });
+  });
+});
+
+describe('the pill preferences', () => {
+  it('defaults on a fresh database and round-trips a whole row', async () => {
+    expect(await loadPillPrefs()).toMatchObject({ show: true, size: 'medium', corner: 'top-right' });
+
+    await savePillPrefs({
+      show: true, content: 'elapsed', showTitle: false, showGlyph: true,
+      size: 'large', opacity: 0.7, theme: 'light', corner: 'bottom-left', clickThrough: true,
+    });
+
+    expect(await loadPillPrefs()).toEqual({
+      show: true, content: 'elapsed', showTitle: false, showGlyph: true,
+      size: 'large', opacity: 0.7, theme: 'light', corner: 'bottom-left', clickThrough: true,
+    });
+  });
+
+  /**
+   * The one boolean this group replaces already exists in every database, and
+   * a group that silently re-showed a pill somebody turned off would be the
+   * worst first impression it could make. The legacy row is READ and left in
+   * place: it is one boolean, and a delete-write to tidy it buys nothing.
+   */
+  it('seeds show from the legacy showOverlay row when it has none of its own', async () => {
+    await db.settings.put({ key: 'showOverlay', value: 'false' });
+
+    expect(await loadPillPrefs()).toMatchObject({ show: false, size: 'medium' });
+    expect(await db.settings.get('showOverlay')).toBeDefined();
+  });
+
+  it('lets its own row win once there is one', async () => {
+    await db.settings.put({ key: 'showOverlay', value: 'false' });
+    await savePillPrefs({ ...(await loadPillPrefs()), show: true });
+
+    expect((await loadPillPrefs()).show).toBe(true);
+  });
+
+  it('reads a malformed row field-by-field back to the defaults', async () => {
+    await db.settings.put({ key: 'pillPrefs', value: '{"size":"enormous","corner":"bottom-right"}' });
+
+    expect(await loadPillPrefs()).toMatchObject({ size: 'medium', corner: 'bottom-right' });
+  });
+});
+
+describe('the shelf preferences', () => {
+  it('defaults on a fresh database and round-trips a whole row', async () => {
+    expect(await loadShelfPrefs()).toEqual({
+      width: 'default', density: 'comfortable', position: 'center',
+      sections: { alternatives: true, dials: true },
+    });
+
+    await saveShelfPrefs({
+      width: 'wide', density: 'compact', position: 'top-center',
+      sections: { alternatives: false, dials: true },
+    });
+
+    expect(await loadShelfPrefs()).toEqual({
+      width: 'wide', density: 'compact', position: 'top-center',
+      sections: { alternatives: false, dials: true },
+    });
+  });
+
+  it('reads a malformed row field-by-field back to the defaults', async () => {
+    await db.settings.put({ key: 'shelfPrefs', value: '{"width":"enormous","position":"top-center"}' });
+
+    expect(await loadShelfPrefs()).toMatchObject({ width: 'default', position: 'top-center' });
   });
 });
 

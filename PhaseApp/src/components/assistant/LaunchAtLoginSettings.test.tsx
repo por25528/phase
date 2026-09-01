@@ -16,11 +16,14 @@ function fixture(over: Partial<PhaseShellBridge> = {}): PhaseShellBridge {
     insetTitleBar: false,
     openAssistant: vi.fn(async () => true),
     onOpenSettings: vi.fn(() => () => {}),
+    onOpenToday: vi.fn(() => () => {}),
     getLaunchAtLogin: vi.fn(async () => false),
     setLaunchAtLogin: vi.fn(async () => true),
     publishFocusStatus: vi.fn(),
     onFocusRequest: vi.fn(() => () => {}),
-    setOverlayEnabled: vi.fn(),
+    setPillPrefs: vi.fn(),
+    setShelfPrefs: vi.fn(),
+    notifyFocus: vi.fn(),
     ...over,
   };
 }

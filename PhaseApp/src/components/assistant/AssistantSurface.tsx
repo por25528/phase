@@ -49,7 +49,25 @@ interface Props {
    * Embedded callers pass nothing and behave exactly as they did.
    */
   onSendoffChange?: (leaving: boolean) => void;
+  /**
+   * The spacing scale. `compact` compresses every band's inset ONE step, and
+   * it does it inside the four `*Cls` helpers rather than at the call sites —
+   * a density scattered as ternaries is one the card can end up half in.
+   *
+   * It never removes anything: what a compact shelf shows is exactly what a
+   * comfortable one shows, closer together.
+   */
+  density?: 'compact' | 'comfortable';
+  /**
+   * Which optional bands to draw. The work band is NOT here and never will
+   * be: a shelf that cannot control a running session is broken, not
+   * customized. Absent means both, so no existing caller changes.
+   */
+  sections?: { alternatives: boolean; dials: boolean };
 }
+
+/** Both on, which is the shelf as it has always been. */
+const ALL_SECTIONS = { alternatives: true, dials: true } as const;
 
 const REASON_WORD: Record<AdviceReason, string> = {
   'scheduled-now': 'Happening now',
@@ -123,8 +141,9 @@ function SectionLabel({ children }: { children: string }) {
  * says it outright: a class list is not a cascade, and that exact trap is why
  * `DateField`'s `size` prop exists.
  */
-function aboveBandCls(shelf: boolean): string {
-  return shelf ? 'px-4 pt-3 pb-2.5' : 'px-3';
+function aboveBandCls(shelf: boolean, compact = false): string {
+  if (!shelf) return 'px-3';
+  return compact ? 'px-4 pt-2 pb-1.5' : 'px-4 pt-3 pb-2.5';
 }
 
 /**
@@ -211,15 +230,16 @@ function RuleTag({ tag, figure, top }: { tag: string; figure?: string; top?: boo
  * one line. A width-based wrap would answer a question neither presentation
  * actually asks — both are known fixed widths — so the branch is explicit.
  */
-function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
+function DialStrip({ timeLevel, focusLevel, onAction, shelf, compact = false }: {
   timeLevel: TimeLevel;
   focusLevel: FocusLevel;
   onAction: Props['onAction'];
   shelf: boolean;
+  compact?: boolean;
 }) {
   return (
-    <div className={dialStripClass(shelf)}>
-      <div className={dialCellCls(shelf, true)}>
+    <div className={dialStripClass(shelf, compact)}>
+      <div className={dialCellCls(shelf, true, compact)}>
         <span className={captionLabel}>Time</span>
         <SegmentedSwitch
           label="How long you have"
@@ -233,7 +253,7 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
           onChange={(next) => onAction({ type: 'set-time-level', level: next })}
         />
       </div>
-      <div className={dialCellCls(shelf, false)}>
+      <div className={dialCellCls(shelf, false, compact)}>
         <span className={captionLabel}>Focus</span>
         <SegmentedSwitch
           label="How much focus you have"
@@ -268,10 +288,9 @@ function DialStrip({ timeLevel, focusLevel, onAction, shelf }: {
  * six segments; ruled apart they read as two instruments, which is what they
  * are and what `DialStrip`'s own doc has said all along.
  */
-function dialStripClass(shelf: boolean): string {
-  return shelf
-    ? 'flex items-stretch border-t border-line bg-bg'
-    : 'flex flex-col gap-1.5 border-b border-line px-3 pb-2 pt-3';
+function dialStripClass(shelf: boolean, compact = false): string {
+  if (shelf) return 'flex items-stretch border-t border-line bg-bg';
+  return `flex flex-col gap-1.5 border-b border-line px-3 ${compact ? 'pb-1.5 pt-2' : 'pb-2 pt-3'}`;
 }
 
 /**
@@ -279,9 +298,10 @@ function dialStripClass(shelf: boolean): string {
  * `:first-child` selector, because the hairline belongs to the SECOND cell —
  * a leading border on cell one would draw a line down the card's own left edge.
  */
-function dialCellCls(shelf: boolean, first: boolean): string {
+function dialCellCls(shelf: boolean, first: boolean, compact = false): string {
   if (!shelf) return 'flex items-center gap-2.5';
-  return `flex items-center gap-2.5 px-4 py-[7px] ${first ? '' : 'border-l border-line'}`;
+  const pad = compact ? 'px-4 py-[5px]' : 'px-4 py-[7px]';
+  return `flex items-center gap-2.5 ${pad} ${first ? '' : 'border-l border-line'}`;
 }
 
 /**
@@ -404,8 +424,9 @@ const workSubtitleCls = (shelf: boolean): string => shelf
  * The alternatives band's own inset, shared with `Skeleton` so the loading
  * shape and the thing that replaces it cannot drift apart.
  */
-function altBandCls(shelf: boolean): string {
-  return `border-t border-line ${shelf ? 'px-4 pt-2 pb-2.5' : 'px-3 py-2'}`;
+function altBandCls(shelf: boolean, compact = false): string {
+  if (shelf) return `border-t border-line ${compact ? 'px-4 pt-1.5 pb-2' : 'px-4 pt-2 pb-2.5'}`;
+  return `border-t border-line px-3 ${compact ? 'py-1.5' : 'py-2'}`;
 }
 
 /**
@@ -422,12 +443,13 @@ function moreLabel(count: number): string {
   return `${count} more`;
 }
 
-function AlternativesBand({ label, items, disabled, onPick, shelf, sharedPrefix }: {
+function AlternativesBand({ label, items, disabled, onPick, shelf, compact = false, sharedPrefix }: {
   label: string;
   items: RecommendedWork[];
   disabled: boolean;
   onPick: (ref: RecommendedWork['ref']) => void;
   shelf: boolean;
+  compact?: boolean;
   /**
    * The project prefix the PRIMARY already stated in full. Shelf only: the
    * embedded panel gives the metadata its own line, so there is no row of
@@ -467,7 +489,7 @@ function AlternativesBand({ label, items, disabled, onPick, shelf, sharedPrefix 
     );
   }
   return (
-    <div className={altBandCls(shelf)}>
+    <div className={altBandCls(shelf, compact)}>
       <SectionLabel>{label}</SectionLabel>
       <div className="mt-[2px] flex flex-col">{rows}</div>
     </div>
@@ -486,8 +508,9 @@ function AlternativesBand({ label, items, disabled, onPick, shelf, sharedPrefix 
  * a class list is not a cascade, and that exact trap is why `DateField`'s
  * `size` prop exists.
  */
-function bandCls(shelf: boolean): string {
-  return shelf ? 'px-4 pt-3.5 pb-3' : 'px-3 py-2';
+function bandCls(shelf: boolean, compact = false): string {
+  if (shelf) return compact ? 'px-4 pt-2.5 pb-2' : 'px-4 pt-3.5 pb-3';
+  return `px-3 ${compact ? 'py-1.5' : 'py-2'}`;
 }
 
 /**
@@ -537,7 +560,7 @@ const RING_SLOT = 'w-[34px] shrink-0';
  * title's left edge must not move when a session ends, and that is true at
  * either width.
  */
-function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, actions, shelf }: {
+function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, actions, shelf, compact = false }: {
   checkbox: ReactNode;
   ring: ReactNode;
   eyebrow: string;
@@ -556,9 +579,10 @@ function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, act
   extra?: ReactNode;
   actions: ReactNode;
   shelf: boolean;
+  compact?: boolean;
 }) {
   const band = (
-    <div className={`${bandCls(shelf)} flex ${shelf ? 'items-center gap-3' : 'flex-col gap-2'}`}>
+    <div className={`${bandCls(shelf, compact)} flex ${shelf ? 'items-center gap-3' : 'flex-col gap-2'}`}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div data-gutter className={GUTTER}>{checkbox}</div>
         {ring}
@@ -643,11 +667,13 @@ function Skeleton({ shelf }: { shelf: boolean }) {
   );
 }
 
-function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
+function FocusPanel({ focus, alternatives, onAction, shelf, compact, sections, focusLevel }: {
   focus: AssistantFocusView;
   alternatives: RecommendedWork[];
   onAction: Props['onAction'];
   shelf: boolean;
+  compact: boolean;
+  sections: NonNullable<Props['sections']>;
   focusLevel: FocusLevel;
 }) {
   // The ring and the tick share one condition: `confirming` carries neither.
@@ -673,9 +699,16 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       onToggle={() => onAction({ type: 'complete-work', ref: focus.ref })}
     />
   ) : null;
-  const subtitle = focus.goalTitle
-    ? <p className={workSubtitleCls(shelf)}>{focus.goalTitle}</p>
-    : null;
+  // The cycle position sits with the subtitle rather than beside the elapsed
+  // figure below: it says WHICH sitting this is, which is the same class of
+  // fact as which project it belongs to, and the readout underneath is about
+  // how far into it you are.
+  const subtitle = (focus.goalTitle || focus.cycle) ? (
+    <div className={workSubtitleCls(shelf)}>
+      {focus.goalTitle && <p>{focus.goalTitle}</p>}
+      {focus.cycle && <p className="tabular-nums">{cyclePositionLine(focus.cycle)}</p>}
+    </div>
+  ) : null;
   const extra = focus.phase === 'confirming' ? (
     <p className="text-body text-ink">
       This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
@@ -770,6 +803,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
     <>
       <WorkBand
         shelf={shelf}
+        compact={compact}
         checkbox={checkbox}
         ring={ring}
         eyebrow="Focus session"
@@ -778,7 +812,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
         extra={extra}
         actions={actions}
       />
-      <AlternativesBand
+      {sections.alternatives && <AlternativesBand
         label="Switch to"
         // The same cap the idle panel takes, from the same constant: both
         // labels are one region, and a hard-coded 2 here would make `Switch to`
@@ -787,23 +821,41 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
         disabled={false}
         onPick={(ref) => onAction({ type: 'switch-focus', ref })}
         shelf={shelf}
+        compact={compact}
         // The running session is what states the project in full here, so it
         // is the one the alternatives may stop repeating.
         sharedPrefix={sharedProjectPrefix([
           focus.goalTitle,
           ...alternatives.slice(0, MAX_ALTERNATIVES).map((item) => item.goalTitle),
         ])}
-      />
+      />}
     </>
   );
 }
 
-function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
+/**
+ * Where a pomodoro is, and which break it is working towards.
+ *
+ * The kind of the NEXT break is derived from the interval now under way
+ * (`completed + 1`) rather than stored, because it is the same arithmetic
+ * `applyCycleBoundary` will do when that interval ends — two copies of one
+ * rule could disagree, and the shelf would promise a long break the session
+ * then does not take.
+ */
+function cyclePositionLine(cycle: { completed: number; longEvery: number }): string {
+  const interval = cycle.completed + 1;
+  const kind = interval % cycle.longEvery === 0 ? 'long' : 'short';
+  return `interval ${interval} · ${kind} break next`;
+}
+
+function AdvicePanel({ snapshot, shelf, compact, sections, pending, onAction, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
   shelf: boolean;
+  compact: boolean;
+  sections: NonNullable<Props['sections']>;
   pending: boolean;
   onAction: Props['onAction'];
-  onStart: (ref: RecommendedWork['ref']) => void;
+  onStart: (ref: RecommendedWork['ref'], mode?: 'pomodoro') => void;
 }) {
   const { advice } = snapshot;
 
@@ -839,6 +891,7 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
       )}
       <WorkBand
         shelf={shelf}
+        compact={compact}
         checkbox={
           <TodayCheckbox
             checked={false}
@@ -877,13 +930,26 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
                 Park
               </button>
             )}
+            {/* Two starts where there was one: the mode is a choice PER
+                SESSION, and there is no global switch for it to be made
+                somewhere else. Calm keeps the fill — it is what this app has
+                always started, and a pomodoro is the deliberate variant, which
+                is the same hierarchy `dialogFooter` states with position. */}
+            <button
+              type="button"
+              disabled={pending}
+              className={secondaryBtn}
+              onClick={() => onStart(primary.ref, 'pomodoro')}
+            >
+              Start pomodoro
+            </button>
             <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
               Start session
             </button>
           </>
         }
       />
-      <AlternativesBand
+      {sections.alternatives && <AlternativesBand
         label="Or"
         items={alternatives}
         disabled={pending}
@@ -891,13 +957,14 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
         // same verb `Switch to` spends, because both bands are one region.
         onPick={(ref) => onAction({ type: 'switch-focus', ref })}
         shelf={shelf}
+        compact={compact}
         // The primary names its project in full one region up; the alternatives
         // only have to say what makes them different.
         sharedPrefix={sharedProjectPrefix([
           primary.goalTitle,
           ...alternatives.map((item) => item.goalTitle),
         ])}
-      />
+      />}
     </>
   );
 }
@@ -908,17 +975,20 @@ export function AssistantSurface({
   presentation = 'embedded',
   resetKey = 0,
   onSendoffChange,
+  density = 'comfortable',
+  sections = ALL_SECTIONS,
 }: Props) {
   const reducedMotion = useReducedMotion();
   const sendoff = useAssistantSendoff({
     snapshot,
     reducedMotion,
     resetKey,
-    onStart: (ref) => onAction({ type: 'start-focus', ref }),
+    onStart: (ref, mode) => onAction({ type: 'start-focus', ref, ...(mode ? { mode } : {}) }),
     onClose: () => onAction({ type: 'close' }),
     onSendoffChange,
   });
   const shelf = presentation === 'shelf';
+  const compact = density === 'compact';
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -992,7 +1062,7 @@ export function AssistantSurface({
     <>
       {snapshot.notice && (
         <p className={[
-          aboveBandCls(shelf),
+          aboveBandCls(shelf, compact),
           shelf ? 'truncate' : '',
           'text-meta',
           snapshot.notice.tone === 'warning' ? 'text-warn' : 'text-muted',
@@ -1010,12 +1080,16 @@ export function AssistantSurface({
             alternatives={switchCandidates(snapshot.advice, snapshot.activeFocus.ref)}
             onAction={onAction}
             shelf={shelf}
+            compact={compact}
+            sections={sections}
             focusLevel={snapshot.focusLevel}
           />
         ) : (
           <AdvicePanel
             snapshot={snapshot}
             shelf={shelf}
+            compact={compact}
+            sections={sections}
             pending={sendoff.pending}
             onAction={onAction}
             onStart={sendoff.start}
@@ -1030,9 +1104,11 @@ export function AssistantSurface({
   // which is what lets the hairlines between them run edge to edge.
   return (
     <div className={`flex h-full min-h-0 flex-col overflow-hidden ${shelf ? '' : 'gap-2 pb-3'}`}>
-      {!shelf && <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf={false} />}
+      {!shelf && sections.dials
+        && <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf={false} compact={compact} />}
       {body}
-      {shelf && <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf />}
+      {shelf && sections.dials
+        && <DialStrip timeLevel={snapshot.timeLevel} focusLevel={snapshot.focusLevel} onAction={onAction} shelf compact={compact} />}
     </div>
   );
 }

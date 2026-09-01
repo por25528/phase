@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
-const { assistantShelfBounds, assistantWindowOptions } =
+const { assistantShelfBounds, assistantWindowOptions, SHELF_WIDTHS, normalizeShelfGeometry } =
   nativeRequire('./assistantWindow.cjs') as typeof import('./assistantWindow.cjs');
 const { createAssistantWindowController } =
   nativeRequire('./assistantWindowController.cjs') as typeof import('./assistantWindowController.cjs');
@@ -13,6 +13,8 @@ type Fn = ReturnType<typeof vi.fn>;
 
 interface FakeWindow {
   setBounds: Fn;
+  setMinimumSize: Fn;
+  setMaximumSize: Fn;
   setAlwaysOnTop: Fn;
   setVisibleOnAllWorkspaces: Fn;
   show: Fn;
@@ -65,6 +67,8 @@ function fakeWindow(calls: string[] = [], opts: FakeWindowOptions = {}): FakeWin
     : vi.fn(async () => {});
   return {
     setBounds: vi.fn(() => { calls.push('bounds'); }),
+    setMinimumSize: vi.fn(),
+    setMaximumSize: vi.fn(),
     setAlwaysOnTop: vi.fn(),
     setVisibleOnAllWorkspaces: vi.fn(),
     show: vi.fn(() => { visible = true; calls.push('show'); }),
@@ -192,6 +196,84 @@ describe('assistantShelfBounds', () => {
     expect(assistantShelfBounds({ x: -1440, y: 0, width: 1440, height: 900 })).toEqual({
       x: -1030, y: 18, width: 620, height: 379,
     });
+  });
+
+  it('centres each of the three widths, keeping the one height budget', () => {
+    const area = { x: 0, y: 25, width: 1512, height: 957 };
+    expect(assistantShelfBounds(area, { width: 'narrow', position: 'center' }))
+      .toEqual({ x: 496, y: 43, width: SHELF_WIDTHS.narrow, height: 379 });
+    expect(assistantShelfBounds(area, { width: 'wide', position: 'center' }))
+      .toEqual({ x: 376, y: 43, width: SHELF_WIDTHS.wide, height: 379 });
+  });
+
+  it('drops the panel to the top-centre offset when asked', () => {
+    expect(assistantShelfBounds({ x: 0, y: 25, width: 1512, height: 957 }, { position: 'top-center' }))
+      .toMatchObject({ y: 49 });
+  });
+
+  it('reads an absent or malformed geometry as today\u2019s shelf', () => {
+    const area = { x: 0, y: 25, width: 1512, height: 957 };
+    for (const bad of [undefined, null, 'wide', { width: 'enormous', position: 'left' }]) {
+      expect(assistantShelfBounds(area, bad)).toEqual({ x: 446, y: 43, width: 620, height: 379 });
+    }
+  });
+});
+
+describe('normalizeShelfGeometry', () => {
+  it('is total, and falls back per field', () => {
+    expect(normalizeShelfGeometry(undefined)).toEqual({ width: 'default', position: 'center' });
+    expect(normalizeShelfGeometry({ width: 'wide', position: 'nowhere' }))
+      .toEqual({ width: 'wide', position: 'center' });
+  });
+});
+
+describe('the shelf\u2019s own geometry', () => {
+  /**
+   * A change lands on the NEXT show and never mid-display: the panel is
+   * summoned, and one that resized under the cursor while it was open would
+   * read as a glitch rather than as a preference taking effect.
+   */
+  it('applies a new width the next time the shelf is positioned', () => {
+    const win = fakeWindow();
+    const controller = controllerWith(win);
+    controller.showAndFocus();
+    win.emit('ready-to-show');
+    expect(win.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ width: 620 }), false);
+
+    controller.setShelfGeometry({ width: 'wide', position: 'top-center' });
+    // Nothing moved yet — the shelf on screen is left alone.
+    expect(win.setBounds).toHaveBeenCalledTimes(1);
+
+    controller.hide();
+    controller.showAndFocus();
+    expect(win.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ width: SHELF_WIDTHS.wide, y: 24 }), false);
+  });
+
+  /**
+   * The window is created with min and max width pinned to one number, which
+   * is what makes it unresizable — so a `setBounds` alone would be silently
+   * clamped back to the width it was born at.
+   */
+  it('moves the size limits with the width, or the bounds would be clamped away', () => {
+    const win = fakeWindow();
+    const controller = controllerWith(win);
+    controller.setShelfGeometry({ width: 'narrow', position: 'center' });
+    controller.showAndFocus();
+    win.emit('ready-to-show');
+    expect(win.setMinimumSize).toHaveBeenCalledWith(SHELF_WIDTHS.narrow, 379);
+    expect(win.setMaximumSize).toHaveBeenCalledWith(SHELF_WIDTHS.narrow, 379);
+  });
+
+  it('ignores a malformed geometry rather than losing the shelf', () => {
+    const win = fakeWindow();
+    const controller = controllerWith(win);
+    controller.setShelfGeometry('wide' as unknown as { width: 'wide' });
+    controller.showAndFocus();
+    win.emit('ready-to-show');
+    expect(win.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ width: 620 }), false);
   });
 });
 

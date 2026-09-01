@@ -51,5 +51,16 @@ export declare function assistantWindowOptions(
   platform?: NodeJS.Platform,
   darkMode?: boolean,
 ): AssistantWindowOptions;
-export declare function assistantShelfBounds(workArea: AssistantWorkArea): AssistantShelfBounds;
+/** The geometry half of `ShelfPrefs`, mirrored — never imported from `src/`. */
+export interface AssistantShelfGeometry {
+  width: 'narrow' | 'default' | 'wide';
+  position: 'center' | 'top-center';
+}
+
+export declare const SHELF_WIDTHS: Record<AssistantShelfGeometry['width'], number>;
+export declare function normalizeShelfGeometry(raw: unknown): AssistantShelfGeometry;
+export declare function assistantShelfBounds(
+  workArea: AssistantWorkArea,
+  geometry?: unknown,
+): AssistantShelfBounds;
 export declare function assistantEntry(devServerUrl: string | undefined): AssistantEntry;

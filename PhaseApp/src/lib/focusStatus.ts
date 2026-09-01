@@ -24,6 +24,24 @@ export type FocusStatusSnapshot = {
   /** Active milliseconds banked by completed stretches. Never includes breaks. */
   accumulatedMs: number;
   title: string;
+  /**
+   * Present only on a pomodoro session, and durations rather than a remaining
+   * figure — the same rule the two timestamps above follow. Every surface
+   * computes "how much is left" at read time from these numbers, so the pill
+   * and the tray can count down for twenty-five minutes on one push.
+   *
+   * `breakNotified` is deliberately NOT here: it is what stops the renderer
+   * sending a second notice, and main sends none.
+   */
+  cycle?: {
+    workMin: number;
+    breakMin: number;
+    longBreakMin: number;
+    longEvery: number;
+    completed: number;
+    breakStartedMs?: number;
+    breakKind?: 'short' | 'long';
+  };
 } | null;
 
 /**
@@ -36,11 +54,23 @@ export type FocusStatusSnapshot = {
  */
 export function focusStatusOf(draft: ActiveFocusSession | null): FocusStatusSnapshot {
   if (!draft) return null;
+  const cycle = draft.cycle;
   return {
     phase: draft.phase,
     activeSinceMs: draft.activeSinceMs,
     accumulatedMs: draft.accumulatedMs,
     title: draft.title,
+    ...(cycle === undefined ? {} : {
+      cycle: {
+        workMin: cycle.workMin,
+        breakMin: cycle.breakMin,
+        longBreakMin: cycle.longBreakMin,
+        longEvery: cycle.longEvery,
+        completed: cycle.completed,
+        ...(cycle.breakStartedMs === undefined ? {} : { breakStartedMs: cycle.breakStartedMs }),
+        ...(cycle.breakKind === undefined ? {} : { breakKind: cycle.breakKind }),
+      },
+    }),
   };
 }
 

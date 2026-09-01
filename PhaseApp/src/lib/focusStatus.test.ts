@@ -43,6 +43,32 @@ describe('focusStatusOf', () => {
       .toEqual(['accumulatedMs', 'activeSinceMs', 'phase', 'title']);
   });
 
+  /**
+   * A cycle rides the snapshot so the tray and the pill can count DOWN out of
+   * the same banked numbers, without a second opinion about what a pomodoro
+   * is. `breakNotified` stays behind: main sends no notices, so it has no use
+   * for the flag that stops the second one.
+   */
+  it('carries the cycle when there is one, minus the bookkeeping main cannot use', () => {
+    const cycled: ActiveFocusSession = {
+      ...draft(),
+      cycle: {
+        workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4,
+        completed: 1, breakStartedMs: t0 + 25 * MIN, breakKind: 'short',
+        breakNotified: true,
+      },
+    };
+    expect(focusStatusOf(cycled)?.cycle).toEqual({
+      workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4,
+      completed: 1, breakStartedMs: t0 + 25 * MIN, breakKind: 'short',
+    });
+  });
+
+  it('omits the cycle entirely for a calm session', () => {
+    expect(Object.keys(focusStatusOf(draft()) ?? {}).sort())
+      .toEqual(['accumulatedMs', 'activeSinceMs', 'phase', 'title']);
+  });
+
   it('reports a break as banked time with no running stretch', () => {
     const status = focusStatusOf(pauseFocusSession(draft(), t0 + 20 * MIN));
     expect(status).toMatchObject({

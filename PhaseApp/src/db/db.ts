@@ -14,6 +14,15 @@ import {
 } from '../lib/focusSession';
 import { parseStoredAccelerator } from '../lib/assistantAccelerator';
 import {
+  parseCycleConfig, serializeCycleConfig, type CycleConfig,
+} from '../lib/focusCycle';
+import {
+  parsePillPrefs, serializePillPrefs, type PillPrefs,
+} from '../lib/pillPrefs';
+import {
+  parseShelfPrefs, serializeShelfPrefs, type ShelfPrefs,
+} from '../lib/shelfPrefs';
+import {
   parseStoredTimeLevel, serializeTimeLevel, type StoredTimeLevel,
 } from '../lib/timeLens';
 import {
@@ -223,6 +232,70 @@ export async function loadShowOverlay(): Promise<boolean> {
 
 export async function saveShowOverlay(value: boolean): Promise<void> {
   await db.settings.put({ key: SHOW_OVERLAY_KEY, value: String(value) });
+}
+
+/**
+ * Everything the floating pill is told about how to look.
+ *
+ * A device preference beside the accelerator, so it stays out of backup
+ * export/import — how the pill looks on this Mac is not the user's data.
+ *
+ * ABSENT is not the same as default here: `'showOverlay'` is one boolean this
+ * group absorbs, and it exists in every database that ever turned the pill
+ * off. A group that silently re-showed a pill somebody had hidden would be the
+ * worst first impression it could make, so an absent row seeds `show` from the
+ * legacy one. The legacy row is READ and LEFT: it is one boolean, and a
+ * delete-write to tidy it up buys nothing and can fail.
+ */
+const PILL_PREFS_KEY = 'pillPrefs';
+
+export async function loadPillPrefs(): Promise<PillPrefs> {
+  const row = await db.settings.get(PILL_PREFS_KEY);
+  if (row?.value !== undefined) return parsePillPrefs(row.value);
+  const legacy = await db.settings.get(SHOW_OVERLAY_KEY);
+  return { ...parsePillPrefs(undefined), show: legacy?.value !== 'false' };
+}
+
+export async function savePillPrefs(prefs: PillPrefs): Promise<void> {
+  await db.settings.put({ key: PILL_PREFS_KEY, value: serializePillPrefs(prefs) });
+}
+
+/**
+ * How the Cmd+Space shelf is shaped. A device preference beside the pill's,
+ * out of backup export/import for the same reason, and total on read.
+ *
+ * Unlike the pill's row there is no legacy toggle to absorb: nothing about the
+ * shelf was configurable before this, so absent simply means the defaults —
+ * which are the shelf as it already looked.
+ */
+const SHELF_PREFS_KEY = 'shelfPrefs';
+
+export async function loadShelfPrefs(): Promise<ShelfPrefs> {
+  const row = await db.settings.get(SHELF_PREFS_KEY);
+  return parseShelfPrefs(row?.value);
+}
+
+export async function saveShelfPrefs(prefs: ShelfPrefs): Promise<void> {
+  await db.settings.put({ key: SHELF_PREFS_KEY, value: serializeShelfPrefs(prefs) });
+}
+
+/**
+ * The four numbers a pomodoro session is started with. A device preference
+ * beside the accelerator and the pill's own switch, so it stays out of backup
+ * export/import — the dial describes how this person works at this desk, not
+ * their data. The load is total: a malformed row reads field-by-field back to
+ * the defaults rather than throwing, because losing the dial must never cost
+ * someone the ability to start a session.
+ */
+const CYCLE_CONFIG_KEY = 'cycleConfig';
+
+export async function loadCycleConfig(): Promise<CycleConfig> {
+  const row = await db.settings.get(CYCLE_CONFIG_KEY);
+  return parseCycleConfig(row?.value);
+}
+
+export async function saveCycleConfig(config: CycleConfig): Promise<void> {
+  await db.settings.put({ key: CYCLE_CONFIG_KEY, value: serializeCycleConfig(config) });
 }
 
 // The settings KEY keeps its original spelling: it names a row that already

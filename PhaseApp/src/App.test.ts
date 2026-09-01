@@ -81,11 +81,14 @@ describe('desktop entry-point routing', () => {
       insetTitleBar: false,
       openAssistant: vi.fn(async () => true),
       onOpenSettings: () => () => {},
+      onOpenToday: () => () => {},
       getLaunchAtLogin: async () => (available ? false : null),
       setLaunchAtLogin: async () => (available ? true : null),
       publishFocusStatus: () => {},
       onFocusRequest: () => () => {},
-      setOverlayEnabled: () => {},
+      setPillPrefs: () => {},
+      setShelfPrefs: () => {},
+      notifyFocus: () => {},
     };
   }
 
@@ -119,11 +122,14 @@ describe('desktop entry-point routing', () => {
           throw new Error('shell unavailable');
         },
         onOpenSettings: () => () => {},
+        onOpenToday: () => () => {},
         getLaunchAtLogin: async () => false,
         setLaunchAtLogin: async () => true,
         publishFocusStatus: () => {},
         onFocusRequest: () => () => {},
-        setOverlayEnabled: () => {},
+        notifyFocus: () => {},
+        setPillPrefs: () => {},
+        setShelfPrefs: () => {},
       };
       const openEmbedded = vi.fn();
       openAssistantForEnvironment(desktop, openEmbedded);

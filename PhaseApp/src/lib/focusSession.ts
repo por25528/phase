@@ -61,6 +61,35 @@ export interface ActiveFocusSession {
    * Absent until the return is observed — a lid still shut has no answer yet.
    */
   awayMs?: number;
+  /**
+   * Pomodoro structure, present only on a session started as one. A calm
+   * session never carries it, and every draft written before the field existed
+   * reads as calm — the safe, backwards-compatible reading, and the reason
+   * this is one optional field rather than a second kind of session.
+   *
+   * The four durations are FROZEN here at start rather than read from Settings
+   * at each boundary: a dial turned mid-session would retime an interval
+   * already under way, and the minutes already worked would be measured
+   * against a length they were never run at.
+   *
+   * The three break fields describe THIS break and are spent by `resumeFocusSession`,
+   * exactly as `autoBreak`/`awayMs` are. `breakStartedMs` is absent on a manual
+   * break — the user choosing to stop is not a timed interval — which is what
+   * lets `focusCycle.ts` tell the two apart with no extra flag.
+   */
+  cycle?: {
+    workMin: number;
+    breakMin: number;
+    longBreakMin: number;
+    longEvery: number;
+    /** Work intervals finished so far. */
+    completed: number;
+    /** When the cycle's own work-end flip started this break. Absent on a manual break. */
+    breakStartedMs?: number;
+    breakKind?: 'short' | 'long';
+    /** The break-end notice has already been sent; there is no second one. */
+    breakNotified?: true;
+  };
 }
 
 /**
@@ -122,6 +151,15 @@ export function resumeFocusSession(session: ActiveFocusSession, nowMs: number): 
   // Both fields describe THIS break and nothing else, so resuming spends them.
   // Leaving them on the draft would have the next manual break inherit an
   // explanation about an absence that ended a session-stretch ago.
+  //
+  // A cycle's break bookkeeping is spent for the same reason and by the same
+  // destructuring: the interval count survives the break, the break itself
+  // does not — and a stale `breakNotified` would silence the notice for a
+  // break that has not happened yet.
+  if (rest.cycle) {
+    const { breakStartedMs: _s, breakKind: _k, breakNotified: _n, ...cycle } = rest.cycle;
+    return { ...rest, cycle, activeSinceMs: nowMs, phase: 'active' };
+  }
   return { ...rest, activeSinceMs: nowMs, phase: 'active' };
 }
 
@@ -289,6 +327,41 @@ function validExpected(raw: unknown): raw is ExpectedTime {
   return false;
 }
 
+function isFinitePositive(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * The stored cycle, or undefined.
+ *
+ * Undefined is the ONLY failure mode, and that asymmetry is the point:
+ * losing structure must never cost the user their session, so a cycle that
+ * will not parse reads as a calm session rather than as no session at all —
+ * the same reading every draft written before the field existed gets.
+ */
+function parseCycle(raw: unknown): ActiveFocusSession['cycle'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const c = raw as Record<string, unknown>;
+  if (!isFinitePositive(c.workMin)) return undefined;
+  if (!isFinitePositive(c.breakMin)) return undefined;
+  if (!isFinitePositive(c.longBreakMin)) return undefined;
+  if (!isFinitePositive(c.longEvery)) return undefined;
+  if (!isFiniteNonNegative(c.completed)) return undefined;
+  if (c.breakStartedMs !== undefined && !isFiniteNonNegative(c.breakStartedMs)) return undefined;
+  if (c.breakKind !== undefined && c.breakKind !== 'short' && c.breakKind !== 'long') return undefined;
+  if (c.breakNotified !== undefined && c.breakNotified !== true) return undefined;
+  return {
+    workMin: c.workMin,
+    breakMin: c.breakMin,
+    longBreakMin: c.longBreakMin,
+    longEvery: c.longEvery,
+    completed: c.completed,
+    ...(c.breakStartedMs === undefined ? {} : { breakStartedMs: c.breakStartedMs }),
+    ...(c.breakKind === undefined ? {} : { breakKind: c.breakKind as 'short' | 'long' }),
+    ...(c.breakNotified === undefined ? {} : { breakNotified: true as const }),
+  };
+}
+
 /**
  * A persisted draft, or null. Total: any malformed shape — hand-edited storage,
  * a draft written by a future build, plain corruption — reads as "no session"
@@ -316,6 +389,8 @@ export function parseActiveFocusSession(raw: unknown): ActiveFocusSession | null
   if (!validExpected(s.expected)) return null;
   if (s.proposedMinutes !== undefined && !isFiniteNonNegative(s.proposedMinutes)) return null;
 
+  const cycle = parseCycle(s.cycle);
+
   return {
     id: s.id,
     ref: s.ref,
@@ -338,5 +413,6 @@ export function parseActiveFocusSession(raw: unknown): ActiveFocusSession | null
     // someone the session it was attached to.
     ...(s.autoBreak === true ? { autoBreak: true as const } : {}),
     ...(s.autoBreak === true && isFiniteNonNegative(s.awayMs) ? { awayMs: s.awayMs } : {}),
+    ...(cycle === undefined ? {} : { cycle }),
   };
 }

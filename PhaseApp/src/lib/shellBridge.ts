@@ -1,4 +1,6 @@
 import type { FocusStatusSnapshot } from './focusStatus';
+import type { PillPrefs } from './pillPrefs';
+import type { ShelfPrefs } from './shelfPrefs';
 
 /**
  * The renderer-side wrapper around the preload bridge for the desktop shell —
@@ -28,6 +30,8 @@ export interface PhaseShellBridge {
   openAssistant(): Promise<boolean>;
   /** Subscribe to the shell asking for the settings surface. Returns unsubscribe. */
   onOpenSettings(fn: () => void): () => void;
+  /** Subscribe to the shell asking for Today — the pill was clicked. Returns unsubscribe. */
+  onOpenToday(fn: () => void): () => void;
   /** Whether the app starts at login. Null in the browser, or on refusal. */
   getLaunchAtLogin(): Promise<boolean | null>;
   /** Set whether the app starts at login. Null in the browser, or on refusal. */
@@ -42,10 +46,24 @@ export interface PhaseShellBridge {
   /** Subscribe to the shell asking for something. Returns unsubscribe. */
   onFocusRequest(fn: (request: unknown) => void): () => void;
   /**
-   * Tell the shell whether the floating pill may show. Fire-and-forget and a
-   * no-op in the browser, for the same reason publishFocusStatus is.
+   * Tell the shell how the floating pill should look — the whole row at once,
+   * so main never has to reconcile nine independent pushes. Fire-and-forget
+   * and a no-op in the browser, for the same reason publishFocusStatus is.
    */
-  setOverlayEnabled(enabled: boolean): void;
+  setPillPrefs(prefs: PillPrefs): void;
+  /**
+   * Tell the shell how the Cmd+Space shelf should be shaped. Only the GEOMETRY
+   * half means anything to main — the content half rides the assistant relay,
+   * because the shelf's renderer does not own the store.
+   */
+  setShelfPrefs(prefs: ShelfPrefs): void;
+  /**
+   * Announce a cycle boundary — the OS notification, raised by main. Same
+   * fire-and-forget contract: the transition is written before this is called,
+   * and a notice that could not be raised is a log line, never a failed
+   * transition.
+   */
+  notifyFocus(notice: { title: string; body: string }): void;
 }
 
 interface ShellPreload {
@@ -53,14 +71,20 @@ interface ShellPreload {
   insetTitleBar?: boolean;
   openAssistant(): Promise<boolean>;
   onOpenSettings(fn: () => void): () => void;
+  /** Absent on any preload built before a click on the pill meant anything. */
+  onOpenToday?(fn: () => void): () => void;
   getLaunchAtLogin(): Promise<boolean | null>;
   setLaunchAtLogin(enabled: boolean): Promise<boolean | null>;
   /** Absent on any preload built before the menu bar learned about sessions. */
   publishFocusStatus?(snapshot: FocusStatusSnapshot): void;
   /** Absent on the same older preloads; the stub's unsubscribe stands in. */
   onFocusRequest?(fn: (request: unknown) => void): () => void;
-  /** Absent on any preload built before the overlay pill existed. */
-  setOverlayEnabled?(enabled: boolean): void;
+  /** Absent on any preload built before the pill had a settings group. */
+  setPillPrefs?(prefs: PillPrefs): void;
+  /** Absent on any preload built before the shelf had a settings group. */
+  setShelfPrefs?(prefs: ShelfPrefs): void;
+  /** Absent on any preload built before the cycle boundary had a voice. */
+  notifyFocus?(notice: { title: string; body: string }): void;
 }
 
 function preloadOf<T>(name: string): T | undefined {
@@ -78,11 +102,14 @@ export function shellBridge(): PhaseShellBridge {
       insetTitleBar: false,
       openAssistant: async () => false,
       onOpenSettings: () => noop,
+      onOpenToday: () => noop,
       getLaunchAtLogin: async () => null,
       setLaunchAtLogin: async () => null,
       publishFocusStatus: noop,
       onFocusRequest: () => noop,
-      setOverlayEnabled: noop,
+      setPillPrefs: noop,
+      setShelfPrefs: noop,
+      notifyFocus: noop,
     };
   }
   return {
@@ -92,6 +119,7 @@ export function shellBridge(): PhaseShellBridge {
     insetTitleBar: preload.insetTitleBar === true,
     openAssistant: () => preload.openAssistant(),
     onOpenSettings: (fn) => preload.onOpenSettings(fn),
+    onOpenToday: (fn) => preload.onOpenToday?.(fn) ?? noop,
     getLaunchAtLogin: () => preload.getLaunchAtLogin(),
     setLaunchAtLogin: (enabled) => preload.setLaunchAtLogin(enabled),
     // Guarded rather than called straight through, for the same reason
@@ -101,6 +129,8 @@ export function shellBridge(): PhaseShellBridge {
     // being there.
     publishFocusStatus: (snapshot) => preload.publishFocusStatus?.(snapshot),
     onFocusRequest: (fn) => preload.onFocusRequest?.(fn) ?? noop,
-    setOverlayEnabled: (enabled) => preload.setOverlayEnabled?.(enabled),
+    setPillPrefs: (prefs) => preload.setPillPrefs?.(prefs),
+    setShelfPrefs: (prefs) => preload.setShelfPrefs?.(prefs),
+    notifyFocus: (notice) => preload.notifyFocus?.(notice),
   };
 }

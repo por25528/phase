@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { shellBridge } from './shellBridge';
+import { DEFAULT_PILL_PREFS } from './pillPrefs';
 
 type AnyWindow = Record<string, unknown>;
 
@@ -19,6 +20,8 @@ describe('shellBridge', () => {
     expect(await bridge.setLaunchAtLogin(true)).toBeNull();
     const unsubscribe = bridge.onOpenSettings(() => {});
     expect(() => unsubscribe()).not.toThrow();
+    // No pill to click in a browser tab, so nothing ever fires.
+    expect(() => bridge.onOpenToday(() => {})()).not.toThrow();
     // No tray and no idle watcher in a browser tab: publishing is a no-op and
     // nothing ever fires, so the caller needs no branch of its own.
     expect(() => bridge.publishFocusStatus(null)).not.toThrow();
@@ -68,12 +71,15 @@ describe('shellBridge', () => {
       'available',
       'getLaunchAtLogin',
       'insetTitleBar',
+      'notifyFocus',
       'onFocusRequest',
       'onOpenSettings',
+      'onOpenToday',
       'openAssistant',
       'publishFocusStatus',
       'setLaunchAtLogin',
-      'setOverlayEnabled',
+      'setPillPrefs',
+      'setShelfPrefs',
     ]);
   });
 
@@ -118,6 +124,8 @@ describe('shellBridge', () => {
     const bridge = shellBridge();
     expect(() => bridge.publishFocusStatus(null)).not.toThrow();
     expect(() => bridge.onFocusRequest(vi.fn())()).not.toThrow();
+    // And one built before a click on the pill meant anything.
+    expect(() => bridge.onOpenToday(vi.fn())()).not.toThrow();
   });
 
   /**
@@ -151,9 +159,11 @@ describe('shellBridge', () => {
    * answer without throwing: the browser, a preload built before the pill
    * existed, and the real thing.
    */
-  it('setOverlayEnabled is a guarded no-op in the browser and forwards on desktop', () => {
+  it('setPillPrefs is a guarded no-op in the browser and forwards on desktop', () => {
+    const row = { ...DEFAULT_PILL_PREFS, size: 'large' as const };
+
     delete (window as unknown as AnyWindow).phaseShell;
-    expect(() => shellBridge().setOverlayEnabled(true)).not.toThrow();
+    expect(() => shellBridge().setPillPrefs(row)).not.toThrow();
 
     const older = {
       openAssistant: vi.fn(async () => true),
@@ -162,12 +172,40 @@ describe('shellBridge', () => {
       setLaunchAtLogin: vi.fn(async () => null),
     };
     (window as unknown as AnyWindow).phaseShell = older;
-    expect(() => shellBridge().setOverlayEnabled(true)).not.toThrow();
+    expect(() => shellBridge().setPillPrefs(row)).not.toThrow();
 
-    const setOverlayEnabled = vi.fn();
-    (window as unknown as AnyWindow).phaseShell = { ...older, setOverlayEnabled };
-    shellBridge().setOverlayEnabled(false);
-    expect(setOverlayEnabled).toHaveBeenCalledTimes(1);
-    expect(setOverlayEnabled).toHaveBeenCalledWith(false);
+    const setPillPrefs = vi.fn();
+    (window as unknown as AnyWindow).phaseShell = { ...older, setPillPrefs };
+    shellBridge().setPillPrefs(row);
+    expect(setPillPrefs).toHaveBeenCalledTimes(1);
+    expect(setPillPrefs).toHaveBeenCalledWith(row);
+  });
+
+  /**
+   * A cycle boundary lands in one place and fires the notice from there, with
+   * no branch for which world it is in — so the browser and a preload built
+   * before the notice existed both have to swallow it silently. A notification
+   * is a nicety; the transition it announces has already been written.
+   */
+  it('notifyFocus is a guarded no-op in the browser and forwards on desktop', () => {
+    const notice = { title: 'Time for a break', body: '25 focused minutes down' };
+
+    delete (window as unknown as AnyWindow).phaseShell;
+    expect(() => shellBridge().notifyFocus(notice)).not.toThrow();
+
+    const older = {
+      openAssistant: vi.fn(async () => true),
+      onOpenSettings: vi.fn(() => vi.fn()),
+      getLaunchAtLogin: vi.fn(async () => null),
+      setLaunchAtLogin: vi.fn(async () => null),
+    };
+    (window as unknown as AnyWindow).phaseShell = older;
+    expect(() => shellBridge().notifyFocus(notice)).not.toThrow();
+
+    const notifyFocus = vi.fn();
+    (window as unknown as AnyWindow).phaseShell = { ...older, notifyFocus };
+    shellBridge().notifyFocus(notice);
+    expect(notifyFocus).toHaveBeenCalledTimes(1);
+    expect(notifyFocus).toHaveBeenCalledWith(notice);
   });
 });

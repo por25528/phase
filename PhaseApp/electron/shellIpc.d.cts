@@ -25,6 +25,16 @@ export interface FocusStatus {
   activeSinceMs: number | null;
   accumulatedMs: number;
   title: string;
+  /** Present only on a pomodoro session; durations, never a remaining figure. */
+  cycle?: {
+    workMin: number;
+    breakMin: number;
+    longBreakMin: number;
+    longEvery: number;
+    completed: number;
+    breakStartedMs?: number;
+    breakKind?: 'short' | 'long';
+  };
 }
 
 export interface ShellIpcDeps {
@@ -37,8 +47,12 @@ export interface ShellIpcDeps {
   setLaunchAtLogin(enabled: boolean): boolean | null;
   /** A validated snapshot, or null for "no session". Never a malformed one. */
   onFocusStatus(status: FocusStatus | null): void;
-  /** The Settings toggle for the floating pill, forwarded to the overlay window. */
-  onOverlayEnabled(enabled: boolean): void;
+  /** The pill's settings row, forwarded to the overlay window, which validates it. */
+  onPillPrefs(prefs: Record<string, unknown>): void;
+  /** A validated cycle-boundary notice. Both strings are non-empty and short. */
+  onFocusNotify(notice: { title: string; body: string }): void;
+  /** The shelf's settings row, forwarded to the shelf controller, which validates it. */
+  onShelfPrefs(prefs: Record<string, unknown>): void;
 }
 
 export interface ShellIpc {
@@ -52,6 +66,8 @@ export interface ShellIpc {
   }): void;
   /** Raise the app and ask the main renderer to open settings once it can. */
   openSettings(): void;
+  /** Raise the app on Today — what a click on the floating pill means. */
+  openToday(): void;
   /** Ask the main renderer to act on the running session. False when it is gone. */
   sendFocusRequest(request: unknown): boolean;
 }
@@ -59,5 +75,7 @@ export interface ShellIpc {
 export declare const SHELL_CHANNEL_PREFIX: string;
 export declare const FOCUS_STATUS_CHANNEL: string;
 export declare const FOCUS_REQUEST_CHANNEL: string;
-export declare const OVERLAY_ENABLED_CHANNEL: string;
+export declare const PILL_PREFS_CHANNEL: string;
+export declare const FOCUS_NOTIFY_CHANNEL: string;
+export declare const SHELF_PREFS_CHANNEL: string;
 export declare function createShellIpc(deps: ShellIpcDeps): ShellIpc;

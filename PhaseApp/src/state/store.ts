@@ -12,6 +12,8 @@ import {
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
   loadActiveFocusSession, saveActiveFocusSession,
   loadAssistantAccelerator, saveAssistantAccelerator,
+  loadCycleConfig, saveCycleConfig,
+  loadShelfPrefs, saveShelfPrefs,
   loadStoredTimeLevel, saveStoredTimeLevel,
   loadStoredFocusLevel, saveStoredFocusLevel,
   loadCalendarIds, saveCalendarIds,
@@ -89,6 +91,13 @@ import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
 } from '../lib/assistantAccelerator';
 import { canAddLife, nextLifeOrder } from '../lib/lives';
+import {
+  DEFAULT_SHELF_PREFS, parseShelfPrefs, type ShelfPrefs,
+} from '../lib/shelfPrefs';
+import {
+  DEFAULT_CYCLE_CONFIG, clampCycleConfig, cycleFor,
+  applyCycleBoundary as applyCycleBoundaryTo, type CycleConfig,
+} from '../lib/focusCycle';
 
 /**
  * Write a status onto a node of an already-cloned tree.
@@ -259,6 +268,23 @@ interface UIState {
   /** The assistant's global shortcut — a device preference, like `planMode`. */
   assistantAccelerator: string;
   /**
+   * The four numbers a session started as a pomodoro is FROZEN with. Turning
+   * the dial never retimes a running interval — `startFocus` copies these onto
+   * the draft at start and the draft is what every countdown reads — so this is
+   * a preference about the next session, not about the one on the clock.
+   */
+  cycleConfig: CycleConfig;
+  /**
+   * How the Cmd+Space shelf is shaped.
+   *
+   * It lives in the store — unlike `pillPrefs`, which does not — because the
+   * shelf renderer does not own the store: everything the shelf must KNOW
+   * rides the relay model built in `AssistantHost`, and that model is built
+   * from state here. The geometry half of the row goes the other way, pushed
+   * straight to main from `App`.
+   */
+  shelfPrefs: ShelfPrefs;
+  /**
    * How long the user last said they had, in the dial's three positions.
    * The number is one you SET, never one Phase predicts: a gap computed
    * from a calendar is wrong exactly when the day goes sideways, which is
@@ -335,6 +361,8 @@ let state: FullState = {
   activeLifeId: 'all',
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
+  cycleConfig: DEFAULT_CYCLE_CONFIG,
+  shelfPrefs: DEFAULT_SHELF_PREFS,
   timeLevel: DEFAULT_TIME_LEVEL,
   focusLevel: DEFAULT_FOCUS_LEVEL,
   assistantShortcut: null,
@@ -772,8 +800,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(),
+    const [appState, pxPerDay, planReview, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel, cycleConfig, shelfPrefs] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(), loadCycleConfig(), loadShelfPrefs(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -848,6 +876,8 @@ export async function initStore(): Promise<void> {
       goalsMode,
       activeFocusSession,
       assistantAccelerator,
+      cycleConfig,
+      shelfPrefs,
       timeLevel: timeLevelFor(storedTimeLevel, todayStr()),
       focusLevel: focusLevelFor(storedFocusLevel, todayStr()),
       hydration: 'ready',
@@ -2338,8 +2368,14 @@ export const actions = {
    * live — switching tasks is complete-then-start, composed by the caller, so
    * an unfinished session can never be silently overwritten — and refused for
    * a ref that resolves to nothing, because a phantom cannot be worked on.
+   *
+   * `cycle` is the MODE, chosen per session at start and never globally: given
+   * one, the draft carries its own frozen copy of the four numbers, and given
+   * none it is exactly the calm session this app has always started. Every
+   * existing two- and three-argument caller therefore keeps its behaviour
+   * without saying so.
    */
-  startFocus(ref: WorkRef, expected: ExpectedTime, nowMs = Date.now()): boolean {
+  startFocus(ref: WorkRef, expected: ExpectedTime, nowMs = Date.now(), cycle?: CycleConfig): boolean {
     if (state.activeFocusSession) return false;
     let title: string;
     let goalTitle: string | undefined;
@@ -2357,11 +2393,36 @@ export const actions = {
         ? state.goals.find((g) => g.id === task.goalId)?.title
         : undefined;
     }
-    setFocusDraft(startFocusSession({
+    const draft = startFocusSession({
       ref, title, ...(goalTitle === undefined ? {} : { goalTitle }),
       expected, focusLevel: state.timeLevel, nowMs,
-    }));
+    });
+    setFocusDraft(cycle ? { ...draft, cycle: cycleFor(cycle) } : draft);
     return true;
+  },
+
+  /**
+   * Land a cycle boundary that has come due, and say which one it was.
+   *
+   * The armed timeout in `App.tsx` is the only caller, and it is armed with
+   * `nextBoundaryDelayMs`, so this is normally a transition that is already
+   * owed. It is still TOTAL — no draft, a calm draft, a boundary not yet due
+   * all answer `'none'` and write nothing — because a timeout that fires late
+   * (a machine asleep across the boundary, a reload mid-interval) must land
+   * the transition retroactively rather than be a special case, and the lib
+   * flips at the TRUE boundary, so away time is never banked as work.
+   *
+   * The returned event is what the caller turns into a notification. It is
+   * returned rather than raised here because the store is platform-free:
+   * every shell bridge lives in `App.tsx`.
+   */
+  applyCycleBoundary(nowMs = Date.now()): 'work-ended' | 'break-ended' | 'none' {
+    const draft = state.activeFocusSession;
+    if (!draft || !draft.cycle) return 'none';
+    const landed = applyCycleBoundaryTo(draft, nowMs);
+    if (!landed) return 'none';
+    setFocusDraft(landed.session);
+    return landed.event;
   },
 
   pauseFocus(nowMs = Date.now()): boolean {
@@ -2572,6 +2633,35 @@ export const actions = {
     set({ assistantAccelerator: next });
     ifOwner(() => saveAssistantAccelerator(next));
     return true;
+  },
+
+  /**
+   * Turn the pomodoro dial. Clamping lives HERE rather than in the four
+   * steppers, so a row hand-edited on disk and a number typed into Settings
+   * meet the same ranges — and so the UI can stay four plain number fields.
+   *
+   * It changes nothing about a session already running: the draft carries its
+   * own frozen copy, which is what stops a length being edited out from under
+   * an interval already half spent.
+   */
+  setCycleConfig(config: CycleConfig): void {
+    const next = clampCycleConfig(config);
+    set({ cycleConfig: next });
+    ifOwner(() => saveCycleConfig(next));
+  },
+
+  /**
+   * Reshape the shelf. Validated through the row's own parser rather than
+   * trusted, for the same reason `setCycleConfig` clamps: one rule for a value
+   * typed into Settings and a value that came off disk.
+   *
+   * The geometry half reaches main from `App`, which watches this field by
+   * reference — the shelf's own window is not something the store may touch.
+   */
+  setShelfPrefs(prefs: ShelfPrefs): void {
+    const next = parseShelfPrefs(JSON.stringify(prefs));
+    set({ shelfPrefs: next });
+    ifOwner(() => saveShelfPrefs(next));
   },
 
   /** Ephemeral registration status from the desktop shell. Never persisted. */

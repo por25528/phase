@@ -15,6 +15,7 @@ function ready(over: Partial<Extract<AssistantSnapshot, { status: 'ready' }>> = 
     timeLevel: 'medium',
     focusLevel: 'medium',
     theme: 'light',
+    shelf: { density: 'comfortable', sections: { alternatives: true, dials: true } },
     ...over,
   };
 }
@@ -38,6 +39,23 @@ describe('useAssistantSendoff', () => {
     vi.useRealTimers();
   });
 
+  it('passes the pomodoro mode straight through, remembering nothing about it', () => {
+    const onStart = vi.fn();
+    const { result } = renderHook(() => useAssistantSendoff({
+      snapshot: ready(),
+      reducedMotion: false,
+      resetKey: 0,
+      onStart,
+      onClose: vi.fn(),
+    }));
+
+    act(() => { result.current.start(REF, 'pomodoro'); });
+
+    expect(onStart).toHaveBeenCalledWith(REF, 'pomodoro');
+    // Drain the pending timeout this armed; the suite refuses a leaked timer.
+    act(() => vi.advanceTimersByTime(5000));
+  });
+
   it('two same-tick start calls invoke onStart once and enter pending', () => {
     const onStart = vi.fn();
     const onClose = vi.fn();
@@ -55,7 +73,9 @@ describe('useAssistantSendoff', () => {
       result.current.start(REF);
     });
     expect(onStart).toHaveBeenCalledTimes(1);
-    expect(onStart).toHaveBeenCalledWith(REF);
+    // No mode: the plain start is the calm session, and the argument is
+    // absent rather than defaulted, so the host's own branch sees `undefined`.
+    expect(onStart).toHaveBeenCalledWith(REF, undefined);
     expect(result.current.stage).toBe('pending');
     expect(result.current.pending).toBe(true);
     act(() => vi.advanceTimersByTime(5000));

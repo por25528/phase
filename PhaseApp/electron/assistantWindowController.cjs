@@ -2,7 +2,9 @@
 // blur-hide, renderer recovery, and disposal. All Electron access flows
 // through injected capabilities so every ordering rule is unit-testable.
 
-const { assistantShelfBounds, assistantWindowOptions } = require('./assistantWindow.cjs')
+const {
+  assistantShelfBounds, assistantWindowOptions, normalizeShelfGeometry,
+} = require('./assistantWindow.cjs')
 
 // The only live-window helper: a destroyed handle is no handle at all, so
 // every public verb talks to a window only while it can still answer.
@@ -28,13 +30,29 @@ function createAssistantWindowController(deps) {
   let ready = false
   let pendingShow = false
   let disposed = false
+  /**
+   * The width and placement the NEXT show will use.
+   *
+   * Held rather than applied, and that is the whole rule: a panel that resized
+   * under the cursor while it was open reads as a glitch, not as a preference
+   * taking effect. `positionWindow` already runs immediately before every
+   * reveal, so holding it costs nothing and buys the guarantee.
+   */
+  let geometry = normalizeShelfGeometry(undefined)
 
   // Bounds are calculated immediately before every visible reveal, from the
   // pointer's current display, so a summoned shelf is never offscreen.
   function positionWindow(win) {
     const pointer = getCursorScreenPoint()
     const display = getDisplayNearestPoint(pointer)
-    win.setBounds(assistantShelfBounds(display.workArea), false)
+    const bounds = assistantShelfBounds(display.workArea, geometry)
+    // The window is born with min and max width pinned to ONE number — that is
+    // what makes it unresizable — so the limits have to move with the width or
+    // the bounds below are silently clamped back to the width it was created
+    // at, and the preference looks like it did nothing.
+    win.setMinimumSize(bounds.width, bounds.height)
+    win.setMaximumSize(bounds.width, bounds.height)
+    win.setBounds(bounds, false)
   }
 
   function reveal(win) {
@@ -143,6 +161,14 @@ function createAssistantWindowController(deps) {
     position() {
       const win = buildWindow()
       if (win) positionWindow(win)
+    },
+    /**
+     * Adopt a new width and placement, applied on the NEXT show. Total: a
+     * malformed geometry is today's shelf, because a shelf that could not be
+     * placed must still come up.
+     */
+    setShelfGeometry(raw) {
+      geometry = normalizeShelfGeometry(raw)
     },
     showAndFocus() {
       const win = buildWindow()

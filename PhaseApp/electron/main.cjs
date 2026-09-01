@@ -4,7 +4,7 @@
 // a prewarmed read-only panel behind a controller, and the menu bar plus
 // login-item access sit behind the validated shell bridge. main.cjs is the
 // only module that may know BrowserWindow, screen, Tray, Menu, and nativeImage.
-const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage, nativeTheme, powerMonitor } = require('electron')
+const { app, BrowserWindow, shell, safeStorage, ipcMain, globalShortcut, screen, Tray, Menu, nativeImage, nativeTheme, powerMonitor, Notification } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -178,7 +178,10 @@ const lifecycle = createAppLifecycle({
     ipcMain.removeHandler('phase-sync:write-state')
     ipcMain.removeHandler('phase-sync:request-journal')
     ipcMain.removeHandler('phase-updates:check')
-    ipcMain.removeAllListeners('phase-overlay:open-phase')
+    ipcMain.removeAllListeners('phase-overlay:drag-start')
+    ipcMain.removeAllListeners('phase-overlay:drag-to')
+    ipcMain.removeAllListeners('phase-overlay:drag-end')
+    ipcMain.removeAllListeners('phase-overlay:open-today')
     assistantController = null
     menuBar = null
     overlay = null
@@ -271,7 +274,22 @@ const shellIpc = createShellIpc({
     }
   },
   onFocusStatus: publishFocusStatus,
-  onOverlayEnabled: (enabled) => overlay?.setEnabled(enabled),
+  onPillPrefs: (prefs) => overlay?.setPrefs(prefs),
+  // Only the GEOMETRY half means anything here; the content half rides the
+  // assistant relay, which is built from store state in the renderer. It lands
+  // on the NEXT show, so nothing about a shelf already on screen moves.
+  onShelfPrefs: (prefs) => assistantController?.setShelfGeometry(prefs),
+  // A notification is a nicety, exactly as the tray and the pill are: the
+  // boundary it announces is already written, so a Notification Centre that
+  // refuses (permission withheld, no such API on this platform) costs one log
+  // line and the session carries on.
+  onFocusNotify: (notice) => {
+    try {
+      new Notification({ title: notice.title, body: notice.body }).show()
+    } catch (error) {
+      console.error('[phase-shell] notification unavailable', error)
+    }
+  },
 })
 
 // The agent bridge: a Unix socket in userData is the only door into the app
@@ -593,15 +611,37 @@ app.whenReady().then(() => {
     readPosition: readOverlayPosition,
     writePosition: writeOverlayPosition,
     now: () => Date.now(),
+    isSystemDark: () => nativeTheme.shouldUseDarkColors,
     setTimer: (fn, ms) => { const id = setTimeout(fn, ms); return () => clearTimeout(id) },
     logError: (...args) => console.error(...args),
   })
   overlay.create()
 
-  // The pill's one verb. Sender-validated against the overlay's own page —
-  // the same exact-id discipline shellIpc applies to the main window.
-  ipcMain.on('phase-overlay:open-phase', (event) => {
-    if (overlay?.isSender(event.sender.id)) openPhase()
+  // `system` is the one pill theme that can change with nobody touching
+  // Phase. The window is created once and thereafter hidden and shown rather
+  // than reloaded, so without this a pill set to follow the OS would keep
+  // whichever palette was true the moment it came up.
+  nativeTheme.on('updated', () => overlay?.repaint())
+
+  // The pill's four verbs, every one sender-validated against the overlay's
+  // own page — the same exact-id discipline shellIpc applies to the main
+  // window. Three of them are the hand-rolled drag: the page reports screen
+  // points and the window arithmetic lives in overlayWindow.cjs.
+  ipcMain.on('phase-overlay:drag-start', (event, point) => {
+    if (overlay?.isSender(event.sender.id)) overlay.dragStart(point)
+  })
+  ipcMain.on('phase-overlay:drag-to', (event, point) => {
+    if (overlay?.isSender(event.sender.id)) overlay.dragTo(point)
+  })
+  ipcMain.on('phase-overlay:drag-end', (event) => {
+    if (overlay?.isSender(event.sender.id)) overlay.dragEnd()
+  })
+  // A click on the pill: raise the app, then ask the renderer for Today once
+  // it can hear — `openToday` owns the did-finish-load wait, exactly as
+  // `openSettings` does.
+  ipcMain.on('phase-overlay:open-today', (event) => {
+    if (!overlay?.isSender(event.sender.id)) return
+    shellIpc.openToday()
   })
 
   // After the tray, so a status arriving in the same tick has somewhere to

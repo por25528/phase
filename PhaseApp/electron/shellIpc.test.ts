@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi } from 'vitest';
 
 const nativeRequire = createRequire(import.meta.url);
-const { createShellIpc, SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL } =
-  nativeRequire('./shellIpc.cjs') as typeof import('./shellIpc.cjs');
+const {
+  createShellIpc, SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL,
+  FOCUS_NOTIFY_CHANNEL, SHELF_PREFS_CHANNEL,
+} = nativeRequire('./shellIpc.cjs') as typeof import('./shellIpc.cjs');
 
 type Listener = (event: { sender: { id: number } }, payload?: unknown) => unknown;
 
@@ -49,7 +51,9 @@ function shell() {
   const getLaunchAtLogin = vi.fn();
   const setLaunchAtLogin = vi.fn();
   const onFocusStatus = vi.fn();
-  const onOverlayEnabled = vi.fn();
+  const onPillPrefs = vi.fn();
+  const onFocusNotify = vi.fn();
+  const onShelfPrefs = vi.fn();
   const ipcMain = fakeIpcMain();
   const ipc = createShellIpc({
     getMainWindow: () => main,
@@ -58,12 +62,14 @@ function shell() {
     getLaunchAtLogin,
     setLaunchAtLogin,
     onFocusStatus,
-    onOverlayEnabled,
+    onPillPrefs,
+    onFocusNotify,
+    onShelfPrefs,
   });
   ipc.register(ipcMain);
   return {
     main, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, onOverlayEnabled, ipcMain, ipc,
+    onFocusStatus, onPillPrefs, onFocusNotify, onShelfPrefs, ipcMain, ipc,
   };
 }
 
@@ -72,9 +78,10 @@ describe('channel surface', () => {
     expect(SHELL_CHANNEL_PREFIX).toBe('phase-shell');
   });
 
-  it('names the two focus channels under the same fixed prefix', () => {
+  it('names the three focus channels under the same fixed prefix', () => {
     expect(FOCUS_STATUS_CHANNEL).toBe('phase-shell:focus-status');
     expect(FOCUS_REQUEST_CHANNEL).toBe('phase-shell:focus-request');
+    expect(FOCUS_NOTIFY_CHANNEL).toBe('phase-shell:focus-notify');
   });
 
   it('register installs exactly the three invoke handlers and the two listeners', () => {
@@ -85,16 +92,19 @@ describe('channel surface', () => {
       'phase-shell:get-launch-at-login',
       'phase-shell:set-launch-at-login',
     ]);
-    // Both are sends and not invokes: nothing answers either, and neither a
-    // transition nor a preference must wait on a tray or a pill.
-    expect(ipcMain.on).toHaveBeenCalledTimes(2);
+    // All three are sends and not invokes: nothing answers any of them, and
+    // neither a transition, a preference nor a notice must wait on a tray, a
+    // pill or Notification Centre.
+    expect(ipcMain.on).toHaveBeenCalledTimes(4);
     expect(ipcMain.listenerChannels()).toEqual([
       'phase-shell:focus-status',
-      'phase-shell:overlay-enabled',
+      'phase-shell:pill-prefs',
+      'phase-shell:focus-notify',
+      'phase-shell:shelf-prefs',
     ]);
   });
 
-  it('dispose removes all three handlers and both listeners', () => {
+  it('dispose removes all three handlers and every listener', () => {
     const { ipcMain, ipc } = shell();
     ipc.dispose(ipcMain);
     expect(ipcMain.removeHandler).toHaveBeenCalledTimes(3);
@@ -156,6 +166,41 @@ describe('focus-status', () => {
     expect(onFocusStatus).toHaveBeenCalledWith(snapshot);
   });
 
+  const cycle = {
+    workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4,
+    completed: 1, breakStartedMs: 1_700_000_000_000, breakKind: 'short' as const,
+  };
+
+  it('carries a well-formed cycle through, and keeps only its declared fields', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    ipcMain.send('phase-shell:focus-status', MAIN_ID, {
+      ...snapshot, cycle: { ...cycle, breakNotified: true },
+    });
+    expect(onFocusStatus).toHaveBeenCalledWith({ ...snapshot, cycle });
+  });
+
+  /**
+   * The asymmetry that matters at this seam: a cycle that will not validate
+   * drops the FIELD, never the snapshot. A running session must not vanish
+   * from the menu bar because one number came across odd.
+   */
+  it('drops a malformed cycle and keeps the session', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    for (const bad of [
+      'twenty five',
+      { ...cycle, workMin: 0 },
+      { ...cycle, breakMin: 'five' },
+      { ...cycle, longEvery: Number.NaN },
+      { ...cycle, completed: -1 },
+      { ...cycle, breakKind: 'medium' },
+      { ...cycle, breakStartedMs: 'now' },
+    ]) {
+      onFocusStatus.mockClear();
+      ipcMain.send('phase-shell:focus-status', MAIN_ID, { ...snapshot, cycle: bad });
+      expect(onFocusStatus).toHaveBeenCalledWith(snapshot);
+    }
+  });
+
   it('accepts a break, whose active stretch is null', () => {
     const { ipcMain, onFocusStatus } = shell();
     const paused = { ...snapshot, phase: 'break' as const, activeSinceMs: null };
@@ -189,7 +234,9 @@ describe('sendFocusRequest', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     expect(gone.sendFocusRequest({ type: 'finish' })).toBe(false);
   });
@@ -263,7 +310,9 @@ describe('live main window', () => {
       getLaunchAtLogin,
       setLaunchAtLogin: vi.fn(() => true),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(ipcMain);
     expect(ipcMain.invoke('phase-shell:open-assistant', MAIN_ID)).toBe(false);
@@ -295,7 +344,9 @@ describe('openSettings', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(ipcMain);
     ipc.openSettings();
@@ -316,10 +367,98 @@ describe('openSettings', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(fakeIpcMain());
     ipc.openSettings();
+    expect(showMainWindow).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The pill's click, and it MIRRORS `openSettings` rather than resembling it:
+ * both raise the app and then ask the renderer for a view, and both have to
+ * survive a renderer that is still loading its first frame. Two near-copies
+ * are how one of them quietly loses the `did-finish-load` wait.
+ */
+describe('shelf-prefs', () => {
+  it('forwards the row from the main window to onShelfPrefs', () => {
+    const { ipcMain, onShelfPrefs } = shell();
+    ipcMain.send('phase-shell:shelf-prefs', MAIN_ID, { width: 'wide', position: 'top-center' });
+    expect(onShelfPrefs).toHaveBeenCalledWith({ width: 'wide', position: 'top-center' });
+  });
+
+  // Same division of labour as the pill's row: this seam owes the sender check
+  // and the shape, and the window's own module owns what a width is.
+  it('refuses a foreign sender and anything that is not a plain object', () => {
+    const { ipcMain, onShelfPrefs } = shell();
+    ipcMain.send('phase-shell:shelf-prefs', STRANGER_ID, { width: 'wide' });
+    for (const bad of [null, undefined, 'wide', 42, [{ width: 'wide' }]]) {
+      ipcMain.send('phase-shell:shelf-prefs', MAIN_ID, bad);
+    }
+    expect(onShelfPrefs).not.toHaveBeenCalled();
+  });
+
+  it('registers and disposes the channel symmetrically', () => {
+    const { ipcMain, ipc } = shell();
+    expect(ipcMain.listenerChannels()).toContain('phase-shell:shelf-prefs');
+    ipc.dispose(ipcMain);
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:shelf-prefs');
+    expect(ipcMain.listenerChannels()).toEqual([]);
+  });
+});
+
+describe('openToday', () => {
+  it('raises the main window first, then sends immediately when the frame is loaded', () => {
+    const { main, showMainWindow, ipc } = shell();
+    ipc.openToday();
+    expect(showMainWindow).toHaveBeenCalledTimes(1);
+    expect(main.webContents.send).toHaveBeenCalledWith('phase-shell:open-today');
+    expect(main.webContents.once).not.toHaveBeenCalled();
+    expect(showMainWindow.mock.invocationCallOrder[0])
+      .toBeLessThan(main.webContents.send.mock.invocationCallOrder[0]);
+  });
+
+  it('sends once after did-finish-load when the main frame is still loading', () => {
+    const main = fakeWindow(MAIN_ID, { loading: true });
+    const ipcMain = fakeIpcMain();
+    const ipc = createShellIpc({
+      getMainWindow: () => main,
+      openAssistant: vi.fn(),
+      showMainWindow: vi.fn(),
+      getLaunchAtLogin: vi.fn(),
+      setLaunchAtLogin: vi.fn(),
+      onFocusStatus: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
+    });
+    ipc.register(ipcMain);
+    ipc.openToday();
+    expect(main.webContents.send).not.toHaveBeenCalled();
+    const finishLoad = main.webContents.once.mock.calls[0][1];
+    finishLoad();
+    expect(main.webContents.send).toHaveBeenCalledWith('phase-shell:open-today');
+    expect(main.webContents.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('still raises the window when no live main exists', () => {
+    const showMainWindow = vi.fn();
+    const ipc = createShellIpc({
+      getMainWindow: () => null,
+      openAssistant: vi.fn(),
+      showMainWindow,
+      getLaunchAtLogin: vi.fn(),
+      setLaunchAtLogin: vi.fn(),
+      onFocusStatus: vi.fn(),
+      onPillPrefs: vi.fn(),
+      onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
+    });
+    ipc.register(fakeIpcMain());
+    ipc.openToday();
     expect(showMainWindow).toHaveBeenCalledTimes(1);
   });
 });
@@ -330,28 +469,80 @@ describe('openSettings', () => {
  * silent "function is not a function" in the renderer rather than a build
  * error. agentIpc.test.ts guards the agent door the same way.
  */
-describe('overlay-enabled', () => {
-  it('forwards a boolean from the main window to onOverlayEnabled', () => {
-    const { ipcMain, onOverlayEnabled } = shell();
-    ipcMain.send('phase-shell:overlay-enabled', MAIN_ID, false);
-    expect(onOverlayEnabled).toHaveBeenCalledTimes(1);
-    expect(onOverlayEnabled).toHaveBeenCalledWith(false);
+describe('pill-prefs', () => {
+  it('forwards the row from the main window to onPillPrefs', () => {
+    const { ipcMain, onPillPrefs } = shell();
+    ipcMain.send('phase-shell:pill-prefs', MAIN_ID, { show: false, size: 'large' });
+    expect(onPillPrefs).toHaveBeenCalledTimes(1);
+    expect(onPillPrefs).toHaveBeenCalledWith({ show: false, size: 'large' });
   });
 
-  it('refuses a non-boolean and a foreign sender', () => {
-    const { ipcMain, onOverlayEnabled } = shell();
-    ipcMain.send('phase-shell:overlay-enabled', MAIN_ID, 'yes');
-    expect(onOverlayEnabled).not.toHaveBeenCalled();
-    ipcMain.send('phase-shell:overlay-enabled', STRANGER_ID, true);
-    expect(onOverlayEnabled).not.toHaveBeenCalled();
+  /**
+   * The nine settings are validated on the FAR side, by the pill's own
+   * `normalizePillPrefs` — the module that knows what a size or a corner is,
+   * and the one place that decision should live. What this seam owes is the
+   * sender check and the shape.
+   */
+  it('refuses a foreign sender and anything that is not a plain object', () => {
+    const { ipcMain, onPillPrefs } = shell();
+    ipcMain.send('phase-shell:pill-prefs', STRANGER_ID, { show: true });
+    for (const bad of [null, undefined, 'yes', 42, [{ show: true }]]) {
+      ipcMain.send('phase-shell:pill-prefs', MAIN_ID, bad);
+    }
+    expect(onPillPrefs).not.toHaveBeenCalled();
   });
 
   it('registers and disposes the channel symmetrically', () => {
     const { ipcMain, ipc } = shell();
-    expect(ipcMain.on).toHaveBeenCalledWith('phase-shell:overlay-enabled', expect.any(Function));
-    expect(ipcMain.listenerChannels()).toContain('phase-shell:overlay-enabled');
+    expect(ipcMain.on).toHaveBeenCalledWith('phase-shell:pill-prefs', expect.any(Function));
+    expect(ipcMain.listenerChannels()).toContain('phase-shell:pill-prefs');
     ipc.dispose(ipcMain);
-    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:overlay-enabled');
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:pill-prefs');
+    expect(ipcMain.listenerChannels()).toEqual([]);
+  });
+});
+
+describe('focus-notify', () => {
+  const notice = { title: 'Time for a break', body: '25 focused minutes down' };
+
+  it('forwards a well-formed notice from the main window', () => {
+    const { ipcMain, onFocusNotify } = shell();
+    ipcMain.send('phase-shell:focus-notify', MAIN_ID, notice);
+    expect(onFocusNotify).toHaveBeenCalledTimes(1);
+    expect(onFocusNotify).toHaveBeenCalledWith(notice);
+  });
+
+  it('refuses a foreign sender', () => {
+    const { ipcMain, onFocusNotify } = shell();
+    ipcMain.send('phase-shell:focus-notify', STRANGER_ID, notice);
+    expect(onFocusNotify).not.toHaveBeenCalled();
+  });
+
+  // A notice is text the OS puts on screen over every other window, so the
+  // seam is where its shape is settled: empty is not a notification, and a
+  // paragraph is not a title.
+  it('refuses a payload that is not two short non-empty strings', () => {
+    const { ipcMain, onFocusNotify } = shell();
+    for (const bad of [
+      null,
+      'a string',
+      { title: 'Time for a break' },
+      { title: '', body: 'x' },
+      { title: 'x', body: '' },
+      { title: 'x', body: 42 },
+      { title: 'x'.repeat(201), body: 'x' },
+      { title: 'x', body: 'x'.repeat(201) },
+    ]) {
+      ipcMain.send('phase-shell:focus-notify', MAIN_ID, bad);
+    }
+    expect(onFocusNotify).not.toHaveBeenCalled();
+  });
+
+  it('registers and disposes the channel symmetrically', () => {
+    const { ipcMain, ipc } = shell();
+    expect(ipcMain.listenerChannels()).toContain('phase-shell:focus-notify');
+    ipc.dispose(ipcMain);
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:focus-notify');
     expect(ipcMain.listenerChannels()).toEqual([]);
   });
 });
@@ -365,8 +556,11 @@ describe('preload drift', () => {
       `${SHELL_CHANNEL_PREFIX}:open-settings`,
       `${SHELL_CHANNEL_PREFIX}:get-launch-at-login`,
       `${SHELL_CHANNEL_PREFIX}:set-launch-at-login`,
+      `${SHELL_CHANNEL_PREFIX}:open-today`,
       FOCUS_STATUS_CHANNEL,
       FOCUS_REQUEST_CHANNEL,
+      FOCUS_NOTIFY_CHANNEL,
+      SHELF_PREFS_CHANNEL,
     ]) {
       expect(preload).toContain(channel);
     }
