@@ -42,6 +42,40 @@ function isFiniteNonNegative(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+function isFinitePositive(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * The optional pomodoro structure on a snapshot, or undefined.
+ *
+ * The asymmetry with `normalizeFocusStatus` is deliberate and load-bearing: a
+ * malformed cycle drops the FIELD, never the snapshot. A running session must
+ * not vanish from the menu bar because one number came across odd — the worst
+ * a bad cycle can do is cost the countdown, and an elapsed figure is still a
+ * true thing to show.
+ */
+function normalizeCycle(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  if (!isFinitePositive(raw.workMin)) return undefined;
+  if (!isFinitePositive(raw.breakMin)) return undefined;
+  if (!isFinitePositive(raw.longBreakMin)) return undefined;
+  if (!isFinitePositive(raw.longEvery)) return undefined;
+  if (!isFiniteNonNegative(raw.completed)) return undefined;
+  if (raw.breakStartedMs !== undefined && !isFiniteNonNegative(raw.breakStartedMs)) return undefined;
+  if (raw.breakKind !== undefined && raw.breakKind !== 'short' && raw.breakKind !== 'long') return undefined;
+  const cycle = {
+    workMin: raw.workMin,
+    breakMin: raw.breakMin,
+    longBreakMin: raw.longBreakMin,
+    longEvery: raw.longEvery,
+    completed: raw.completed,
+  };
+  if (raw.breakStartedMs !== undefined) cycle.breakStartedMs = raw.breakStartedMs;
+  if (raw.breakKind !== undefined) cycle.breakKind = raw.breakKind;
+  return cycle;
+}
+
 /**
  * The renderer's payload, reduced to a snapshot or to nothing.
  *
@@ -58,12 +92,15 @@ function normalizeFocusStatus(raw) {
   if (raw.activeSinceMs !== null && !isFiniteNonNegative(raw.activeSinceMs)) return undefined;
   if (!isFiniteNonNegative(raw.accumulatedMs)) return undefined;
   if (typeof raw.title !== 'string') return undefined;
-  return {
+  const snapshot = {
     phase: raw.phase,
     activeSinceMs: raw.activeSinceMs,
     accumulatedMs: raw.accumulatedMs,
     title: raw.title,
   };
+  const cycle = normalizeCycle(raw.cycle);
+  if (cycle !== undefined) snapshot.cycle = cycle;
+  return snapshot;
 }
 
 function createShellIpc(deps) {

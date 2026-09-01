@@ -163,6 +163,41 @@ describe('focus-status', () => {
     expect(onFocusStatus).toHaveBeenCalledWith(snapshot);
   });
 
+  const cycle = {
+    workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4,
+    completed: 1, breakStartedMs: 1_700_000_000_000, breakKind: 'short' as const,
+  };
+
+  it('carries a well-formed cycle through, and keeps only its declared fields', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    ipcMain.send('phase-shell:focus-status', MAIN_ID, {
+      ...snapshot, cycle: { ...cycle, breakNotified: true },
+    });
+    expect(onFocusStatus).toHaveBeenCalledWith({ ...snapshot, cycle });
+  });
+
+  /**
+   * The asymmetry that matters at this seam: a cycle that will not validate
+   * drops the FIELD, never the snapshot. A running session must not vanish
+   * from the menu bar because one number came across odd.
+   */
+  it('drops a malformed cycle and keeps the session', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    for (const bad of [
+      'twenty five',
+      { ...cycle, workMin: 0 },
+      { ...cycle, breakMin: 'five' },
+      { ...cycle, longEvery: Number.NaN },
+      { ...cycle, completed: -1 },
+      { ...cycle, breakKind: 'medium' },
+      { ...cycle, breakStartedMs: 'now' },
+    ]) {
+      onFocusStatus.mockClear();
+      ipcMain.send('phase-shell:focus-status', MAIN_ID, { ...snapshot, cycle: bad });
+      expect(onFocusStatus).toHaveBeenCalledWith(snapshot);
+    }
+  });
+
   it('accepts a break, whose active stretch is null', () => {
     const { ipcMain, onFocusStatus } = shell();
     const paused = { ...snapshot, phase: 'break' as const, activeSinceMs: null };

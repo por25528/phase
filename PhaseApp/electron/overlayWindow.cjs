@@ -32,6 +32,56 @@ function elapsedMs(status, nowMs) {
 }
 
 /**
+ * The countdown's own arithmetic, over the SAME banked numbers the elapsed
+ * figure reads — structurally `workRemainingMs`/`breakRemainingMs` from
+ * `src/lib/focusCycle.ts`, mirrored rather than imported for the reason every
+ * shape at this seam is. Null means there is nothing to count down.
+ */
+function workRemainingMs(status, nowMs) {
+  const c = status.cycle;
+  if (!c || status.phase !== 'active') return null;
+  const progress = Math.max(0, elapsedMs(status, nowMs) - c.completed * c.workMin * MS_PER_MIN);
+  return Math.max(0, c.workMin * MS_PER_MIN - progress);
+}
+
+/**
+ * Milliseconds left in a break the CYCLE started, or null.
+ *
+ * Null covers a manual break: one the user pressed carries no `breakStartedMs`,
+ * and a timer over that would be the app deciding when they come back. A break
+ * already spent returns a non-positive number, which reads as "say it in
+ * words" — work never auto-starts, and a countdown pinned at zero would read
+ * as a stuck clock.
+ */
+function breakRemainingMs(status, nowMs) {
+  const c = status.cycle;
+  if (!c || status.phase !== 'break' || c.breakStartedMs === undefined) return null;
+  const len = (c.breakKind === 'long' ? c.longBreakMin : c.breakMin) * MS_PER_MIN;
+  return c.breakStartedMs + len - nowMs;
+}
+
+/**
+ * CEIL, where the elapsed figure floors. A stopwatch may not claim a minute
+ * nobody worked; a countdown reading 17m with 17m30s left throws away a minute
+ * that is still there.
+ */
+function remainingMin(ms) {
+  return Math.max(0, Math.ceil(ms / MS_PER_MIN));
+}
+
+/**
+ * Whether this status paints a figure that CHANGES — the only thing a repaint
+ * is for. An active session always does; a break does only while the cycle is
+ * still counting it down.
+ */
+function isCountdown(status, nowMs) {
+  if (!status) return false;
+  if (status.phase === 'active') return true;
+  const brk = breakRemainingMs(status, nowMs);
+  return brk !== null && brk > 0;
+}
+
+/**
  * What the pill shows, and when it shows nothing. Null means HIDDEN — outside
  * a session the pill's absence is the whole signal, and `confirming` belongs
  * to the shelf, exactly as trayTitle rules for the menu bar.
@@ -39,9 +89,15 @@ function elapsedMs(status, nowMs) {
 function pillModel(status, nowMs) {
   if (!status) return null;
   if (status.phase === 'active') {
+    const left = workRemainingMs(status, nowMs);
+    if (left !== null) return { glyph: '▶', text: `${remainingMin(left)}m left · ${status.title}` };
     return { glyph: '▶', text: `${Math.floor(elapsedMs(status, nowMs) / MS_PER_MIN)}m · ${status.title}` };
   }
-  if (status.phase === 'break') return { glyph: '⏸', text: 'on break' };
+  if (status.phase === 'break') {
+    const brk = breakRemainingMs(status, nowMs);
+    if (brk !== null && brk > 0) return { glyph: '⏸', text: `break · ${remainingMin(brk)}m` };
+    return { glyph: '⏸', text: 'on break' };
+  }
   return null;
 }
 
@@ -111,7 +167,9 @@ function createOverlayWindow(deps) {
     }
     w.webContents.send('phase-overlay:model', model);
     w.showInactive();
-    if (status && status.phase === 'active') {
+    // Re-armed for anything that COUNTS — an elapsed figure, a work interval
+    // running down, a break still being timed — and for nothing that does not.
+    if (isCountdown(status, now())) {
       stopRepaint = setTimer(() => {
         stopRepaint = null;
         paint();

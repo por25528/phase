@@ -35,6 +35,16 @@ export interface MenuBarFocusStatus {
   activeSinceMs: number | null;
   accumulatedMs: number;
   title: string;
+  /** Present only on a pomodoro session; durations, never a remaining figure. */
+  cycle?: {
+    workMin: number;
+    breakMin: number;
+    longBreakMin: number;
+    longEvery: number;
+    completed: number;
+    breakStartedMs?: number;
+    breakKind?: 'short' | 'long';
+  };
 }
 
 export interface MenuBarDeps {

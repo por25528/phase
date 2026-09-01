@@ -35,6 +35,30 @@ describe('pillModel', () => {
       .toEqual({ glyph: '⏸', text: 'on break' });
   });
 
+  it('counts a cycle work interval down, rounding up, and keeps the title', () => {
+    const cycle = { workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4, completed: 0 };
+    expect(pillModel(active({ cycle }), T0))
+      .toEqual({ glyph: '▶', text: '25m left · Problem set 4' });
+    // 17m30s left is still a seventeenth minute somebody has: round it UP.
+    expect(pillModel(active({ cycle }), T0 + 7 * MIN + 30_000))
+      .toEqual({ glyph: '▶', text: '18m left · Problem set 4' });
+    expect(pillModel(active({ cycle: { ...cycle, completed: 2 }, accumulatedMs: 55 * MIN }), T0))
+      .toEqual({ glyph: '▶', text: '20m left · Problem set 4' });
+  });
+
+  it('counts a timed break down and falls back to the plain words when it runs out', () => {
+    const cycle = { workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4, completed: 1 };
+    const onBreak = active({
+      phase: 'break', activeSinceMs: null, accumulatedMs: 25 * MIN,
+      cycle: { ...cycle, breakStartedMs: T0, breakKind: 'short' as const },
+    });
+    expect(pillModel(onBreak, T0 + 2 * MIN)).toEqual({ glyph: '⏸', text: 'break · 3m' });
+    expect(pillModel(onBreak, T0 + 5 * MIN)).toEqual({ glyph: '⏸', text: 'on break' });
+    // A manual break carries no start, so there is nothing to count.
+    expect(pillModel(active({ phase: 'break', activeSinceMs: null, cycle }), T0))
+      .toEqual({ glyph: '⏸', text: 'on break' });
+  });
+
   it('is null while confirming and null with no session', () => {
     expect(pillModel(active({ phase: 'confirming', activeSinceMs: null }), T0)).toBeNull();
     expect(pillModel(null, T0)).toBeNull();
@@ -162,6 +186,28 @@ describe('createOverlayWindow', () => {
     const { overlay, timers, lastSent } = overlayWindow();
     overlay.create();
     overlay.setFocusStatus(active({ phase: 'break', activeSinceMs: null }));
+    expect(lastSent()).toEqual(['phase-overlay:model', { glyph: '⏸', text: 'on break' }]);
+    expect(timers.filter((t) => !t.cancelled)).toHaveLength(0);
+  });
+
+  /**
+   * A timed break has a figure that changes, so it keeps the clock the calm
+   * break has no use for; once the break runs out the readout is words again,
+   * and words need no timer.
+   */
+  it('repaints through a timed break and stops once it has run out', () => {
+    const { overlay, advance, fire, lastSent, timers } = overlayWindow();
+    const cycle = { workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4, completed: 1 };
+    overlay.create();
+    overlay.setFocusStatus(active({
+      phase: 'break', activeSinceMs: null,
+      cycle: { ...cycle, breakStartedMs: T0, breakKind: 'short' },
+    }));
+    expect(lastSent()).toEqual(['phase-overlay:model', { glyph: '⏸', text: 'break · 5m' }]);
+    expect(timers.filter((t) => !t.cancelled)).toHaveLength(1);
+
+    advance(5 * MIN);
+    fire();
     expect(lastSent()).toEqual(['phase-overlay:model', { glyph: '⏸', text: 'on break' }]);
     expect(timers.filter((t) => !t.cancelled)).toHaveLength(0);
   });
