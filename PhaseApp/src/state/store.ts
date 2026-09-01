@@ -91,7 +91,8 @@ import {
 } from '../lib/assistantAccelerator';
 import { canAddLife, nextLifeOrder } from '../lib/lives';
 import {
-  DEFAULT_CYCLE_CONFIG, clampCycleConfig, type CycleConfig,
+  DEFAULT_CYCLE_CONFIG, clampCycleConfig, cycleFor,
+  applyCycleBoundary as applyCycleBoundaryTo, type CycleConfig,
 } from '../lib/focusCycle';
 
 /**
@@ -2351,8 +2352,14 @@ export const actions = {
    * live — switching tasks is complete-then-start, composed by the caller, so
    * an unfinished session can never be silently overwritten — and refused for
    * a ref that resolves to nothing, because a phantom cannot be worked on.
+   *
+   * `cycle` is the MODE, chosen per session at start and never globally: given
+   * one, the draft carries its own frozen copy of the four numbers, and given
+   * none it is exactly the calm session this app has always started. Every
+   * existing two- and three-argument caller therefore keeps its behaviour
+   * without saying so.
    */
-  startFocus(ref: WorkRef, expected: ExpectedTime, nowMs = Date.now()): boolean {
+  startFocus(ref: WorkRef, expected: ExpectedTime, nowMs = Date.now(), cycle?: CycleConfig): boolean {
     if (state.activeFocusSession) return false;
     let title: string;
     let goalTitle: string | undefined;
@@ -2370,11 +2377,36 @@ export const actions = {
         ? state.goals.find((g) => g.id === task.goalId)?.title
         : undefined;
     }
-    setFocusDraft(startFocusSession({
+    const draft = startFocusSession({
       ref, title, ...(goalTitle === undefined ? {} : { goalTitle }),
       expected, focusLevel: state.timeLevel, nowMs,
-    }));
+    });
+    setFocusDraft(cycle ? { ...draft, cycle: cycleFor(cycle) } : draft);
     return true;
+  },
+
+  /**
+   * Land a cycle boundary that has come due, and say which one it was.
+   *
+   * The armed timeout in `App.tsx` is the only caller, and it is armed with
+   * `nextBoundaryDelayMs`, so this is normally a transition that is already
+   * owed. It is still TOTAL — no draft, a calm draft, a boundary not yet due
+   * all answer `'none'` and write nothing — because a timeout that fires late
+   * (a machine asleep across the boundary, a reload mid-interval) must land
+   * the transition retroactively rather than be a special case, and the lib
+   * flips at the TRUE boundary, so away time is never banked as work.
+   *
+   * The returned event is what the caller turns into a notification. It is
+   * returned rather than raised here because the store is platform-free:
+   * every shell bridge lives in `App.tsx`.
+   */
+  applyCycleBoundary(nowMs = Date.now()): 'work-ended' | 'break-ended' | 'none' {
+    const draft = state.activeFocusSession;
+    if (!draft || !draft.cycle) return 'none';
+    const landed = applyCycleBoundaryTo(draft, nowMs);
+    if (!landed) return 'none';
+    setFocusDraft(landed.session);
+    return landed.event;
   },
 
   pauseFocus(nowMs = Date.now()): boolean {

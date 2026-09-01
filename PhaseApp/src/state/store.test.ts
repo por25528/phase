@@ -5237,6 +5237,75 @@ describe('focus sessions', () => {
   });
 });
 
+describe('a session that carries a cycle', () => {
+  beforeEach(() => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+  });
+
+  const MIN = 60_000;
+  const t0 = 1_700_000_000_000;
+  const cycleGoal: Goal = {
+    id: 'g1', title: 'Algorithms',
+    nodes: [{ id: 'n1', title: 'Problem set 4' }],
+  };
+  const ref = { kind: 'step' as const, id: 'n1', goalId: 'g1' };
+  const starter = { kind: 'starter' as const, minutes: 30 as const };
+  const config = { workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 };
+
+  async function cycleStore() {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({
+      goals: [cycleGoal], habits: [], tasks: [], sessions: [], lives: [],
+    });
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveActiveFocusSession.mockClear();
+    return store;
+  }
+
+  it('starting without a config leaves the session calm', async () => {
+    const { actions, getState } = await cycleStore();
+    expect(actions.startFocus(ref, starter, t0)).toBe(true);
+    expect(getState().activeFocusSession?.cycle).toBeUndefined();
+  });
+
+  it('starting with a config freezes the four numbers onto the draft', async () => {
+    const { actions, getState } = await cycleStore();
+    expect(actions.startFocus(ref, starter, t0, config)).toBe(true);
+    expect(getState().activeFocusSession?.cycle)
+      .toEqual({ ...config, completed: 0 });
+  });
+
+  it('lands the work-end boundary once, then the break-end, then nothing', async () => {
+    const { actions, getState } = await cycleStore();
+    actions.startFocus(ref, starter, t0, config);
+    dbMocks.saveActiveFocusSession.mockClear();
+
+    expect(actions.applyCycleBoundary(t0 + 25 * MIN)).toBe('work-ended');
+    expect(getState().activeFocusSession?.phase).toBe('break');
+    expect(getState().activeFocusSession?.cycle?.completed).toBe(1);
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(1);
+
+    expect(actions.applyCycleBoundary(t0 + 30 * MIN)).toBe('break-ended');
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(2);
+
+    // The session waits on break for a resume; there is no second notice.
+    expect(actions.applyCycleBoundary(t0 + 90 * MIN)).toBe('none');
+    expect(dbMocks.saveActiveFocusSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('a calm session and no session at all are both none, and write nothing', async () => {
+    const { actions } = await cycleStore();
+    expect(actions.applyCycleBoundary(t0)).toBe('none');
+
+    actions.startFocus(ref, starter, t0);
+    dbMocks.saveActiveFocusSession.mockClear();
+
+    expect(actions.applyCycleBoundary(t0 + 90 * MIN)).toBe('none');
+    expect(dbMocks.saveActiveFocusSession).not.toHaveBeenCalled();
+  });
+});
+
 describe('assistant shortcut preference', () => {
   beforeEach(() => {
     tabLockMocks.acquireTabLock.mockResolvedValue(true);
