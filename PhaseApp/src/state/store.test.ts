@@ -6,6 +6,7 @@ import { resolveScope } from '../lib/lifeScope';
 import type { Asset, BusyBlock, CalendarCache, Goal, GoalNode, PlanReview, Session, Task } from '../db/types';
 import { makeBlock } from '../lib/blocks';
 import type { ActiveFocusSession } from '../lib/focusSession';
+import type { ShelfPrefs } from '../lib/shelfPrefs';
 import type {
   CalendarConnectResult, CalendarFetchResult, CalendarStatus, CalendarSummary,
 } from '../lib/calendarBridge';
@@ -48,6 +49,11 @@ const dbMocks = vi.hoisted(() => ({
   saveCalendarIds: vi.fn(async () => {}),
   loadCycleConfig: vi.fn(async () => ({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 })),
   saveCycleConfig: vi.fn(async () => {}),
+  loadShelfPrefs: vi.fn(async (): Promise<ShelfPrefs> => ({
+    width: 'default', density: 'comfortable', position: 'center',
+    sections: { alternatives: true, dials: true },
+  })),
+  saveShelfPrefs: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -5393,6 +5399,52 @@ describe('the pomodoro dial', () => {
 
     expect(store.getState().cycleConfig.workMin).toBe(30);
     expect(dbMocks.saveCycleConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe('the shelf preferences', () => {
+  beforeEach(() => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+  });
+
+  it('hydrates the stored row', async () => {
+    dbMocks.loadShelfPrefs.mockResolvedValueOnce({
+      width: 'wide', density: 'compact', position: 'top-center',
+      sections: { alternatives: false, dials: true },
+    });
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().shelfPrefs).toMatchObject({ width: 'wide', density: 'compact' });
+  });
+
+  it('saves a change through the owner gate', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveShelfPrefs.mockClear();
+
+    const next = {
+      width: 'narrow' as const, density: 'compact' as const, position: 'center' as const,
+      sections: { alternatives: true, dials: false },
+    };
+    store.actions.setShelfPrefs(next);
+
+    expect(store.getState().shelfPrefs).toEqual(next);
+    expect(dbMocks.saveShelfPrefs).toHaveBeenCalledWith(next);
+  });
+
+  it('a non-owning tab changes the shelf but writes nothing', async () => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(false);
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveShelfPrefs.mockClear();
+
+    store.actions.setShelfPrefs({
+      width: 'wide', density: 'comfortable', position: 'center',
+      sections: { alternatives: true, dials: true },
+    });
+
+    expect(store.getState().shelfPrefs.width).toBe('wide');
+    expect(dbMocks.saveShelfPrefs).not.toHaveBeenCalled();
   });
 });
 

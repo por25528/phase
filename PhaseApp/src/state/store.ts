@@ -13,6 +13,7 @@ import {
   loadActiveFocusSession, saveActiveFocusSession,
   loadAssistantAccelerator, saveAssistantAccelerator,
   loadCycleConfig, saveCycleConfig,
+  loadShelfPrefs, saveShelfPrefs,
   loadStoredTimeLevel, saveStoredTimeLevel,
   loadStoredFocusLevel, saveStoredFocusLevel,
   loadCalendarIds, saveCalendarIds,
@@ -90,6 +91,9 @@ import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
 } from '../lib/assistantAccelerator';
 import { canAddLife, nextLifeOrder } from '../lib/lives';
+import {
+  DEFAULT_SHELF_PREFS, parseShelfPrefs, type ShelfPrefs,
+} from '../lib/shelfPrefs';
 import {
   DEFAULT_CYCLE_CONFIG, clampCycleConfig, cycleFor,
   applyCycleBoundary as applyCycleBoundaryTo, type CycleConfig,
@@ -271,6 +275,16 @@ interface UIState {
    */
   cycleConfig: CycleConfig;
   /**
+   * How the Cmd+Space shelf is shaped.
+   *
+   * It lives in the store — unlike `pillPrefs`, which does not — because the
+   * shelf renderer does not own the store: everything the shelf must KNOW
+   * rides the relay model built in `AssistantHost`, and that model is built
+   * from state here. The geometry half of the row goes the other way, pushed
+   * straight to main from `App`.
+   */
+  shelfPrefs: ShelfPrefs;
+  /**
    * How long the user last said they had, in the dial's three positions.
    * The number is one you SET, never one Phase predicts: a gap computed
    * from a calendar is wrong exactly when the day goes sideways, which is
@@ -348,6 +362,7 @@ let state: FullState = {
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
   cycleConfig: DEFAULT_CYCLE_CONFIG,
+  shelfPrefs: DEFAULT_SHELF_PREFS,
   timeLevel: DEFAULT_TIME_LEVEL,
   focusLevel: DEFAULT_FOCUS_LEVEL,
   assistantShortcut: null,
@@ -785,8 +800,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel, cycleConfig] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(), loadCycleConfig(),
+    const [appState, pxPerDay, planReview, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel, cycleConfig, shelfPrefs] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(), loadCycleConfig(), loadShelfPrefs(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -862,6 +877,7 @@ export async function initStore(): Promise<void> {
       activeFocusSession,
       assistantAccelerator,
       cycleConfig,
+      shelfPrefs,
       timeLevel: timeLevelFor(storedTimeLevel, todayStr()),
       focusLevel: focusLevelFor(storedFocusLevel, todayStr()),
       hydration: 'ready',
@@ -2632,6 +2648,20 @@ export const actions = {
     const next = clampCycleConfig(config);
     set({ cycleConfig: next });
     ifOwner(() => saveCycleConfig(next));
+  },
+
+  /**
+   * Reshape the shelf. Validated through the row's own parser rather than
+   * trusted, for the same reason `setCycleConfig` clamps: one rule for a value
+   * typed into Settings and a value that came off disk.
+   *
+   * The geometry half reaches main from `App`, which watches this field by
+   * reference — the shelf's own window is not something the store may touch.
+   */
+  setShelfPrefs(prefs: ShelfPrefs): void {
+    const next = parseShelfPrefs(JSON.stringify(prefs));
+    set({ shelfPrefs: next });
+    ifOwner(() => saveShelfPrefs(next));
   },
 
   /** Ephemeral registration status from the desktop shell. Never persisted. */

@@ -20,6 +20,9 @@ import {
   parsePillPrefs, serializePillPrefs, type PillPrefs,
 } from '../lib/pillPrefs';
 import {
+  parseShelfPrefs, serializeShelfPrefs, type ShelfPrefs,
+} from '../lib/shelfPrefs';
+import {
   parseStoredTimeLevel, serializeTimeLevel, type StoredTimeLevel,
 } from '../lib/timeLens';
 import {
@@ -255,6 +258,25 @@ export async function loadPillPrefs(): Promise<PillPrefs> {
 
 export async function savePillPrefs(prefs: PillPrefs): Promise<void> {
   await db.settings.put({ key: PILL_PREFS_KEY, value: serializePillPrefs(prefs) });
+}
+
+/**
+ * How the Cmd+Space shelf is shaped. A device preference beside the pill's,
+ * out of backup export/import for the same reason, and total on read.
+ *
+ * Unlike the pill's row there is no legacy toggle to absorb: nothing about the
+ * shelf was configurable before this, so absent simply means the defaults —
+ * which are the shelf as it already looked.
+ */
+const SHELF_PREFS_KEY = 'shelfPrefs';
+
+export async function loadShelfPrefs(): Promise<ShelfPrefs> {
+  const row = await db.settings.get(SHELF_PREFS_KEY);
+  return parseShelfPrefs(row?.value);
+}
+
+export async function saveShelfPrefs(prefs: ShelfPrefs): Promise<void> {
+  await db.settings.put({ key: SHELF_PREFS_KEY, value: serializeShelfPrefs(prefs) });
 }
 
 /**

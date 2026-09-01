@@ -48,6 +48,8 @@ const dbMocks = vi.hoisted(() => ({
   saveStoredFocusLevel: vi.fn(async () => {}),
   loadCycleConfig: vi.fn(async () => ({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 })),
   saveCycleConfig: vi.fn(async () => {}),
+  loadShelfPrefs: vi.fn(async () => ({ width: 'default', density: 'comfortable', position: 'center', sections: { alternatives: true, dials: true } })),
+  saveShelfPrefs: vi.fn(async () => {}),
 }));
 vi.mock('../db/db', () => dbMocks);
 vi.mock('../lib/tabLock', () => ({ acquireTabLock: vi.fn(async () => true) }));

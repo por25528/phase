@@ -12,6 +12,7 @@ import {
   loadCalendarIds, saveCalendarIds,
   loadCycleConfig, saveCycleConfig,
   loadPillPrefs, savePillPrefs,
+  loadShelfPrefs, saveShelfPrefs,
   downloadBackupText, BLOB_URL_REVOKE_MS,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
@@ -557,6 +558,31 @@ describe('the pill preferences', () => {
     await db.settings.put({ key: 'pillPrefs', value: '{"size":"enormous","corner":"bottom-right"}' });
 
     expect(await loadPillPrefs()).toMatchObject({ size: 'medium', corner: 'bottom-right' });
+  });
+});
+
+describe('the shelf preferences', () => {
+  it('defaults on a fresh database and round-trips a whole row', async () => {
+    expect(await loadShelfPrefs()).toEqual({
+      width: 'default', density: 'comfortable', position: 'center',
+      sections: { alternatives: true, dials: true },
+    });
+
+    await saveShelfPrefs({
+      width: 'wide', density: 'compact', position: 'top-center',
+      sections: { alternatives: false, dials: true },
+    });
+
+    expect(await loadShelfPrefs()).toEqual({
+      width: 'wide', density: 'compact', position: 'top-center',
+      sections: { alternatives: false, dials: true },
+    });
+  });
+
+  it('reads a malformed row field-by-field back to the defaults', async () => {
+    await db.settings.put({ key: 'shelfPrefs', value: '{"width":"enormous","position":"top-center"}' });
+
+    expect(await loadShelfPrefs()).toMatchObject({ width: 'default', position: 'top-center' });
   });
 });
 
