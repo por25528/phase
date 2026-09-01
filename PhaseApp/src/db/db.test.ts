@@ -11,6 +11,7 @@ import {
   loadPlanMode, savePlanMode,
   loadCalendarIds, saveCalendarIds,
   loadCycleConfig, saveCycleConfig,
+  loadPillPrefs, savePillPrefs,
   downloadBackupText, BLOB_URL_REVOKE_MS,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
@@ -514,6 +515,48 @@ describe('the pomodoro dial', () => {
     await db.settings.put({ key: 'cycleConfig', value: 'not json at all' });
 
     expect(await loadCycleConfig()).toEqual({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 });
+  });
+});
+
+describe('the pill preferences', () => {
+  it('defaults on a fresh database and round-trips a whole row', async () => {
+    expect(await loadPillPrefs()).toMatchObject({ show: true, size: 'medium', corner: 'top-right' });
+
+    await savePillPrefs({
+      show: true, content: 'elapsed', showTitle: false, showGlyph: true,
+      size: 'large', opacity: 0.7, theme: 'light', corner: 'bottom-left', clickThrough: true,
+    });
+
+    expect(await loadPillPrefs()).toEqual({
+      show: true, content: 'elapsed', showTitle: false, showGlyph: true,
+      size: 'large', opacity: 0.7, theme: 'light', corner: 'bottom-left', clickThrough: true,
+    });
+  });
+
+  /**
+   * The one boolean this group replaces already exists in every database, and
+   * a group that silently re-showed a pill somebody turned off would be the
+   * worst first impression it could make. The legacy row is READ and left in
+   * place: it is one boolean, and a delete-write to tidy it buys nothing.
+   */
+  it('seeds show from the legacy showOverlay row when it has none of its own', async () => {
+    await db.settings.put({ key: 'showOverlay', value: 'false' });
+
+    expect(await loadPillPrefs()).toMatchObject({ show: false, size: 'medium' });
+    expect(await db.settings.get('showOverlay')).toBeDefined();
+  });
+
+  it('lets its own row win once there is one', async () => {
+    await db.settings.put({ key: 'showOverlay', value: 'false' });
+    await savePillPrefs({ ...(await loadPillPrefs()), show: true });
+
+    expect((await loadPillPrefs()).show).toBe(true);
+  });
+
+  it('reads a malformed row field-by-field back to the defaults', async () => {
+    await db.settings.put({ key: 'pillPrefs', value: '{"size":"enormous","corner":"bottom-right"}' });
+
+    expect(await loadPillPrefs()).toMatchObject({ size: 'medium', corner: 'bottom-right' });
   });
 });
 

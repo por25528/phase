@@ -17,6 +17,9 @@ import {
   parseCycleConfig, serializeCycleConfig, type CycleConfig,
 } from '../lib/focusCycle';
 import {
+  parsePillPrefs, serializePillPrefs, type PillPrefs,
+} from '../lib/pillPrefs';
+import {
   parseStoredTimeLevel, serializeTimeLevel, type StoredTimeLevel,
 } from '../lib/timeLens';
 import {
@@ -226,6 +229,32 @@ export async function loadShowOverlay(): Promise<boolean> {
 
 export async function saveShowOverlay(value: boolean): Promise<void> {
   await db.settings.put({ key: SHOW_OVERLAY_KEY, value: String(value) });
+}
+
+/**
+ * Everything the floating pill is told about how to look.
+ *
+ * A device preference beside the accelerator, so it stays out of backup
+ * export/import — how the pill looks on this Mac is not the user's data.
+ *
+ * ABSENT is not the same as default here: `'showOverlay'` is one boolean this
+ * group absorbs, and it exists in every database that ever turned the pill
+ * off. A group that silently re-showed a pill somebody had hidden would be the
+ * worst first impression it could make, so an absent row seeds `show` from the
+ * legacy one. The legacy row is READ and LEFT: it is one boolean, and a
+ * delete-write to tidy it up buys nothing and can fail.
+ */
+const PILL_PREFS_KEY = 'pillPrefs';
+
+export async function loadPillPrefs(): Promise<PillPrefs> {
+  const row = await db.settings.get(PILL_PREFS_KEY);
+  if (row?.value !== undefined) return parsePillPrefs(row.value);
+  const legacy = await db.settings.get(SHOW_OVERLAY_KEY);
+  return { ...parsePillPrefs(undefined), show: legacy?.value !== 'false' };
+}
+
+export async function savePillPrefs(prefs: PillPrefs): Promise<void> {
+  await db.settings.put({ key: PILL_PREFS_KEY, value: serializePillPrefs(prefs) });
 }
 
 /**
