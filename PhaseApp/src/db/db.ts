@@ -14,6 +14,9 @@ import {
 } from '../lib/focusSession';
 import { parseStoredAccelerator } from '../lib/assistantAccelerator';
 import {
+  parseCycleConfig, serializeCycleConfig, type CycleConfig,
+} from '../lib/focusCycle';
+import {
   parseStoredTimeLevel, serializeTimeLevel, type StoredTimeLevel,
 } from '../lib/timeLens';
 import {
@@ -223,6 +226,25 @@ export async function loadShowOverlay(): Promise<boolean> {
 
 export async function saveShowOverlay(value: boolean): Promise<void> {
   await db.settings.put({ key: SHOW_OVERLAY_KEY, value: String(value) });
+}
+
+/**
+ * The four numbers a pomodoro session is started with. A device preference
+ * beside the accelerator and the pill's own switch, so it stays out of backup
+ * export/import — the dial describes how this person works at this desk, not
+ * their data. The load is total: a malformed row reads field-by-field back to
+ * the defaults rather than throwing, because losing the dial must never cost
+ * someone the ability to start a session.
+ */
+const CYCLE_CONFIG_KEY = 'cycleConfig';
+
+export async function loadCycleConfig(): Promise<CycleConfig> {
+  const row = await db.settings.get(CYCLE_CONFIG_KEY);
+  return parseCycleConfig(row?.value);
+}
+
+export async function saveCycleConfig(config: CycleConfig): Promise<void> {
+  await db.settings.put({ key: CYCLE_CONFIG_KEY, value: serializeCycleConfig(config) });
 }
 
 // The settings KEY keeps its original spelling: it names a row that already

@@ -46,6 +46,8 @@ const dbMocks = vi.hoisted(() => ({
   saveStoredFocusLevel: vi.fn(async () => {}),
   loadCalendarIds: vi.fn(async () => ['primary']),
   saveCalendarIds: vi.fn(async () => {}),
+  loadCycleConfig: vi.fn(async () => ({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 })),
+  saveCycleConfig: vi.fn(async () => {}),
 }));
 
 vi.mock('../db/db', () => dbMocks);
@@ -5286,6 +5288,42 @@ describe('assistant shortcut preference', () => {
 
     expect(store.getState().assistantShortcut).toEqual(status);
     expect(dbMocks.saveAssistantAccelerator).not.toHaveBeenCalled();
+  });
+});
+
+describe('the pomodoro dial', () => {
+  beforeEach(() => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(true);
+  });
+
+  it('hydrates the stored config', async () => {
+    dbMocks.loadCycleConfig.mockResolvedValueOnce({ workMin: 50, breakMin: 10, longBreakMin: 20, longEvery: 3 });
+    const store = await freshStore();
+    await store.initStore();
+    expect(store.getState().cycleConfig).toEqual({ workMin: 50, breakMin: 10, longBreakMin: 20, longEvery: 3 });
+  });
+
+  it('clamps what it is given and saves through the owner gate', async () => {
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveCycleConfig.mockClear();
+
+    store.actions.setCycleConfig({ workMin: 1, breakMin: 0, longBreakMin: 999, longEvery: 1 });
+
+    expect(store.getState().cycleConfig).toEqual({ workMin: 5, breakMin: 1, longBreakMin: 60, longEvery: 2 });
+    expect(dbMocks.saveCycleConfig).toHaveBeenCalledWith({ workMin: 5, breakMin: 1, longBreakMin: 60, longEvery: 2 });
+  });
+
+  it('a non-owning tab changes the dial but writes nothing', async () => {
+    tabLockMocks.acquireTabLock.mockResolvedValue(false);
+    const store = await freshStore();
+    await store.initStore();
+    dbMocks.saveCycleConfig.mockClear();
+
+    store.actions.setCycleConfig({ workMin: 30, breakMin: 5, longBreakMin: 15, longEvery: 4 });
+
+    expect(store.getState().cycleConfig.workMin).toBe(30);
+    expect(dbMocks.saveCycleConfig).not.toHaveBeenCalled();
   });
 });
 

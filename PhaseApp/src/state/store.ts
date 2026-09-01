@@ -12,6 +12,7 @@ import {
   loadCheckpointMigrationSnapshot, type ImportedBackupState, type AssetImportFailure,
   loadActiveFocusSession, saveActiveFocusSession,
   loadAssistantAccelerator, saveAssistantAccelerator,
+  loadCycleConfig, saveCycleConfig,
   loadStoredTimeLevel, saveStoredTimeLevel,
   loadStoredFocusLevel, saveStoredFocusLevel,
   loadCalendarIds, saveCalendarIds,
@@ -89,6 +90,9 @@ import {
   DEFAULT_ASSISTANT_ACCELERATOR, isValidAccelerator, type ShortcutStatus,
 } from '../lib/assistantAccelerator';
 import { canAddLife, nextLifeOrder } from '../lib/lives';
+import {
+  DEFAULT_CYCLE_CONFIG, clampCycleConfig, type CycleConfig,
+} from '../lib/focusCycle';
 
 /**
  * Write a status onto a node of an already-cloned tree.
@@ -259,6 +263,13 @@ interface UIState {
   /** The assistant's global shortcut — a device preference, like `planMode`. */
   assistantAccelerator: string;
   /**
+   * The four numbers a session started as a pomodoro is FROZEN with. Turning
+   * the dial never retimes a running interval — `startFocus` copies these onto
+   * the draft at start and the draft is what every countdown reads — so this is
+   * a preference about the next session, not about the one on the clock.
+   */
+  cycleConfig: CycleConfig;
+  /**
    * How long the user last said they had, in the dial's three positions.
    * The number is one you SET, never one Phase predicts: a gap computed
    * from a calendar is wrong exactly when the day goes sideways, which is
@@ -335,6 +346,7 @@ let state: FullState = {
   activeLifeId: 'all',
   activeFocusSession: null,
   assistantAccelerator: DEFAULT_ASSISTANT_ACCELERATOR,
+  cycleConfig: DEFAULT_CYCLE_CONFIG,
   timeLevel: DEFAULT_TIME_LEVEL,
   focusLevel: DEFAULT_FOCUS_LEVEL,
   assistantShortcut: null,
@@ -772,8 +784,8 @@ export async function initStore(): Promise<void> {
     if (!owned) set({ secondTab: true });
   });
   try {
-    const [appState, pxPerDay, planReview, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel] = await Promise.all([
-      loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(),
+    const [appState, pxPerDay, planReview, allDayBlocks, sidebarPanels, planMode, goalsMode, activeFocusSession, assistantAccelerator, storedTimeLevel, storedFocusLevel, cycleConfig] = await Promise.all([
+      loadState(), loadScale(), loadPlanReview(), loadAllDayBlocks(), loadSidebarPanels(), loadPlanMode(), loadGoalsMode(), loadActiveFocusSession(), loadAssistantAccelerator(), loadStoredTimeLevel(), loadStoredFocusLevel(), loadCycleConfig(),
     ]);
 
     // One-shot: give every day-committed step and task a real start minute.
@@ -848,6 +860,7 @@ export async function initStore(): Promise<void> {
       goalsMode,
       activeFocusSession,
       assistantAccelerator,
+      cycleConfig,
       timeLevel: timeLevelFor(storedTimeLevel, todayStr()),
       focusLevel: focusLevelFor(storedFocusLevel, todayStr()),
       hydration: 'ready',
@@ -2572,6 +2585,21 @@ export const actions = {
     set({ assistantAccelerator: next });
     ifOwner(() => saveAssistantAccelerator(next));
     return true;
+  },
+
+  /**
+   * Turn the pomodoro dial. Clamping lives HERE rather than in the four
+   * steppers, so a row hand-edited on disk and a number typed into Settings
+   * meet the same ranges — and so the UI can stay four plain number fields.
+   *
+   * It changes nothing about a session already running: the draft carries its
+   * own frozen copy, which is what stops a length being edited out from under
+   * an interval already half spent.
+   */
+  setCycleConfig(config: CycleConfig): void {
+    const next = clampCycleConfig(config);
+    set({ cycleConfig: next });
+    ifOwner(() => saveCycleConfig(next));
   },
 
   /** Ephemeral registration status from the desktop shell. Never persisted. */

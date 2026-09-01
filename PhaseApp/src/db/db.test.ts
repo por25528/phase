@@ -10,6 +10,7 @@ import {
   loadSidebarPanels, saveSidebarPanels, type SidebarPanel,
   loadPlanMode, savePlanMode,
   loadCalendarIds, saveCalendarIds,
+  loadCycleConfig, saveCycleConfig,
   downloadBackupText, BLOB_URL_REVOKE_MS,
 } from './db';
 import type { AppState, Asset, Goal } from './types';
@@ -490,6 +491,29 @@ describe('allDayBlocks', () => {
     expect(await loadAllDayBlocks()).toBe(true);
     await saveAllDayBlocks(false);
     expect(await loadAllDayBlocks()).toBe(false);
+  });
+});
+
+describe('the pomodoro dial', () => {
+  it('defaults on a fresh database and round-trips a set of four numbers', async () => {
+    expect(await loadCycleConfig()).toEqual({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 });
+
+    await saveCycleConfig({ workMin: 50, breakMin: 10, longBreakMin: 20, longEvery: 3 });
+
+    expect(await loadCycleConfig()).toEqual({ workMin: 50, breakMin: 10, longBreakMin: 20, longEvery: 3 });
+  });
+
+  // A row someone hand-edited, or one written by a future build, must still
+  // yield four usable numbers: losing the dial cannot cost you the ability to
+  // start a session.
+  it('reads a malformed row field-by-field back to the defaults', async () => {
+    await db.settings.put({ key: 'cycleConfig', value: '{"workMin":45,"breakMin":"soon"}' });
+
+    expect(await loadCycleConfig()).toEqual({ workMin: 45, breakMin: 5, longBreakMin: 15, longEvery: 4 });
+
+    await db.settings.put({ key: 'cycleConfig', value: 'not json at all' });
+
+    expect(await loadCycleConfig()).toEqual({ workMin: 25, breakMin: 5, longBreakMin: 15, longEvery: 4 });
   });
 });
 
