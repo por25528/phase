@@ -79,6 +79,12 @@ export function SettingsModal({
 
       {/* Desktop only: the row renders nothing in the plain browser. */}
       <LaunchAtLoginSettings />
+
+      <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Floating timer</h3>
+      <p className="text-ui text-muted mb-[12px] leading-[1.5]">
+        A small pill over other apps while a session runs. Drag it anywhere;
+        click it to bring Phase back on Today.
+      </p>
       <OverlaySettings />
 
       {/* Same rule, and the same reason it is HERE: a backup is provider-style
