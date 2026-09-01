@@ -38,6 +38,15 @@ export interface AssistantFocusView {
   autoBreak?: true;
   /** Whole minutes away, once the return was observed. Absent until then. */
   awayMin?: number;
+  /**
+   * Where a pomodoro session is in its cycle. Absent on a calm one, which is
+   * how the surface knows to say nothing about intervals at all.
+   *
+   * Two numbers and not the whole cycle: the shelf states a POSITION, and the
+   * durations are the pill's and the tray's business. What never crosses
+   * cannot become a second opinion about how long an interval is.
+   */
+  cycle?: { completed: number; longEvery: number };
 }
 
 export type AssistantSnapshot =
@@ -77,7 +86,13 @@ export type AssistantSnapshot =
     };
 
 export type AssistantAction =
-  | { type: 'start-focus'; ref: WorkRef }
+  /**
+   * `mode` is the choice made at the START and nowhere else: absent is the
+   * calm session this app has always run, and `'pomodoro'` asks the host to
+   * freeze the settings dial onto the draft. There is no global switch, so
+   * there is nothing here to remember between sessions.
+   */
+  | { type: 'start-focus'; ref: WorkRef; mode?: 'pomodoro' }
   | { type: 'set-time-level'; level: TimeLevel }
   | { type: 'set-focus-level'; level: FocusLevel }
   | { type: 'pause-focus' }

@@ -18,7 +18,8 @@ interface Options {
   snapshot: AssistantSnapshot;
   reducedMotion: boolean;
   resetKey: number;
-  onStart(ref: WorkRef): void;
+  /** `mode` is the per-session choice; absent means the calm session. */
+  onStart(ref: WorkRef, mode?: 'pomodoro'): void;
   onClose(): void;
   /**
    * The send-off began, or was abandoned — fired SYNCHRONOUSLY at the
@@ -103,13 +104,16 @@ export function useAssistantSendoff({
     onCloseRef.current();
   }, [clearTimers, setStage]);
 
-  const start = useCallback((ref: WorkRef) => {
+  const start = useCallback((ref: WorkRef, mode?: 'pomodoro') => {
     if (stageRef.current !== 'idle') return;
     closed.current = false;
     requestedRef.current = ref;
     startSnapshot.current = snapshot;
     setStage('pending');
-    onStartRef.current(ref);
+    // The mode is passed straight through and never remembered: the farewell
+    // waits on the SESSION appearing, and a calm one and a pomodoro on the
+    // same work are indistinguishable to everything below.
+    onStartRef.current(ref, mode);
     timers.current.push(
       setTimeout(() => {
         if (stageRef.current === 'pending' && requestedRef.current === ref) {

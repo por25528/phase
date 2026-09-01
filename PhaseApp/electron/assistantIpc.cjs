@@ -81,6 +81,19 @@ function validAdvice(advice) {
   return advice.alternatives.every(validWork);
 }
 
+/**
+ * Where a pomodoro session is in its cycle — two numbers, or absent for a calm
+ * one. Structurally `AssistantFocusView['cycle']`, hand-kept like everything
+ * else at this seam.
+ */
+function validFocusCycle(cycle) {
+  if (cycle === undefined) return true;
+  return !!cycle
+    && typeof cycle === 'object'
+    && Number.isFinite(cycle.completed) && cycle.completed >= 0
+    && Number.isFinite(cycle.longEvery) && cycle.longEvery > 0;
+}
+
 function validFocus(focus) {
   if (focus === null) return true;
   return !!focus
@@ -91,7 +104,8 @@ function validFocus(focus) {
     && (focus.phase === 'active' || focus.phase === 'break' || focus.phase === 'confirming')
     && boundedMinutes(focus.elapsedMin)
     && validExpected(focus.expected)
-    && (focus.proposedMinutes === undefined || boundedMinutes(focus.proposedMinutes));
+    && (focus.proposedMinutes === undefined || boundedMinutes(focus.proposedMinutes))
+    && validFocusCycle(focus.cycle);
 }
 
 function validNotice(notice) {
@@ -145,7 +159,11 @@ function validSnapshot(snapshot) {
 function validAction(action) {
   if (!action || typeof action !== 'object') return false;
   switch (action.type) {
+    // The mode is the one thing chosen at the start, and it is validated
+    // here rather than let through as an extra field: an unknown mode must
+    // read as calm, never as "whatever the far side meant".
     case 'start-focus':
+      return validRef(action.ref) && (action.mode === undefined || action.mode === 'pomodoro');
     case 'switch-focus':
     // Ends the WORK, not the sitting — the shelf card's checkbox.
     case 'complete-work':

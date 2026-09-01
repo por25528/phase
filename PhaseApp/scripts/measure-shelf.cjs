@@ -71,6 +71,14 @@ const STATES = {
   },
   // Gains the checkbox in this change.
   active: { ...base, activeFocus: focus({ phase: 'active', elapsedMin: 12 }) },
+  // `active` plus the cycle position line, which only a pomodoro session
+  // draws. Its own state because it is the only running session with two
+  // lines of subtitle, and a budget measured without it would come up short
+  // in the state a pomodoro user is in the whole time.
+  pomodoro: {
+    ...base,
+    activeFocus: focus({ phase: 'active', elapsedMin: 12, cycle: { completed: 3, longEvery: 4 } }),
+  },
   // The auto-break, which is `active` plus one line — the away notice, the
   // only sentence on this surface the user did not ask for. Measured as its
   // own state because it is the only break that draws it, and a manual break

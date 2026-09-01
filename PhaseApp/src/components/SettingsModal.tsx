@@ -4,6 +4,7 @@ import { LivesSettings } from '../views/goals/LivesSettings';
 import { AssistantShortcutSettings } from './assistant/AssistantShortcutSettings';
 import { LaunchAtLoginSettings } from './assistant/LaunchAtLoginSettings';
 import { OverlaySettings } from './assistant/OverlaySettings';
+import { FocusSettings } from './FocusSettings';
 import { BackupsSettings } from './BackupsSettings';
 import type { BackupNowResult } from '../state/autoBackup';
 import { CalendarSettings } from './CalendarSettings';
@@ -68,6 +69,14 @@ export function SettingsModal({
           actions.setAssistantAccelerator(next);
         }}
       />
+      <h3 className={`mt-[20px] mb-[6px] ${sectionLabel}`}>Focus</h3>
+      <p className="text-ui text-muted mb-[12px] leading-[1.5]">
+        A session runs calm by default — no countdown, nothing ticking. Start
+        one as a pomodoro instead and it runs these lengths, breaking when the
+        interval is up.
+      </p>
+      <FocusSettings />
+
       {/* Desktop only: the row renders nothing in the plain browser. */}
       <LaunchAtLoginSettings />
       <OverlaySettings />

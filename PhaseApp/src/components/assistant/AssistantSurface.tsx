@@ -673,9 +673,16 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
       onToggle={() => onAction({ type: 'complete-work', ref: focus.ref })}
     />
   ) : null;
-  const subtitle = focus.goalTitle
-    ? <p className={workSubtitleCls(shelf)}>{focus.goalTitle}</p>
-    : null;
+  // The cycle position sits with the subtitle rather than beside the elapsed
+  // figure below: it says WHICH sitting this is, which is the same class of
+  // fact as which project it belongs to, and the readout underneath is about
+  // how far into it you are.
+  const subtitle = (focus.goalTitle || focus.cycle) ? (
+    <div className={workSubtitleCls(shelf)}>
+      {focus.goalTitle && <p>{focus.goalTitle}</p>}
+      {focus.cycle && <p className="tabular-nums">{cyclePositionLine(focus.cycle)}</p>}
+    </div>
+  ) : null;
   const extra = focus.phase === 'confirming' ? (
     <p className="text-body text-ink">
       This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
@@ -798,12 +805,27 @@ function FocusPanel({ focus, alternatives, onAction, shelf, focusLevel }: {
   );
 }
 
+/**
+ * Where a pomodoro is, and which break it is working towards.
+ *
+ * The kind of the NEXT break is derived from the interval now under way
+ * (`completed + 1`) rather than stored, because it is the same arithmetic
+ * `applyCycleBoundary` will do when that interval ends — two copies of one
+ * rule could disagree, and the shelf would promise a long break the session
+ * then does not take.
+ */
+function cyclePositionLine(cycle: { completed: number; longEvery: number }): string {
+  const interval = cycle.completed + 1;
+  const kind = interval % cycle.longEvery === 0 ? 'long' : 'short';
+  return `interval ${interval} · ${kind} break next`;
+}
+
 function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
   shelf: boolean;
   pending: boolean;
   onAction: Props['onAction'];
-  onStart: (ref: RecommendedWork['ref']) => void;
+  onStart: (ref: RecommendedWork['ref'], mode?: 'pomodoro') => void;
 }) {
   const { advice } = snapshot;
 
@@ -877,6 +899,19 @@ function AdvicePanel({ snapshot, shelf, pending, onAction, onStart }: {
                 Park
               </button>
             )}
+            {/* Two starts where there was one: the mode is a choice PER
+                SESSION, and there is no global switch for it to be made
+                somewhere else. Calm keeps the fill — it is what this app has
+                always started, and a pomodoro is the deliberate variant, which
+                is the same hierarchy `dialogFooter` states with position. */}
+            <button
+              type="button"
+              disabled={pending}
+              className={secondaryBtn}
+              onClick={() => onStart(primary.ref, 'pomodoro')}
+            >
+              Start pomodoro
+            </button>
             <button type="button" disabled={pending} className={primaryBtn} onClick={() => onStart(primary.ref)}>
               Start session
             </button>
@@ -914,7 +949,7 @@ export function AssistantSurface({
     snapshot,
     reducedMotion,
     resetKey,
-    onStart: (ref) => onAction({ type: 'start-focus', ref }),
+    onStart: (ref, mode) => onAction({ type: 'start-focus', ref, ...(mode ? { mode } : {}) }),
     onClose: () => onAction({ type: 'close' }),
     onSendoffChange,
   });

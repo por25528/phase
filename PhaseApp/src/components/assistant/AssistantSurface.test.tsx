@@ -1281,6 +1281,55 @@ describe('the rule tags', () => {
   });
 });
 
+describe('choosing the mode at the start', () => {
+  /**
+   * Two affordances where there was one, because the mode is a choice PER
+   * SESSION and there is no global switch to make it somewhere else. Calm
+   * stays the filled primary: it is what this app has always started, and a
+   * pomodoro is the deliberate variant.
+   */
+  it.each(['shelf', 'embedded'] as const)('offers both starts in the %s presentation', (presentation) => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} presentation={presentation} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start pomodoro' }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'start-focus', ref: { kind: 'step', id: 'n1', goalId: 'g1' }, mode: 'pomodoro',
+    });
+  });
+
+  it('leaves the plain Start session calm — no mode at all', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'start-focus', ref: { kind: 'step', id: 'n1', goalId: 'g1' },
+    });
+  });
+
+  it('states where in the cycle a running pomodoro is, and which break is next', () => {
+    render(<AssistantSurface
+      snapshot={ready({ activeFocus: focusView({ cycle: { completed: 0, longEvery: 4 } }) })}
+      onAction={() => {}}
+    />);
+    expect(screen.getByText('interval 1 · short break next')).toBeTruthy();
+  });
+
+  it('names the long break on the interval that earns it', () => {
+    render(<AssistantSurface
+      snapshot={ready({ activeFocus: focusView({ cycle: { completed: 3, longEvery: 4 } }) })}
+      onAction={() => {}}
+    />);
+    expect(screen.getByText('interval 4 · long break next')).toBeTruthy();
+  });
+
+  it('says nothing about cycles on a calm session', () => {
+    render(<AssistantSurface snapshot={ready({ activeFocus: focusView() })} onAction={() => {}} />);
+    expect(screen.queryByText(/interval /)).toBeNull();
+  });
+});
+
 describe('marking the offered work done', () => {
   it('offers a checkbox on the idle card, named for the work', () => {
     render(<AssistantSurface snapshot={ready()} onAction={() => {}} />);

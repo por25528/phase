@@ -37,6 +37,7 @@ const path = require('node:path')
 //
 //   confirming   378.48px
 //   autoBreak    375.48px
+//   pomodoro     370.98px
 //   active       354.48px
 //   sidecar      333.48px
 //   beyondWindow 239.98px
@@ -52,6 +53,14 @@ const path = require('node:path')
 // exactly `active`. It came within 3px of the budget and did not take it, so
 // this number is unchanged — but the margin is now thin enough that the next
 // line added to any running state will move it.
+//
+// Re-measured 2026-09-01 when a session gained an optional cycle. `pomodoro`
+// is a NEW state and not a taller `active`, for the same reason `autoBreak` is
+// one: it is the only running session whose subtitle carries a second line
+// (the cycle position), and a calm session measures exactly `active`. It came
+// in 7.5px under the budget, so this number is unchanged. `sidecar` did NOT
+// move despite the idle panel gaining a second start button: three buttons
+// still fit one row at 620.
 //
 // `confirming` is still the tallest, and still for the reason it always was:
 // it is the only state whose body is a QUESTION under the title rather than a
