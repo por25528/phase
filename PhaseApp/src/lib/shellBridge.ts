@@ -1,4 +1,5 @@
 import type { FocusStatusSnapshot } from './focusStatus';
+import type { PillPrefs } from './pillPrefs';
 
 /**
  * The renderer-side wrapper around the preload bridge for the desktop shell —
@@ -42,10 +43,11 @@ export interface PhaseShellBridge {
   /** Subscribe to the shell asking for something. Returns unsubscribe. */
   onFocusRequest(fn: (request: unknown) => void): () => void;
   /**
-   * Tell the shell whether the floating pill may show. Fire-and-forget and a
-   * no-op in the browser, for the same reason publishFocusStatus is.
+   * Tell the shell how the floating pill should look — the whole row at once,
+   * so main never has to reconcile nine independent pushes. Fire-and-forget
+   * and a no-op in the browser, for the same reason publishFocusStatus is.
    */
-  setOverlayEnabled(enabled: boolean): void;
+  setPillPrefs(prefs: PillPrefs): void;
   /**
    * Announce a cycle boundary — the OS notification, raised by main. Same
    * fire-and-forget contract: the transition is written before this is called,
@@ -66,8 +68,8 @@ interface ShellPreload {
   publishFocusStatus?(snapshot: FocusStatusSnapshot): void;
   /** Absent on the same older preloads; the stub's unsubscribe stands in. */
   onFocusRequest?(fn: (request: unknown) => void): () => void;
-  /** Absent on any preload built before the overlay pill existed. */
-  setOverlayEnabled?(enabled: boolean): void;
+  /** Absent on any preload built before the pill had a settings group. */
+  setPillPrefs?(prefs: PillPrefs): void;
   /** Absent on any preload built before the cycle boundary had a voice. */
   notifyFocus?(notice: { title: string; body: string }): void;
 }
@@ -91,7 +93,7 @@ export function shellBridge(): PhaseShellBridge {
       setLaunchAtLogin: async () => null,
       publishFocusStatus: noop,
       onFocusRequest: () => noop,
-      setOverlayEnabled: noop,
+      setPillPrefs: noop,
       notifyFocus: noop,
     };
   }
@@ -111,7 +113,7 @@ export function shellBridge(): PhaseShellBridge {
     // being there.
     publishFocusStatus: (snapshot) => preload.publishFocusStatus?.(snapshot),
     onFocusRequest: (fn) => preload.onFocusRequest?.(fn) ?? noop,
-    setOverlayEnabled: (enabled) => preload.setOverlayEnabled?.(enabled),
+    setPillPrefs: (prefs) => preload.setPillPrefs?.(prefs),
     notifyFocus: (notice) => preload.notifyFocus?.(notice),
   };
 }

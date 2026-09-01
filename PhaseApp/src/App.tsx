@@ -54,7 +54,7 @@ import { createSyncExporter } from './state/syncExport';
 import type { SyncSlices } from './lib/sync/stateFile';
 import {
   loadSyncMeta, saveSyncMeta, buildBackupText,
-  loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot, loadShowOverlay,
+  loadSlotMigrationSnapshot, loadCheckpointMigrationSnapshot, loadPillPrefs,
 } from './db/db';
 import { backupBridge, stampToLocalMs } from './lib/backupBridge';
 import { createAutoBackup, writeBackupNow, type AutoBackup } from './state/autoBackup';
@@ -388,8 +388,8 @@ export function App() {
   useEffect(() => {
     if (!shell.available) return;
     let cancelled = false;
-    void loadShowOverlay().then((value) => {
-      if (!cancelled) shell.setOverlayEnabled(value);
+    void loadPillPrefs().then((value) => {
+      if (!cancelled) shell.setPillPrefs(value);
     });
     return () => { cancelled = true; };
   }, [shell]);

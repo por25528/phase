@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { shellBridge } from './shellBridge';
+import { DEFAULT_PILL_PREFS } from './pillPrefs';
 
 type AnyWindow = Record<string, unknown>;
 
@@ -74,7 +75,7 @@ describe('shellBridge', () => {
       'openAssistant',
       'publishFocusStatus',
       'setLaunchAtLogin',
-      'setOverlayEnabled',
+      'setPillPrefs',
     ]);
   });
 
@@ -152,9 +153,11 @@ describe('shellBridge', () => {
    * answer without throwing: the browser, a preload built before the pill
    * existed, and the real thing.
    */
-  it('setOverlayEnabled is a guarded no-op in the browser and forwards on desktop', () => {
+  it('setPillPrefs is a guarded no-op in the browser and forwards on desktop', () => {
+    const row = { ...DEFAULT_PILL_PREFS, size: 'large' as const };
+
     delete (window as unknown as AnyWindow).phaseShell;
-    expect(() => shellBridge().setOverlayEnabled(true)).not.toThrow();
+    expect(() => shellBridge().setPillPrefs(row)).not.toThrow();
 
     const older = {
       openAssistant: vi.fn(async () => true),
@@ -163,13 +166,13 @@ describe('shellBridge', () => {
       setLaunchAtLogin: vi.fn(async () => null),
     };
     (window as unknown as AnyWindow).phaseShell = older;
-    expect(() => shellBridge().setOverlayEnabled(true)).not.toThrow();
+    expect(() => shellBridge().setPillPrefs(row)).not.toThrow();
 
-    const setOverlayEnabled = vi.fn();
-    (window as unknown as AnyWindow).phaseShell = { ...older, setOverlayEnabled };
-    shellBridge().setOverlayEnabled(false);
-    expect(setOverlayEnabled).toHaveBeenCalledTimes(1);
-    expect(setOverlayEnabled).toHaveBeenCalledWith(false);
+    const setPillPrefs = vi.fn();
+    (window as unknown as AnyWindow).phaseShell = { ...older, setPillPrefs };
+    shellBridge().setPillPrefs(row);
+    expect(setPillPrefs).toHaveBeenCalledTimes(1);
+    expect(setPillPrefs).toHaveBeenCalledWith(row);
   });
 
   /**

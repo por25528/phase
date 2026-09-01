@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { shellBridge } from '../../lib/shellBridge';
-import { loadShowOverlay, saveShowOverlay } from '../../db/db';
+import { loadPillPrefs, savePillPrefs } from '../../db/db';
+import { DEFAULT_PILL_PREFS, type PillPrefs } from '../../lib/pillPrefs';
 
 /**
  * The "Show floating timer" row in Settings.
@@ -12,14 +13,14 @@ import { loadShowOverlay, saveShowOverlay } from '../../db/db';
  */
 export function OverlaySettings() {
   const bridge = useMemo(() => shellBridge(), []);
-  const [enabled, setEnabled] = useState(true);
+  const [prefs, setPrefs] = useState<PillPrefs>(DEFAULT_PILL_PREFS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    void loadShowOverlay().then((value) => {
+    void loadPillPrefs().then((value) => {
       if (cancelled) return;
-      setEnabled(value);
+      setPrefs(value);
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -34,17 +35,17 @@ export function OverlaySettings() {
   }
 
   const toggle = () => {
-    const next = !enabled;
-    setEnabled(next);
-    void saveShowOverlay(next);
-    bridge.setOverlayEnabled(next);
+    const next = { ...prefs, show: !prefs.show };
+    setPrefs(next);
+    void savePillPrefs(next);
+    bridge.setPillPrefs(next);
   };
 
   return (
     <button
       type="button"
       role="switch"
-      aria-checked={enabled}
+      aria-checked={prefs.show}
       aria-label="Show floating timer"
       onClick={toggle}
       className="flex w-full items-center justify-between rounded-field px-2 py-2 text-left text-ui hover:bg-hover"
@@ -57,13 +58,13 @@ export function OverlaySettings() {
         aria-hidden="true"
         className={
           'h-[18px] w-[32px] rounded-field border p-[2px] '
-          + (enabled ? 'border-ink bg-ink' : 'border-check bg-panel')
+          + (prefs.show ? 'border-ink bg-ink' : 'border-check bg-panel')
         }
       >
         <span
           className={
             'block h-[12px] w-[12px] rounded-field bg-panel transition-transform duration-150 '
-            + (enabled ? 'translate-x-[12px]' : 'translate-x-0')
+            + (prefs.show ? 'translate-x-[12px]' : 'translate-x-0')
           }
         />
       </span>

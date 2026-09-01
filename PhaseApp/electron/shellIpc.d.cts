@@ -47,8 +47,8 @@ export interface ShellIpcDeps {
   setLaunchAtLogin(enabled: boolean): boolean | null;
   /** A validated snapshot, or null for "no session". Never a malformed one. */
   onFocusStatus(status: FocusStatus | null): void;
-  /** The Settings toggle for the floating pill, forwarded to the overlay window. */
-  onOverlayEnabled(enabled: boolean): void;
+  /** The pill's settings row, forwarded to the overlay window, which validates it. */
+  onPillPrefs(prefs: Record<string, unknown>): void;
   /** A validated cycle-boundary notice. Both strings are non-empty and short. */
   onFocusNotify(notice: { title: string; body: string }): void;
 }
@@ -71,6 +71,6 @@ export interface ShellIpc {
 export declare const SHELL_CHANNEL_PREFIX: string;
 export declare const FOCUS_STATUS_CHANNEL: string;
 export declare const FOCUS_REQUEST_CHANNEL: string;
-export declare const OVERLAY_ENABLED_CHANNEL: string;
+export declare const PILL_PREFS_CHANNEL: string;
 export declare const FOCUS_NOTIFY_CHANNEL: string;
 export declare function createShellIpc(deps: ShellIpcDeps): ShellIpc;

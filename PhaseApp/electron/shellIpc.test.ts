@@ -51,7 +51,7 @@ function shell() {
   const getLaunchAtLogin = vi.fn();
   const setLaunchAtLogin = vi.fn();
   const onFocusStatus = vi.fn();
-  const onOverlayEnabled = vi.fn();
+  const onPillPrefs = vi.fn();
   const onFocusNotify = vi.fn();
   const ipcMain = fakeIpcMain();
   const ipc = createShellIpc({
@@ -61,13 +61,13 @@ function shell() {
     getLaunchAtLogin,
     setLaunchAtLogin,
     onFocusStatus,
-    onOverlayEnabled,
+    onPillPrefs,
     onFocusNotify,
   });
   ipc.register(ipcMain);
   return {
     main, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, onOverlayEnabled, onFocusNotify, ipcMain, ipc,
+    onFocusStatus, onPillPrefs, onFocusNotify, ipcMain, ipc,
   };
 }
 
@@ -96,7 +96,7 @@ describe('channel surface', () => {
     expect(ipcMain.on).toHaveBeenCalledTimes(3);
     expect(ipcMain.listenerChannels()).toEqual([
       'phase-shell:focus-status',
-      'phase-shell:overlay-enabled',
+      'phase-shell:pill-prefs',
       'phase-shell:focus-notify',
     ]);
   });
@@ -231,7 +231,7 @@ describe('sendFocusRequest', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
     });
     expect(gone.sendFocusRequest({ type: 'finish' })).toBe(false);
@@ -306,7 +306,7 @@ describe('live main window', () => {
       getLaunchAtLogin,
       setLaunchAtLogin: vi.fn(() => true),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
     });
     ipc.register(ipcMain);
@@ -339,7 +339,7 @@ describe('openSettings', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
     });
     ipc.register(ipcMain);
@@ -361,7 +361,7 @@ describe('openSettings', () => {
       getLaunchAtLogin: vi.fn(),
       setLaunchAtLogin: vi.fn(),
       onFocusStatus: vi.fn(),
-      onOverlayEnabled: vi.fn(),
+      onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
     });
     ipc.register(fakeIpcMain());
@@ -376,28 +376,35 @@ describe('openSettings', () => {
  * silent "function is not a function" in the renderer rather than a build
  * error. agentIpc.test.ts guards the agent door the same way.
  */
-describe('overlay-enabled', () => {
-  it('forwards a boolean from the main window to onOverlayEnabled', () => {
-    const { ipcMain, onOverlayEnabled } = shell();
-    ipcMain.send('phase-shell:overlay-enabled', MAIN_ID, false);
-    expect(onOverlayEnabled).toHaveBeenCalledTimes(1);
-    expect(onOverlayEnabled).toHaveBeenCalledWith(false);
+describe('pill-prefs', () => {
+  it('forwards the row from the main window to onPillPrefs', () => {
+    const { ipcMain, onPillPrefs } = shell();
+    ipcMain.send('phase-shell:pill-prefs', MAIN_ID, { show: false, size: 'large' });
+    expect(onPillPrefs).toHaveBeenCalledTimes(1);
+    expect(onPillPrefs).toHaveBeenCalledWith({ show: false, size: 'large' });
   });
 
-  it('refuses a non-boolean and a foreign sender', () => {
-    const { ipcMain, onOverlayEnabled } = shell();
-    ipcMain.send('phase-shell:overlay-enabled', MAIN_ID, 'yes');
-    expect(onOverlayEnabled).not.toHaveBeenCalled();
-    ipcMain.send('phase-shell:overlay-enabled', STRANGER_ID, true);
-    expect(onOverlayEnabled).not.toHaveBeenCalled();
+  /**
+   * The nine settings are validated on the FAR side, by the pill's own
+   * `normalizePillPrefs` — the module that knows what a size or a corner is,
+   * and the one place that decision should live. What this seam owes is the
+   * sender check and the shape.
+   */
+  it('refuses a foreign sender and anything that is not a plain object', () => {
+    const { ipcMain, onPillPrefs } = shell();
+    ipcMain.send('phase-shell:pill-prefs', STRANGER_ID, { show: true });
+    for (const bad of [null, undefined, 'yes', 42, [{ show: true }]]) {
+      ipcMain.send('phase-shell:pill-prefs', MAIN_ID, bad);
+    }
+    expect(onPillPrefs).not.toHaveBeenCalled();
   });
 
   it('registers and disposes the channel symmetrically', () => {
     const { ipcMain, ipc } = shell();
-    expect(ipcMain.on).toHaveBeenCalledWith('phase-shell:overlay-enabled', expect.any(Function));
-    expect(ipcMain.listenerChannels()).toContain('phase-shell:overlay-enabled');
+    expect(ipcMain.on).toHaveBeenCalledWith('phase-shell:pill-prefs', expect.any(Function));
+    expect(ipcMain.listenerChannels()).toContain('phase-shell:pill-prefs');
     ipc.dispose(ipcMain);
-    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:overlay-enabled');
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:pill-prefs');
     expect(ipcMain.listenerChannels()).toEqual([]);
   });
 });

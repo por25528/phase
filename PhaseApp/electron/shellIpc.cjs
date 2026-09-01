@@ -24,7 +24,7 @@
 const SHELL_CHANNEL_PREFIX = 'phase-shell';
 const FOCUS_STATUS_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-status`;
 const FOCUS_REQUEST_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-request`;
-const OVERLAY_ENABLED_CHANNEL = `${SHELL_CHANNEL_PREFIX}:overlay-enabled`;
+const PILL_PREFS_CHANNEL = `${SHELL_CHANNEL_PREFIX}:pill-prefs`;
 const FOCUS_NOTIFY_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-notify`;
 
 // A notice is text the OS paints over every other window, so its shape is
@@ -106,7 +106,7 @@ function normalizeFocusStatus(raw) {
 function createShellIpc(deps) {
   const {
     getMainWindow, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, onOverlayEnabled, onFocusNotify,
+    onFocusStatus, onPillPrefs, onFocusNotify,
   } = deps;
 
   // The live-window helper: a destroyed handle is no handle at all.
@@ -146,13 +146,21 @@ function createShellIpc(deps) {
     onFocusStatus(snapshot);
   }
 
-  // The Settings toggle, and a send for the same reason the status is: the
-  // renderer flips a switch and moves on, and a pill that failed to come up
-  // must never be something a preference waits for.
-  function onOverlayEnabledMessage(event, enabled) {
+  /**
+   * The pill's whole settings row, and a send for the same reason the status
+   * is: the renderer flips a control and moves on, and a pill that failed to
+   * come up must never be something a preference waits for.
+   *
+   * The payload is passed on as an OBJECT and validated field-by-field on the
+   * far side, by `normalizePillPrefs` — nine settings validated twice would be
+   * two lists to keep in step, and the pill's own module is the one that knows
+   * what a size or a corner is. What this seam owes is the sender check and
+   * the shape: anything that is not a plain object is refused here.
+   */
+  function onPillPrefsMessage(event, raw) {
     if (!isMainSender(event)) return;
-    if (typeof enabled !== 'boolean') return;
-    onOverlayEnabled(enabled);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    onPillPrefs(raw);
   }
 
   /**
@@ -175,7 +183,7 @@ function createShellIpc(deps) {
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:get-launch-at-login`, onGetLaunchAtLogin);
       ipcMain.handle(`${SHELL_CHANNEL_PREFIX}:set-launch-at-login`, onSetLaunchAtLogin);
       ipcMain.on(FOCUS_STATUS_CHANNEL, onFocusStatusMessage);
-      ipcMain.on(OVERLAY_ENABLED_CHANNEL, onOverlayEnabledMessage);
+      ipcMain.on(PILL_PREFS_CHANNEL, onPillPrefsMessage);
       ipcMain.on(FOCUS_NOTIFY_CHANNEL, onFocusNotifyMessage);
     },
     dispose(ipcMain) {
@@ -183,7 +191,7 @@ function createShellIpc(deps) {
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:get-launch-at-login`);
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:set-launch-at-login`);
       ipcMain.removeAllListeners(FOCUS_STATUS_CHANNEL);
-      ipcMain.removeAllListeners(OVERLAY_ENABLED_CHANNEL);
+      ipcMain.removeAllListeners(PILL_PREFS_CHANNEL);
       ipcMain.removeAllListeners(FOCUS_NOTIFY_CHANNEL);
     },
     /**
@@ -222,5 +230,5 @@ function createShellIpc(deps) {
 
 module.exports = {
   SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL,
-  OVERLAY_ENABLED_CHANNEL, FOCUS_NOTIFY_CHANNEL, createShellIpc,
+  PILL_PREFS_CHANNEL, FOCUS_NOTIFY_CHANNEL, createShellIpc,
 };

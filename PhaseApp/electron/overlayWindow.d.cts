@@ -21,9 +21,40 @@ export interface OverlayFocusStatus {
   };
 }
 
+/**
+ * Everything the pill may be told about how to look. Structurally
+ * `PillPrefs` from `src/lib/pillPrefs.ts` — mirrored, never imported.
+ */
+export interface OverlayPillPrefs {
+  show: boolean;
+  content: 'countdown' | 'elapsed';
+  showTitle: boolean;
+  showGlyph: boolean;
+  size: 'small' | 'medium' | 'large';
+  opacity: number;
+  theme: 'system' | 'dark' | 'light';
+  corner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  clickThrough: boolean;
+}
+
+export interface OverlaySize {
+  width: number; height: number; font: number; radius: number; padX: number;
+}
+
+/**
+ * What main paints and the page applies. Every decision is already made here:
+ * the page sets custom properties from these numbers and colours and decides
+ * nothing of its own.
+ */
 export interface OverlayPillModel {
-  glyph: '▶' | '⏸';
+  glyph?: '▶' | '⏸';
   text: string;
+  font: number;
+  height: number;
+  radius: number;
+  padX: number;
+  bg: string;
+  ink: string;
 }
 
 export interface OverlayPoint { x: number; y: number }
@@ -44,6 +75,8 @@ export interface OverlayNativeWindow {
   setAlwaysOnTop(flag: boolean, level: 'status'): void;
   setVisibleOnAllWorkspaces(visible: boolean, options: { visibleOnFullScreen: boolean }): void;
   getPosition(): number[];
+  setBounds(bounds: { x: number; y: number; width: number; height: number }): void;
+  setIgnoreMouseEvents(ignore: boolean): void;
   on(event: 'moved', fn: () => void): void;
   loadFile(htmlPath: string): Promise<void>;
   webContents: OverlayWebContents;
@@ -67,6 +100,8 @@ export interface OverlayWindowDeps {
   readPosition(): OverlayPoint | null;
   writePosition(point: OverlayPoint): void;
   now(): number;
+  /** `nativeTheme.shouldUseDarkColors`, read only for the `system` theme. */
+  isSystemDark(): boolean;
   /** One-shot; returns the cancel. Re-armed by the repaint itself. */
   setTimer(fn: () => void, ms: number): () => void;
   logError(message: string, error?: unknown): void;
@@ -77,16 +112,32 @@ export interface OverlayWindow {
   dispose(): void;
   /** Adopt the renderer's latest snapshot. Dropped when no window came up. */
   setFocusStatus(status: OverlayFocusStatus | null): void;
-  /** Settings toggle; false hides regardless of snapshot, true re-evaluates it. */
-  setEnabled(enabled: boolean): void;
+  /** The pill's settings row, validated here. `show: false` hides regardless of snapshot. */
+  setPrefs(prefs: unknown): void;
+  /** Recompute against the injected clock and OS palette; main calls it on `nativeTheme` updates. */
+  repaint(): void;
   /** Whether the given webContents id is this overlay's page. */
   isSender(webContentsId: number): boolean;
 }
 
 export declare function createOverlayWindow(deps: OverlayWindowDeps): OverlayWindow;
-export declare function pillModel(status: OverlayFocusStatus | null, nowMs: number): OverlayPillModel | null;
-export declare function clampToWorkArea(point: OverlayPoint, workArea: OverlayWorkArea): OverlayPoint;
-export declare function defaultPosition(workArea: OverlayWorkArea): OverlayPoint;
+export declare function pillModel(
+  status: OverlayFocusStatus | null,
+  nowMs: number,
+  prefs: OverlayPillPrefs,
+  isSystemDark: boolean,
+): OverlayPillModel | null;
+export declare function normalizePillPrefs(raw: unknown): OverlayPillPrefs;
+export declare function clampToWorkArea(
+  point: OverlayPoint, workArea: OverlayWorkArea, footprint?: OverlaySize,
+): OverlayPoint;
+export declare function defaultPosition(
+  workArea: OverlayWorkArea,
+  corner?: OverlayPillPrefs['corner'],
+  footprint?: OverlaySize,
+): OverlayPoint;
+export declare const DEFAULT_PILL_PREFS: OverlayPillPrefs;
+export declare const PILL_SIZES: Record<OverlayPillPrefs['size'], OverlaySize>;
 export declare const REPAINT_MS: number;
 export declare const OVERLAY_WIDTH: number;
 export declare const OVERLAY_HEIGHT: number;

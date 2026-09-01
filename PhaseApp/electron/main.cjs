@@ -271,7 +271,7 @@ const shellIpc = createShellIpc({
     }
   },
   onFocusStatus: publishFocusStatus,
-  onOverlayEnabled: (enabled) => overlay?.setEnabled(enabled),
+  onPillPrefs: (prefs) => overlay?.setPrefs(prefs),
   // A notification is a nicety, exactly as the tray and the pill are: the
   // boundary it announces is already written, so a Notification Centre that
   // refuses (permission withheld, no such API on this platform) costs one log
@@ -604,10 +604,17 @@ app.whenReady().then(() => {
     readPosition: readOverlayPosition,
     writePosition: writeOverlayPosition,
     now: () => Date.now(),
+    isSystemDark: () => nativeTheme.shouldUseDarkColors,
     setTimer: (fn, ms) => { const id = setTimeout(fn, ms); return () => clearTimeout(id) },
     logError: (...args) => console.error(...args),
   })
   overlay.create()
+
+  // `system` is the one pill theme that can change with nobody touching
+  // Phase. The window is created once and thereafter hidden and shown rather
+  // than reloaded, so without this a pill set to follow the OS would keep
+  // whichever palette was true the moment it came up.
+  nativeTheme.on('updated', () => overlay?.repaint())
 
   // The pill's one verb. Sender-validated against the overlay's own page —
   // the same exact-id discipline shellIpc applies to the main window.
