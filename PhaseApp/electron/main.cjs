@@ -275,6 +275,10 @@ const shellIpc = createShellIpc({
   },
   onFocusStatus: publishFocusStatus,
   onPillPrefs: (prefs) => overlay?.setPrefs(prefs),
+  // Only the GEOMETRY half means anything here; the content half rides the
+  // assistant relay, which is built from store state in the renderer. It lands
+  // on the NEXT show, so nothing about a shelf already on screen moves.
+  onShelfPrefs: (prefs) => assistantController?.setShelfGeometry(prefs),
   // A notification is a nicety, exactly as the tray and the pill are: the
   // boundary it announces is already written, so a Notification Centre that
   // refuses (permission withheld, no such API on this platform) costs one log

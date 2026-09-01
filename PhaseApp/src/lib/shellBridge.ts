@@ -1,5 +1,6 @@
 import type { FocusStatusSnapshot } from './focusStatus';
 import type { PillPrefs } from './pillPrefs';
+import type { ShelfPrefs } from './shelfPrefs';
 
 /**
  * The renderer-side wrapper around the preload bridge for the desktop shell —
@@ -51,6 +52,12 @@ export interface PhaseShellBridge {
    */
   setPillPrefs(prefs: PillPrefs): void;
   /**
+   * Tell the shell how the Cmd+Space shelf should be shaped. Only the GEOMETRY
+   * half means anything to main — the content half rides the assistant relay,
+   * because the shelf's renderer does not own the store.
+   */
+  setShelfPrefs(prefs: ShelfPrefs): void;
+  /**
    * Announce a cycle boundary — the OS notification, raised by main. Same
    * fire-and-forget contract: the transition is written before this is called,
    * and a notice that could not be raised is a log line, never a failed
@@ -74,6 +81,8 @@ interface ShellPreload {
   onFocusRequest?(fn: (request: unknown) => void): () => void;
   /** Absent on any preload built before the pill had a settings group. */
   setPillPrefs?(prefs: PillPrefs): void;
+  /** Absent on any preload built before the shelf had a settings group. */
+  setShelfPrefs?(prefs: ShelfPrefs): void;
   /** Absent on any preload built before the cycle boundary had a voice. */
   notifyFocus?(notice: { title: string; body: string }): void;
 }
@@ -99,6 +108,7 @@ export function shellBridge(): PhaseShellBridge {
       publishFocusStatus: noop,
       onFocusRequest: () => noop,
       setPillPrefs: noop,
+      setShelfPrefs: noop,
       notifyFocus: noop,
     };
   }
@@ -120,6 +130,7 @@ export function shellBridge(): PhaseShellBridge {
     publishFocusStatus: (snapshot) => preload.publishFocusStatus?.(snapshot),
     onFocusRequest: (fn) => preload.onFocusRequest?.(fn) ?? noop,
     setPillPrefs: (prefs) => preload.setPillPrefs?.(prefs),
+    setShelfPrefs: (prefs) => preload.setShelfPrefs?.(prefs),
     notifyFocus: (notice) => preload.notifyFocus?.(notice),
   };
 }

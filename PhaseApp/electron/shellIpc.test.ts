@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 const nativeRequire = createRequire(import.meta.url);
 const {
   createShellIpc, SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL,
-  FOCUS_NOTIFY_CHANNEL,
+  FOCUS_NOTIFY_CHANNEL, SHELF_PREFS_CHANNEL,
 } = nativeRequire('./shellIpc.cjs') as typeof import('./shellIpc.cjs');
 
 type Listener = (event: { sender: { id: number } }, payload?: unknown) => unknown;
@@ -53,6 +53,7 @@ function shell() {
   const onFocusStatus = vi.fn();
   const onPillPrefs = vi.fn();
   const onFocusNotify = vi.fn();
+  const onShelfPrefs = vi.fn();
   const ipcMain = fakeIpcMain();
   const ipc = createShellIpc({
     getMainWindow: () => main,
@@ -63,11 +64,12 @@ function shell() {
     onFocusStatus,
     onPillPrefs,
     onFocusNotify,
+    onShelfPrefs,
   });
   ipc.register(ipcMain);
   return {
     main, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, onPillPrefs, onFocusNotify, ipcMain, ipc,
+    onFocusStatus, onPillPrefs, onFocusNotify, onShelfPrefs, ipcMain, ipc,
   };
 }
 
@@ -93,11 +95,12 @@ describe('channel surface', () => {
     // All three are sends and not invokes: nothing answers any of them, and
     // neither a transition, a preference nor a notice must wait on a tray, a
     // pill or Notification Centre.
-    expect(ipcMain.on).toHaveBeenCalledTimes(3);
+    expect(ipcMain.on).toHaveBeenCalledTimes(4);
     expect(ipcMain.listenerChannels()).toEqual([
       'phase-shell:focus-status',
       'phase-shell:pill-prefs',
       'phase-shell:focus-notify',
+      'phase-shell:shelf-prefs',
     ]);
   });
 
@@ -233,6 +236,7 @@ describe('sendFocusRequest', () => {
       onFocusStatus: vi.fn(),
       onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     expect(gone.sendFocusRequest({ type: 'finish' })).toBe(false);
   });
@@ -308,6 +312,7 @@ describe('live main window', () => {
       onFocusStatus: vi.fn(),
       onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(ipcMain);
     expect(ipcMain.invoke('phase-shell:open-assistant', MAIN_ID)).toBe(false);
@@ -341,6 +346,7 @@ describe('openSettings', () => {
       onFocusStatus: vi.fn(),
       onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(ipcMain);
     ipc.openSettings();
@@ -363,6 +369,7 @@ describe('openSettings', () => {
       onFocusStatus: vi.fn(),
       onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(fakeIpcMain());
     ipc.openSettings();
@@ -376,6 +383,33 @@ describe('openSettings', () => {
  * survive a renderer that is still loading its first frame. Two near-copies
  * are how one of them quietly loses the `did-finish-load` wait.
  */
+describe('shelf-prefs', () => {
+  it('forwards the row from the main window to onShelfPrefs', () => {
+    const { ipcMain, onShelfPrefs } = shell();
+    ipcMain.send('phase-shell:shelf-prefs', MAIN_ID, { width: 'wide', position: 'top-center' });
+    expect(onShelfPrefs).toHaveBeenCalledWith({ width: 'wide', position: 'top-center' });
+  });
+
+  // Same division of labour as the pill's row: this seam owes the sender check
+  // and the shape, and the window's own module owns what a width is.
+  it('refuses a foreign sender and anything that is not a plain object', () => {
+    const { ipcMain, onShelfPrefs } = shell();
+    ipcMain.send('phase-shell:shelf-prefs', STRANGER_ID, { width: 'wide' });
+    for (const bad of [null, undefined, 'wide', 42, [{ width: 'wide' }]]) {
+      ipcMain.send('phase-shell:shelf-prefs', MAIN_ID, bad);
+    }
+    expect(onShelfPrefs).not.toHaveBeenCalled();
+  });
+
+  it('registers and disposes the channel symmetrically', () => {
+    const { ipcMain, ipc } = shell();
+    expect(ipcMain.listenerChannels()).toContain('phase-shell:shelf-prefs');
+    ipc.dispose(ipcMain);
+    expect(ipcMain.removeAllListeners).toHaveBeenCalledWith('phase-shell:shelf-prefs');
+    expect(ipcMain.listenerChannels()).toEqual([]);
+  });
+});
+
 describe('openToday', () => {
   it('raises the main window first, then sends immediately when the frame is loaded', () => {
     const { main, showMainWindow, ipc } = shell();
@@ -399,6 +433,7 @@ describe('openToday', () => {
       onFocusStatus: vi.fn(),
       onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(ipcMain);
     ipc.openToday();
@@ -420,6 +455,7 @@ describe('openToday', () => {
       onFocusStatus: vi.fn(),
       onPillPrefs: vi.fn(),
       onFocusNotify: vi.fn(),
+      onShelfPrefs: vi.fn(),
     });
     ipc.register(fakeIpcMain());
     ipc.openToday();
@@ -524,6 +560,7 @@ describe('preload drift', () => {
       FOCUS_STATUS_CHANNEL,
       FOCUS_REQUEST_CHANNEL,
       FOCUS_NOTIFY_CHANNEL,
+      SHELF_PREFS_CHANNEL,
     ]) {
       expect(preload).toContain(channel);
     }

@@ -1,10 +1,10 @@
 // The validated desktop-shell bridge for the MAIN renderer, as a deep module.
 //
-// Three narrow invoke verbs and three sends, all validated at the sender seam:
+// Three narrow invoke verbs and four sends, all validated at the sender seam:
 // the main window's webContents id is the only id allowed to drive the shell,
 // matched exactly against the live window. There are no renderer-supplied
-// channels and no forwarding — `register` installs exactly these six,
-// `dispose` removes exactly those six, and everything else the renderer might
+// channels and no forwarding — `register` installs exactly these seven,
+// `dispose` removes exactly those seven, and everything else the renderer might
 // try is refused. `openSettings` and `sendFocusRequest` are the two
 // main→renderer pushes and are sent by the MAIN process itself, never by a
 // renderer.
@@ -26,6 +26,7 @@ const FOCUS_STATUS_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-status`;
 const FOCUS_REQUEST_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-request`;
 const PILL_PREFS_CHANNEL = `${SHELL_CHANNEL_PREFIX}:pill-prefs`;
 const FOCUS_NOTIFY_CHANNEL = `${SHELL_CHANNEL_PREFIX}:focus-notify`;
+const SHELF_PREFS_CHANNEL = `${SHELL_CHANNEL_PREFIX}:shelf-prefs`;
 
 // A notice is text the OS paints over every other window, so its shape is
 // settled here rather than trusted: an empty string is not a notification, and
@@ -106,7 +107,7 @@ function normalizeFocusStatus(raw) {
 function createShellIpc(deps) {
   const {
     getMainWindow, openAssistant, showMainWindow, getLaunchAtLogin, setLaunchAtLogin,
-    onFocusStatus, onPillPrefs, onFocusNotify,
+    onFocusStatus, onPillPrefs, onFocusNotify, onShelfPrefs,
   } = deps;
 
   // The live-window helper: a destroyed handle is no handle at all.
@@ -164,6 +165,20 @@ function createShellIpc(deps) {
   }
 
   /**
+   * The shelf's own settings row, forwarded whole.
+   *
+   * The same division of labour the pill's row takes: this seam owes the
+   * sender check and the shape, and `assistantWindow.cjs` — the module that
+   * knows what a width IS, and whose height budget is measured at one — owns
+   * the values.
+   */
+  function onShelfPrefsMessage(event, raw) {
+    if (!isMainSender(event)) return;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    onShelfPrefs(raw);
+  }
+
+  /**
    * A cycle boundary the renderer has already written, announced.
    *
    * A send for the same reason the status is: the transition is banked before
@@ -204,6 +219,7 @@ function createShellIpc(deps) {
       ipcMain.on(FOCUS_STATUS_CHANNEL, onFocusStatusMessage);
       ipcMain.on(PILL_PREFS_CHANNEL, onPillPrefsMessage);
       ipcMain.on(FOCUS_NOTIFY_CHANNEL, onFocusNotifyMessage);
+      ipcMain.on(SHELF_PREFS_CHANNEL, onShelfPrefsMessage);
     },
     dispose(ipcMain) {
       ipcMain.removeHandler(`${SHELL_CHANNEL_PREFIX}:open-assistant`);
@@ -212,6 +228,7 @@ function createShellIpc(deps) {
       ipcMain.removeAllListeners(FOCUS_STATUS_CHANNEL);
       ipcMain.removeAllListeners(PILL_PREFS_CHANNEL);
       ipcMain.removeAllListeners(FOCUS_NOTIFY_CHANNEL);
+      ipcMain.removeAllListeners(SHELF_PREFS_CHANNEL);
     },
     /**
      * Ask the main renderer — still the only writer — to do something to the
@@ -249,5 +266,5 @@ function createShellIpc(deps) {
 
 module.exports = {
   SHELL_CHANNEL_PREFIX, FOCUS_STATUS_CHANNEL, FOCUS_REQUEST_CHANNEL,
-  PILL_PREFS_CHANNEL, FOCUS_NOTIFY_CHANNEL, createShellIpc,
+  PILL_PREFS_CHANNEL, FOCUS_NOTIFY_CHANNEL, SHELF_PREFS_CHANNEL, createShellIpc,
 };

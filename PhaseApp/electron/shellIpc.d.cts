@@ -51,6 +51,8 @@ export interface ShellIpcDeps {
   onPillPrefs(prefs: Record<string, unknown>): void;
   /** A validated cycle-boundary notice. Both strings are non-empty and short. */
   onFocusNotify(notice: { title: string; body: string }): void;
+  /** The shelf's settings row, forwarded to the shelf controller, which validates it. */
+  onShelfPrefs(prefs: Record<string, unknown>): void;
 }
 
 export interface ShellIpc {
@@ -75,4 +77,5 @@ export declare const FOCUS_STATUS_CHANNEL: string;
 export declare const FOCUS_REQUEST_CHANNEL: string;
 export declare const PILL_PREFS_CHANNEL: string;
 export declare const FOCUS_NOTIFY_CHANNEL: string;
+export declare const SHELF_PREFS_CHANNEL: string;
 export declare function createShellIpc(deps: ShellIpcDeps): ShellIpc;

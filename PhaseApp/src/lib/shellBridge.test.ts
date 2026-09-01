@@ -79,6 +79,7 @@ describe('shellBridge', () => {
       'publishFocusStatus',
       'setLaunchAtLogin',
       'setPillPrefs',
+      'setShelfPrefs',
     ]);
   });
 

@@ -399,6 +399,27 @@ export function App() {
   }, [shell]);
 
   /**
+   * The shelf's geometry, pushed at hydrate and on every change.
+   *
+   * Unlike the pill's row this one lives in the STORE — the relay's model is
+   * built from store state, and the shelf's content half rides that — so this
+   * is a subscription rather than a one-shot load, compared BY REFERENCE, the
+   * same shape the focus-status publisher takes. `setShelfPrefs` is the only
+   * thing that ever replaces the object, so a new reference IS a change.
+   */
+  useEffect(() => {
+    if (hydration !== 'ready' || !shell.available) return;
+    let last = getState().shelfPrefs;
+    shell.setShelfPrefs(last);
+    return subscribe(() => {
+      const next = getState().shelfPrefs;
+      if (next === last) return;
+      last = next;
+      shell.setShelfPrefs(next);
+    });
+  }, [hydration, shell]);
+
+  /**
    * The focus seam, inbound: the menu bar's three verbs and the idle watcher's
    * two observations, landing on the actions the buttons already call.
    *

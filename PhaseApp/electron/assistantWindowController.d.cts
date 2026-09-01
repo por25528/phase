@@ -2,13 +2,17 @@
 // composition root that may know BrowserWindow, screen, and listeners. The
 // controller sees window handles and screen facts only through injected
 // capabilities, whose types are the narrowest truth this module needs.
-import type { AssistantEntry, AssistantWindowOptions } from './assistantWindow.d.cts';
+import type {
+  AssistantEntry, AssistantShelfGeometry, AssistantWindowOptions,
+} from './assistantWindow.d.cts';
 
 /** Minimal main-process window shape; never BrowserWindow itself. */
 export interface AssistantShelfWindow {
   isDestroyed(): boolean;
   isVisible(): boolean;
   setBounds(bounds: { x: number; y: number; width: number; height: number }, animate: boolean): void;
+  setMinimumSize(width: number, height: number): void;
+  setMaximumSize(width: number, height: number): void;
   setAlwaysOnTop(flag: boolean, level: string): void;
   setVisibleOnAllWorkspaces(
     visible: boolean,
@@ -61,6 +65,8 @@ export interface AssistantWindowControllerDeps {
 export interface AssistantWindowController {
   create(): void;
   position(): void;
+  /** Width and placement for the NEXT show; never applied to a shelf on screen. */
+  setShelfGeometry(geometry: Partial<AssistantShelfGeometry> | unknown): void;
   showAndFocus(): void;
   hide(): void;
   isShowing(): boolean;

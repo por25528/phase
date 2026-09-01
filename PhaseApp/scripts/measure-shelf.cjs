@@ -9,7 +9,12 @@
 const { app, BrowserWindow } = require('electron')
 const path = require('node:path')
 
-const WIDTH = 620
+// 620 by default, because that is the width HEIGHT was measured at and the one
+// the budget belongs to. The shelf now offers 520 and 760 as well, and both
+// have to keep the card under the SAME budget — so the width is overridable:
+//
+//   PHASE_SHELF_WIDTH=520 npx electron scripts/measure-shelf.cjs
+const WIDTH = Number(process.env.PHASE_SHELF_WIDTH) || 620
 
 // Free text with no length cap, so two wrapped lines under line-clamp-2 is the
 // real worst case, not an edge case to round past.

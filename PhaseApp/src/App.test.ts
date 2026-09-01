@@ -87,6 +87,7 @@ describe('desktop entry-point routing', () => {
       publishFocusStatus: () => {},
       onFocusRequest: () => () => {},
       setPillPrefs: () => {},
+      setShelfPrefs: () => {},
       notifyFocus: () => {},
     };
   }
@@ -128,6 +129,7 @@ describe('desktop entry-point routing', () => {
         onFocusRequest: () => () => {},
         notifyFocus: () => {},
         setPillPrefs: () => {},
+        setShelfPrefs: () => {},
       };
       const openEmbedded = vi.fn();
       openAssistantForEnvironment(desktop, openEmbedded);

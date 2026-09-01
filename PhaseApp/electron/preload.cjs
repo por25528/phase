@@ -97,6 +97,12 @@ contextBridge.exposeInMainWorld('phaseShell', {
    */
   setPillPrefs: (prefs) => ipcRenderer.send('phase-shell:pill-prefs', prefs),
   /**
+   * How the Cmd+Space shelf should be shaped. A send, for the same reason the
+   * two above are — and the width and placement land on the NEXT show, so
+   * there is nothing here to wait for either.
+   */
+  setShelfPrefs: (prefs) => ipcRenderer.send('phase-shell:shelf-prefs', prefs),
+  /**
    * Announce a cycle boundary the renderer has already written. A send for the
    * same reason the two above are: the transition is banked before this is
    * called, so a notification Notification Centre refuses costs a log line and
