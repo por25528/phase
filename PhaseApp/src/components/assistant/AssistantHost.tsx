@@ -59,6 +59,10 @@ export function AssistantHost({ open, onClose, theme }: {
   // is the only thing that does. Cleared when a session starts on it and when
   // the shelf closes, and otherwise a lens the advice is read through.
   const [chosen, setChosen] = useState<WorkRef | null>(null);
+  // Work the user inserted with "Do first…". Pinned so the very next
+  // snapshot leads with it — a fresh uncommitted step cannot outrank a
+  // scheduled commitment by data order alone. Same lifecycle as `chosen`.
+  const [pinned, setPinned] = useState<WorkRef | null>(null);
 
   // Escape is CONSUMED, exactly as Popover consumes it: App listens on the
   // bubble phase, and letting the key through would close this panel and the
@@ -84,6 +88,7 @@ export function AssistantHost({ open, onClose, theme }: {
       today, week: weekOf(today), now: { date: today, minute: nowMinute() },
       timeLevel,
       focusLevel,
+      ...(pinned ? { pinned } : {}),
     }), chosen);
     const activeFocus: AssistantFocusView | null = activeFocusSession
       ? {
@@ -124,7 +129,7 @@ export function AssistantHost({ open, onClose, theme }: {
       shelf: { density: shelfPrefs.density, sections: shelfPrefs.sections },
       ...(notice ? { notice } : {}),
     };
-  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, shelfPrefs, notice, chosen]);
+  }, [hydration, goals, tasks, sessions, allDayBlocks, activeFocusSession, timeLevel, focusLevel, theme, shelfPrefs, notice, chosen, pinned]);
 
   function onAction(action: AssistantAction): void {
     switch (action.type) {
@@ -140,7 +145,7 @@ export function AssistantHost({ open, onClose, theme }: {
           action.mode === 'pomodoro' ? cycleConfig : undefined,
         );
         if (!started) setNotice({ tone: 'warning', text: 'A session is already running.' });
-        else setChosen(null);
+        else { setChosen(null); setPinned(null); }
         return;
       }
       case 'set-time-level': actions.setTimeLevel(action.level); return;
@@ -192,10 +197,24 @@ export function AssistantHost({ open, onClose, theme }: {
           }
         }
         setChosen(action.ref);
+        setPinned(null);
+        return;
+      }
+      case 'insert-before': {
+        const created = actions.insertWorkBefore(action.ref, action.title);
+        if (!created) {
+          setNotice({ tone: 'warning', text: "Couldn't add that." });
+          return;
+        }
+        // The label the write actually armed — same rule as complete-work.
+        const armed = getState().pendingUndo?.label;
+        setNotice(armed ? { tone: 'neutral', text: armed } : null);
+        setPinned(created);
         return;
       }
       case 'close':
         setChosen(null);
+        setPinned(null);
         onClose();
     }
   }

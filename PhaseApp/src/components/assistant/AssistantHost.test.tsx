@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, Task } from '../../db/types';
+import type { AssistantAction, AssistantSnapshot } from '../../lib/assistantProtocol';
 
 const dbMocks = vi.hoisted(() => ({
   loadState: vi.fn(async (): Promise<{ goals: Goal[]; habits: never[]; tasks: Task[]; sessions: never[] }> =>
@@ -70,6 +71,44 @@ async function mountHost(over: {
     theme: 'light' as const,
   }));
   return store;
+}
+
+/**
+ * Installs a mock `window.phaseAssistant` and captures the callback the host
+ * registers via `bridge.onAction` — the same relay the desktop overlay uses
+ * to deliver a verb, and the only route to `insert-before` in this file since
+ * no button dispatches it. `lastSnapshot` reads the most recent `publish`
+ * call, which is how a test observes what the NEXT snapshot says without
+ * reaching into the host's internals.
+ */
+function installBridge() {
+  const publish = vi.fn();
+  let dispatch: ((action: AssistantAction) => void) | null = null;
+  (window as unknown as Record<string, unknown>).phaseAssistant = {
+    publish,
+    onRequestSnapshot: vi.fn(() => () => {}),
+    onAction: vi.fn((fn: (action: AssistantAction) => void) => {
+      dispatch = fn;
+      return () => {};
+    }),
+    configureShortcut: vi.fn(async () => ({
+      requested: 'Command+Space',
+      active: 'Command+Space',
+      registered: true,
+      conflict: false,
+    })),
+  };
+  return {
+    dispatchAction: (action: AssistantAction) => dispatch?.(action),
+    lastSnapshot: (): Extract<AssistantSnapshot, { status: 'ready' }> => {
+      const call = publish.mock.calls.at(-1);
+      if (!call) throw new Error('no snapshot published yet');
+      return call[0] as Extract<AssistantSnapshot, { status: 'ready' }>;
+    },
+    teardown: () => {
+      delete (window as unknown as Record<string, unknown>).phaseAssistant;
+    },
+  };
 }
 
 beforeEach(() => {
@@ -232,6 +271,66 @@ describe('AssistantHost', () => {
     expect(store.getState().goals[0].nodes[0].status).toBe('parked');
     expect(screen.getByText('Parked "Problem set 1"')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Problem set 2' })).toBeTruthy();
+  });
+
+  it('insert-before creates the work, pins it as primary, and notices the undo label', async () => {
+    const bridge = installBridge();
+    try {
+      const goals: Goal[] = [{
+        id: 'g1',
+        title: 'Course',
+        nodes: [
+          { id: 'a', title: 'Step A', status: 'todo' },
+          { id: 'b', title: 'Step B', status: 'todo' },
+        ],
+      }];
+      await mountHost({ goals });
+
+      expect(bridge.lastSnapshot().advice.kind).toBe('work');
+      const primaryRef = { kind: 'step' as const, id: 'a', goalId: 'g1' };
+
+      await act(async () => {
+        bridge.dispatchAction({ type: 'insert-before', ref: primaryRef, title: 'Review ch 3' });
+      });
+
+      const snapshot = bridge.lastSnapshot();
+      expect(snapshot.advice.kind).toBe('work');
+      if (snapshot.advice.kind !== 'work') throw new Error('unreachable');
+      expect(snapshot.advice.primary.title).toBe('Review ch 3');
+      expect(snapshot.notice?.text).toBe('Added "Review ch 3" first');
+    } finally {
+      bridge.teardown();
+    }
+  });
+
+  it('insert-before on a gone anchor warns and pins nothing', async () => {
+    const bridge = installBridge();
+    try {
+      const goals: Goal[] = [{
+        id: 'g1',
+        title: 'Course',
+        nodes: [
+          { id: 'a', title: 'Step A', status: 'todo' },
+        ],
+      }];
+      await mountHost({ goals });
+
+      await act(async () => {
+        bridge.dispatchAction({
+          type: 'insert-before',
+          ref: { kind: 'step', id: 'gone', goalId: 'g1' },
+          title: 'X',
+        });
+      });
+
+      const snapshot = bridge.lastSnapshot();
+      expect(snapshot.notice?.tone).toBe('warning');
+      expect(snapshot.advice.kind).toBe('work');
+      if (snapshot.advice.kind !== 'work') throw new Error('unreachable');
+      expect(snapshot.advice.primary.title).toBe('Step A');
+    } finally {
+      bridge.teardown();
+    }
   });
 });
 
