@@ -64,6 +64,15 @@ export function AssistantHost({ open, onClose, theme }: {
   // scheduled commitment by data order alone. Same lifecycle as `chosen`.
   const [pinned, setPinned] = useState<WorkRef | null>(null);
 
+  // The shelf never unmounts — `open` just toggles — and Escape reaches
+  // `onClose` directly, never `case 'close'`. Clearing on the transition is
+  // what makes "cleared when the shelf closes" true for every way it closes.
+  useEffect(() => {
+    if (open) return;
+    setChosen(null);
+    setPinned(null);
+  }, [open]);
+
   // Escape is CONSUMED, exactly as Popover consumes it: App listens on the
   // bubble phase, and letting the key through would close this panel and the
   // page behind it in one press.

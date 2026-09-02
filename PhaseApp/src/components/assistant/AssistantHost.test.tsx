@@ -65,12 +65,22 @@ async function mountHost(over: {
   const store = await import('../../state/store');
   await store.initStore();
   const { AssistantHost } = await import('./AssistantHost');
-  render(createElement(AssistantHost, {
+  const view = render(createElement(AssistantHost, {
     open: true,
     onClose: over.onClose ?? (() => {}),
     theme: 'light' as const,
   }));
-  return store;
+  return {
+    ...store,
+    // Flips `open` via rerender — the same transition Escape drives (it
+    // reaches `onClose` directly, never `case 'close'`), without going
+    // through a dispatched action.
+    rerender: (open: boolean) => view.rerender(createElement(AssistantHost, {
+      open,
+      onClose: over.onClose ?? (() => {}),
+      theme: 'light' as const,
+    })),
+  };
 }
 
 /**
@@ -325,6 +335,51 @@ describe('AssistantHost', () => {
 
       const snapshot = bridge.lastSnapshot();
       expect(snapshot.notice?.tone).toBe('warning');
+      expect(snapshot.advice.kind).toBe('work');
+      if (snapshot.advice.kind !== 'work') throw new Error('unreachable');
+      expect(snapshot.advice.primary.title).toBe('Step A');
+    } finally {
+      bridge.teardown();
+    }
+  });
+
+  it('a close via open=false — not the close action — still forgets the pin', async () => {
+    const bridge = installBridge();
+    try {
+      // Two projects, so the advisor's own head is g1's leaf and g2's leaf is
+      // a genuine second entry — the pin then has to OUTRANK a real
+      // alternative, not just coincide with whatever the insert replaced.
+      const goals: Goal[] = [
+        { id: 'g1', title: 'Course A', nodes: [{ id: 'a', title: 'Step A', status: 'todo' }] },
+        { id: 'g2', title: 'Course B', nodes: [{ id: 'b', title: 'Step B', status: 'todo' }] },
+      ];
+      const store = await mountHost({ goals });
+      const anchorRef = { kind: 'step' as const, id: 'b', goalId: 'g2' };
+
+      let snapshot = bridge.lastSnapshot();
+      expect(snapshot.advice.kind).toBe('work');
+      if (snapshot.advice.kind !== 'work') throw new Error('unreachable');
+      expect(snapshot.advice.primary.title).toBe('Step A');
+
+      await act(async () => {
+        bridge.dispatchAction({ type: 'insert-before', ref: anchorRef, title: 'Do first' });
+      });
+
+      snapshot = bridge.lastSnapshot();
+      expect(snapshot.advice.kind).toBe('work');
+      if (snapshot.advice.kind !== 'work') throw new Error('unreachable');
+      expect(snapshot.advice.primary.title).toBe('Do first');
+
+      // Dismiss by flipping `open` — the transition Escape drives, since it
+      // calls `onClose` directly and never `case 'close'` — then reopen.
+      await act(async () => {
+        store.rerender(false);
+      });
+      await act(async () => {
+        store.rerender(true);
+      });
+
+      snapshot = bridge.lastSnapshot();
       expect(snapshot.advice.kind).toBe('work');
       if (snapshot.advice.kind !== 'work') throw new Error('unreachable');
       expect(snapshot.advice.primary.title).toBe('Step A');
