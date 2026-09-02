@@ -137,6 +137,14 @@ export function proposalRows(
   week: string,
   today: string,
   exclude: ReadonlySet<string> = new Set(),
+  /**
+   * How many rows the caller can use. Today's page keeps `PROPOSAL_MAX` —
+   * five is where a list stops being a decision — but the advisor asks for
+   * more, because its pool is cut twice again (the lenses, then
+   * `MAX_ALTERNATIVES`) and a pool pre-cut to five starves the undated tail,
+   * which is exactly where every loose task lives.
+   */
+  max: number = PROPOSAL_MAX,
 ): ProposalRow[] {
   const candidates: { item: BacklogItem; goalTitle: string }[] = [];
   for (const group of backlogGroups(goals, tasks, week, today)) {
@@ -150,7 +158,7 @@ export function proposalRows(
   const ordered = sortByDue(candidates.map((f) => f.item), today);
   const titleFor = new Map(candidates.map((f) => [`${f.item.kind}:${f.item.id}`, f.goalTitle]));
   return ordered
-    .slice(0, PROPOSAL_MAX)
+    .slice(0, max)
     .map((item) => row(item, titleFor.get(`${item.kind}:${item.id}`) ?? ''));
 }
 
@@ -220,10 +228,14 @@ export interface TodayPlanInput {
   now: Now;
   /** Keys (`${kind}:${id}`) the caller is already showing. */
   exclude?: ReadonlySet<string>;
+  /**
+   * How many rows the caller can use. Passed through to `proposalRows`.
+   */
+  max?: number;
 }
 
 export function todayPlan(input: TodayPlanInput): TodayPlan {
-  const { goals, tasks, blocks, placedOn, allDayBlocks, today, week, now, exclude } = input;
+  const { goals, tasks, blocks, placedOn, allDayBlocks, today, week, now, exclude, max } = input;
 
   /*
    * There used to be a `no-hours` verdict here, checked before the candidates,
@@ -231,7 +243,7 @@ export function todayPlan(input: TodayPlanInput): TodayPlan {
    * to do" is not. The state it named is gone — nothing is ever asked when you
    * work — so the only refusal left is a horizon with no room in it.
    */
-  const rows = proposalRows(goals, tasks, week, today, exclude);
+  const rows = proposalRows(goals, tasks, week, today, exclude, max ?? PROPOSAL_MAX);
   if (rows.length === 0) return { kind: 'none' };
 
   const day = nextFreeDay(today, blocks, placedOn, allDayBlocks, now);

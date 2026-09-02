@@ -257,6 +257,15 @@ describe('todayPlan', () => {
     const g = goal({ nodes: [{ id: 'n1', title: 'Draft', blocks: [makeBlock(TODAY, 9 * 60, 60)] }] });
     expect(plan({ goals: [g] })).toEqual({ kind: 'none' });
   });
+
+  it('proposalRows honours a caller-supplied max', () => {
+    // Build 7 candidates: e.g. 7 loose tasks (each loose task is its own
+    // candidate), or a mix — reuse this file's builders.
+    const tasks = Array.from({ length: 7 }, (_, i) =>
+      task({ id: `t${i}`, title: `T${i}` }));
+    expect(proposalRows([], tasks, WEEK, TODAY).length).toBe(PROPOSAL_MAX);
+    expect(proposalRows([], tasks, WEEK, TODAY, new Set(), 7).length).toBe(7);
+  });
 });
 
 describe('todayPlan exclusions', () => {
