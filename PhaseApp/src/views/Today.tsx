@@ -11,6 +11,7 @@ import { attentionItems, carriedFrom, carryOverRows, looseRows, surfaceReason } 
 import { spansOn } from '../lib/scheduled';
 import { executionAdvice } from '../lib/executionAdvisor';
 import { expectedTimeFor, type WorkRef } from '../lib/expectedTime';
+import { fieldCls } from '../components/dialogStyles';
 import { expectedTimeLabel } from '../lib/assistantProtocol';
 import { proposalMinutes, proposeReplan, slippedWork } from '../lib/replan';
 import { ReplanPreview } from './today/ReplanPreview';
@@ -75,6 +76,12 @@ export function Today({
     (date: string) => spansOn(goals, tasks, date),
     [goals, tasks],
   );
+  // "Do this first" — the same pin the shelf holds, view-local for the same
+  // reason the shelf's dials are: surfaces do not share ephemeral lenses. A
+  // pin set from the shelf must not leak here, and one set here must not
+  // leak to the shelf.
+  const [pinned, setPinned] = useState<WorkRef | null>(null);
+  const [doFirstOpen, setDoFirstOpen] = useState(false);
   /**
    * The one recommendation authority. Today used to choose its own top row
    * with `nowFocus` directly; routing through the advisor keeps this page and
@@ -85,8 +92,9 @@ export function Today({
     () => executionAdvice({
       goals, tasks, sessions, blocks: busyBlocks, placedOn, allDayBlocks,
       today, week: weekOf(today), now: { date: today, minute: nowMinute },
+      ...(pinned ? { pinned } : {}),
     }),
-    [goals, tasks, sessions, placedOn, allDayBlocks, busyBlocks, today, nowMinute],
+    [goals, tasks, sessions, placedOn, allDayBlocks, busyBlocks, today, nowMinute, pinned],
   );
   const primary = advice.kind === 'work' ? advice.primary : null;
   const attention = useMemo(
@@ -470,6 +478,36 @@ export function Today({
                 <kbd className="ml-[8px] font-mono text-kbd tracking-[.04em] text-paper/70 border border-paper/25 rounded-[4px] px-[4px] py-[1px]">
                   ⌘N
                 </kbd>
+              </button>
+            )}
+          </div>
+        )}
+        {primary && (
+          <div className="px-[10px] pt-[6px]">
+            {doFirstOpen ? (
+              <input
+                autoFocus
+                aria-label="Do this first"
+                placeholder="e.g. Review chapter 3"
+                className={fieldCls}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const title = (e.target as HTMLInputElement).value.trim();
+                    if (title) {
+                      const created = actions.insertWorkBefore(primary.ref, title);
+                      if (created) setPinned(created);
+                    }
+                    setDoFirstOpen(false);
+                  } else if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    setDoFirstOpen(false);
+                  }
+                }}
+                onBlur={() => setDoFirstOpen(false)}
+              />
+            ) : (
+              <button type="button" className={rowBtn} onClick={() => setDoFirstOpen(true)}>
+                Do first
               </button>
             )}
           </div>
