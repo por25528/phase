@@ -31,6 +31,11 @@ export type WorkRef =
   | { kind: 'step'; id: string; goalId: string }
   | { kind: 'task'; id: string; goalId: string | null };
 
+/** Same work, whatever else the two rows disagree about. */
+export function sameWorkRef(a: WorkRef, b: WorkRef): boolean {
+  return a.kind === b.kind && a.id === b.id;
+}
+
 export type ExpectedTime =
   | {
       kind: 'history';

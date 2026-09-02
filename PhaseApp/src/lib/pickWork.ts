@@ -1,4 +1,5 @@
 import type { WorkRef } from './expectedTime';
+import { sameWorkRef } from './expectedTime';
 import type { ExecutionAdvice, RecommendedWork } from './executionAdvisor';
 
 /**
@@ -18,14 +19,12 @@ import type { ExecutionAdvice, RecommendedWork } from './executionAdvisor';
  * finished since) leaves the advice untouched, so a stale choice silently
  * falls back to the advisor's own head.
  */
-export function sameRef(a: WorkRef, b: WorkRef): boolean {
-  return a.kind === b.kind && a.id === b.id;
-}
+export { sameWorkRef as sameRef } from './expectedTime';
 
 export function promoteWork(advice: ExecutionAdvice, chosen: WorkRef | null): ExecutionAdvice {
   if (!chosen || advice.kind !== 'work') return advice;
-  if (sameRef(advice.primary.ref, chosen)) return advice;
-  const index = advice.alternatives.findIndex((item) => sameRef(item.ref, chosen));
+  if (sameWorkRef(advice.primary.ref, chosen)) return advice;
+  const index = advice.alternatives.findIndex((item) => sameWorkRef(item.ref, chosen));
   if (index === -1) return advice;
   const alternatives = [...advice.alternatives];
   const [picked] = alternatives.splice(index, 1);
@@ -41,5 +40,5 @@ export function promoteWork(advice: ExecutionAdvice, chosen: WorkRef | null): Ex
  */
 export function switchCandidates(advice: ExecutionAdvice, running: WorkRef): RecommendedWork[] {
   if (advice.kind !== 'work') return [];
-  return [advice.primary, ...advice.alternatives].filter((item) => !sameRef(item.ref, running));
+  return [advice.primary, ...advice.alternatives].filter((item) => !sameWorkRef(item.ref, running));
 }

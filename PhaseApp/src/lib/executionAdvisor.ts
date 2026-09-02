@@ -4,7 +4,7 @@ import { buildDailyWork, type DailyWorkItem } from './dailyWork';
 import { nowFocus } from './todaySurface';
 import { todayPlan } from './todayPlan';
 import type { PlacedSpan } from './slot';
-import { expectedTimeFor, type ExpectedTime, type WorkRef } from './expectedTime';
+import { expectedTimeFor, sameWorkRef, type ExpectedTime, type WorkRef } from './expectedTime';
 import { admits, type TimeLevel } from './timeLens';
 import { admitsWork, type FocusLevel } from './focusLens';
 import { demandIndex, taskDemand, type ResolvedDemand } from './demand';
@@ -96,6 +96,17 @@ export interface ExecutionAdviceInput {
    * the Today page you check on the train home.
    */
   focusLevel?: FocusLevel;
+  /**
+   * Work the user explicitly put at the head — the "do this first" insert.
+   * When found in the queue it LEADS, exempt from both lenses (an explicit
+   * "this first" is the strongest fact a queue can carry, stronger than the
+   * scheduled-now facts the lenses already never filter), and the beyond
+   * flags are suppressed: they describe an emptied queue, and this primary
+   * was chosen, not defaulted to. A ref not in the queue (completed since,
+   * deleted, out of horizon) is silently ignored — same fallback rule as
+   * `promoteWork`.
+   */
+  pinned?: WorkRef;
 }
 
 /**
@@ -296,15 +307,27 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
     ? inWindow
     : inWindow.filter((w) => admitsWork(focusLevel, w.reason, w.demand));
 
-  // Attribute the emptiness to the dial that caused it. Time is checked first
-  // because it is the harder constraint — a gap is a fact about the day, and a
-  // shelf that blamed focus for a queue the clock had already emptied would
-  // send you to the wrong dial.
-  const beyondWindow = inWindow.length === 0;
-  const beyondFocus = !beyondWindow && admitted.length === 0;
+  const pinnedWork = input.pinned === undefined
+    ? undefined
+    : queue.find((w) => sameWorkRef(w.ref, input.pinned!));
+
+  // Attribute the emptiness to the dial that caused it — unless the user
+  // pinned the head themselves, in which case nothing was defaulted to.
+  // Time is checked first because it is the harder constraint — a gap is a
+  // fact about the day, and a shelf that blamed focus for a queue the clock
+  // had already emptied would send you to the wrong dial.
+  const beyondWindow = pinnedWork === undefined && inWindow.length === 0;
+  const beyondFocus = pinnedWork === undefined && !beyondWindow && admitted.length === 0;
   const visible = admitted.length === 0 ? queue.slice(0, 1) : admitted;
 
-  const [primary, ...rest] = visible;
+  let primary: RecommendedWork;
+  let rest: RecommendedWork[];
+  if (pinnedWork !== undefined) {
+    primary = pinnedWork;
+    rest = admitted.filter((w) => !sameWorkRef(w.ref, pinnedWork.ref));
+  } else {
+    [primary, ...rest] = visible;
+  }
   const alternatives: RecommendedWork[] = rest.slice(0, MAX_ALTERNATIVES);
   if (rest.length > MAX_ALTERNATIVES) {
     const last = MAX_ALTERNATIVES - 1;

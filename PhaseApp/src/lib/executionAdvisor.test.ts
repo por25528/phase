@@ -6,6 +6,7 @@ import { proposalRows } from './todayPlan';
 import { weekDates } from './dates';
 import type { Goal, Task } from '../db/types';
 import type { Demand } from './demand';
+import type { WorkRef } from './expectedTime';
 
 const today = '2026-08-12'; // a Wednesday
 const week = weekDates(today)[0];
@@ -490,5 +491,53 @@ describe('loose tasks reach the alternatives', () => {
     if (advice.kind !== 'work') return;
     const shown = [advice.primary, ...advice.alternatives];
     expect(shown.some((w) => w.ref.kind === 'task' && w.ref.goalId === null)).toBe(false);
+  });
+});
+
+describe('pinned', () => {
+  it('a pinned ref found in the queue leads, whatever the ordering said', () => {
+    // Build a scheduled commitment plus a free-time step; pin the step.
+    const g = goal({
+      id: 'g1', title: 'Algorithms',
+      nodes: [
+        {
+          id: 'n1', title: 'Problem set 4', plannedWeek: week, estimateMin: 60,
+          blocks: [{ id: 'b1', date: today, startMin: 540, minutes: 60 }],
+        },
+        { id: 'review', title: 'Review notes' },
+      ],
+    });
+    const advice = executionAdvice(input({
+      goals: [g],
+      now: { date: today, minute: 570 },
+      pinned: { kind: 'step', id: 'review', goalId: 'g1' },
+    }));
+    if (advice.kind !== 'work') throw new Error('expected work');
+    expect(advice.primary.ref.id).toBe('review');
+    // the old primary is now among the alternatives, not duplicated
+    const keys = advice.alternatives.map((a) => a.ref.id);
+    expect(keys).not.toContain('review');
+    expect(keys).toContain('n1');
+  });
+
+  it('a pinned ref survives a lens that would filter it, and suppresses beyond flags', () => {
+    const g = goal({
+      id: 'g1', title: 'Dissertation',
+      nodes: [{ id: 'n1', title: 'Thesis chapter 2', estimateMin: 120 }],
+    });
+    const pinnedRef: WorkRef = { kind: 'step', id: 'n1', goalId: 'g1' };
+    const advice = executionAdvice(input({ goals: [g], timeLevel: 'low', pinned: pinnedRef }));
+    if (advice.kind !== 'work') throw new Error('expected work');
+    expect(advice.primary.ref.id).toBe(pinnedRef.id);
+    expect(advice.beyondWindow).toBeUndefined();
+    expect(advice.beyondFocus).toBeUndefined();
+  });
+
+  it('a pinned ref absent from the queue is ignored', () => {
+    const t = task({ id: 't1', title: 'Email advisor', date: today });
+    const theInput = input({ tasks: [t] });
+    const advice = executionAdvice({ ...theInput, pinned: { kind: 'step', id: 'gone', goalId: 'g1' } });
+    // identical to the unpinned answer
+    expect(advice).toEqual(executionAdvice(theInput));
   });
 });
