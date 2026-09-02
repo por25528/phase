@@ -125,4 +125,13 @@ describe('insertWorkBefore', () => {
     expect(actions.insertWorkBefore({ kind: 'task', id: t1, goalId: null }, '   ')).toBeNull();
     expect(getState().pendingUndo).toBeFalsy();
   });
+
+  it('refuses a step anchor on a completed project — frozen, like every other structural write', async () => {
+    const frozenGoal: Goal = { ...goal, completedAt: '2026-01-01' };
+    const { actions, getState } = await workStore([frozenGoal]);
+
+    expect(actions.insertWorkBefore({ kind: 'step', id: 'b', goalId: 'g1' }, 'Review ch 3')).toBeNull();
+    expect(getState().goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b']);
+    expect(getState().pendingUndo).toBeFalsy();
+  });
 });

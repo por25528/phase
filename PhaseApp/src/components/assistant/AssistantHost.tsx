@@ -223,6 +223,11 @@ export function AssistantHost({ open, onClose, theme }: {
         const armed = getState().pendingUndo?.label;
         setNotice(armed ? { tone: 'neutral', text: armed } : null);
         setPinned(created);
+        // A pin overrides a pick — the mirror of `switch-focus` clearing the
+        // pin. Otherwise a `chosen` row still in the alternatives (the anchor
+        // itself, once the pin bumps it there) is exactly what `promoteWork`
+        // looks for, and it would promote the anchor back over the new work.
+        setChosen(null);
         return;
       }
       case 'close':

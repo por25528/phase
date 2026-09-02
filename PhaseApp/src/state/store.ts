@@ -1681,6 +1681,7 @@ export const actions = {
     const trimmed = title.trim();
     if (!trimmed) return null;
     if (ref.kind === 'step') {
+      if (!isActiveNode(ref.id)) return null; // frozen on a completed project
       const result = treeInsertSiblingBefore(state.goals, ref.id, trimmed);
       if (!result) return null;
       withUndo(`Added "${trimmed}" first`, 'goals', result.goals);

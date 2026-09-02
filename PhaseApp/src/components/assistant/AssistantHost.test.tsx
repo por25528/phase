@@ -343,6 +343,40 @@ describe('AssistantHost', () => {
     }
   });
 
+  it('insert-before on a picked row pins the new work, not the picked anchor', async () => {
+    const bridge = installBridge();
+    try {
+      const tasks: Task[] = [
+        { id: 't1', title: 'Draft essay', done: false, goalId: null, date: TODAY },
+        { id: 't2', title: 'Revise notes', done: false, goalId: null, date: TODAY },
+      ];
+      await mountHost({ tasks });
+
+      // Pick the second row — the Or band's `switch-focus` — so `chosen`
+      // holds it before the insert ever happens.
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Revise notes/ }));
+      });
+      expect(screen.getByRole('heading', { name: 'Revise notes' })).toBeTruthy();
+
+      // "Do first…" on the very row just picked. The pin makes a fresh step
+      // primary; without clearing `chosen`, `promoteWork` finds the anchor
+      // (now demoted into alternatives) and promotes it right back over the
+      // pin — the shelf would still lead with "Revise notes".
+      const anchorRef = { kind: 'task' as const, id: 't2', goalId: null };
+      await act(async () => {
+        bridge.dispatchAction({ type: 'insert-before', ref: anchorRef, title: 'Outline first' });
+      });
+
+      const snapshot = bridge.lastSnapshot();
+      expect(snapshot.advice.kind).toBe('work');
+      if (snapshot.advice.kind !== 'work') throw new Error('unreachable');
+      expect(snapshot.advice.primary.title).toBe('Outline first');
+    } finally {
+      bridge.teardown();
+    }
+  });
+
   it('a close via open=false — not the close action — still forgets the pin', async () => {
     const bridge = installBridge();
     try {
@@ -386,6 +420,29 @@ describe('AssistantHost', () => {
     } finally {
       bridge.teardown();
     }
+  });
+
+  it('Escape stands aside for the Do-first input, but closes the shelf everywhere else', async () => {
+    const onClose = vi.fn();
+    await mountHost({
+      tasks: [{ id: 't1', title: 'Draft essay', done: false, goalId: null, date: TODAY }],
+      onClose,
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Do first…' }));
+    });
+    const input = screen.getByLabelText('Do this first');
+
+    // The event's target sits inside `[data-insert-first]` — the host's
+    // capture-phase listener must stand aside and let the input's own
+    // Escape (which just closes the field) have it.
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // A plain Escape, target outside the input, still closes the shelf.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 
