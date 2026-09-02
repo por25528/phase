@@ -133,6 +133,24 @@ export function findParentList(
 }
 
 /**
+ * Insert a new leaf immediately BEFORE `nodeId` among its siblings.
+ * The "do this first" write: the new step takes the anchor's place in the
+ * queue, which is what makes the correction durable rather than ephemeral.
+ */
+export function insertSiblingBefore(
+  goals: Goal[],
+  nodeId: string,
+  title: string,
+): { goals: Goal[]; newId: string } | null {
+  const next = cloneGoals(goals);
+  const found = findParentList(next, nodeId);
+  if (!found) return null;
+  const newId = uid();
+  found.list.splice(found.index, 0, { id: newId, title });
+  return { goals: next, newId };
+}
+
+/**
  * Insert a new leaf directly BELOW `nodeId`, among its own siblings.
  *
  * The tree's Enter key used to call `addChild(parentId)`, which does

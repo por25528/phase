@@ -9,6 +9,7 @@ import {
   cloneGoals,
   firstOpenLeaf,
   insertSiblingAfter,
+  insertSiblingBefore,
   findInAll,
   isLeafNode,
   isContainerNode,
@@ -592,5 +593,25 @@ describe('insertSiblingAfter', () => {
 
   it('returns null for an id that is not in the tree', () => {
     expect(insertSiblingAfter(tree(), 'nope', 'x')).toBeNull();
+  });
+});
+
+describe('insertSiblingBefore', () => {
+  it('inserts the new node immediately before the anchor, in a clone', () => {
+    const goals: Goal[] = [{
+      id: 'g1', title: 'G', column: 0,
+      nodes: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
+    }];
+    const result = insertSiblingBefore(goals, 'b', 'Review');
+    expect(result).not.toBeNull();
+    const ids = result!.goals[0].nodes.map((n) => n.id);
+    expect(ids).toEqual(['a', result!.newId, 'b']);
+    expect(result!.goals[0].nodes.find((n) => n.id === result!.newId)!.title).toBe('Review');
+    // the caller's array is untouched
+    expect(goals[0].nodes.map((n) => n.id)).toEqual(['a', 'b']);
+  });
+
+  it('returns null for an unknown anchor', () => {
+    expect(insertSiblingBefore([], 'missing', 'X')).toBeNull();
   });
 });
