@@ -405,3 +405,90 @@ describe('the focus dial', () => {
     expect(advice.beyondFocus).toBeUndefined();
   });
 });
+
+describe('loose tasks reach the alternatives', () => {
+  /** A project goal with one open leaf carrying a near (today) deadline. */
+  function proj(n: number): Goal {
+    return goal({
+      id: `p${n}`, title: `Project ${n}`,
+      nodes: [{ id: `p${n}-n`, title: `Project ${n} step`, deadline: today, start: today }],
+    });
+  }
+
+  it('swaps a loose task into the last alternative slot when none is visible', () => {
+    // 5 project goals, each with one open leaf carrying a near deadline, plus
+    // one undated loose task. Without the swap the loose task is cut by
+    // sortByDue + the caps — five dated candidates already fill the pool.
+    const goals = [1, 2, 3, 4, 5].map(proj);
+    const loose = task({ id: 'lt1', title: 'Loose task' });
+    const advice = executionAdvice(input({ goals, tasks: [loose] }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    const shown = [advice.primary, ...advice.alternatives];
+    expect(shown.some((w) => w.ref.kind === 'task' && w.ref.goalId === null)).toBe(true);
+    // it took the LAST slot; primary and earlier alternatives never move
+    expect(advice.alternatives.at(-1)!.ref.goalId).toBeNull();
+    expect(advice.primary.key).toBe('step:p1-n');
+    expect(advice.alternatives[0].key).toBe('step:p2-n');
+    expect(advice.alternatives[1].key).toBe('step:p3-n');
+  });
+
+  it('does not fire when a loose task is already visible', () => {
+    // 1 project goal + 1 loose task → the loose task is already an
+    // alternative on its own; assert the alternatives are the advisor's
+    // natural order, unswapped.
+    const g = goal({
+      id: 'g1', title: 'Algorithms',
+      nodes: [{ id: 'n1', title: 'Problem set 4', estimateMin: 60 }],
+    });
+    const loose = task({ id: 'lt1', title: 'Loose task' });
+    const advice = executionAdvice(input({ goals: [g], tasks: [loose] }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.key).toBe('step:n1');
+    expect(advice.alternatives.length).toBe(1);
+    expect(advice.alternatives[0].key).toBe('task:lt1');
+  });
+
+  it('wins over the life-diversity swap', () => {
+    // Overflow containing BOTH a loose task and a candidate from an
+    // uncovered life; the last slot gets the loose task.
+    const uni = (id: string, title: string): Goal => goal({
+      id, title, lifeId: 'life-uni',
+      nodes: [{ id: `${id}-n`, title: `${title} step`, deadline: today, start: today }],
+    });
+    const startup = goal({
+      id: 'gs', title: 'Startup', lifeId: 'life-startup',
+      nodes: [{ id: 'gs-n', title: 'Pitch deck', deadline: today, start: today }],
+    });
+    const goals = [uni('ga', 'Algorithms'), uni('gb', 'Biology'), uni('gc', 'Chemistry'), uni('gd', 'Drama'), startup];
+    const loose = task({ id: 'lt1', title: 'Loose task' });
+    const advice = executionAdvice(input({ goals, tasks: [loose] }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary.key).toBe('step:ga-n');
+    expect(advice.alternatives[0].key).toBe('step:gb-n');
+    expect(advice.alternatives[1].key).toBe('step:gc-n');
+    // The last slot goes to the loose task, not the uncovered startup life.
+    expect(advice.alternatives[2].ref.kind).toBe('task');
+    expect(advice.alternatives[2].ref.goalId).toBeNull();
+  });
+
+  it('respects the lenses: a loose task filtered out stays out', () => {
+    // timeLevel 'low' + a loose task whose expected time the lens refuses →
+    // no loose task appears.
+    const lowProj = (n: number): Goal => goal({
+      id: `p${n}`, title: `Project ${n}`,
+      nodes: [{ id: `p${n}-n`, title: `Project ${n} step`, deadline: today, start: today, estimateMin: 10 }],
+    });
+    const goals = [1, 2, 3, 4, 5].map(lowProj);
+    // No estimate → expectedTimeFor resolves to a 30-minute 'starter', which
+    // fitsWindow refuses at 'low' as a rule.
+    const loose = task({ id: 'lt1', title: 'Loose task' });
+    const advice = executionAdvice(input({ goals, tasks: [loose], timeLevel: 'low' }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    const shown = [advice.primary, ...advice.alternatives];
+    expect(shown.some((w) => w.ref.kind === 'task' && w.ref.goalId === null)).toBe(false);
+  });
+});

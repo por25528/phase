@@ -107,6 +107,15 @@ export interface ExecutionAdviceInput {
  */
 export const MAX_ALTERNATIVES = 3;
 
+/**
+ * How deep the advisor's free-time pool goes. `PROPOSAL_MAX` (5) is Today's
+ * cap and is right there — five rows on a page. The advisor cuts its pool
+ * twice more (the two lenses, then `MAX_ALTERNATIVES`), and a pool pre-cut
+ * to five starves the undated tail, where every loose task sorts. Twelve is
+ * headroom, not a display count: nothing renders more rows than before.
+ */
+export const ADVISOR_POOL_MAX = 12;
+
 interface Candidate {
   key: string;
   ref: WorkRef;
@@ -226,6 +235,7 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[] } {
   const plan = todayPlan({
     goals, tasks, blocks, placedOn, allDayBlocks, today, week, now,
     exclude: seen,
+    max: ADVISOR_POOL_MAX,
   });
   if (plan.kind === 'offer') {
     for (const row of plan.rows) {
@@ -297,19 +307,34 @@ export function executionAdvice(input: ExecutionAdviceInput): ExecutionAdvice {
   const [primary, ...rest] = visible;
   const alternatives: RecommendedWork[] = rest.slice(0, MAX_ALTERNATIVES);
   if (rest.length > MAX_ALTERNATIVES) {
-    /*
-     * The LAST alternative may diversify by life: the first later candidate
-     * from a life the primary and the earlier alternatives do not already
-     * cover. It swaps in quietly — the primary and the earlier alternatives
-     * never move, and no "under-served" claim is made.
-     */
     const last = MAX_ALTERNATIVES - 1;
-    const covered = new Set([primary.lifeId, ...alternatives.slice(0, last).map((a) => a.lifeId)]);
-    const other = rest.slice(MAX_ALTERNATIVES).find(
-      (c) => c.lifeId !== undefined && !covered.has(c.lifeId),
-    );
-    if (other && alternatives[last] && covered.has(alternatives[last].lifeId)) {
-      alternatives[last] = other;
+    const overflow = rest.slice(MAX_ALTERNATIVES);
+    /*
+     * The LAST alternative slot may be swapped, and two rules compete for it.
+     * The loose-task rule wins: a whole bucket absent beats a life
+     * under-represented — and a loose task carries no lifeId, so the two
+     * rules cannot both be satisfied by one row anyway. Like the life swap:
+     * the primary and the earlier alternatives never move, and no claim is
+     * made in copy.
+     */
+    const isLoose = (w: RecommendedWork): boolean =>
+      w.ref.kind === 'task' && w.ref.goalId === null;
+    const looseVisible = [primary, ...alternatives].some(isLoose);
+    const loose = looseVisible ? undefined : overflow.find(isLoose);
+    if (loose && alternatives[last]) {
+      alternatives[last] = loose;
+    } else {
+      /*
+       * The life-diversity swap, unchanged: the first later candidate from a
+       * life the primary and the earlier alternatives do not already cover.
+       */
+      const covered = new Set([primary.lifeId, ...alternatives.slice(0, last).map((a) => a.lifeId)]);
+      const other = overflow.find(
+        (c) => c.lifeId !== undefined && !covered.has(c.lifeId),
+      );
+      if (other && alternatives[last] && covered.has(alternatives[last].lifeId)) {
+        alternatives[last] = other;
+      }
     }
   }
 
