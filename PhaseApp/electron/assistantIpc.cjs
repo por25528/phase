@@ -186,6 +186,11 @@ function validAction(action) {
     // Parks the WORK — set aside / skip for now.
     case 'park-work':
       return validRef(action.ref);
+    // Inserts new work before the ref and pins it. The title crosses the
+    // seam, so it is bounded like every other string here — and empty is
+    // refused at the seam, not left for the store to trim away.
+    case 'insert-before':
+      return validRef(action.ref) && shortString(action.title) && action.title.trim().length > 0;
     case 'pause-focus':
     case 'resume-focus':
     case 'complete-focus':

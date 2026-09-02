@@ -568,6 +568,7 @@ describe('the relay accepts every verb the protocol declares', () => {
     'switch-focus': { type: 'switch-focus', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
     'complete-work': { type: 'complete-work', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
     'park-work': { type: 'park-work', ref: { kind: 'step', id: 'n1', goalId: 'g1' } },
+    'insert-before': { type: 'insert-before', ref: { kind: 'step', id: 'n1', goalId: 'g1' }, title: 'Review ch 3' },
     'set-time-level': { type: 'set-time-level', level: 'low' },
     'set-focus-level': { type: 'set-focus-level', level: 'high' },
     'pause-focus': { type: 'pause-focus' },

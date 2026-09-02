@@ -119,6 +119,8 @@ export type AssistantAction =
   | { type: 'complete-work'; ref: WorkRef }
   /** Park the WORK (set aside / skip for now). */
   | { type: 'park-work'; ref: WorkRef }
+  /** Insert new work BEFORE `ref` and pin it as the primary. Title-only. */
+  | { type: 'insert-before'; ref: WorkRef; title: string }
   | { type: 'close' };
 
 /**
