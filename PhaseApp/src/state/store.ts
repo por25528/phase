@@ -71,6 +71,7 @@ import {
   reorderTop,
   cloneGoals,
   insertSiblingAfter as treeInsertSiblingAfter,
+  insertSiblingBefore as treeInsertSiblingBefore,
 } from '../lib/tree';
 import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status';
 import {
@@ -1662,6 +1663,36 @@ export const actions = {
     const result = treeInsertSiblingAfter(state.goals, nodeId, title);
     if (!result) return;
     setAndPersist({ goals: result.goals }, { newNodeId: result.newId });
+  },
+
+  /**
+   * "Do this first" — the shelf's and Today's correction verb. A DISTANCE
+   * write: the tree is not visible from either caller, so both paths arm an
+   * undo. One write each; returns the new ref, or null on refusal — callers
+   * must not report success on a refusal.
+   *
+   * A step lands BEFORE its anchor among the siblings, which is what makes
+   * the correction durable — the project's queue genuinely leads with it. A
+   * task anchor gets a new task spliced before it, carrying the anchor's
+   * goalId (null stays loose): tasks have no tree, so array order is the only
+   * "before" there is.
+   */
+  insertWorkBefore(ref: WorkRef, title: string): WorkRef | null {
+    const trimmed = title.trim();
+    if (!trimmed) return null;
+    if (ref.kind === 'step') {
+      const result = treeInsertSiblingBefore(state.goals, ref.id, trimmed);
+      if (!result) return null;
+      withUndo(`Added "${trimmed}" first`, 'goals', result.goals);
+      return { kind: 'step', id: result.newId, goalId: ref.goalId };
+    }
+    const index = state.tasks.findIndex((t) => t.id === ref.id);
+    if (index === -1) return null;
+    const task: Task = { id: uid(), title: trimmed, done: false, goalId: ref.goalId };
+    const tasks = [...state.tasks];
+    tasks.splice(index, 0, task);
+    withUndo(`Added "${trimmed}" first`, 'tasks', tasks);
+    return { kind: 'task', id: task.id, goalId: ref.goalId };
   },
 
   /** The new row calls this as it mounts, so the flag fires exactly once. */
