@@ -483,7 +483,10 @@ export function Today({
           </div>
         )}
         {primary && (
-          <div className="px-[10px] pt-[6px]">
+          // data-insert-first is how AssistantHost's capture-phase Escape
+          // listener knows to stand aside for this input, same as the
+          // shelf's own Do-first field (AssistantSurface.tsx).
+          <div className="px-[10px] pt-[6px]" data-insert-first>
             {doFirstOpen ? (
               <input
                 autoFocus

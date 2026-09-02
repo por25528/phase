@@ -115,4 +115,16 @@ describe('Do first', () => {
     // the Now row now names the inserted step
     expect(within(screen.getByRole('region', { name: 'Now' })).getByText('Review notes')).toBeTruthy();
   });
+
+  it('marks its wrapper data-insert-first, so the shelf\'s capture-phase Escape guard stands aside', async () => {
+    await mountToday({
+      tasks: [todayTask('write')],
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Do first' }));
+    });
+
+    expect(document.querySelector('[data-insert-first]')).toBeTruthy();
+  });
 });
