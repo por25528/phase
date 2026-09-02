@@ -80,25 +80,43 @@ const path = require('node:path')
 // comfortable is the state the budget has to cover, and it is the one measured
 // above. `PHASE_SHELF_DENSITY=compact` runs the other.
 //
-// `confirming` is still the tallest at the default width, and still for the
-// reason it always was:
-// it is the only state whose body is a QUESTION under the title rather than a
-// readout beside it, and the question wraps.
+// `confirming` was the tallest at the default width for every pass above,
+// and for the reason it always was: it is the only state whose body is a
+// QUESTION under the title rather than a readout beside it, and the
+// question wraps.
 //
 // The send-off is not in the list because it cannot be the tallest: it pins
 // itself to the height of the card it is replacing (`onSendoffChange` in
 // AssistantOverlay.tsx), so its footprint is one of the figures above by
 // construction.
 //
+// Re-measured 2026-09-03 when the idle panel gained "Do first…" — a row
+// between the work and the `Or` band that reveals a one-line title input and
+// dispatches `insert-before`. It is idle-only (`AdvicePanel`, never
+// `FocusPanel`), so it added a flat 59px to every state built on
+// `advice.kind === 'work'` and left every running state untouched:
+//
+//   sidecar      392.48px  (was 333.48)
+//   beyondWindow 298.98px  (was 239.98)
+//   beyondFocus  298.98px  (was 239.98)
+//   confirming   378.48px  (unchanged — a running state)
+//
+// `sidecar` — the ordinary idle card — is the new tallest, displacing
+// `confirming` for the first time. Checked at all three widths and at
+// `compact`, the same sweep the previous pass ran: 392.48 holds at 520 and
+// 760 exactly as at 620 (the row's height does not depend on wrap width),
+// and compact's tallest fell to 364.48, so comfortable is still the state
+// the budget has to cover.
+//
 // HEIGHT is the tallest of those figures rounded UP to the next whole pixel
-// (379, from confirming's 378.48) — never a margin. A window sized to the
+// (393, from sidecar's 392.48) — never a margin. A window sized to the
 // fraction would clip a pane whose measured height sits between two
 // integers, so the round trip is always ceil(), the same rule every prior
 // pass in this file has followed (263.2 became 264).
 //
 // If a state grows, measure it again.
 const WIDTH = 620
-const HEIGHT = 379
+const HEIGHT = 393
 const TOP_GAP = 18
 // The `top-center` placement's own offset. A different number from TOP_GAP on
 // purpose: that one is the gap this shelf has always used, and this is a

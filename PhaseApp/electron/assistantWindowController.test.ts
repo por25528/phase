@@ -126,11 +126,11 @@ describe('assistantWindowOptions', () => {
     expect(options).toMatchObject({
       type: 'panel',
       width: 620,
-      height: 379,
+      height: 393,
       minWidth: 620,
       maxWidth: 620,
-      minHeight: 379,
-      maxHeight: 379,
+      minHeight: 393,
+      maxHeight: 393,
       useContentSize: true,
       frame: false,
       show: false,
@@ -188,22 +188,22 @@ describe('assistantWindowOptions', () => {
 describe('assistantShelfBounds', () => {
   it('centres inside a positive-origin work area', () => {
     expect(assistantShelfBounds({ x: 0, y: 25, width: 1512, height: 957 })).toEqual({
-      x: 446, y: 43, width: 620, height: 379,
+      x: 446, y: 43, width: 620, height: 393,
     });
   });
 
   it('centres inside a negative-origin secondary display', () => {
     expect(assistantShelfBounds({ x: -1440, y: 0, width: 1440, height: 900 })).toEqual({
-      x: -1030, y: 18, width: 620, height: 379,
+      x: -1030, y: 18, width: 620, height: 393,
     });
   });
 
   it('centres each of the three widths, keeping the one height budget', () => {
     const area = { x: 0, y: 25, width: 1512, height: 957 };
     expect(assistantShelfBounds(area, { width: 'narrow', position: 'center' }))
-      .toEqual({ x: 496, y: 43, width: SHELF_WIDTHS.narrow, height: 379 });
+      .toEqual({ x: 496, y: 43, width: SHELF_WIDTHS.narrow, height: 393 });
     expect(assistantShelfBounds(area, { width: 'wide', position: 'center' }))
-      .toEqual({ x: 376, y: 43, width: SHELF_WIDTHS.wide, height: 379 });
+      .toEqual({ x: 376, y: 43, width: SHELF_WIDTHS.wide, height: 393 });
   });
 
   it('drops the panel to the top-centre offset when asked', () => {
@@ -214,7 +214,7 @@ describe('assistantShelfBounds', () => {
   it('reads an absent or malformed geometry as today\u2019s shelf', () => {
     const area = { x: 0, y: 25, width: 1512, height: 957 };
     for (const bad of [undefined, null, 'wide', { width: 'enormous', position: 'left' }]) {
-      expect(assistantShelfBounds(area, bad)).toEqual({ x: 446, y: 43, width: 620, height: 379 });
+      expect(assistantShelfBounds(area, bad)).toEqual({ x: 446, y: 43, width: 620, height: 393 });
     }
   });
 });
@@ -262,8 +262,8 @@ describe('the shelf\u2019s own geometry', () => {
     controller.setShelfGeometry({ width: 'narrow', position: 'center' });
     controller.showAndFocus();
     win.emit('ready-to-show');
-    expect(win.setMinimumSize).toHaveBeenCalledWith(SHELF_WIDTHS.narrow, 379);
-    expect(win.setMaximumSize).toHaveBeenCalledWith(SHELF_WIDTHS.narrow, 379);
+    expect(win.setMinimumSize).toHaveBeenCalledWith(SHELF_WIDTHS.narrow, 393);
+    expect(win.setMaximumSize).toHaveBeenCalledWith(SHELF_WIDTHS.narrow, 393);
   });
 
   it('ignores a malformed geometry rather than losing the shelf', () => {
@@ -302,7 +302,7 @@ describe('assistantWindowController', () => {
     expect(getCursorScreenPoint).toHaveBeenCalled();
     expect(getDisplayNearestPoint).toHaveBeenCalledWith({ x: -100, y: 200 });
     expect(win.setBounds).toHaveBeenCalledWith(
-      { x: -1030, y: 18, width: 620, height: 379 },
+      { x: -1030, y: 18, width: 620, height: 393 },
       false,
     );
     expect(calls).toEqual(['bounds', 'snapshot', 'show', 'focus', 'web-focus']);
@@ -324,7 +324,7 @@ describe('assistantWindowController', () => {
 
     expect(win.setBounds).toHaveBeenCalledTimes(2);
     expect(win.setBounds).toHaveBeenLastCalledWith(
-      { x: 446, y: 18, width: 620, height: 379 },
+      { x: 446, y: 18, width: 620, height: 393 },
       false,
     );
   });
@@ -370,7 +370,7 @@ describe('assistantWindowController', () => {
     const controller = controllerWith(win, { createWindow });
     controller.create();
     expect(createWindow).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'panel', width: 620, height: 379,
+      type: 'panel', width: 620, height: 393,
     }));
     expect(win.setAlwaysOnTop).toHaveBeenCalledWith(true, 'floating');
     expect(win.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, {

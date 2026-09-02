@@ -80,6 +80,10 @@ export function AssistantHost({ open, onClose, theme }: {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      const target = event.target as HTMLElement | null;
+      // The Do-first input owns its own Escape; a capture listener would
+      // close the whole panel before the input ever saw the key.
+      if (target?.closest?.('[data-insert-first]')) return;
       event.stopPropagation();
       onClose();
     };

@@ -594,6 +594,52 @@ describe('AssistantSurface', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
+  /*
+   * "Do first…" is the one correction the shelf takes as a title rather than
+   * a click on an existing row: a single line, inserted before the primary
+   * and pinned by the host. It reveals an input rather than opening a dialog,
+   * because the whole point is that this is cheaper than ⌘K.
+   */
+  it('Do first… reveals an input and Enter dispatches insert-before', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Do first…' }));
+    const input = screen.getByLabelText('Do this first');
+    fireEvent.change(input, { target: { value: 'Review ch 3' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onAction).toHaveBeenCalledWith({
+      type: 'insert-before', ref: work().ref, title: 'Review ch 3',
+    });
+  });
+
+  /*
+   * The shelf's number-row dial bindings assumed there was no text field for
+   * the number row to be stolen from — that assumption dies the moment this
+   * field exists, so the window keydown handler has to stand aside for it.
+   */
+  it('typing digits in the input does not turn the dials', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Do first…' }));
+    const input = screen.getByLabelText('Do this first');
+    fireEvent.keyDown(input, { key: '1' });
+    expect(onAction).not.toHaveBeenCalledWith({ type: 'set-time-level', level: expect.anything() });
+  });
+
+  /*
+   * Escape has two owners now, and the input's own is closer. It closes the
+   * field it belongs to, not the whole shelf — the surface-level Escape
+   * listener is guarded off by the same `data-insert-first` wrapper.
+   */
+  it('Escape in the input closes the input, not the shelf', () => {
+    const onAction = vi.fn();
+    render(<AssistantSurface snapshot={ready()} onAction={onAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Do first…' }));
+    fireEvent.keyDown(screen.getByLabelText('Do this first'), { key: 'Escape' });
+    expect(screen.queryByLabelText('Do this first')).toBeNull();
+    expect(onAction).not.toHaveBeenCalledWith({ type: 'close' });
+  });
+
   it('keeps the primary action reachable when a notice is showing', () => {
     const snapshot = ready({ notice: { tone: 'warning', text: 'A session is already running.' } });
     render(<AssistantSurface snapshot={snapshot} onAction={() => {}} />);

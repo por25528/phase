@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
   AssistantAction, AssistantFocusView, AssistantSnapshot,
@@ -15,10 +15,11 @@ import { fmtMinutes } from '../../lib/effort';
 import { useReducedMotion } from '../useReducedMotion';
 import { isLeavingStage, useAssistantSendoff } from './useAssistantSendoff';
 import { SegmentedSwitch } from '../SegmentedControl';
-import { ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
+import { fieldCls, ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 import { captionLabel, ruleTag, sectionLabel } from '../sectionLabel';
 import { SessionRing } from './SessionRing';
 import { TodayCheckbox } from '../TodayCheckbox';
+import type { WorkRef } from '../../lib/expectedTime';
 
 /**
  * The one assistant surface, rendered in two places: inside the app by
@@ -848,6 +849,54 @@ function cyclePositionLine(cycle: { completed: number; longEvery: number }): str
   return `interval ${interval} · ${kind} break next`;
 }
 
+/**
+ * "No — this first." One field, one meaning: a TITLE, inserted before the
+ * primary and pinned by the host. Not a sentence parser — ⌘K is the one
+ * place a sentence becomes a task, and this field never grows grammar.
+ * The wrapper's data attribute is how the host's capture-phase Escape
+ * listener knows to stand aside; see AssistantHost.
+ */
+function InsertFirst({ refTarget, disabled, shelf, compact, onAction }: {
+  refTarget: WorkRef;
+  disabled: boolean;
+  shelf: boolean;
+  compact: boolean;
+  onAction: (action: AssistantAction) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const close = () => { setOpen(false); setTitle(''); };
+  return (
+    <div className={`${bandCls(shelf, compact)} pt-0`} data-insert-first>
+      {open ? (
+        <input
+          autoFocus
+          value={title}
+          aria-label="Do this first"
+          placeholder="e.g. Review chapter 3"
+          className={fieldCls}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const trimmed = title.trim();
+              if (trimmed) onAction({ type: 'insert-before', ref: refTarget, title: trimmed });
+              close();
+            } else if (e.key === 'Escape') {
+              e.stopPropagation();
+              close();
+            }
+          }}
+          onBlur={close}
+        />
+      ) : (
+        <button type="button" className={ghostBtn} disabled={disabled} onClick={() => setOpen(true)}>
+          Do first…
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AdvicePanel({ snapshot, shelf, compact, sections, pending, onAction, onStart }: {
   snapshot: Extract<AssistantSnapshot, { status: 'ready' }>;
   shelf: boolean;
@@ -949,6 +998,7 @@ function AdvicePanel({ snapshot, shelf, compact, sections, pending, onAction, on
           </>
         }
       />
+      <InsertFirst refTarget={primary.ref} disabled={pending} shelf={shelf} compact={compact} onAction={onAction} />
       {sections.alternatives && <AlternativesBand
         label="Or"
         items={alternatives}
@@ -992,6 +1042,8 @@ export function AssistantSurface({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       if (event.key === 'Escape') {
         onAction({ type: 'close' });
         return;
