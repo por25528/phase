@@ -104,7 +104,11 @@ export interface ExecutionAdviceInput {
    * flags are suppressed: they describe an emptied queue, and this primary
    * was chosen, not defaulted to. A ref not in the queue (completed since,
    * deleted, out of horizon) is silently ignored — same fallback rule as
-   * `promoteWork`.
+   * `promoteWork`. A step just created on a project past `PLANNING_HORIZONS`
+   * is one such case: the pool is sourced from `backlogGroups`, which drops
+   * that project's uncommitted work, so the pin is absent from the queue and
+   * quietly ignored — the notice above the card may then name work the card
+   * does not lead with.
    */
   pinned?: WorkRef;
 }

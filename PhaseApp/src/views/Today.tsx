@@ -11,7 +11,6 @@ import { attentionItems, carriedFrom, carryOverRows, looseRows, surfaceReason } 
 import { spansOn } from '../lib/scheduled';
 import { executionAdvice } from '../lib/executionAdvisor';
 import { expectedTimeFor, type WorkRef } from '../lib/expectedTime';
-import { fieldCls } from '../components/dialogStyles';
 import { expectedTimeLabel } from '../lib/assistantProtocol';
 import { proposalMinutes, proposeReplan, slippedWork } from '../lib/replan';
 import { ReplanPreview } from './today/ReplanPreview';
@@ -24,7 +23,7 @@ import { dayLabel, dayVerb, offerHeading, todayPlan, type ProposalRow } from '..
 import { backlogGroups, dueChip, type BacklogItem } from '../lib/backlog';
 import { weekOf } from '../lib/plan';
 import { aimFor } from '../lib/slot';
-import { primaryBtn, rowBtn, rowBtnPrimary } from '../components/dialogStyles';
+import { fieldCls, primaryBtn, rowBtn, rowBtnPrimary } from '../components/dialogStyles';
 
 /**
  * What to do now.
@@ -79,7 +78,9 @@ export function Today({
   // "Do this first" — the same pin the shelf holds, view-local for the same
   // reason the shelf's dials are: surfaces do not share ephemeral lenses. A
   // pin set from the shelf must not leak here, and one set here must not
-  // leak to the shelf.
+  // leak to the shelf. The lifecycle is deliberate: the pin lives until the
+  // work completes (it drops out of the advisor's queue on its own) or the
+  // view unmounts — do not add clear-sites.
   const [pinned, setPinned] = useState<WorkRef | null>(null);
   const [doFirstOpen, setDoFirstOpen] = useState(false);
   /**
