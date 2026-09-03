@@ -88,6 +88,29 @@ describe('complete_task', () => {
   });
 });
 
+describe('a topic on the phone', () => {
+  /** A subject beside the ordinary fixture: the Mac refuses to tick a topic, so the projection must too. */
+  function withSubject(): SyncSlices {
+    const base = slices();
+    base.goals.push({
+      id: 'g3', title: 'Algorithms', type: 'study',
+      nodes: [{ id: 'area', title: 'Topics', topics: true, children: [{ id: 'graphs', title: 'Graphs' }] }],
+    });
+    return base;
+  }
+  it('complete_task on a topic writes nothing', () => {
+    const out = replayOps(withSubject(), [op({ tool: 'complete_task', ref: { kind: 'step', id: 'graphs', goalId: 'g3' } })]);
+    expect(node(out, 'graphs', 'g3')).not.toHaveProperty('status');
+    expect(node(out, 'graphs', 'g3')).not.toHaveProperty('doneAt');
+  });
+  it('set_status done on a topic writes nothing; doing still lands', () => {
+    const done = replayOps(withSubject(), [op({ tool: 'set_status', nodeId: 'graphs', status: 'done' })]);
+    expect(node(done, 'graphs', 'g3')).not.toHaveProperty('status');
+    const doing = replayOps(withSubject(), [op({ tool: 'set_status', nodeId: 'graphs', status: 'doing' })]);
+    expect(node(doing, 'graphs', 'g3')!.status).toBe('doing');
+  });
+});
+
 describe('set_status', () => {
   it('parks a leaf and carries no doneAt', () => {
     const out = replayOps(slices(), [op({ tool: 'set_status', nodeId: 'n1', status: 'parked' })]);

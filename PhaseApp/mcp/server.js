@@ -142,6 +142,10 @@ const WRITES = {
       blockedOn: z.string().optional(),
     },
   ],
+  rate_topic: [
+    'Rate how solid a study TOPIC is: shaky, okay or solid — or null to clear the rating. Topics are the steps under a study project\'s "Topics" area; they are never completed, only rated, and the weakest topic of the nearest exam is what Phase suggests next.',
+    { nodeId: z.string(), confidence: z.enum(['shaky', 'okay', 'solid']).nullable() },
+  ],
   set_life: [
     'Move a project into a life, BY NAME (not id — an id is not visible from out here). Pass null to unassign it. Naming one that does not exist answers with the ones that do.',
     { goalId: z.string(), life: z.string().nullable() },

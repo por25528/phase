@@ -39,6 +39,14 @@ describe('validAgentRequest', () => {
     expect(validAgentRequest({ tool: 'complete_task' })).toBe(false);
   });
 
+  it('rate_topic takes a node id and a word or null', () => {
+    expect(validAgentRequest({ tool: 'rate_topic', nodeId: 'n1', confidence: 'okay' })).toBe(true);
+    expect(validAgentRequest({ tool: 'rate_topic', nodeId: 'n1', confidence: null })).toBe(true);
+    expect(validAgentRequest({ tool: 'rate_topic', nodeId: 'n1', confidence: 'done' })).toBe(false);
+    expect(validAgentRequest({ tool: 'rate_topic', nodeId: 'n1' })).toBe(false);
+    expect(validAgentRequest({ tool: 'rate_topic', nodeId: '', confidence: 'okay' })).toBe(false);
+  });
+
   it('accepts only the five statuses on set_status', () => {
     for (const status of ['todo', 'doing', 'blocked', 'parked', 'done']) {
       expect(validAgentRequest({ tool: 'set_status', nodeId: 'n1', status })).toBe(true);

@@ -1,4 +1,5 @@
-import type { StepStatus } from '../db/types';
+import type { Confidence, StepStatus } from '../db/types';
+import { isConfidence } from './confidence';
 import type { WorkRef } from './expectedTime';
 import { isHorizonWord } from './horizons';
 
@@ -30,6 +31,8 @@ export type AgentRequest =
   | { tool: 'rename'; nodeId: string; title: string }
   | { tool: 'estimate'; nodeId: string; minutes: number | null }
   | { tool: 'set_status'; nodeId: string; status: StepStatus; blockedOn?: string }
+  /** A topic's rating — a word, or null to clear it. A topic is never completed. */
+  | { tool: 'rate_topic'; nodeId: string; confidence: Confidence | null }
   | { tool: 'set_life'; goalId: string; life: string | null }
   | { tool: 'set_horizon'; goalId: string; horizon: string }
   | { tool: 'complete_task'; ref: WorkRef }
@@ -75,7 +78,7 @@ export type AgentResponse =
 
 export const AGENT_TOOLS = [
   'today', 'week', 'backlog', 'list_projects', 'get_project',
-  'create_project', 'add_task', 'rename', 'estimate', 'set_status',
+  'create_project', 'add_task', 'rename', 'estimate', 'set_status', 'rate_topic',
   'set_life', 'set_horizon', 'complete_task', 'schedule', 'delete', 'undo_last',
   'get_note', 'set_note', 'append_note', 'time_log', 'log_time', 'clear_time',
   'propose_replan', 'apply_replan',
@@ -183,6 +186,9 @@ export function validAgentRequest(value: unknown): value is AgentRequest {
         && (req.status === 'todo' || req.status === 'doing' || req.status === 'blocked'
           || req.status === 'parked' || req.status === 'done')
         && (req.blockedOn === undefined || title(req.blockedOn));
+    case 'rate_topic':
+      // `null` is an explicit clear; an absent field is not the same request.
+      return id(req.nodeId) && (req.confidence === null || isConfidence(req.confidence));
     case 'set_life':
       // A life is named, not id'd: an id is invisible from outside the app, so
       // `null` (unassign) is the only non-string this may carry.
