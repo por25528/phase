@@ -439,6 +439,52 @@ describe('AssistantSurface', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'pause-focus' });
   });
 
+  it('a rating focus asks the question with four answers and no tick', () => {
+    const onAction = vi.fn();
+    render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView({ phase: 'rating', topic: true, title: 'Graphs', elapsedMin: 25 }) })}
+        onAction={onAction}
+      />,
+    );
+    expect(screen.getByText('How solid is Graphs now?')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    for (const word of ['Skip', 'Shaky', 'Okay', 'Solid']) {
+      expect(screen.getByRole('button', { name: word })).toBeTruthy();
+    }
+    expect(screen.getByRole('button', { name: 'Solid' }).className).toBe(primaryBtn);
+    expect(screen.getByRole('button', { name: 'Skip' }).className).toBe(ghostBtn);
+    fireEvent.click(screen.getByRole('button', { name: 'Solid' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'rate-focus', confidence: 'solid' });
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'rate-focus', confidence: null });
+  });
+
+  it('a running session on a topic has a ring and a mark, never a checkbox', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({ activeFocus: focusView({ phase: 'active', topic: true, confidence: 'okay' }) })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByRole('img', { name: 'Okay' })).toBeTruthy();
+    expect(document.querySelector('[data-ring-slot] svg')).toBeTruthy();
+  });
+
+  it('a topic primary row draws the mark, not a tick, and names the reason', () => {
+    render(
+      <AssistantSurface
+        snapshot={ready({ advice: { kind: 'work', primary: work({ topic: true, reason: 'review' }), alternatives: [] } })}
+        onAction={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('checkbox', { name: /Complete/ })).toBeNull();
+    expect(screen.getByRole('img', { name: 'Not rated' })).toBeTruthy();
+    expect(screen.getByText('Weakest topic first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Park' })).toBeTruthy();
+  });
+
   it('offers Continue on a break and the confirmation pair while confirming', () => {
     const onAction = vi.fn();
     const { rerender } = render(

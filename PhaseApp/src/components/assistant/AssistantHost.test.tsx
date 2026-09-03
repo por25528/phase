@@ -283,6 +283,51 @@ describe('AssistantHost', () => {
     expect(screen.getByRole('heading', { name: 'Problem set 2' })).toBeTruthy();
   });
 
+  it('rate-focus rates the topic through the store and notices the undo label; Skip notices nothing', async () => {
+    const bridge = installBridge();
+    try {
+      const goals: Goal[] = [{
+        id: 'g1', title: 'Algorithms', type: 'study',
+        nodes: [{ id: 'area', title: 'Topics', topics: true, children: [{ id: 'n1', title: 'Graphs' }] }],
+      }];
+      const store = await mountHost({ goals });
+      // The offered topic carries its mark and its reason across the seam.
+      expect(bridge.lastSnapshot().advice).toMatchObject({ primary: { topic: true, reason: 'review' } });
+
+      await act(async () => {
+        store.actions.startFocus({ kind: 'step', id: 'n1', goalId: 'g1' }, { kind: 'starter', minutes: 30 }, Date.now() - 25 * 60_000);
+      });
+      expect(bridge.lastSnapshot().activeFocus).toMatchObject({ phase: 'active', topic: true });
+      await act(async () => {
+        store.actions.completeFocus();
+      });
+      expect(bridge.lastSnapshot().activeFocus?.phase).toBe('rating');
+
+      // Skip first: the draft is spent, nothing is written, no notice claims
+      // a write.
+      await act(async () => {
+        bridge.dispatchAction({ type: 'rate-focus', confidence: null });
+      });
+      expect(store.getState().activeFocusSession).toBeNull();
+      expect(store.getState().goals[0].nodes[0].children![0].confidence).toBeUndefined();
+      expect(bridge.lastSnapshot().notice).toBeUndefined();
+
+      await act(async () => {
+        store.actions.startFocus({ kind: 'step', id: 'n1', goalId: 'g1' }, { kind: 'starter', minutes: 30 }, Date.now() - 25 * 60_000);
+        store.actions.completeFocus();
+      });
+      await act(async () => {
+        bridge.dispatchAction({ type: 'rate-focus', confidence: 'okay' });
+      });
+      expect(store.getState().goals[0].nodes[0].children![0].confidence).toBe('okay');
+      expect(store.getState().activeFocusSession).toBeNull();
+      expect(screen.getByText('Rated "Graphs" okay')).toBeTruthy();
+      expect(bridge.lastSnapshot().advice).toMatchObject({ primary: { topic: true, confidence: 'okay' } });
+    } finally {
+      bridge.teardown();
+    }
+  });
+
   it('insert-before creates the work, pins it as primary, and notices the undo label', async () => {
     const bridge = installBridge();
     try {
