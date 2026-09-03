@@ -1,6 +1,7 @@
 import type { Goal, GoalNode } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { isDone } from './status';
+import { CONFIDENCE_WEIGHT, topicConfidence } from './confidence';
 
 /**
  * The completion roll-up.
@@ -42,6 +43,11 @@ import { isDone } from './status';
  * `Milestone` it replaced. Ticking a leaf checkbox is still the only thing that
  * moves a number — an estimate changes how much a leaf is WORTH, never whether
  * it is done.
+ *
+ * A TOPIC (a leaf under a `topics` node) is the one leaf whose fraction is not
+ * 0 or 100: it is its confidence weight — see `confidence.ts`. That is still
+ * "ticking moves a number" in spirit: a rating is a deliberate act on the row,
+ * and logged time still moves nothing.
  */
 
 interface Rollup {
@@ -54,17 +60,24 @@ interface Rollup {
  * One pass computes both the percentage and the weight. Deriving the weight in
  * a separate recursive walk would re-descend the tree once per node — O(n²) on
  * a deep project, for a value this traversal already has in hand.
+ *
+ * `inTopics` is inherited down the tree from a node carrying `topics: true`.
+ * A topic's fraction is its confidence weight, and its `status` is NOT read:
+ * a topic never carries 'done' (the store refuses it), and a legacy tick on
+ * one would otherwise flatter the subject by exactly the amount nobody rated.
  */
-function rollup(n: GoalNode): Rollup {
+function rollup(n: GoalNode, inTopics = false): Rollup {
+  const here = inTopics || n.topics === true;
   // A node is a leaf XOR a container, and an empty `children` array counts as a
   // leaf — the same test every other module here uses.
   if (!n.children || n.children.length === 0) {
+    const c = here ? topicConfidence(n) : null;
     return {
-      pct: isDone(n) ? 100 : 0,
+      pct: here ? (c === null ? 0 : CONFIDENCE_WEIGHT[c] * 100) : (isDone(n) ? 100 : 0),
       weight: normalizeEstimate(n.estimateMin) ?? null,
     };
   }
-  return combine(n.children.map(rollup));
+  return combine(n.children.map((k) => rollup(k, here)));
 }
 
 /** The shared weighted-or-equal mean over an already-rolled-up sibling set. */
@@ -89,13 +102,14 @@ function combine(kids: Rollup[]): Rollup {
   };
 }
 
-export function nodePct(n: GoalNode): number {
-  return rollup(n).pct;
+/** `inTopics` says the node sits under a topics area; a root never does. */
+export function nodePct(n: GoalNode, inTopics = false): number {
+  return rollup(n, inTopics).pct;
 }
 
 export function goalPct(g: Goal): number {
   if (!g.nodes || !g.nodes.length) return 0;
-  return combine(g.nodes.map(rollup)).pct;
+  return combine(g.nodes.map((n) => rollup(n))).pct;
 }
 
 /**
@@ -108,5 +122,5 @@ export function goalPct(g: Goal): number {
  */
 export function goalPctBasis(g: Goal): 'weighted' | 'equal' {
   if (!g.nodes || !g.nodes.length) return 'equal';
-  return combine(g.nodes.map(rollup)).weight !== null ? 'weighted' : 'equal';
+  return combine(g.nodes.map((n) => rollup(n))).weight !== null ? 'weighted' : 'equal';
 }
