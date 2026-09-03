@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Goal, GoalNode } from '../db/types';
@@ -175,6 +175,40 @@ describe('a step says where it stands', () => {
  * carried `plannedStartMin`, `plannedDay`, `plannedWeek` and `deadline` for a
  * long time with nowhere on the row to show any of them.
  */
+describe('topics', () => {
+  const subject: GoalNode[] = [
+    { id: 'area', title: 'Topics', topics: true, children: [{ id: 'graphs', title: 'Graphs' }] },
+    { id: 'ps', title: 'Problem set' },
+  ];
+  it('a topic row draws a confidence readout and no checkbox', async () => {
+    await mountTree(subject);
+    // The pick circle is a checkbox too; the one that completes is the one
+    // named `Mark … as done`.
+    const topic = row('Graphs');
+    expect(within(topic).queryByRole('checkbox', { name: /Mark "Graphs"/ })).toBeNull();
+    expect(within(topic).getByRole('img', { name: '"Graphs" — not rated yet' })).toBeTruthy();
+    // The step beside it keeps its box.
+    expect(within(row('Problem set')).getByRole('checkbox', { name: /Mark "Problem set"/ })).toBeTruthy();
+  });
+  it('X on a topic row does not complete it', async () => {
+    const { store, user } = await mountTree(subject);
+    const { findInAll } = await import('../lib/tree');
+    row('Graphs').focus();
+    await user.keyboard('x');
+    expect(findInAll(store.getState().goals, 'graphs')?.status).toBeUndefined();
+    row('Problem set').focus();
+    await user.keyboard('x');
+    expect(findInAll(store.getState().goals, 'ps')?.status).toBe('done');
+  });
+  it('a topics area shows its chip, and a plain container does not', async () => {
+    await mountTree([...subject, { id: 'practice', title: 'Practice', children: [{ id: 'p1', title: 'PS1' }] }]);
+    // The area's title and its chip share a word, so the row is found by the title cell.
+    const area = screen.getByTitle('Topics').closest('[data-row]') as HTMLElement;
+    expect(within(area).getByText('Topics', { selector: '[data-topics-chip]' })).toBeTruthy();
+    expect(within(row('Practice')).queryByText('Topics', { selector: '[data-topics-chip]' })).toBeNull();
+  });
+});
+
 describe('the schedule column', () => {
   it('names the day a task is placed on', async () => {
     const { todayStr } = await import('../lib/dates');

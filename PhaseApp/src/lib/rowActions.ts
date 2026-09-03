@@ -24,6 +24,7 @@ export type RowActionId =
   | 'estimate'
   | 'milestone'
   | 'park'
+  | 'topics'
   | 'demand'
   | 'breakdown'
   | 'indent'
@@ -51,6 +52,8 @@ export interface RowActionContext {
   isMilestone: boolean;
   /** A leaf set aside. A container derives it and never sets it. */
   isParked: boolean;
+  /** A container flagged as the topics area: every leaf beneath is a topic. */
+  isTopicsArea: boolean;
   /** False for the first child in a sibling run — there is nothing to nest under. */
   canIndent: boolean;
   /** False at the root — there is nowhere to go. */
@@ -100,6 +103,13 @@ export function rowActions(ctx: RowActionContext): RowAction[] {
     // Parking is a deliberate verb and not a step in the `S` cycle: cycling
     // through "not now" on the way to "blocked" would park things by accident.
     out.push({ id: 'park', label: ctx.isParked ? 'Unpark' : 'Park', hint: 'P', group: 1 });
+  }
+
+  // A container can be the topics area — the rows under it are rated rather
+  // than ticked. Offered on every container whatever the goal's type, because
+  // the label says exactly what it does and the flag is a toggle.
+  if (ctx.isContainer) {
+    out.push({ id: 'topics', label: ctx.isTopicsArea ? 'Treat as steps' : 'Treat as topics', group: 1 });
   }
 
   // The first verb offered on BOTH a leaf and a container. Schedule and Estimate

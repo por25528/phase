@@ -1,4 +1,4 @@
-import { Fragment, useState, useRef, useEffect, useId } from 'react';
+import { Fragment, useMemo, useState, useRef, useEffect, useId } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { GoalNode } from '../db/types';
 import { useAppStore } from '../state/store';
@@ -33,6 +33,7 @@ import { scheduleCell } from '../lib/rowSchedule';
 import { metaPlacement, type MetaPlacement } from '../lib/rowMeta';
 import { todayStr } from '../lib/dates';
 import { DEMANDS, DEMAND_WORD, type Demand } from '../lib/demand';
+import { CONFIDENCE_RANK, topicAgeLabel, topicConfidence, topicIdsIn } from '../lib/confidence';
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
 
@@ -117,6 +118,33 @@ function LeafStatusBox({
   );
 }
 
+/**
+ * The topic's box: the same 17px footprint as `LeafStatusBox` so the column
+ * never shifts, and a READOUT rather than a control — rating happens on the
+ * shelf when a sitting ends, and the task page is where a mis-tap is
+ * corrected. Three bars, lit to the rating; solid fills the box the way done
+ * fills a step's, because solid IS the finished state of a topic.
+ */
+function ConfidenceBox({ node, today, label }: { node: GoalNode; today: string; label: string }) {
+  const c = topicConfidence(node);
+  const lit = c === null ? 0 : CONFIDENCE_RANK[c];
+  const box = c === 'solid' ? 'bg-accent border-accent' : 'border-check';
+  const bar = c === 'solid' ? 'bg-accent-contrast' : c === 'shaky' ? 'bg-warn' : 'bg-accent';
+  return (
+    <span
+      role="img"
+      aria-label={`${label} — ${topicAgeLabel(node, today)}`}
+      className="w-[24px] h-[24px] -m-[3px] flex-shrink-0 grid place-items-center"
+    >
+      <span className={`w-[17px] h-[17px] border-[1.5px] rounded-[6px] flex items-end justify-center gap-[1.5px] p-[3px] ${box}`}>
+        {[0.45, 0.7, 1].map((h, i) => (
+          <span key={i} className={`w-[2px] rounded-[1px] ${i < lit ? bar : 'bg-transparent'}`} style={{ height: `${h * 100}%` }} />
+        ))}
+      </span>
+    </span>
+  );
+}
+
 // ── Expand animation ──────────────────────────────────────────────────────────
 
 // Fades in on mount; no close animation (children unmount immediately on collapse
@@ -193,6 +221,15 @@ interface SharedProps {
    */
   revealed: ReadonlySet<string>;
   onReveal: (key: string) => void;
+  /**
+   * The ids of every topic in the tree, computed once at the root — a row
+   * asks `topics.has(n.id)` to know whether it draws a box or a readout.
+   * `inTopics` is the per-level fact that the LIST already sits under a
+   * topics area, threaded down so a sub-container's progress reads the
+   * confidence roll-up rather than a tick count.
+   */
+  topics: ReadonlySet<string>;
+  inTopics: boolean;
 }
 
 /**
@@ -355,9 +392,15 @@ function SelectionBar({
 
 // ── GoalTree (public export, owns DndContext) ─────────────────────────────────
 
-export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: number }) {
+/**
+ * `inTopics` says the whole list already sits under a topics area — the
+ * milestone workspace renders this component over a SUBTREE, and the flag
+ * may be on an ancestor the list cannot see. The goal's own tree never sets it.
+ */
+export function GoalTree({ nodes, depth = 0, inTopics = false }: { nodes: GoalNode[]; depth?: number; inTopics?: boolean }) {
   const { expanded, actions, newNodeId, openGoalId } = useAppStore();
   const reducedMotion = usePrefersReducedMotion();
+  const topics = useMemo(() => topicIdsIn(nodes, inTopics), [nodes, inTopics]);
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   // Folded runs the user has opened. Keyed by first-node id — see `DoneRun`.
@@ -522,6 +565,8 @@ export function GoalTree({ nodes, depth = 0 }: { nodes: GoalNode[]; depth?: numb
           goalId={openGoalId ?? ''}
           revealed={revealed}
           onReveal={toggleRevealed}
+          topics={topics}
+          inTopics={inTopics}
         />
       </div>
     </DndContext>
@@ -658,6 +703,8 @@ function GoalTreeNode({
   goalId,
   revealed,
   onReveal,
+  topics,
+  inTopics,
 }: { n: GoalNode; isFirstSibling: boolean } & SharedProps) {
   // A row created by Enter mounts straight into its editor, so the sequence is
   // "Enter, type, Enter" rather than "Enter, hunt for the row, double-click,
@@ -679,6 +726,10 @@ function GoalTreeNode({
   }, []);
   const hasKids = Boolean(n.children && n.children.length > 0);
   const isOpen = hasKids && expanded.has(n.id);
+  const isTopic = !hasKids && topics.has(n.id);
+  // Whether THIS node's subtree sits under a topics area: inherited, or its
+  // own flag. What the children's list is handed as `inTopics`.
+  const inTopicsHere = inTopics || n.topics === true;
   const when = scheduleCell(n, todayStr());
   const placement: MetaPlacement = hasKids ? 'inline' : metaPlacement(n, todayStr());
   const ind = depth * 22;
@@ -873,7 +924,9 @@ function GoalTreeNode({
     if (plain && (e.key === 'x' || e.key === 'X') && !editing) {
       e.preventDefault();
       if (selected.size > 0) onBulk('complete');
-      else if (!hasKids) actions.toggleLeaf(n.id);
+      // A topic has no tick to press: it is rated on the shelf, and the
+      // store would refuse the write anyway.
+      else if (!hasKids && !isTopic) actions.toggleLeaf(n.id);
       return;
     }
     // ⇧S opens the schedule popover on the WHEN cell.
@@ -1077,6 +1130,15 @@ function GoalTreeNode({
     </span>
   ) : null;
 
+  // The topics area says so on its own row: every leaf beneath it is rated
+  // rather than ticked, and a fact that changes what a checkbox means has to
+  // be visible where the rows are.
+  const topicsChip = n.topics === true ? (
+    <span data-topics-chip className="text-meta text-muted px-[6px] rounded-full border border-line-soft normal-case flex-shrink-0">
+      Topics
+    </span>
+  ) : null;
+
   const titleEditor = (className: string) => (
     <InlineEdit value={n.title} className={className} onCommit={commitRename} onCancel={() => setEditing(false)} />
   );
@@ -1142,6 +1204,7 @@ function GoalTreeNode({
                 {dragHandle}
                 {twirl}
                 {milestoneMark}
+                {topicsChip}
               </>
             }
             label={
@@ -1180,8 +1243,8 @@ function GoalTreeNode({
                   </span>
                 )}
 
-                <ProgressBar pct={nodePct(n)} />
-                <span className="flex-none">{Math.round(nodePct(n))}%</span>
+                <ProgressBar pct={nodePct(n, inTopics)} />
+                <span className="flex-none">{Math.round(nodePct(n, inTopics))}%</span>
 
                 <span onClick={(e) => e.stopPropagation()} className="flex-none -mr-[4px]">
                   <RowActions
@@ -1207,11 +1270,15 @@ function GoalTreeNode({
               {pickCircle}
               {dragHandle}
               {twirl}
-              <LeafStatusBox
-                status={stepStatus(n)}
-                onToggle={() => actions.toggleLeaf(n.id)}
-                label={`Mark "${n.title}" as done`}
-              />
+              {isTopic ? (
+                <ConfidenceBox node={n} today={todayStr()} label={`"${n.title}"`} />
+              ) : (
+                <LeafStatusBox
+                  status={stepStatus(n)}
+                  onToggle={() => actions.toggleLeaf(n.id)}
+                  label={`Mark "${n.title}" as done`}
+                />
+              )}
               {milestoneMark}
             </div>
 
@@ -1349,6 +1416,8 @@ function GoalTreeNode({
               goalId={goalId}
               revealed={revealed}
               onReveal={onReveal}
+              topics={topics}
+              inTopics={inTopicsHere}
             />
             <AddChildInput
               indent={(depth + 1) * 22}

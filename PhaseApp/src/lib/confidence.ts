@@ -55,10 +55,20 @@ function isLeaf(n: GoalNode): boolean {
  * rows in it has no topics yet.
  */
 export function topicIds(g: Goal): Set<string> {
+  return topicIdsIn(g.nodes, false);
+}
+
+/**
+ * The same walk over a bare node list — what the tree component has in hand —
+ * with `inTopics` saying whether the list already sits under a topics area.
+ * The milestone workspace renders the tree over a SUBTREE, so the flag may be
+ * on an ancestor the list cannot see; `insideTopicsArea` answers that.
+ */
+export function topicIdsIn(nodes: GoalNode[], inTopics: boolean): Set<string> {
   const out = new Set<string>();
-  const walk = (nodes: GoalNode[], inTopics: boolean): void => {
-    for (const n of nodes) {
-      const here = inTopics || n.topics === true;
+  const walk = (list: GoalNode[], under: boolean): void => {
+    for (const n of list) {
+      const here = under || n.topics === true;
       if (isLeaf(n)) {
         if (here && n.topics !== true) out.add(n.id);
         continue;
@@ -66,8 +76,24 @@ export function topicIds(g: Goal): Set<string> {
       walk(n.children!, here);
     }
   };
-  walk(g.nodes, false);
+  walk(nodes, inTopics);
   return out;
+}
+
+/** Whether `nodeId`, or any ancestor of it, carries the `topics` flag. */
+export function insideTopicsArea(g: Goal, nodeId: string): boolean {
+  const walk = (list: GoalNode[], under: boolean): boolean | null => {
+    for (const n of list) {
+      const here = under || n.topics === true;
+      if (n.id === nodeId) return here;
+      if (!isLeaf(n)) {
+        const found = walk(n.children!, here);
+        if (found !== null) return found;
+      }
+    }
+    return null;
+  };
+  return walk(g.nodes, false) === true;
 }
 
 export function isTopic(g: Goal, nodeId: string): boolean {

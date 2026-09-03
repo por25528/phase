@@ -3,7 +3,7 @@ import type { Goal, GoalNode } from '../db/types';
 import {
   CONFIDENCE_RANK, CONFIDENCE_WEIGHT, isConfidence, topicIds, isTopic, topicConfidence,
   confidenceRank, sortForReview, readiness, describeReadiness, applyConfidence, topicAgeLabel,
-  ratedWhenLabel,
+  ratedWhenLabel, topicIdsIn, insideTopicsArea,
 } from './confidence';
 
 const TODAY = '2026-09-03';
@@ -55,6 +55,18 @@ describe('topicIds / isTopic', () => {
   });
   it('a goal with no topics area has no topics', () => {
     expect(topicIds(goal([leaf({ id: 'a' })])).size).toBe(0);
+  });
+  it('topicIdsIn takes the ancestor flag the list cannot see', () => {
+    const sub = subject().nodes[0].children![2].children!; // Sorting's children
+    expect(topicIdsIn(sub, false).size).toBe(0);
+    expect([...topicIdsIn(sub, true)]).toEqual(['merge']);
+  });
+  it('insideTopicsArea is true for the area, everything beneath it, and nothing else', () => {
+    expect(insideTopicsArea(subject(), 'area')).toBe(true);
+    expect(insideTopicsArea(subject(), 'sub')).toBe(true);
+    expect(insideTopicsArea(subject(), 'merge')).toBe(true);
+    expect(insideTopicsArea(subject(), 'practice')).toBe(false);
+    expect(insideTopicsArea(subject(), 'nope')).toBe(false);
   });
 });
 
