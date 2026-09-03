@@ -114,9 +114,35 @@ const path = require('node:path')
 // integers, so the round trip is always ceil(), the same rule every prior
 // pass in this file has followed (263.2 became 264).
 //
+// Re-measured 2026-09-03 when the focus card gained `rating` — the question
+// a logged sitting on a TOPIC ends in (`How solid is <title> now?`, then
+// Skip · Shaky · Okay · Solid). It is a running-card state with no ring and
+// no elapsed line, and it is still the tallest, for the same reason
+// `confirming` always was, only more so: its body is a question under the
+// title, and this question NAMES the title, so a two-line title wraps twice.
+// The first measurement put the four answers beside the question, the way
+// every other action row sits, and at 520 the two wrapped into each other —
+// 504.48, a third of the window for one state. `WorkBand` therefore takes
+// `stack`, which `rating` alone sets: the answers go under the question as
+// embedded already draws them, the question takes the full width and the
+// four buttons take one row. Stacked, at comfortable:
+//
+//   620  rating 419.48   (sidecar 392.48, confirming 378.48 — unchanged)
+//   520  rating 440.48   (the question wraps to three lines at this width)
+//   760  rating 419.48
+//
+// and compact takes its usual 20px off every state (rating 399.48 at 620),
+// so comfortable at the NARROW width is now the state the budget has to
+// cover. `scripts/measure-shelf.cjs` carries the `rating` state so the next
+// pass measures it rather than remembering it.
+//
+// HEIGHT is the tallest of those figures rounded UP to the next whole pixel
+// (441, from rating's 440.48 at 520) — never a margin, the same ceil() rule
+// every prior pass has followed.
+//
 // If a state grows, measure it again.
 const WIDTH = 620
-const HEIGHT = 393
+const HEIGHT = 441
 const TOP_GAP = 18
 // The `top-center` placement's own offset. A different number from TOP_GAP on
 // purpose: that one is the gap this shelf has always used, and this is a

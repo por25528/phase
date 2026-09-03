@@ -50,7 +50,7 @@ export function ConfidenceMark({ confidence, size = 13 }: { confidence: Confiden
       {[0.45, 0.7, 1].map((h, i) => (
         <span
           key={i}
-          className={`flex-1 rounded-[1px] ${i < lit ? color : 'bg-check'}`}
+          className={`flex-1 rounded-full ${i < lit ? color : 'bg-check'}`}
           style={{ height: `${h * 100}%` }}
         />
       ))}

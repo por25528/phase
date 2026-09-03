@@ -138,7 +138,7 @@ function ConfidenceBox({ node, today, label }: { node: GoalNode; today: string; 
     >
       <span className={`w-[17px] h-[17px] border-[1.5px] rounded-[6px] flex items-end justify-center gap-[1.5px] p-[3px] ${box}`}>
         {[0.45, 0.7, 1].map((h, i) => (
-          <span key={i} className={`w-[2px] rounded-[1px] ${i < lit ? bar : 'bg-transparent'}`} style={{ height: `${h * 100}%` }} />
+          <span key={i} className={`w-[2px] rounded-full ${i < lit ? bar : 'bg-transparent'}`} style={{ height: `${h * 100}%` }} />
         ))}
       </span>
     </span>

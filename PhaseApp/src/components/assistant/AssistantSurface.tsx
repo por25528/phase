@@ -578,7 +578,7 @@ function TopicLead({ confidence }: { confidence: Confidence | null }) {
  * title's left edge must not move when a session ends, and that is true at
  * either width.
  */
-function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, actions, shelf, compact = false }: {
+function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, actions, shelf, compact = false, stack }: {
   checkbox: ReactNode;
   ring: ReactNode;
   eyebrow: string;
@@ -598,9 +598,19 @@ function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, act
   actions: ReactNode;
   shelf: boolean;
   compact?: boolean;
+  /**
+   * Put the actions UNDER the content on the shelf too, the way embedded
+   * always does. For the rating row: four answers beside a question that
+   * names a two-line title wrapped both at once, and at 520px the card grew
+   * 112px past its budget. Stacked, the question takes the full width and the
+   * four buttons take one row, and the state costs a few pixels over
+   * `confirming` rather than a third of the window.
+   */
+  stack?: boolean;
 }) {
+  const stacked = !shelf || stack === true;
   const band = (
-    <div className={`${bandCls(shelf, compact)} flex ${shelf ? 'items-center gap-3' : 'flex-col gap-2'}`}>
+    <div className={`${bandCls(shelf, compact)} flex ${stacked ? 'flex-col gap-2' : 'items-center gap-3'}`}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div data-gutter className={GUTTER}>{checkbox}</div>
         {ring}
@@ -615,7 +625,7 @@ function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, act
           {extra}
         </div>
       </div>
-      <div className={`flex shrink-0 gap-2 ${shelf ? '' : 'justify-end'}`}>{actions}</div>
+      <div className={`flex shrink-0 gap-2 ${stacked ? 'justify-end' : ''}`}>{actions}</div>
     </div>
   );
   if (!shelf) return band;
@@ -849,6 +859,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, compact, sections, f
       <WorkBand
         shelf={shelf}
         compact={compact}
+        stack={focus.phase === 'rating'}
         checkbox={checkbox}
         ring={ring}
         eyebrow="Focus session"
