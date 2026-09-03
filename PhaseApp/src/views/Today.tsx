@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAppStore } from '../state/store';
 import { TodayCheckbox } from '../components/TodayCheckbox';
+import { ConfidenceMark } from '../components/StatusMark';
 import { stampLabel } from '../components/sectionLabel';
 import { RuleHeader } from '../components/RuleHeader';
 import { TaskRow } from '../components/TaskRow';
@@ -191,6 +192,28 @@ export function Today({
   function complete(item: DailyWorkItem): void {
     if (item.kind === 'task') actions.toggleTask(item.id);
     else actions.toggleLeaf(item.id);
+  }
+
+  /**
+   * A topic has no tick: it is rated on the shelf when a sitting ends, and
+   * `toggleLeaf` would refuse the press anyway. The mark keeps the column so
+   * a topic row and a step row line up.
+   */
+  function lead(item: DailyWorkItem): ReactNode {
+    if (item.topic) {
+      return (
+        <span className="w-[22px] h-[22px] grid place-items-center flex-shrink-0">
+          <ConfidenceMark confidence={item.confidence ?? null} />
+        </span>
+      );
+    }
+    return (
+      <TodayCheckbox
+        checked={false}
+        onToggle={() => complete(item)}
+        ariaLabel={`Mark "${item.title}" as done`}
+      />
+    );
   }
 
   /** A loose row is always a task — a step cannot be loose; it has a tree. */
@@ -404,13 +427,7 @@ export function Today({
                   : undefined
               }
               onOpen={() => openItem(primaryItem)}
-              lead={
-                <TodayCheckbox
-                  checked={false}
-                  onToggle={() => complete(primaryItem)}
-                  ariaLabel={`Mark "${primaryItem.title}" as done`}
-                />
-              }
+              lead={lead(primaryItem)}
               meta={
                 <>
                   <span className="tabular-nums">{expectedTimeLabel(primary.expected)}</span>
@@ -547,13 +564,7 @@ export function Today({
                       : undefined
                   }
                   onOpen={() => openItem(item)}
-                  lead={
-                    <TodayCheckbox
-                      checked={false}
-                      onToggle={() => complete(item)}
-                      ariaLabel={`Mark "${item.title}" as done`}
-                    />
-                  }
+                  lead={lead(item)}
                   meta={
                     <>
                       {/* Why this row is here at all. Absent where the row
@@ -648,13 +659,7 @@ export function Today({
                   title={item.title}
                   subtitle={item.goalTitle}
                   onOpen={() => openItem(item)}
-                  lead={
-                    <TodayCheckbox
-                      checked={false}
-                      onToggle={() => complete(item)}
-                      ariaLabel={`Mark "${item.title}" as done`}
-                    />
-                  }
+                  lead={lead(item)}
                   meta={
                     <>
                       {/* No `surfaceReason` chip: the heading is the reason. */}
