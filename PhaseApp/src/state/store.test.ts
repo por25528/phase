@@ -6364,3 +6364,82 @@ describe('autoBackupFailed', () => {
     expect(vi.mocked(persist)).not.toHaveBeenCalled();
   });
 });
+
+describe('topics', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const TODAY = '2026-09-03';
+  const subject: Goal = {
+    id: 'g1', title: 'Algorithms', type: 'study',
+    nodes: [
+      { id: 'area', title: 'Topics', topics: true, children: [{ id: 'graphs', title: 'Graphs' }] },
+      { id: 'ps', title: 'Problem set' },
+    ],
+  };
+  async function topicStore() {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({ goals: [subject], habits: [], tasks: [], sessions: [], lives: [] });
+    const store = await freshStore();
+    await store.initStore();
+    return store;
+  }
+  const topic = (s: { getState: () => { goals: Goal[] } }) => s.getState().goals[0].nodes[0].children![0];
+
+  it('rateTopic writes both fields, arms an undo, and clears both on null', async () => {
+    const { actions, getState } = await topicStore();
+    expect(actions.rateTopic('graphs', 'okay', TODAY)).toBe(true);
+    expect(topic({ getState })).toMatchObject({ confidence: 'okay', confidenceAt: TODAY });
+    expect(getState().pendingUndo?.label).toBe('Rated "Graphs" okay');
+    expect(actions.rateTopic('graphs', null, TODAY)).toBe(true);
+    expect(topic({ getState }).confidence).toBeUndefined();
+    expect(topic({ getState }).confidenceAt).toBeUndefined();
+    expect(getState().pendingUndo?.label).toBe('Cleared rating on "Graphs"');
+  });
+  it('rateTopic refuses a step, a container and a frozen goal', async () => {
+    const { actions } = await topicStore();
+    expect(actions.rateTopic('ps', 'okay', TODAY)).toBe(false);
+    expect(actions.rateTopic('area', 'okay', TODAY)).toBe(false);
+    actions.completeGoal('g1');
+    expect(actions.rateTopic('graphs', 'okay', TODAY)).toBe(false);
+  });
+  it('a topic cannot be completed by any route', async () => {
+    const { actions, getState } = await topicStore();
+    actions.toggleLeaf('graphs');
+    expect(topic({ getState }).status).toBeUndefined();
+    expect(actions.setNodeStatus('graphs', 'done')).toBe(false);
+    expect(actions.setNodeStatus('graphs', 'doing')).toBe(true);
+    expect(actions.finishWork({ kind: 'step', id: 'graphs', goalId: 'g1' })).toEqual({ outcome: 'refused' });
+  });
+  it('the bulk completes and status writes leave a topic alone and take the steps', async () => {
+    const { actions, getState } = await topicStore();
+    expect(actions.setNodesStatus(['graphs', 'ps'], 'done')).toBe(true);
+    expect(topic({ getState }).status).toBeUndefined();
+    expect(getState().goals[0].nodes[1].status).toBe('done');
+    actions.undoLastDelete();
+    expect(actions.completeNodes(['area', 'ps'])).toBe(true);
+    expect(topic({ getState }).status).toBeUndefined();
+    expect(getState().goals[0].nodes[1].status).toBe('done');
+    expect(getState().pendingUndo?.label).toBe('Completed 1 task');
+    // A selection that is nothing but topics has nothing to complete.
+    actions.undoLastDelete();
+    expect(actions.completeNodes(['graphs'])).toBe(false);
+    expect(actions.setNodesStatus(['graphs'], 'done')).toBe(false);
+  });
+  it('setTopicsArea toggles the flag on a container', async () => {
+    const { actions, getState } = await topicStore();
+    expect(actions.setTopicsArea('area', false)).toBe(true);
+    expect(getState().goals[0].nodes[0].topics).toBeUndefined();
+    expect(actions.setTopicsArea('area', true)).toBe(true);
+    expect(getState().goals[0].nodes[0].topics).toBe(true);
+    expect(actions.setTopicsArea('area', true)).toBe(false);
+  });
+  it('addRootNodes carries a topics flag per title', async () => {
+    const { actions, getState } = await topicStore();
+    actions.addRootNodes('g1', ['Topics', '  ', 'Practice'], [{ topics: true }, undefined, undefined]);
+    const added = getState().goals[0].nodes.slice(-2);
+    expect(added[0]).toMatchObject({ title: 'Topics', topics: true });
+    expect(added[1].title).toBe('Practice');
+    expect(added[1].topics).toBeUndefined();
+  });
+});
