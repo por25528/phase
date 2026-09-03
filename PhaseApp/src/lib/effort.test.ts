@@ -8,6 +8,10 @@ import {
   fmtMinutes,
   goalEffort,
 } from './effort';
+import { goalPct } from './pct';
+
+/** The zero readiness a goal without a topics area reports. */
+const NO_TOPICS = { readiness: { topics: 0, unrated: 0, shaky: 0, okay: 0, solid: 0 } };
 
 const goal = (nodes: GoalNode[]): Goal => ({ id: 'g', title: 'G', nodes });
 const leaf = (id: string, over: Partial<GoalNode> = {}): GoalNode => ({ id, title: id, ...over });
@@ -63,7 +67,7 @@ describe('goalEffort', () => {
   });
 
   it('reports an empty goal as empty rather than as finished', () => {
-    expect(goalEffort(goal([]))).toEqual({ remainingMin: 0, unestimated: 0, total: 0, done: 0 });
+    expect(goalEffort(goal([]))).toEqual({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 0, done: 0 });
   });
 });
 
@@ -81,7 +85,7 @@ describe('fmtMinutes', () => {
 
 describe('describeEffort', () => {
   it('leads with the remaining effort, then the count', () => {
-    expect(describeEffort({ remainingMin: 750, unestimated: 0, total: 14, done: 8 }))
+    expect(describeEffort({ ...NO_TOPICS, remainingMin: 750, unestimated: 0, total: 14, done: 8 }))
       .toBe('12h 30m remaining · 8 of 14 tasks');
   });
 
@@ -91,17 +95,17 @@ describe('describeEffort', () => {
    * read, or it is quietly a lie.
    */
   it('says how much of the figure is missing', () => {
-    expect(describeEffort({ remainingMin: 120, unestimated: 6, total: 14, done: 2 }))
+    expect(describeEffort({ ...NO_TOPICS, remainingMin: 120, unestimated: 6, total: 14, done: 2 }))
       .toBe('2h remaining · 2 of 14 tasks · 6 unestimated');
   });
 
   it('says a finished goal is finished rather than reporting 0m left', () => {
-    expect(describeEffort({ remainingMin: 0, unestimated: 0, total: 3, done: 3 }))
+    expect(describeEffort({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 3, done: 3 }))
       .toBe('every task done · 3 of 3 tasks');
   });
 
   it('has nothing to say about a goal with no tasks', () => {
-    expect(describeEffort({ remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBeNull();
+    expect(describeEffort({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBeNull();
   });
 
   /**
@@ -111,18 +115,18 @@ describe('describeEffort', () => {
    * small measurement, it is the absence of one, so it is not printed at all.
    */
   it('omits the minutes entirely when nothing has been estimated', () => {
-    expect(describeEffort({ remainingMin: 0, unestimated: 4, total: 6, done: 2 }))
+    expect(describeEffort({ ...NO_TOPICS, remainingMin: 0, unestimated: 4, total: 6, done: 2 }))
       .toBe('2 of 6 tasks · 4 unestimated');
   });
 
   it('still states the count when nothing is estimated and nothing is flagged', () => {
-    expect(describeEffort({ remainingMin: 0, unestimated: 0, total: 6, done: 2 }))
+    expect(describeEffort({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 6, done: 2 }))
       .toBe('2 of 6 tasks');
   });
 
   it('never emits a bare zero duration for an unfinished goal', () => {
     for (const unestimated of [0, 4]) {
-      expect(describeEffort({ remainingMin: 0, unestimated, total: 6, done: 2 }))
+      expect(describeEffort({ ...NO_TOPICS, remainingMin: 0, unestimated, total: 6, done: 2 }))
         .not.toMatch(/\b0m\b/);
     }
   });
@@ -150,49 +154,82 @@ describe('effortPct', () => {
   });
 
   it('is zero for a goal with no tasks rather than dividing by nothing', () => {
-    expect(effortPct({ remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBe(0);
+    expect(effortPct({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBe(0);
   });
 
   it('reaches a full bar only when every task is done', () => {
-    expect(effortPct({ remainingMin: 0, unestimated: 0, total: 13, done: 12 })).toBeLessThan(100);
-    expect(effortPct({ remainingMin: 0, unestimated: 0, total: 13, done: 13 })).toBe(100);
+    expect(effortPct({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 13, done: 12 })).toBeLessThan(100);
+    expect(effortPct({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 13, done: 13 })).toBe(100);
   });
 });
 
 describe('effortCount', () => {
   it('prints the fraction the bar is drawing', () => {
-    expect(effortCount({ remainingMin: 55, unestimated: 11, total: 13, done: 2 })).toBe('2/13');
+    expect(effortCount({ ...NO_TOPICS, remainingMin: 55, unestimated: 11, total: 13, done: 2 })).toBe('2/13');
   });
 
   it('says Done at full rather than repeating the fraction', () => {
-    expect(effortCount({ remainingMin: 0, unestimated: 0, total: 13, done: 13 })).toBe('Done');
+    expect(effortCount({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 13, done: 13 })).toBe('Done');
   });
 
   it('does not call an empty goal done', () => {
-    expect(effortCount({ remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBe('0/0');
+    expect(effortCount({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 0, done: 0 })).toBe('0/0');
   });
 });
 
 describe('effortCaption', () => {
   it('states the minutes and the caveat together', () => {
-    expect(effortCaption({ remainingMin: 55, unestimated: 11, total: 13, done: 2 }))
+    expect(effortCaption({ ...NO_TOPICS, remainingMin: 55, unestimated: 11, total: 13, done: 2 }))
       .toBe('55m left · 11 unestimated');
   });
 
   it('omits the minutes entirely when nothing has been estimated', () => {
     // Same rule as `describeEffort`: `0m left` is the absence of a measurement,
     // not a small one, and it contradicts the qualifier standing beside it.
-    expect(effortCaption({ remainingMin: 0, unestimated: 4, total: 6, done: 2 }))
+    expect(effortCaption({ ...NO_TOPICS, remainingMin: 0, unestimated: 4, total: 6, done: 2 }))
       .toBe('4 unestimated');
   });
 
   it('drops the caveat once everything is sized', () => {
-    expect(effortCaption({ remainingMin: 90, unestimated: 0, total: 6, done: 2 }))
+    expect(effortCaption({ ...NO_TOPICS, remainingMin: 90, unestimated: 0, total: 6, done: 2 }))
       .toBe('1h 30m left');
   });
 
   it('returns null rather than an empty line when it has nothing to add', () => {
     // A fully-estimated, fully-done goal: the meter and its count say it all.
-    expect(effortCaption({ remainingMin: 0, unestimated: 0, total: 6, done: 6 })).toBeNull();
+    expect(effortCaption({ ...NO_TOPICS, remainingMin: 0, unestimated: 0, total: 6, done: 6 })).toBeNull();
+  });
+});
+
+describe('topics', () => {
+  const subject: Goal = {
+    id: 'g', title: 'Algorithms', nodes: [
+      { id: 'area', title: 'Topics', topics: true, children: [
+        { id: 'a', title: 'A', estimateMin: 45, confidence: 'solid', confidenceAt: '2026-09-01' },
+        { id: 'b', title: 'B', estimateMin: 45 },
+      ] },
+      { id: 'ps', title: 'Problem set', estimateMin: 60 },
+    ],
+  };
+  it('excludes topics from remaining and unestimated, and from total/done', () => {
+    const e = goalEffort(subject);
+    expect(e.remainingMin).toBe(60);
+    expect(e.unestimated).toBe(0);
+    expect(e.total).toBe(1);
+    expect(e.done).toBe(0);
+    expect(e.readiness).toEqual({ topics: 2, unrated: 1, shaky: 0, okay: 0, solid: 1 });
+  });
+  it('effortCount and describeEffort say readiness when topics exist', () => {
+    const e = goalEffort(subject);
+    expect(effortCount(e)).toBe('1 of 2 topics solid · 0 of 1 step done');
+    expect(describeEffort(e)).toBe('1 of 2 topics solid · 1h remaining · 0 of 1 task');
+    const only = goalEffort({ ...subject, nodes: [subject.nodes[0]] });
+    expect(effortCount(only)).toBe('1 of 2 topics solid');
+    expect(describeEffort(only)).toBe('1 of 2 topics solid');
+  });
+  it('effortPct draws the confidence roll-up for a goal with topics', () => {
+    expect(effortPct(goalEffort(subject), subject)).toBeCloseTo(goalPct(subject));
+    const plain: Goal = { id: 'p', title: 'P', nodes: [{ id: 'x', title: 'X', status: 'done' }, { id: 'y', title: 'Y' }] };
+    expect(effortPct(goalEffort(plain), plain)).toBe(50);
   });
 });

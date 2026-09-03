@@ -228,3 +228,14 @@ describe('rankMoveTarget', () => {
     expect(rankMoveTarget(['a', 'b'], visible('a'), 'b', -1)).toBeNull();
   });
 });
+
+describe('leafCount and topics', () => {
+  it('a topic counts as open whatever its confidence', () => {
+    const nodes: GoalNode[] = [{ id: 'area', title: 'Topics', topics: true, children: [
+      { id: 'a', title: 'A', confidence: 'solid', confidenceAt: '2026-09-01' },
+      // A legacy tick on a topic is not a finish either: the roll-up ignores it.
+      { id: 'b', title: 'B', status: 'done' },
+    ] }, { id: 'ps', title: 'PS', status: 'done' }];
+    expect(leafCount(nodes)).toEqual({ total: 3, done: 1 });
+  });
+});

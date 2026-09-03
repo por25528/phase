@@ -171,10 +171,10 @@ function CardFace({
         sentence, and no "All tasks complete" / "No tasks yet" fallbacks, which
         duplicated the badge and the blocked indicator below.
       */}
-      {effort.total > 0 && (
+      {(effort.total > 0 || effort.readiness.topics > 0) && (
         <div className="flex flex-col gap-[4px]">
           <div className="flex items-center gap-[8px]">
-            <ProgressBar pct={effortPct(effort)} />
+            <ProgressBar pct={effortPct(effort, goal)} />
             <span className="text-meta text-muted tabular-nums flex-none">
               {effortCount(effort)}
             </span>

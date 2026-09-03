@@ -1,6 +1,8 @@
 import type { Goal, GoalNode } from '../db/types';
 import { isDone } from './status';
 import { normalizeEstimate } from './capacity';
+import { goalPct } from './pct';
+import { readiness, describeReadiness, topicIds, type Readiness } from './confidence';
 
 /**
  * What a goal has left to do, in minutes and in tasks.
@@ -22,9 +24,11 @@ export interface GoalEffort {
    * "8h left" beside six unestimated tasks is a number that will grow.
    */
   unestimated: number;
-  /** Every leaf, checkpoints included — this is the count `goalPct` rolls up. */
+  /** Every non-topic leaf, checkpoints included. */
   total: number;
   done: number;
+  /** The subject's topics by tier. All zeros for a goal with no topics area. */
+  readiness: Readiness;
 }
 
 /**
@@ -49,6 +53,11 @@ export function goalEffort(g: Goal): GoalEffort {
   let unestimated = 0;
   let total = 0;
   let done = 0;
+  // Topics are left out of every figure here. A topic's estimate is the
+  // length of a sitting, not the effort left to finish it, and a topic is
+  // never done — so counting it would print "0 of 8 done" over a subject that
+  // is half solid. `readiness` is its figure.
+  const topics = topicIds(g);
 
   const walk = (nodes: GoalNode[]): void => {
     for (const n of nodes) {
@@ -56,6 +65,7 @@ export function goalEffort(g: Goal): GoalEffort {
         walk(n.children);
         continue;
       }
+      if (topics.has(n.id)) continue;
       total += 1;
       if (isDone(n)) {
         done += 1;
@@ -72,7 +82,7 @@ export function goalEffort(g: Goal): GoalEffort {
   };
   walk(g.nodes);
 
-  return { remainingMin, unestimated, total, done };
+  return { remainingMin, unestimated, total, done, readiness: readiness(g) };
 }
 
 /**
@@ -103,14 +113,17 @@ export function fmtMinutes(min: number): string {
  * explain it. The count is always true, so the count is what is stated.
  */
 export function describeEffort(e: GoalEffort): string | null {
-  if (e.total === 0) return null;
+  // A subject leads with its readiness, because that is the figure an exam is
+  // about; the task figures follow for the steps it has beside its topics.
+  const ready = describeReadiness(e.readiness);
+  if (e.total === 0) return ready;
   const count = `${e.done} of ${e.total} task${e.total === 1 ? '' : 's'}`;
-  if (e.done === e.total) return `every task done · ${count}`;
-  const parts = e.remainingMin > 0
-    ? [`${fmtMinutes(e.remainingMin)} remaining`, count]
-    : [count];
-  if (e.unestimated > 0) {
-    parts.push(`${e.unestimated} unestimated`);
+  const parts: string[] = ready ? [ready] : [];
+  if (e.done === e.total) parts.push(`every task done · ${count}`);
+  else {
+    if (e.remainingMin > 0) parts.push(`${fmtMinutes(e.remainingMin)} remaining`);
+    parts.push(count);
+    if (e.unestimated > 0) parts.push(`${e.unestimated} unestimated`);
   }
   return parts.join(' · ');
 }
@@ -136,14 +149,28 @@ export function describeEffort(e: GoalEffort): string | null {
  * the same figure `effortCount` prints beside the bar — so the meter states
  * nothing the card was not already saying, which is the only licence it has to
  * be there.
+ *
+ * For a goal WITH topics the flat leaf count is the wrong figure — a topic is
+ * never done — so the meter draws `goalPct`, which for a subject is its
+ * readiness, and `effortCount` prints the same readiness beside it. The rule
+ * the card states still holds: the meter says nothing the count does not.
  */
-export function effortPct(e: GoalEffort): number {
+export function effortPct(e: GoalEffort, g?: Goal): number {
+  if (e.readiness.topics > 0 && g) return goalPct(g);
   if (e.total === 0) return 0;
   return (e.done / e.total) * 100;
 }
 
-/** The figure at the meter's right edge: `2/13`, or `Done` at full. */
+/**
+ * The figure at the meter's right edge: `2/13`, or `Done` at full — and for a
+ * subject `3 of 8 topics solid`, with its steps after it when it has any.
+ */
 export function effortCount(e: GoalEffort): string {
+  const ready = describeReadiness(e.readiness);
+  if (ready) {
+    if (e.total === 0) return ready;
+    return `${ready} · ${e.done} of ${e.total} step${e.total === 1 ? '' : 's'} done`;
+  }
   if (e.total > 0 && e.done === e.total) return 'Done';
   return `${e.done}/${e.total}`;
 }
