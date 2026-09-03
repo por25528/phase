@@ -1,4 +1,4 @@
-import type { BusyBlock, Goal, GoalNode, Session, Task } from '../db/types';
+import type { BusyBlock, Confidence, Goal, GoalNode, Session, Task } from '../db/types';
 import type { Now } from './capacity';
 import { buildDailyWork, type DailyWorkItem } from './dailyWork';
 import { nowFocus } from './todaySurface';
@@ -34,7 +34,9 @@ export type AdviceReason =
   | 'committed-today'
   | 'committed-week'
   | 'carried-over'
-  | 'free-time';
+  | 'free-time'
+  /** A topic offered for review — the weakest of a subject, nearest exam first. */
+  | 'review';
 
 export interface RecommendedWork {
   key: string;
@@ -46,6 +48,9 @@ export interface RecommendedWork {
   expected: ExpectedTime;
   /** Absent means no claim was made, never a guess — the focus dial admits it. */
   demand?: ResolvedDemand;
+  /** A topic, with its confidence when rated. The surface draws a mark, never a tick. */
+  topic?: true;
+  confidence?: Confidence;
 }
 
 export type ExecutionAdvice =
@@ -140,6 +145,9 @@ interface Candidate {
   reason: AdviceReason;
   /** Absent means no claim was made, never a guess — the focus dial admits it. */
   demand?: ResolvedDemand;
+  /** A topic, with its confidence when rated. The surface draws a mark, never a tick. */
+  topic?: true;
+  confidence?: Confidence;
 }
 
 /**
@@ -147,6 +155,12 @@ interface Candidate {
  * untagged item at every level, so a candidate with no claim carries no field.
  */
 const withDemand = (d: ResolvedDemand | undefined) => (d === undefined ? {} : { demand: d });
+
+/** The same present-or-absent rule for a topic's two fields. */
+const withTopic = (row: { topic?: true; confidence?: Confidence }) => ({
+  ...(row.topic ? { topic: true as const } : {}),
+  ...(row.confidence === undefined ? {} : { confidence: row.confidence }),
+});
 
 function reasonFor(item: DailyWorkItem, nowMinute: number): AdviceReason {
   if (item.startMin !== undefined) {
@@ -179,6 +193,7 @@ function toCandidate(
     ...(item.goalTitle === undefined ? {} : { goalTitle: item.goalTitle }),
     ...(lifeId === undefined ? {} : { lifeId }),
     ...withDemand(demand),
+    ...withTopic(item),
     reason,
   };
 }
@@ -274,7 +289,10 @@ function orderedCandidates(input: ExecutionAdviceInput): { pool: Candidate[] } {
         ...(row.goalTitle === '' ? {} : { goalTitle: row.goalTitle }),
         ...(lifeId === undefined ? {} : { lifeId }),
         ...withDemand(demandFor(row)),
-        reason: 'free-time',
+        ...withTopic(row),
+        // A topic is not idle-time filler; it is the subject's weakest point,
+        // and the surface names it as such.
+        reason: row.topic ? 'review' : 'free-time',
       });
     }
   }

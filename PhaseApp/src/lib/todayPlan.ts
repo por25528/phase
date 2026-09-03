@@ -1,4 +1,4 @@
-import type { BusyBlock, Goal, Task } from '../db/types';
+import type { BusyBlock, Confidence, Goal, Task } from '../db/types';
 import type { Now } from './capacity';
 import { longestFreeGap, ORDINARY_DAY, type PlacedSpan } from './slot';
 import { addDays, fmtD } from './dates';
@@ -52,6 +52,9 @@ export interface ProposalRow {
   estimateMin?: number;
   /** The one reason a row is allowed to carry, under `dueChip`'s rules. */
   due?: string;
+  /** A topic, with its confidence when rated — carried through from `BacklogItem`. */
+  topic?: true;
+  confidence?: Confidence;
 }
 
 export interface FreeDay {
@@ -115,6 +118,8 @@ function row(item: BacklogItem, goalTitle: string): ProposalRow {
     goalTitle,
     ...(item.estimateMin === undefined ? {} : { estimateMin: item.estimateMin }),
     ...(item.due === undefined ? {} : { due: item.due }),
+    ...(item.topic ? { topic: true as const } : {}),
+    ...(item.confidence === undefined ? {} : { confidence: item.confidence }),
   };
 }
 

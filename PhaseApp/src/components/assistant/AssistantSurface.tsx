@@ -78,6 +78,7 @@ const REASON_WORD: Record<AdviceReason, string> = {
   'committed-week': 'This week',
   'carried-over': 'Carried over',
   'free-time': 'Fits your free time',
+  review: 'Weakest topic first',
 };
 
 /**

@@ -89,6 +89,32 @@ describe('executionAdvice', () => {
     expect(advice.primary.reason).toBe('free-time');
   });
 
+  it('a topic offered from free time carries the review reason and its confidence', () => {
+    const subject: Goal = {
+      id: 'g1', title: 'Algorithms', type: 'study', deadline: '2026-08-18', datesConfirmed: true,
+      nodes: [{ id: 'area', title: 'Topics', topics: true, children: [
+        { id: 'weak', title: 'Graphs', confidence: 'shaky', confidenceAt: '2026-08-10' },
+      ] }],
+    };
+    const advice = executionAdvice(input({ goals: [subject] }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary).toMatchObject({ reason: 'review', topic: true, confidence: 'shaky' });
+  });
+
+  it('a committed topic keeps its mark through the commitment path', () => {
+    const subject: Goal = {
+      id: 'g1', title: 'Algorithms', type: 'study',
+      nodes: [{ id: 'area', title: 'Topics', topics: true, children: [
+        { id: 'weak', title: 'Graphs', plannedWeek: week, confidence: 'okay', confidenceAt: '2026-08-10' },
+      ] }],
+    };
+    const advice = executionAdvice(input({ goals: [subject] }));
+    expect(advice.kind).toBe('work');
+    if (advice.kind !== 'work') return;
+    expect(advice.primary).toMatchObject({ reason: 'committed-week', topic: true, confidence: 'okay' });
+  });
+
   it('returns at most MAX_ALTERNATIVES unique alternatives', () => {
     const tasks = [1, 2, 3, 4, 5, 6].map((n) => task({ id: `t${n}`, title: `Task ${n}`, date: today }));
     const advice = executionAdvice(input({ tasks }));

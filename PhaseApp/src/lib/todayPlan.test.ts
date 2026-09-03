@@ -360,3 +360,18 @@ describe('dayVerb', () => {
     expect(dayVerb('2026-08-17', '2026-07-15')).toBe('Aug 17');
   });
 });
+
+describe('proposalRows and subjects', () => {
+  it('the nearest exam\'s weakest topic leads; each subject offers one row', () => {
+    const subject = (id: string, deadline: string): Goal => ({
+      id, title: id, type: 'study', deadline, datesConfirmed: true,
+      nodes: [{ id: `${id}-area`, title: 'Topics', topics: true, children: [
+        { id: `${id}-solid`, title: 'Solid', confidence: 'solid', confidenceAt: '2026-07-01' },
+        { id: `${id}-weak`, title: 'Weak' },
+      ] }],
+    });
+    const rows = proposalRows([subject('far', '2026-07-21'), subject('near', '2026-07-17')], [], WEEK, TODAY);
+    expect(rows.map((r) => r.id)).toEqual(['near-weak', 'far-weak']);
+    expect(rows[0]).toMatchObject({ topic: true, due: '2026-07-17' });
+  });
+});

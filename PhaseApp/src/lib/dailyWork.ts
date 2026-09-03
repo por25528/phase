@@ -1,9 +1,10 @@
-import type { Goal, GoalNode, Task } from '../db/types';
+import type { Confidence, Goal, GoalNode, Task } from '../db/types';
 import { addDays, weekDates } from './dates';
 import { isValidLocalDate } from './schedule';
 import { isDone } from './status';
 import { blocksOf, blocksOn } from './blocks';
 import { normalizeEstimate } from './capacity';
+import { topicIds, topicConfidence } from './confidence';
 
 export type DailyWorkSource =
   | 'due'
@@ -40,6 +41,13 @@ export interface DailyWorkItem {
    * row the surface exists for is the one row with no size.
    */
   estimateMin?: number;
+  /**
+   * A topic under a study goal's topics area, with its confidence when rated.
+   * Today draws the mark where a step has its checkbox, because a topic is
+   * rated on the shelf and never ticked.
+   */
+  topic?: true;
+  confidence?: Confidence;
 }
 
 export interface DailyWorkSections {
@@ -51,6 +59,8 @@ export interface DailyWorkSections {
 interface GoalLeaf {
   goal: Goal;
   node: GoalNode;
+  /** The goal's topic ids, computed once per goal rather than once per leaf. */
+  topics: Set<string>;
 }
 
 type GoalNodeWithValidPlan = GoalNode & { plannedWeek: string };
@@ -103,7 +113,8 @@ function taskItem(
 }
 
 function stepItem(leaf: GoalLeaf, source: DailyWorkSource, today: string): DailyWorkItem {
-  const { goal, node } = leaf;
+  const { goal, node, topics } = leaf;
+  const confidence = topics.has(node.id) ? topicConfidence(node) : null;
   return {
     key: `step:${node.id}`,
     kind: 'step',
@@ -120,6 +131,8 @@ function stepItem(leaf: GoalLeaf, source: DailyWorkSource, today: string): Daily
     ...(isValidLocalDate(node.deadline) ? { scheduledDate: node.deadline } : {}),
     ...(todayBlock(node, today) === undefined ? {} : { startMin: todayBlock(node, today)!.startMin }),
     ...(estimate(node.estimateMin) === undefined ? {} : { estimateMin: estimate(node.estimateMin) }),
+    ...(topics.has(node.id) ? { topic: true as const } : {}),
+    ...(confidence === null ? {} : { confidence }),
   };
 }
 
@@ -149,8 +162,9 @@ export function buildDailyWork(
   const allLeaves: GoalLeaf[] = [];
 
   for (const goal of goals) {
+    const topics = topicIds(goal);
     walkLeaves(goal.nodes, (node) => {
-      allLeaves.push({ goal, node });
+      allLeaves.push({ goal, node, topics });
     });
   }
   const activeLeaves = allLeaves.filter(({ goal }) => !goal.completedAt);
