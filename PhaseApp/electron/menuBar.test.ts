@@ -265,6 +265,7 @@ describe('trayTitle', () => {
     // The shelf owns the confirming question, and the icon alone is the
     // whole signal when nothing is running.
     expect(trayTitle({ ...active(), phase: 'confirming', activeSinceMs: null }, T0)).toBe('');
+    expect(trayTitle({ ...active(), phase: 'rating', activeSinceMs: null }, T0)).toBe('');
     expect(trayTitle(null, T0)).toBe('');
   });
 });
@@ -436,17 +437,19 @@ describe('the session menu items', () => {
     expect(fixture.labels().slice(0, 3)).toEqual(['Resume', 'Finish session', 'separator']);
   });
 
-  it('offers nothing while confirming — the shelf owns that question', () => {
-    const fixture = menuBar();
-    fixture.controller.create();
-    fixture.controller.setFocusStatus({ ...active(), phase: 'confirming', activeSinceMs: null });
-    expect(fixture.labels()).toEqual([
-      'Open Phase',
-      'Open assistant',
-      'Settings',
-      'separator',
-      'Quit Phase',
-    ]);
+  it('offers nothing while confirming or rating — the shelf owns those questions', () => {
+    for (const phase of ['confirming', 'rating'] as const) {
+      const fixture = menuBar();
+      fixture.controller.create();
+      fixture.controller.setFocusStatus({ ...active(), phase, activeSinceMs: null });
+      expect(fixture.labels()).toEqual([
+        'Open Phase',
+        'Open assistant',
+        'Settings',
+        'separator',
+        'Quit Phase',
+      ]);
+    }
   });
 
   it('takes the items away again when the session ends', () => {

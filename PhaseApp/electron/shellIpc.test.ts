@@ -125,6 +125,13 @@ describe('focus-status', () => {
     expect(onFocusStatus).toHaveBeenCalledWith(snapshot);
   });
 
+  it('admits the rating phase — the shelf is asking, and nothing is running', () => {
+    const { ipcMain, onFocusStatus } = shell();
+    const rating = { ...snapshot, phase: 'rating', activeSinceMs: null };
+    ipcMain.send('phase-shell:focus-status', MAIN_ID, rating);
+    expect(onFocusStatus).toHaveBeenCalledWith(rating);
+  });
+
   it('passes null through — "no session" is a real answer', () => {
     const { ipcMain, onFocusStatus } = shell();
     ipcMain.send('phase-shell:focus-status', MAIN_ID, null);

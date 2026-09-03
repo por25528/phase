@@ -6365,6 +6365,94 @@ describe('autoBackupFailed', () => {
   });
 });
 
+describe('rating a topic after a sitting', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const MIN = 60_000;
+  const t0 = 1_700_000_000_000;
+  const ref = { kind: 'step' as const, id: 'n1', goalId: 'g1' };
+  const starter = { kind: 'starter' as const, minutes: 30 as const };
+  const subject: Goal = {
+    id: 'g1', title: 'Algorithms', type: 'study',
+    nodes: [{ id: 'area', title: 'Topics', topics: true, children: [{ id: 'n1', title: 'Graphs' }] }],
+  };
+  const plain: Goal = { id: 'g1', title: 'Algorithms', nodes: [{ id: 'n1', title: 'Problem set 4' }] };
+  async function storeWith(goal: Goal) {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({ goals: [goal], habits: [], tasks: [], sessions: [], lives: [] });
+    const store = await freshStore();
+    await store.initStore();
+    return store;
+  }
+  const topic = (s: { getState: () => { goals: Goal[] } }) => s.getState().goals[0].nodes[0].children![0];
+
+  it('completing a sitting on a topic logs, then asks', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    expect(actions.completeFocus(t0 + 25 * MIN)).toBe('logged');
+    expect(getState().sessions).toHaveLength(1);
+    expect(getState().activeFocusSession).toMatchObject({ phase: 'rating', activeSinceMs: null, accumulatedMs: 25 * MIN });
+    expect(actions.rateFocus('okay')).toBe(true);
+    expect(topic({ getState }).confidence).toBe('okay');
+    expect(getState().pendingUndo?.label).toBe('Rated "Graphs" okay');
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('skip clears the draft and writes nothing', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(actions.rateFocus(null)).toBe(true);
+    expect(topic({ getState }).confidence).toBeUndefined();
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('a confirmed stale sitting asks too; "didn\'t happen" does not', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    expect(actions.completeFocus(t0 + 200 * MIN)).toBe('needs-confirmation');
+    expect(actions.confirmFocus(200)).toBe(true);
+    expect(getState().activeFocusSession?.phase).toBe('rating');
+    actions.rateFocus(null);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 200 * MIN);
+    expect(actions.confirmFocus(null)).toBe(true);
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('a sitting on an ordinary step never asks', async () => {
+    const { actions, getState } = await storeWith(plain);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(getState().activeFocusSession).toBeNull();
+    expect(actions.rateFocus('okay')).toBe(false);
+  });
+  it('while rating, pause, resume, complete, start and finishWork are refused', async () => {
+    const { actions } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(actions.pauseFocus(t0 + 26 * MIN)).toBe(false);
+    expect(actions.resumeFocus(t0 + 26 * MIN)).toBe(false);
+    expect(actions.completeFocus(t0 + 26 * MIN)).toBe('refused');
+    expect(actions.startFocus(ref, starter, t0 + 26 * MIN)).toBe(false);
+    expect(actions.confirmFocus(10)).toBe(false);
+    expect(actions.finishWork(ref, t0 + 26 * MIN)).toEqual({ outcome: 'refused' });
+  });
+  it('the rating is refused once the goal is frozen, and the draft is still spent', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    actions.completeGoal('g1');
+    expect(actions.rateFocus('solid')).toBe(true);
+    expect(topic({ getState }).confidence).toBeUndefined();
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('a rating draft is published as not running', async () => {
+    const { focusStatusOf } = await import('../lib/focusStatus');
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(focusStatusOf(getState().activeFocusSession)).toMatchObject({ phase: 'rating', activeSinceMs: null });
+  });
+});
+
 describe('topics', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

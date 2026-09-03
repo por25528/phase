@@ -37,7 +37,7 @@ function isShortText(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= NOTICE_MAX;
 }
 
-const FOCUS_PHASES = ['active', 'break', 'confirming'];
+const FOCUS_PHASES = ['active', 'break', 'confirming', 'rating'];
 
 function isFiniteNonNegative(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;

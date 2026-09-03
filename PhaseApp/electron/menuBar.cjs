@@ -99,9 +99,9 @@ function isCountdown(status, nowMs) {
  *
  * An empty title is not a missing case: outside a session the icon alone is
  * the whole signal, and the PRESENCE of text is what tells you something is
- * running from across the room. `confirming` is empty for a different reason —
- * that question belongs to the shelf, which is already asking it, and a menu
- * bar restating it would offer no way to answer.
+ * running from across the room. `confirming` and `rating` are empty for a
+ * different reason — those questions belong to the shelf, which is already
+ * asking them, and a menu bar restating one would offer no way to answer.
  */
 function trayTitle(status, nowMs) {
   if (!status) return '';
@@ -158,9 +158,9 @@ function createMenuBar(deps) {
 
   /**
    * The session verbs, ABOVE the standing four and present only while there is
-   * a session to act on. `confirming` contributes nothing: the shelf owns that
-   * question, and a menu offering "Finish session" for a sitting already
-   * awaiting an answer would be a second way to answer it.
+   * a session to act on. `confirming` and `rating` contribute nothing: the
+   * shelf owns those questions, and a menu offering "Finish session" for a
+   * sitting already awaiting an answer would be a second way to answer it.
    */
   function sessionItems() {
     if (!status) return [];

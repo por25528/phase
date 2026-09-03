@@ -27,11 +27,17 @@ export interface ActiveFocusSession {
   title: string;
   goalTitle?: string;
   startedAtMs: number;
-  /** When the current active stretch began, or null on a break / while confirming. */
+  /** When the current active stretch began, or null on a break / while confirming or rating. */
   activeSinceMs: number | null;
   /** Active milliseconds banked by completed stretches. Never includes breaks. */
   accumulatedMs: number;
-  phase: 'active' | 'break' | 'confirming';
+  /**
+   * `'rating'` — the sitting is LOGGED and the shelf is asking how solid the
+   * topic is now. Entered only by the store, only for a topic, and not
+   * running: the tray, the pill and the idle watcher all treat it as
+   * `confirming`.
+   */
+  phase: 'active' | 'break' | 'confirming' | 'rating';
   expected: ExpectedTime;
   /**
    * The window the session was started in. Stored under its original name
@@ -250,7 +256,11 @@ export function finishFocusSession(session: ActiveFocusSession, nowMs: number): 
  * elapsed minutes proposed: the tick is certain and already written, the
  * minutes are not, and logging them here would be a second write sweeping the
  * undo the first one armed — so the shelf asks, as it already knows how to.
- * A draft already `confirming` is left alone; it is already the question.
+ * A draft already `confirming` is left alone; it is already the question. One
+ * in `rating` is kept while its topic still exists — its minutes are written,
+ * and the only thing left to settle is an answer the store takes through
+ * `rateFocus` — and dropped when the topic is gone, because a question about
+ * a row that no longer exists has no answer worth taking.
  */
 export function reconcileFocusDraft(
   draft: ActiveFocusSession | null,
@@ -276,7 +286,9 @@ export function reconcileFocusDraft(
     done = task?.done === true;
   }
   if (!exists) return null;
-  if (!done) return draft;
+  // A rating draft's minutes are already logged; a tick on its topic is
+  // refused by the store anyway, so there is nothing here to propose.
+  if (!done || draft.phase === 'rating') return draft;
   return {
     ...draft,
     accumulatedMs: draft.accumulatedMs + stretchMs(draft, nowMs),
@@ -298,7 +310,7 @@ export function serializeActiveFocusSession(session: ActiveFocusSession): string
   return JSON.stringify(session);
 }
 
-const PHASES = new Set(['active', 'break', 'confirming']);
+const PHASES = new Set(['active', 'break', 'confirming', 'rating']);
 
 function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;

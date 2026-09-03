@@ -494,6 +494,24 @@ function ifOwner(write: () => Promise<unknown>): void {
  * arithmetic over the draft's timestamps, which is what keeps a ticking clock
  * from ever touching Dexie.
  */
+/**
+ * After a sitting on a TOPIC is logged, the draft does not clear — it asks.
+ * The minutes are already written; what remains is one question the shelf
+ * knows how to put, and the answer goes through `rateTopic`.
+ */
+function settleOrAsk(draft: ActiveFocusSession, nowMs: number): void {
+  if (draft.ref.kind === 'step' && isTopicNode(draft.ref.id)) {
+    setFocusDraft({
+      ...draft,
+      accumulatedMs: draft.accumulatedMs + (draft.activeSinceMs === null ? 0 : nowMs - draft.activeSinceMs),
+      activeSinceMs: null,
+      phase: 'rating',
+    });
+    return;
+  }
+  setFocusDraft(null);
+}
+
 function setFocusDraft(draft: ActiveFocusSession | null): void {
   set({ activeFocusSession: draft });
   ifOwner(() => saveActiveFocusSession(draft));
@@ -2604,7 +2622,7 @@ export const actions = {
    */
   completeFocus(nowMs = Date.now()): 'logged' | 'needs-confirmation' | 'refused' {
     const draft = state.activeFocusSession;
-    if (!draft || draft.phase === 'confirming') return 'refused';
+    if (!draft || draft.phase === 'confirming' || draft.phase === 'rating') return 'refused';
     const finish = finishFocusSession(draft, nowMs);
     if (finish.kind === 'needs-confirmation') {
       setFocusDraft(finish.session);
@@ -2617,7 +2635,7 @@ export const actions = {
       draft.ref.kind, draft.ref.id, finish.minutes, todayStr(),
       draft.focusLevel === 'low' ? 'low' : undefined,
     )) return 'refused';
-    setFocusDraft(null);
+    settleOrAsk(draft, nowMs);
     return 'logged';
   },
 
@@ -2641,6 +2659,25 @@ export const actions = {
       draft.ref.kind, draft.ref.id, minutes, todayStr(),
       draft.focusLevel === 'low' ? 'low' : undefined,
     )) return false;
+    // The stretch was already settled when the draft parked in `confirming`,
+    // so `nowMs` here adds nothing to the banked minutes.
+    settleOrAsk(draft, Date.now());
+    return true;
+  },
+
+  /**
+   * Answer the rating the shelf is asking. A word rates the topic through
+   * `rateTopic` (which arms the undo); `null` is Skip. Either way the draft
+   * is spent — a question is not something to leave on the table, and a
+   * rating refused because the goal froze mid-sitting has no answer worth
+   * keeping either.
+   */
+  rateFocus(confidence: Confidence | null): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft || draft.phase !== 'rating') return false;
+    if (confidence !== null && draft.ref.kind === 'step') {
+      actions.rateTopic(draft.ref.id, confidence);
+    }
     setFocusDraft(null);
     return true;
   },
@@ -2691,10 +2728,12 @@ export const actions = {
 
     const draft = state.activeFocusSession;
     // A draft about OTHER work is real occupancy this must not disturb, and a
-    // `confirming` one is already a question awaiting its own answer.
+    // `confirming` or `rating` one is already a question awaiting its own
+    // answer.
     if (
       !draft
       || draft.phase === 'confirming'
+      || draft.phase === 'rating'
       || draft.ref.kind !== ref.kind
       || draft.ref.id !== ref.id
     ) {

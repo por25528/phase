@@ -23,7 +23,7 @@ export interface AssistantFocusView {
   ref: WorkRef;
   title: string;
   goalTitle?: string;
-  phase: 'active' | 'break' | 'confirming';
+  phase: 'active' | 'break' | 'confirming' | 'rating';
   /** Whole minutes of active work so far — breaks excluded. */
   elapsedMin: number;
   expected: ExpectedTime;

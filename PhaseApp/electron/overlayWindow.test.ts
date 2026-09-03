@@ -66,8 +66,9 @@ describe('pillModel', () => {
       .toMatchObject({ glyph: '⏸', text: 'on break' });
   });
 
-  it('is null while confirming and null with no session', () => {
+  it('is null while confirming or rating and null with no session', () => {
     expect(pillModel(active({ phase: 'confirming', activeSinceMs: null }), T0, prefs(), false)).toBeNull();
+    expect(pillModel(active({ phase: 'rating', activeSinceMs: null }), T0, prefs(), false)).toBeNull();
     expect(pillModel(null, T0, prefs(), false)).toBeNull();
   });
 });
@@ -335,6 +336,9 @@ describe('createOverlayWindow', () => {
     expect(win.hide).toHaveBeenCalledTimes(1);
     overlay.setFocusStatus(null);
     expect(win.hide).toHaveBeenCalledTimes(2);
+    overlay.setFocusStatus(active());
+    overlay.setFocusStatus(active({ phase: 'rating', activeSinceMs: null }));
+    expect(win.hide).toHaveBeenCalledTimes(3);
   });
 
   it('show:false hides a running pill; show:true re-shows from the remembered snapshot', () => {
