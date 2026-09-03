@@ -225,6 +225,20 @@ describe('reconcileFocusDraft', () => {
     expect(reconcileFocusDraft(confirming, goals('done'), tasks(), t0)).toBe(confirming);
     expect(reconcileFocusDraft(null, goals('done'), tasks(), t0)).toBeNull();
   });
+
+  it('a rating draft round-trips and reconciles like confirming', () => {
+    const rating: ActiveFocusSession = {
+      id: 'f', ref: { kind: 'step', id: 'n1', goalId: 'g1' }, title: 'Graphs',
+      startedAtMs: 0, activeSinceMs: null, accumulatedMs: 25 * MIN,
+      phase: 'rating', expected: { kind: 'starter', minutes: 30 }, focusLevel: 'medium',
+    };
+    expect(parseActiveFocusSession(serializeActiveFocusSession(rating))).toEqual(rating);
+    expect(reconcileFocusDraft(rating, goals(), tasks(), t0)).toBe(rating);
+    expect(reconcileFocusDraft(rating, [], tasks(), t0)).toBeNull();
+    // Not a running sitting: pause and resume leave it exactly as it is.
+    expect(pauseFocusSession(rating, t0)).toBe(rating);
+    expect(resumeFocusSession(rating, t0)).toBe(rating);
+  });
 });
 
 describe('the break the app takes for you', () => {

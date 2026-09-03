@@ -23,6 +23,18 @@ describe('handleAgentRead', () => {
     expect(res).toEqual({ ok: true, data: { projects: [] } });
   });
 
+  it('list_projects states a subject\'s readiness beside its effort', () => {
+    const state = emptyState();
+    state.goals = [{
+      id: 'g1', title: 'Algorithms', type: 'study',
+      nodes: [{ id: 'area', title: 'Topics', topics: true, children: [{ id: 'graphs', title: 'Graphs' }] }],
+    }];
+    const res = handleAgentRead({ tool: 'list_projects' }, state);
+    expect(res).toMatchObject({ ok: true, data: { projects: [{
+      id: 'g1', readiness: { topics: 1, unrated: 1, shaky: 0, okay: 0, solid: 0 },
+    }] } });
+  });
+
   it('names a missing project instead of returning empty data', () => {
     const res = handleAgentRead({ tool: 'get_project', goalId: 'nope' }, emptyState());
     expect(res).toEqual({ ok: false, error: 'No project with id "nope".' });

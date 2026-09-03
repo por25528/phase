@@ -1,4 +1,5 @@
-import type { StepStatus } from '../db/types';
+import type { Confidence, StepStatus } from '../db/types';
+import { CONFIDENCE_RANK, CONFIDENCE_WORD } from '../lib/confidence';
 import { IconCheck, IconCircle, IconDiamond } from './Icons';
 
 /**
@@ -26,4 +27,33 @@ export function StatusMark({ status }: { status: StepStatus }) {
     );
   }
   return <IconCircle size={13} className={status === 'doing' ? 'text-accent' : ''} />;
+}
+
+/**
+ * The mark for a TOPIC where a step shows `StatusMark`: three bars of rising
+ * height, lit to the rating. Unrated lights none; shaky one, in `warn`; okay
+ * two, in `accent`; solid all three. `role="img"` — it is a readout, never a
+ * control: rating happens on the shelf, and the task page is the correction
+ * surface. The unlit bars are `check`, the untouched box's own border colour,
+ * so an unrated topic reads as the same quiet as an unticked step.
+ */
+export function ConfidenceMark({ confidence, size = 13 }: { confidence: Confidence | null; size?: number }) {
+  const lit = confidence === null ? 0 : CONFIDENCE_RANK[confidence];
+  const color = confidence === 'shaky' ? 'bg-warn' : 'bg-accent';
+  return (
+    <span
+      role="img"
+      aria-label={confidence === null ? 'Not rated' : CONFIDENCE_WORD[confidence]}
+      className="inline-flex items-end gap-[1.5px] shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {[0.45, 0.7, 1].map((h, i) => (
+        <span
+          key={i}
+          className={`flex-1 rounded-full ${i < lit ? color : 'bg-check'}`}
+          style={{ height: `${h * 100}%` }}
+        />
+      ))}
+    </span>
+  );
 }

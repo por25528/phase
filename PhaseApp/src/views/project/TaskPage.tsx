@@ -26,7 +26,7 @@ import {
   PropertyOption,
 } from '../../components/PropertyRow';
 import { ScheduleMenu } from '../../components/SchedulePopover';
-import { StatusMark } from '../../components/StatusMark';
+import { ConfidenceMark, StatusMark } from '../../components/StatusMark';
 import { useNoteDraft } from '../../components/useNoteDraft';
 import { ProposalPanel } from './ProposalPanel';
 import { loggedForNode } from '../../lib/actuals';
@@ -38,6 +38,7 @@ import { fmtMinutes } from '../../lib/effort';
 import { looksOversized } from '../../lib/proposal';
 import { aimFor } from '../../lib/slot';
 import { STATUS_WORD, stepStatus } from '../../lib/status';
+import { CONFIDENCES, CONFIDENCE_WORD, isTopic, ratedWhenLabel, topicConfidence } from '../../lib/confidence';
 import { taskPageActionGroups, type RowActionId } from '../../lib/rowActions';
 import { dayLabel, nextSitting } from '../../lib/rowSchedule';
 import { findNode, findNodePath, findParentList } from '../../lib/tree';
@@ -116,6 +117,11 @@ export function TaskPage({
   );
 
   const status = stepStatus(node);
+  // A topic is rated, never ticked: the page gets a Confidence line and its
+  // Status line loses `done`, because the finish of a topic is `solid`.
+  const topic = isTopic(goal, node.id);
+  const confidence = topicConfidence(node);
+  const statusOrder = topic ? STATUS_ORDER.filter((s) => s !== 'done') : STATUS_ORDER;
   const sittings = sortedBlocks(node);
   const discrepancy = planVsEstimate(node);
   const logged = loggedForNode(sessions, node.id);
@@ -299,10 +305,40 @@ export function TaskPage({
             the layout differs: a column of quiet labels here, a narrow stack of
             bare values there. */}
         <div className="flex flex-col -ml-[6px] max-w-[520px]">
+          {/* The one manual rating surface. It exists to correct a mis-tap on
+              the shelf, not as a second ritual — the shelf asks when a sitting
+              ends, and this is where the answer is put right. */}
+          {topic && (
+            <PropertyLine
+              label="Confidence"
+              icon={<ConfidenceMark confidence={null} />}
+              valueMark={<ConfidenceMark confidence={confidence} />}
+              value={confidence === null ? 'Not rated' : `${CONFIDENCE_WORD[confidence]} · rated ${ratedWhenLabel(node, todayStr())}`}
+              placeholder="Not rated"
+              panelWidth={188}
+            >
+              {(close) => (
+                <>
+                  <PropertyOption close={close} current={confidence === null} onSelect={() => actions.rateTopic(node.id, null)}>
+                    <ConfidenceMark confidence={null} />
+                    Not rated
+                  </PropertyOption>
+                  {CONFIDENCES.map((c) => (
+                    <PropertyOption key={c} close={close} current={confidence === c} onSelect={() => actions.rateTopic(node.id, c)}>
+                      <ConfidenceMark confidence={c} />
+                      {CONFIDENCE_WORD[c]}
+                    </PropertyOption>
+                  ))}
+                </>
+              )}
+            </PropertyLine>
+          )}
+
           {/* A plain circle in the LABEL column: it names the property, which
               never changes. The live `StatusMark` belongs beside the VALUE —
               drawing the tick in both columns stated the same thing twice
-              across 140px of the same row. */}
+              across 140px of the same row. A topic has no done — its finish
+              is solid, on the line above. */}
           <PropertyLine
             label="Status"
             icon={<IconCircle size={13} />}
@@ -313,7 +349,7 @@ export function TaskPage({
           >
             {(close) => (
               <>
-                {STATUS_ORDER.map((s) => (
+                {statusOrder.map((s) => (
                   <PropertyOption
                     key={s}
                     close={close}

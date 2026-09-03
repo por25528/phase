@@ -74,6 +74,7 @@ import {
   insertSiblingBefore as treeInsertSiblingBefore,
 } from '../lib/tree';
 import { applyStatus, isDone, stepStatus, type StepStatus } from '../lib/status';
+import { applyConfidence, isTopic, topicIds, type Confidence } from '../lib/confidence';
 import {
   startFocusSession, pauseFocusSession, resumeFocusSession, finishFocusSession,
   discardFocusSession, autoPauseFocusSession, markFocusReturn,
@@ -110,6 +111,15 @@ import {
 function writeStatus(n: GoalNode, next: StepStatus, today: string, blockedOn?: string): void {
   const updated = applyStatus(n, next, today, blockedOn);
   for (const key of ['status', 'blockedOn', 'doneAt'] as const) {
+    if (updated[key] === undefined) delete n[key];
+    else (n[key] as unknown) = updated[key];
+  }
+}
+
+/** Same copy-back as `writeStatus`, for the same reason. */
+function writeConfidence(n: GoalNode, next: Confidence | null, today: string): void {
+  const updated = applyConfidence(n, next, today);
+  for (const key of ['confidence', 'confidenceAt'] as const) {
     if (updated[key] === undefined) delete n[key];
     else (n[key] as unknown) = updated[key];
   }
@@ -484,6 +494,24 @@ function ifOwner(write: () => Promise<unknown>): void {
  * arithmetic over the draft's timestamps, which is what keeps a ticking clock
  * from ever touching Dexie.
  */
+/**
+ * After a sitting on a TOPIC is logged, the draft does not clear — it asks.
+ * The minutes are already written; what remains is one question the shelf
+ * knows how to put, and the answer goes through `rateTopic`.
+ */
+function settleOrAsk(draft: ActiveFocusSession, nowMs: number): void {
+  if (draft.ref.kind === 'step' && isTopicNode(draft.ref.id)) {
+    setFocusDraft({
+      ...draft,
+      accumulatedMs: draft.accumulatedMs + (draft.activeSinceMs === null ? 0 : nowMs - draft.activeSinceMs),
+      activeSinceMs: null,
+      phase: 'rating',
+    });
+    return;
+  }
+  setFocusDraft(null);
+}
+
 function setFocusDraft(draft: ActiveFocusSession | null): void {
   set({ activeFocusSession: draft });
   ifOwner(() => saveActiveFocusSession(draft));
@@ -1048,6 +1076,15 @@ function isActiveNode(nodeId: string): boolean {
   return !goalOfNode(nodeId)?.completedAt;
 }
 
+/**
+ * Whether a node is a topic in the goal that holds it. A topic is rated and
+ * never ticked, so every route to `'done'` asks this first.
+ */
+function isTopicNode(nodeId: string): boolean {
+  const goal = goalOfNode(nodeId);
+  return goal !== undefined && isTopic(goal, nodeId);
+}
+
 function nodeContains(ancestorId: string, descendantId: string): boolean {
   const ancestorPath = findNodePath(state.goals, ancestorId);
   const descendantPath = findNodePath(state.goals, descendantId);
@@ -1402,6 +1439,7 @@ export const actions = {
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node || node.children?.length) return;
+    if (isTopicNode(nodeId)) return; // a topic is rated, never ticked
     const wasDone = isDone(node);
     writeStatus(node, wasDone ? 'todo' : 'done', today);
     if (wasDone) {
@@ -1429,6 +1467,9 @@ export const actions = {
     const goals = cloneGoals(state.goals);
     const node = findInAll(goals, nodeId);
     if (!node || node.children?.length) return false;
+    // A topic takes every status but done: doing, blocked and parked move
+    // attention, and done is what its rating stands in for.
+    if (next === 'done' && isTopicNode(nodeId)) return false;
     if (stepStatus(node) === next && (next !== 'blocked' || node.blockedOn === blockedOn?.trim())) {
       return false;
     }
@@ -1465,8 +1506,13 @@ export const actions = {
     const today = todayStr();
     let count = 0;
     for (const g of goals) {
+      // A topic in the selection is skipped for `'done'` and nothing else —
+      // the same refusal `setNodeStatus` makes, applied per leaf so the steps
+      // beside it still take the write.
+      const topics = next === 'done' ? topicIds(g) : null;
       walkLeaves(g, (n) => {
         if (!leafIds.has(n.id) || stepStatus(n) === next) return;
+        if (topics?.has(n.id)) return;
         writeStatus(n, next, today);
         count++;
       });
@@ -1547,6 +1593,49 @@ export const actions = {
     const wasParked = stepStatus(node) === 'parked';
     writeStatus(node, wasParked ? 'todo' : 'parked', todayStr());
     withUndo(`${wasParked ? 'Unparked' : 'Parked'} "${node.title}"`, 'goals', goals);
+  },
+
+  /**
+   * Rate a topic. The one writer of `confidence`/`confidenceAt`.
+   *
+   * Arms an undo: the rating is taken on the shelf, where the row it changes
+   * is not in front of you — the distance-write rule. KNOWN COST: the
+   * ordinary-edit sweep drops the `Logged 25m` entry the session just armed,
+   * so after a rating the toast offers to undo the rating, not the minutes.
+   * That is the rule every edit after a log already follows.
+   */
+  rateTopic(nodeId: string, confidence: Confidence | null, today = todayStr()): boolean {
+    if (!isActiveNode(nodeId)) return false; // frozen on a completed project
+    if (!isTopicNode(nodeId)) return false;
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
+    if (!node || node.children?.length) return false;
+    writeConfidence(node, confidence, today);
+    withUndo(
+      confidence === null
+        ? `Cleared rating on "${node.title}"`
+        : `Rated "${node.title}" ${confidence}`,
+      'goals',
+      goals,
+    );
+    return true;
+  },
+
+  /**
+   * Mark a container as the topics area, or unmark it. The row is in front
+   * of you and the flag is a toggle, so no undo. Refused when the flag is
+   * already what was asked for, so a caller can tell a write from a no-op.
+   */
+  setTopicsArea(nodeId: string, on: boolean): boolean {
+    if (!isActiveNode(nodeId)) return false; // frozen on a completed project
+    const goals = cloneGoals(state.goals);
+    const node = findInAll(goals, nodeId);
+    if (!node) return false;
+    if ((node.topics === true) === on) return false;
+    if (on) node.topics = true;
+    else delete node.topics;
+    setAndPersist({ goals });
+    return true;
   },
 
   toggleExpand(nodeId: string) {
@@ -1730,13 +1819,19 @@ export const actions = {
    * `addRootNode` is not: adding is the one edit that discards nothing, and
    * every row it creates is a click away from being deleted.
    */
-  addRootNodes(goalId: string, titles: string[]) {
+  addRootNodes(goalId: string, titles: string[], flags?: ({ topics?: true } | undefined)[]) {
     if (!isActiveGoal(goalId)) return;
-    const clean = titles.map((t) => t.trim()).filter(Boolean);
+    // Zip before filtering, so a flag stays with the title it was written
+    // beside even when a blank title between them is dropped.
+    const clean = titles
+      .map((t, i) => ({ title: t.trim(), topics: flags?.[i]?.topics === true }))
+      .filter((row) => row.title !== '');
     if (clean.length === 0) return;
     const goals = state.goals.map((g) =>
       g.id === goalId
-        ? { ...g, nodes: [...g.nodes, ...clean.map((title) => ({ id: uid(), title }))] }
+        ? { ...g, nodes: [...g.nodes, ...clean.map(({ title, topics }) => ({
+          id: uid(), title, ...(topics ? { topics: true as const } : {}),
+        }))] }
         : g
     );
     setAndPersist({ goals });
@@ -1909,6 +2004,10 @@ export const actions = {
     if (wanted.size === 0) return false;
     const goals = cloneGoals(state.goals);
     const leafIds = new Set(openLeavesUnder(goals.flatMap((g) => g.nodes), wanted));
+    // A topic under the selection is never completed — a whole Topics area
+    // selected with a step beside it completes the step and nothing else, and
+    // a selection of only topics is a refusal, not an empty success.
+    for (const g of goals) for (const id of topicIds(g)) leafIds.delete(id);
     if (leafIds.size === 0) return false;
     const today = todayStr();
     for (const g of goals) {
@@ -2523,7 +2622,7 @@ export const actions = {
    */
   completeFocus(nowMs = Date.now()): 'logged' | 'needs-confirmation' | 'refused' {
     const draft = state.activeFocusSession;
-    if (!draft || draft.phase === 'confirming') return 'refused';
+    if (!draft || draft.phase === 'confirming' || draft.phase === 'rating') return 'refused';
     const finish = finishFocusSession(draft, nowMs);
     if (finish.kind === 'needs-confirmation') {
       setFocusDraft(finish.session);
@@ -2536,7 +2635,7 @@ export const actions = {
       draft.ref.kind, draft.ref.id, finish.minutes, todayStr(),
       draft.focusLevel === 'low' ? 'low' : undefined,
     )) return 'refused';
-    setFocusDraft(null);
+    settleOrAsk(draft, nowMs);
     return 'logged';
   },
 
@@ -2560,6 +2659,25 @@ export const actions = {
       draft.ref.kind, draft.ref.id, minutes, todayStr(),
       draft.focusLevel === 'low' ? 'low' : undefined,
     )) return false;
+    // The stretch was already settled when the draft parked in `confirming`,
+    // so `nowMs` here adds nothing to the banked minutes.
+    settleOrAsk(draft, Date.now());
+    return true;
+  },
+
+  /**
+   * Answer the rating the shelf is asking. A word rates the topic through
+   * `rateTopic` (which arms the undo); `null` is Skip. Either way the draft
+   * is spent — a question is not something to leave on the table, and a
+   * rating refused because the goal froze mid-sitting has no answer worth
+   * keeping either.
+   */
+  rateFocus(confidence: Confidence | null): boolean {
+    const draft = state.activeFocusSession;
+    if (!draft || draft.phase !== 'rating') return false;
+    if (confidence !== null && draft.ref.kind === 'step') {
+      actions.rateTopic(draft.ref.id, confidence);
+    }
     setFocusDraft(null);
     return true;
   },
@@ -2591,6 +2709,9 @@ export const actions = {
       const goals = cloneGoals(state.goals);
       const node = findInAll(goals, ref.id);
       if (!node || node.children?.length || isDone(node)) return { outcome: 'refused' };
+      // A topic's sitting ends in a rating, not a tick — `completeFocus` is
+      // the route that asks for one.
+      if (isTopicNode(ref.id)) return { outcome: 'refused' };
       writeStatus(node, 'done', today);
       title = node.title;
       completed = { goals };
@@ -2607,10 +2728,12 @@ export const actions = {
 
     const draft = state.activeFocusSession;
     // A draft about OTHER work is real occupancy this must not disturb, and a
-    // `confirming` one is already a question awaiting its own answer.
+    // `confirming` or `rating` one is already a question awaiting its own
+    // answer.
     if (
       !draft
       || draft.phase === 'confirming'
+      || draft.phase === 'rating'
       || draft.ref.kind !== ref.kind
       || draft.ref.id !== ref.id
     ) {

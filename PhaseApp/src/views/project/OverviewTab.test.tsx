@@ -100,6 +100,23 @@ function section(name: string): HTMLElement {
   return screen.getByRole('heading', { name }).parentElement!;
 }
 
+describe('OverviewTab progress on a subject', () => {
+  it('prints readiness where a project prints its done count', async () => {
+    await mountOverview(datedGoal([
+      { id: 'area', title: 'Topics', topics: true, children: [
+        leaf('a', { confidence: 'solid', confidenceAt: '2026-08-01' }),
+        leaf('b'),
+      ] },
+      leaf('ps'),
+    ]));
+    expect(section('Progress').textContent).toContain('1 of 2 topics solid · 0 of 1 step done');
+  });
+  it('keeps the plain fraction on a project', async () => {
+    await mountOverview(datedGoal([leaf('a', { status: 'done' }), leaf('b')]));
+    expect(section('Progress').textContent).toContain('1/2');
+  });
+});
+
 describe('OverviewTab forecast and week load', () => {
   it('offers Schedule for the lead Next item and opens the schedule menu', async () => {
     const goal = datedGoal([

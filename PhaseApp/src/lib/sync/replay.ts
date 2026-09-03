@@ -3,6 +3,7 @@ import { opDay, type CompanionOp } from './ops';
 import type { SyncSlices } from './stateFile';
 import { cloneGoals, findNode, isLeafNode } from '../tree';
 import { applyStatus } from '../status';
+import { isTopic } from '../confidence';
 
 /**
  * The phone's projection: `state.json` plus a replay of the ops the Mac has
@@ -56,6 +57,17 @@ function activeLeaf(out: SyncSlices, nodeId: string, goalId?: string): GoalNode 
   return node && isLeafNode(node) ? node : null;
 }
 
+/**
+ * Whether a leaf is a topic in the project holding it. The Mac refuses every
+ * route from a topic to 'done' (`toggleLeaf` no-ops, the agent's
+ * `complete_task` and `set_status` answer in words), so the projection shows
+ * nothing happening — the same rule as a reason on a non-blocked status.
+ */
+function isTopicLeaf(out: SyncSlices, nodeId: string): boolean {
+  const goal = out.goals.find((g) => findNode(g.nodes, nodeId));
+  return goal !== undefined && isTopic(goal, nodeId);
+}
+
 function activeNode(out: SyncSlices, nodeId: string, goalId?: string): GoalNode | null {
   if (goalId !== undefined) {
     const goal = activeGoal(out, goalId);
@@ -89,6 +101,7 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       if (request.ref.kind === 'step') {
         const leaf = activeLeaf(out, request.ref.id, request.ref.goalId);
         if (!leaf) return;
+        if (isTopicLeaf(out, leaf.id)) return;
         writeStatus(leaf, 'done', opDay(op));
         return;
       }
@@ -104,6 +117,7 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       if (request.blockedOn !== undefined && request.status !== 'blocked') return;
       const leaf = activeLeaf(out, request.nodeId);
       if (!leaf) return;
+      if (request.status === 'done' && isTopicLeaf(out, leaf.id)) return;
       writeStatus(leaf, request.status, opDay(op), request.blockedOn);
       return;
     }
@@ -168,5 +182,8 @@ function apply(out: SyncSlices, op: CompanionOp): void {
       node.notes = join(node.notes);
       return;
     }
+    // No `rate_topic` branch: `CompanionRequest` cannot carry it, because the
+    // phone has no rating surface yet. When it grows one, the verb joins
+    // `COMPANION_VERBS` and this switch together.
   }
 }

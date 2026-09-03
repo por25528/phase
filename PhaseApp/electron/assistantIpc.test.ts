@@ -167,6 +167,31 @@ describe('publish', () => {
     expect(ipc.latest()).toEqual(full);
   });
 
+  it('accepts a topic row, a rating focus and the review reason, and refuses a bad confidence', () => {
+    const { ipcMain, ipc } = relay();
+    const topicRow = { ...SNAPSHOT.advice.primary, topic: true, confidence: 'okay', reason: 'review' };
+    const good = [
+      { ...SNAPSHOT, advice: { ...SNAPSHOT.advice, primary: topicRow } },
+      { ...FOCUSED_SNAPSHOT, activeFocus: { ...FOCUSED_SNAPSHOT.activeFocus, phase: 'rating', topic: true } },
+      { ...FOCUSED_SNAPSHOT, activeFocus: { ...FOCUSED_SNAPSHOT.activeFocus, topic: true, confidence: 'shaky' } },
+    ];
+    for (const snapshot of good) {
+      ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
+      expect(ipc.latest()).toEqual(snapshot);
+    }
+    const bad = [
+      { ...SNAPSHOT, advice: { ...SNAPSHOT.advice, primary: { ...topicRow, topic: 'yes' } } },
+      { ...SNAPSHOT, advice: { ...SNAPSHOT.advice, primary: { ...topicRow, confidence: 'done' } } },
+      { ...FOCUSED_SNAPSHOT, activeFocus: { ...FOCUSED_SNAPSHOT.activeFocus, confidence: 'done' } },
+      { ...FOCUSED_SNAPSHOT, activeFocus: { ...FOCUSED_SNAPSHOT.activeFocus, phase: 'grading' } },
+    ];
+    for (const snapshot of bad) {
+      ipcMain.emit('phase-assistant:publish', MAIN_ID, good[0]);
+      ipcMain.emit('phase-assistant:publish', MAIN_ID, snapshot);
+      expect(ipc.latest(), JSON.stringify(snapshot)?.slice(0, 80)).toEqual(good[0]);
+    }
+  });
+
   it('requires a valid work reference on an active focus projection', () => {
     const { ipcMain, ipc } = relay();
 
@@ -316,6 +341,19 @@ describe('act', () => {
 
     ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'confirm-focus', minutes: null });
     expect(main.webContents.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('forwards a rating answer — one of the three words or null — and nothing else', () => {
+    const { ipcMain, main } = relay();
+    for (const confidence of ['shaky', 'okay', 'solid', null]) {
+      ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'rate-focus', confidence });
+    }
+    expect(main.webContents.send).toHaveBeenCalledTimes(4);
+    main.webContents.send.mockClear();
+    for (const confidence of ['done', 'Solid', 3, undefined]) {
+      ipcMain.emit('phase-assistant:act', OVERLAY_ID, { type: 'rate-focus', confidence });
+    }
+    expect(main.webContents.send).not.toHaveBeenCalled();
   });
 
   it('forwards both level verbs and rejects the retired one', () => {
@@ -575,6 +613,7 @@ describe('the relay accepts every verb the protocol declares', () => {
     'resume-focus': { type: 'resume-focus' },
     'complete-focus': { type: 'complete-focus' },
     'confirm-focus': { type: 'confirm-focus', minutes: null },
+    'rate-focus': { type: 'rate-focus', confidence: 'solid' },
     close: { type: 'close' },
   };
 

@@ -18,8 +18,9 @@ import type { ActiveFocusSession } from './focusSession';
  * the calm session model exists to avoid.
  */
 export type FocusStatusSnapshot = {
-  phase: 'active' | 'break' | 'confirming';
-  /** When the current active stretch began, or null on a break / while confirming. */
+  /** `'rating'` is published exactly as `'confirming'` is — a question, not a running sitting. */
+  phase: 'active' | 'break' | 'confirming' | 'rating';
+  /** When the current active stretch began, or null on a break / while confirming or rating. */
   activeSinceMs: number | null;
   /** Active milliseconds banked by completed stretches. Never includes breaks. */
   accumulatedMs: number;

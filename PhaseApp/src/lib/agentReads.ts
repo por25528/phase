@@ -95,6 +95,9 @@ function projectSummary(goal: Goal) {
     pct: goalPct(goal),
     remainingMin: effort.remainingMin,
     unestimated: effort.unestimated,
+    // A subject's figure. All zeros for a project with no topics area, so a
+    // reader can tell "no topics" from "none rated" without a second field.
+    readiness: effort.readiness,
   };
 }
 

@@ -403,3 +403,19 @@ describe('nowDividerIndex', () => {
     expect(nowDividerIndex([at(540), at(700)], 700)).toBe(1);
   });
 });
+
+describe('topics', () => {
+  it('a committed topic carries topic and confidence; a step carries neither', () => {
+    const subject = goal('g1', [{ id: 'area', title: 'Topics', topics: true, children: [
+      { id: 'weak', title: 'Graphs', plannedWeek: WEEK, confidence: 'okay', confidenceAt: '2026-07-10' },
+      { id: 'fresh', title: 'Trees', plannedWeek: WEEK },
+    ] }, { id: 'ps', title: 'Problem set', plannedWeek: WEEK }]);
+    const items = buildDailyWork([subject], [], TODAY).commitments;
+    expect(items.find((i) => i.id === 'weak')).toMatchObject({ topic: true, confidence: 'okay' });
+    const fresh = items.find((i) => i.id === 'fresh')!;
+    expect(fresh.topic).toBe(true);
+    expect(fresh.confidence).toBeUndefined();
+    const ps = items.find((i) => i.id === 'ps')!;
+    expect(ps.topic).toBeUndefined();
+  });
+});

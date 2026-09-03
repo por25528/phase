@@ -544,3 +544,39 @@ describe('urgency reordering matches what the row can show', () => {
     expect(items.slice(0, firstUndated).every((i) => dueChip(i.due, TODAY) !== null)).toBe(true);
   });
 });
+
+describe('topics in the rail', () => {
+  const subject = (over: Partial<Goal> = {}): Goal => goal({
+    id: 'g1', title: 'Algorithms', type: 'study', deadline: '2026-07-18', datesConfirmed: true,
+    nodes: [
+      { id: 'area', title: 'Topics', topics: true, children: [
+        { id: 'solid', title: 'Sorting', confidence: 'solid', confidenceAt: '2026-07-01' },
+        { id: 'none', title: 'Graphs' },
+        { id: 'shaky', title: 'DP', confidence: 'shaky', confidenceAt: '2026-07-10' },
+      ] },
+      { id: 'ps', title: 'Problem set' },
+    ],
+    ...over,
+  });
+  it('orders topics for review ahead of the other steps, and marks them', () => {
+    const [group] = backlogGroups([subject()], [], WEEK, TODAY);
+    expect(group.items.map((i) => i.id)).toEqual(['none', 'shaky', 'solid', 'ps']);
+    expect(group.items[0]).toMatchObject({ topic: true, due: '2026-07-18' });
+    expect(group.items[0].confidence).toBeUndefined();
+    expect(group.items[1]).toMatchObject({ topic: true, confidence: 'shaky', due: '2026-07-18' });
+    expect(group.items[3].topic).toBeUndefined();
+    expect(group.items[3].due).toBeUndefined();
+  });
+  it('an unconfirmed exam date does not become a due', () => {
+    const [group] = backlogGroups([subject({ datesConfirmed: undefined })], [], WEEK, TODAY);
+    expect(group.items[0].due).toBeUndefined();
+  });
+  it('a dated step still jumps the topics, because sortByDue runs last', () => {
+    const g = subject({ nodes: [
+      ...subject().nodes.slice(0, 1),
+      { id: 'ps', title: 'Problem set', deadline: '2026-07-16' },
+    ] });
+    const [group] = backlogGroups([g], [], WEEK, TODAY);
+    expect(group.items[0].id).toBe('ps');
+  });
+});

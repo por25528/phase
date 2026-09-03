@@ -7,6 +7,7 @@ import { parseGoalImport } from './goalImport';
 import { isValidLocalDate } from './schedule';
 import { findNode, isLeafNode } from './tree';
 import { isDone } from './status';
+import { isTopic } from './confidence';
 import { todayStr } from './dates';
 import { columnOfHorizonWord, HORIZON_LABELS } from './horizons';
 import { noteOf, missingRef } from './agentReads';
@@ -114,6 +115,17 @@ function step(state: FullState, nodeId: string, goalId?: string): Found<GoalNode
     return { found: findNode(owner.found.nodes, nodeId)! };
   }
   return { error: `No task with id "${nodeId}".` };
+}
+
+/**
+ * Whether a leaf is a topic in the project holding it. The one refusal every
+ * route to 'done' shares: a topic is rated, never ticked, and saying so is
+ * better than the store's silent no-op reaching the socket as a success.
+ */
+function topicRefusal(state: FullState, node: GoalNode): string | null {
+  const goal = state.goals.find((g) => findNode(g.nodes, node.id));
+  if (!goal || !isTopic(goal, node.id)) return null;
+  return `"${node.title}" is a topic — rate it instead of completing it.`;
 }
 
 /** A leaf, or the reason this verb has nothing to do with a group. */
@@ -236,6 +248,8 @@ export function handleAgentWrite(
         return errorResponse('A reason belongs to "blocked" — set the status to blocked to give one.');
       }
       if (request.status === 'done') {
+        const topic = topicRefusal(state, target.found);
+        if (topic !== null) return errorResponse(topic);
         // Route 'done' through `toggleLeaf`, exactly as TaskPage's popover
         // does, so completing from here arms the identical `Completed "X"`
         // undo the checkbox arms. `toggleLeaf` TOGGLES, so it may only fire on
@@ -259,6 +273,23 @@ export function handleAgentWrite(
         status: request.status,
         ...(request.blockedOn === undefined ? {} : { blockedOn: request.blockedOn }),
       });
+    }
+
+    case 'rate_topic': {
+      const target = leaf(state, request.nodeId, 'only a step under a Topics area takes a rating.');
+      if (failed(target)) return errorResponse(target.error);
+      const goal = state.goals.find((g) => findNode(g.nodes, request.nodeId));
+      if (!goal || !isTopic(goal, request.nodeId)) {
+        return errorResponse(
+          `"${target.found.title}" is a step, not a topic — only a step under a Topics area takes a rating.`,
+        );
+      }
+      // The store arms the undo; a rating from across the socket is the
+      // distance-write rule's own case.
+      if (!actions.rateTopic(request.nodeId, request.confidence, asOfDay)) {
+        return errorResponse('That rating did not apply.');
+      }
+      return settled({ nodeId: request.nodeId, confidence: request.confidence });
     }
 
     case 'set_life': {
@@ -340,6 +371,8 @@ export function handleAgentWrite(
           request.ref.goalId,
         );
         if (failed(target)) return errorResponse(target.error);
+        const topic = topicRefusal(state, target.found);
+        if (topic !== null) return errorResponse(topic);
         // `toggleLeaf` and `toggleTask` TOGGLE. On something already finished
         // they would un-tick it, and reporting `{ completed }` about that is
         // the one thing this surface may never do.

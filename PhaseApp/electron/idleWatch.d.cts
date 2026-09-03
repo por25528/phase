@@ -10,7 +10,7 @@
  * than imported.
  */
 export interface IdleWatchFocusStatus {
-  phase: 'active' | 'break' | 'confirming';
+  phase: 'active' | 'break' | 'confirming' | 'rating';
   activeSinceMs: number | null;
   accumulatedMs: number;
   title: string;

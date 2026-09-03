@@ -91,6 +91,10 @@ const goalSeed: Goal = {
       ],
     },
     { id: 'n7', title: 'Plan marathon training', estimateMin: 180 },
+    // A topics area: `t1` is a topic, rated rather than ticked.
+    { id: 'area', title: 'Topics', topics: true, children: [
+      { id: 't1', title: 'Graphs' },
+    ] },
   ],
 };
 
@@ -244,6 +248,30 @@ describe('TaskPage', () => {
     });
 
     expect(store.getState().goals[0].nodes[0].status).toBe('done');
+  });
+
+  it('a topic has a Confidence line that rates it, and no done among its statuses', async () => {
+    const store = await mountTask('t1');
+
+    expect(screen.getByRole('button', { name: 'Confidence: Not rated' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Confidence: Not rated' }));
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitemradio');
+    expect(items.map((r) => r.textContent)).toEqual(['Not rated', 'Shaky', 'Okay', 'Solid']);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitemradio', { name: /Okay/ }));
+    });
+    expect(findNode(store.getState().goals[0].nodes, 't1')).toMatchObject({ confidence: 'okay', confidenceAt: todayStr() });
+    expect(store.getState().pendingUndo?.label).toBe('Rated "Graphs" okay');
+    expect(screen.getByRole('button', { name: 'Confidence: Okay · rated today' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Status: / }));
+    const statuses = within(screen.getByRole('menu')).getAllByRole('menuitemradio');
+    expect(statuses.map((r) => r.textContent)).toEqual(['to do', 'in progress', 'blocked', 'parked']);
+  });
+
+  it('a step has no Confidence line', async () => {
+    await mountTask('n1');
+    expect(screen.queryByRole('button', { name: /^Confidence: / })).toBeNull();
   });
 
   it('lists the five statuses in order, with the current one checked', async () => {

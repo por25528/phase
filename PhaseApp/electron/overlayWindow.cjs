@@ -193,7 +193,8 @@ function pillModel(status, nowMs, prefs, isSystemDark) {
     glyph = '⏸';
     text = brk !== null && brk > 0 ? `break · ${remainingMin(brk)}m` : 'on break';
   } else {
-    // `confirming` belongs to the shelf, which is already asking the question.
+    // `confirming` and `rating` belong to the shelf, which is already asking
+    // the question.
     return null;
   }
   const size = PILL_SIZES[prefs.size];

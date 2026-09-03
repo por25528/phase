@@ -13,6 +13,8 @@ import { elapsedFocusMinutes } from '../../lib/focusSession';
 import { weekOf } from '../../lib/plan';
 import { todayStr } from '../../lib/dates';
 import { spansOn } from '../../lib/scheduled';
+import { topicIds, topicConfidence } from '../../lib/confidence';
+import { findNode } from '../../lib/tree';
 
 /**
  * The sole adapter between `AssistantAction` and the store.
@@ -103,10 +105,22 @@ export function AssistantHost({ open, onClose, theme }: {
       focusLevel,
       ...(pinned ? { pinned } : {}),
     }), chosen);
+    // The topic's two fields on the focus view, read from the live node: the
+    // advisor already stamps them onto every recommended row, and the draft
+    // carries neither because a rating made mid-sitting must show on the card.
+    const topicFields = (): { topic?: true; confidence?: import('../../db/types').Confidence } => {
+      if (!activeFocusSession || activeFocusSession.ref.kind !== 'step') return {};
+      const goal = goals.find((g) => g.id === activeFocusSession.ref.goalId);
+      const node = goal ? findNode(goal.nodes, activeFocusSession.ref.id) : null;
+      if (!goal || !node || !topicIds(goal).has(node.id)) return {};
+      const c = topicConfidence(node);
+      return { topic: true as const, ...(c === null ? {} : { confidence: c }) };
+    };
     const activeFocus: AssistantFocusView | null = activeFocusSession
       ? {
           ref: activeFocusSession.ref,
           title: activeFocusSession.title,
+          ...topicFields(),
           ...(activeFocusSession.goalTitle === undefined ? {} : { goalTitle: activeFocusSession.goalTitle }),
           phase: activeFocusSession.phase,
           elapsedMin: elapsedFocusMinutes(activeFocusSession, Date.now()),
@@ -193,6 +207,20 @@ export function AssistantHost({ open, onClose, theme }: {
         return;
       }
       case 'confirm-focus': actions.confirmFocus(action.minutes); return;
+      case 'rate-focus': {
+        if (!actions.rateFocus(action.confidence)) {
+          setNotice({ tone: 'warning', text: "Couldn't rate that topic." });
+          return;
+        }
+        // The notice reads the armed undo label, the way `park-work` does: a
+        // rating is a write on a row that is not in front of you. Skip armed
+        // nothing and says nothing.
+        if (action.confidence !== null) {
+          const armedUndo = getState().pendingUndo?.label;
+          setNotice(armedUndo ? { tone: 'neutral', text: armedUndo } : null);
+        }
+        return;
+      }
       case 'switch-focus': {
         // A pick POINTS the shelf at work; it starts nothing. With a session
         // running it is logged first — a stale one parks in `confirming` and

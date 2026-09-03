@@ -19,7 +19,9 @@ import { fieldCls, ghostBtn, primaryBtn, secondaryBtn } from '../dialogStyles';
 import { captionLabel, ruleTag, sectionLabel } from '../sectionLabel';
 import { SessionRing } from './SessionRing';
 import { TodayCheckbox } from '../TodayCheckbox';
+import { ConfidenceMark } from '../StatusMark';
 import type { WorkRef } from '../../lib/expectedTime';
+import type { Confidence } from '../../db/types';
 
 /**
  * The one assistant surface, rendered in two places: inside the app by
@@ -78,6 +80,7 @@ const REASON_WORD: Record<AdviceReason, string> = {
   'committed-week': 'This week',
   'carried-over': 'Carried over',
   'free-time': 'Fits your free time',
+  review: 'Weakest topic first',
 };
 
 /**
@@ -533,6 +536,20 @@ const GUTTER = 'w-[22px] shrink-0';
 const RING_SLOT = 'w-[34px] shrink-0';
 
 /**
+ * The gutter's occupant for a TOPIC: the confidence mark, centred in the
+ * 22px cell `TodayCheckbox` fills, so the title column does not shift
+ * between a step row and a topic row. Never `complete-work` — a topic is
+ * rated, and the mark is a readout of the rating.
+ */
+function TopicLead({ confidence }: { confidence: Confidence | null }) {
+  return (
+    <span className="grid h-[22px] w-[22px] place-items-center">
+      <ConfidenceMark confidence={confidence} />
+    </span>
+  );
+}
+
+/**
  * Band 1: the work. Gutter, ring slot, the text column, the actions.
  *
  * Both panels render through this, which is the only reason the running state
@@ -561,7 +578,7 @@ const RING_SLOT = 'w-[34px] shrink-0';
  * title's left edge must not move when a session ends, and that is true at
  * either width.
  */
-function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, actions, shelf, compact = false }: {
+function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, actions, shelf, compact = false, stack }: {
   checkbox: ReactNode;
   ring: ReactNode;
   eyebrow: string;
@@ -581,9 +598,19 @@ function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, act
   actions: ReactNode;
   shelf: boolean;
   compact?: boolean;
+  /**
+   * Put the actions UNDER the content on the shelf too, the way embedded
+   * always does. For the rating row: four answers beside a question that
+   * names a two-line title wrapped both at once, and at 520px the card grew
+   * 112px past its budget. Stacked, the question takes the full width and the
+   * four buttons take one row, and the state costs a few pixels over
+   * `confirming` rather than a third of the window.
+   */
+  stack?: boolean;
 }) {
+  const stacked = !shelf || stack === true;
   const band = (
-    <div className={`${bandCls(shelf, compact)} flex ${shelf ? 'items-center gap-3' : 'flex-col gap-2'}`}>
+    <div className={`${bandCls(shelf, compact)} flex ${stacked ? 'flex-col gap-2' : 'items-center gap-3'}`}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div data-gutter className={GUTTER}>{checkbox}</div>
         {ring}
@@ -598,7 +625,7 @@ function WorkBand({ checkbox, ring, eyebrow, figure, title, subtitle, extra, act
           {extra}
         </div>
       </div>
-      <div className={`flex shrink-0 gap-2 ${shelf ? '' : 'justify-end'}`}>{actions}</div>
+      <div className={`flex shrink-0 gap-2 ${stacked ? 'justify-end' : ''}`}>{actions}</div>
     </div>
   );
   if (!shelf) return band;
@@ -677,12 +704,13 @@ function FocusPanel({ focus, alternatives, onAction, shelf, compact, sections, f
   sections: NonNullable<Props['sections']>;
   focusLevel: FocusLevel;
 }) {
-  // The ring and the tick share one condition: `confirming` carries neither.
-  // The ring has no progress to draw against a figure still in question, and a
-  // tick would answer a different question than the one on screen.
-  const running = focus.phase !== 'confirming';
-  // `running` is `focus.phase !== 'confirming'`. The ring SLOT is present in
-  // all three session phases; the ring itself only when something is running.
+  // The ring and the tick share one condition: `confirming` and `rating`
+  // carry neither. The ring has no progress to draw against a figure still in
+  // question (or one already written), and a tick would answer a different
+  // question than the one on screen.
+  const running = focus.phase === 'active' || focus.phase === 'break';
+  // The ring SLOT is present in every session phase; the ring itself only
+  // when something is running.
   const ring = (
     <div data-ring-slot className={RING_SLOT}>
       {running && (
@@ -693,13 +721,17 @@ function FocusPanel({ focus, alternatives, onAction, shelf, compact, sections, f
       )}
     </div>
   );
-  const checkbox = running ? (
+  // A topic has no tick: it is rated when the sitting ends, and the lead
+  // shows the confidence you are sitting down to move instead.
+  const checkbox = !running ? null : focus.topic ? (
+    <TopicLead confidence={focus.confidence ?? null} />
+  ) : (
     <TodayCheckbox
       checked={false}
       ariaLabel={`Complete "${focus.title}"`}
       onToggle={() => onAction({ type: 'complete-work', ref: focus.ref })}
     />
-  ) : null;
+  );
   // The cycle position sits with the subtitle rather than beside the elapsed
   // figure below: it says WHICH sitting this is, which is the same class of
   // fact as which project it belongs to, and the readout underneath is about
@@ -710,7 +742,9 @@ function FocusPanel({ focus, alternatives, onAction, shelf, compact, sections, f
       {focus.cycle && <p className="tabular-nums">{cyclePositionLine(focus.cycle)}</p>}
     </div>
   ) : null;
-  const extra = focus.phase === 'confirming' ? (
+  const extra = focus.phase === 'rating' ? (
+    <p className="text-body text-ink">How solid is {focus.title} now?</p>
+  ) : focus.phase === 'confirming' ? (
     <p className="text-body text-ink">
       This session shows {fmtMinutes(focus.proposedMinutes ?? focus.elapsedMin)} — was that real work?
     </p>
@@ -756,7 +790,27 @@ function FocusPanel({ focus, alternatives, onAction, shelf, compact, sections, f
   // The pairs are fragments and not rows: `WorkBand` already wraps whatever it
   // is handed in a `flex gap-2`, so a second one here was a wrapper whose only
   // effect was to hide the buttons from the arrangement outside it.
-  const actions = focus.phase === 'confirming' ? (
+  //
+  // The rating row: Solid is filled because it is the answer the question
+  // hopes for — the same reasoning `confirming` gives its Log button. Skip is
+  // a ghost because a skipped rating costs nothing and must not look like a
+  // choice among four.
+  const actions = focus.phase === 'rating' ? (
+    <>
+      <button type="button" className={ghostBtn} onClick={() => onAction({ type: 'rate-focus', confidence: null })}>
+        Skip
+      </button>
+      <button type="button" className={secondaryBtn} onClick={() => onAction({ type: 'rate-focus', confidence: 'shaky' })}>
+        Shaky
+      </button>
+      <button type="button" className={secondaryBtn} onClick={() => onAction({ type: 'rate-focus', confidence: 'okay' })}>
+        Okay
+      </button>
+      <button type="button" className={primaryBtn} onClick={() => onAction({ type: 'rate-focus', confidence: 'solid' })}>
+        Solid
+      </button>
+    </>
+  ) : focus.phase === 'confirming' ? (
     <>
       <button
         type="button"
@@ -805,6 +859,7 @@ function FocusPanel({ focus, alternatives, onAction, shelf, compact, sections, f
       <WorkBand
         shelf={shelf}
         compact={compact}
+        stack={focus.phase === 'rating'}
         checkbox={checkbox}
         ring={ring}
         eyebrow="Focus session"
@@ -941,13 +996,15 @@ function AdvicePanel({ snapshot, shelf, compact, sections, pending, onAction, on
       <WorkBand
         shelf={shelf}
         compact={compact}
-        checkbox={
+        checkbox={primary.topic ? (
+          <TopicLead confidence={primary.confidence ?? null} />
+        ) : (
           <TodayCheckbox
             checked={false}
             ariaLabel={`Complete "${primary.title}"`}
             onToggle={() => onAction({ type: 'complete-work', ref: primary.ref })}
           />
-        }
+        )}
         ring={null}
         eyebrow={REASON_WORD[primary.reason]}
         // On the shelf the expectation is stated ONCE, on the rule above the

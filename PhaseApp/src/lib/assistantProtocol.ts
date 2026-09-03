@@ -1,3 +1,4 @@
+import type { Confidence } from '../db/types';
 import type { ExecutionAdvice } from './executionAdvisor';
 import type { ExpectedTime, WorkRef } from './expectedTime';
 import { DEFAULT_FOCUS_LEVEL, type FocusLevel } from './focusLens';
@@ -23,7 +24,15 @@ export interface AssistantFocusView {
   ref: WorkRef;
   title: string;
   goalTitle?: string;
-  phase: 'active' | 'break' | 'confirming';
+  /** `'rating'` is the question a logged sitting on a topic ends in. */
+  phase: 'active' | 'break' | 'confirming' | 'rating';
+  /**
+   * A topic under a study goal: the card draws a confidence mark, never a
+   * tick, and `'rating'` is the phase that asks for one. Both absent for a
+   * step or a task.
+   */
+  topic?: true;
+  confidence?: Confidence;
   /** Whole minutes of active work so far — breaks excluded. */
   elapsedMin: number;
   expected: ExpectedTime;
@@ -114,6 +123,8 @@ export type AssistantAction =
   | { type: 'resume-focus' }
   | { type: 'complete-focus' }
   | { type: 'confirm-focus'; minutes: number | null }
+  /** The rating answer for a `'rating'` focus: a word, or null for Skip. */
+  | { type: 'rate-focus'; confidence: Confidence | null }
   | { type: 'switch-focus'; ref: WorkRef }
   /** End the WORK, not the sitting. `complete-focus` is the sitting. */
   | { type: 'complete-work'; ref: WorkRef }

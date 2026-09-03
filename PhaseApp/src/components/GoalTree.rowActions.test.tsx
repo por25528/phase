@@ -246,6 +246,25 @@ describe('the ⋯ menu', () => {
   });
 });
 
+describe('the topics toggle', () => {
+  it('offers Treat as topics on a container and flips the flag through the store', async () => {
+    const { store, user } = await mountTree();
+    await openMenu(user, 'Mechanics');
+    expect(screen.queryByRole('menuitem', { name: 'Treat as topics' })).toBeTruthy();
+    await user.click(screen.getByRole('menuitem', { name: 'Treat as topics' }));
+    expect(store.getState().goals[0].nodes[2].topics).toBe(true);
+    await openMenu(user, 'Mechanics');
+    expect(screen.getByRole('menuitem', { name: 'Treat as steps' })).toBeTruthy();
+    await user.click(screen.getByRole('menuitem', { name: 'Treat as steps' }));
+    expect(store.getState().goals[0].nodes[2].topics).toBeUndefined();
+  });
+  it('is not offered on a leaf', async () => {
+    const { user } = await mountTree();
+    await openMenu(user, 'First task');
+    expect(screen.queryByRole('menuitem', { name: /Treat as/ })).toBeNull();
+  });
+});
+
 describe('the schedule cell', () => {
   it('schedules from the row rather than sending the user elsewhere', async () => {
     const { store, user } = await mountTree();

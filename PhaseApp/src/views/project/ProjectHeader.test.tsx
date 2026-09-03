@@ -69,13 +69,14 @@ type Store = typeof import('../../state/store');
 async function renderProjectHeader(params: {
   title: string;
   isCompleted?: boolean;
+  nodes?: Goal['nodes'];
 }): Promise<Store> {
   vi.resetModules();
   const goal: Goal = {
     id: 'g1',
     title: params.title,
     ...(params.isCompleted ? { completedAt: '2026-08-01' } : {}),
-    nodes: [],
+    nodes: params.nodes ?? [],
   };
   dbMocks.loadState.mockResolvedValueOnce({
     goals: [goal], habits: [], tasks: [], sessions: [],
@@ -117,6 +118,23 @@ describe('ProjectHeader focus needed', () => {
  * moves into `GoalMetaPopover` (Task 5), which is a property, not a header
  * fact.
  */
+describe('the header on a subject', () => {
+  it('states readiness beside the percentage, and nothing about topics on a plain project', async () => {
+    await renderProjectHeader({ title: 'Algorithms', nodes: [
+      { id: 'area', title: 'Topics', topics: true, children: [
+        { id: 'a', title: 'A', confidence: 'solid', confidenceAt: '2026-08-01' },
+        { id: 'b', title: 'B' },
+      ] },
+    ] });
+    expect(screen.getByText(/1 of 2 topics solid/)).toBeTruthy();
+    expect(screen.getByText(/50%/)).toBeTruthy();
+    cleanup();
+    await renderProjectHeader({ title: 'Plain', nodes: [{ id: 'x', title: 'X' }, { id: 'y', title: 'Y', status: 'done' }] });
+    expect(screen.queryByText(/topics/)).toBeNull();
+    expect(screen.getByText(/50%/)).toBeTruthy();
+  });
+});
+
 describe('the header after the density pass', () => {
   it('no longer carries a demand control — that is a property, and it lives with the properties', async () => {
     await renderProjectHeader({ title: 'Systems' });

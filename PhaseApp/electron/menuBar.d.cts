@@ -31,7 +31,7 @@ export interface MenuBarTemplateItem {
  * it (see busyBlocks.d.cts).
  */
 export interface MenuBarFocusStatus {
-  phase: 'active' | 'break' | 'confirming';
+  phase: 'active' | 'break' | 'confirming' | 'rating';
   activeSinceMs: number | null;
   accumulatedMs: number;
   title: string;

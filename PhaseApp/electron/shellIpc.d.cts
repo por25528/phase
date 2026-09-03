@@ -21,7 +21,7 @@ export interface ShellWindow {
  * process seam prevents sharing declarations across it (see busyBlocks.d.cts).
  */
 export interface FocusStatus {
-  phase: 'active' | 'break' | 'confirming';
+  phase: 'active' | 'break' | 'confirming' | 'rating';
   activeSinceMs: number | null;
   accumulatedMs: number;
   title: string;

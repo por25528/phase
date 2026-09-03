@@ -63,18 +63,30 @@ export function inferGoalType(title: string): GoalType {
  * Nothing is created until it is previewed and accepted — see `applyTemplate`'s
  * callers.
  */
-export const TEMPLATES: Record<GoalType, { label: string; areas: string[] }> = {
+export const TEMPLATES: Record<GoalType, {
+  label: string;
+  areas: string[];
+  /**
+   * One slot per area, aligned by index. `Topics` is the one area with a
+   * FLAG: every row put under it is a topic — rated, never ticked — which is
+   * what makes a study goal a subject. The other templates flag nothing.
+   */
+  flags: ({ topics?: true } | undefined)[];
+}> = {
   study: {
     label: 'Topics and practice',
-    areas: ['Review', 'Practice', 'Mock exam'],
+    areas: ['Topics', 'Practice', 'Mock exam'],
+    flags: [{ topics: true }, undefined, undefined],
   },
   project: {
     label: 'Scope to release',
     areas: ['Scope', 'Design', 'Implementation', 'Verification', 'Release'],
+    flags: [undefined, undefined, undefined, undefined, undefined],
   },
   general: {
     label: 'A simple split',
     areas: ['Prepare', 'Do', 'Wrap up'],
+    flags: [undefined, undefined, undefined],
   },
 };
 
@@ -89,5 +101,6 @@ export const TEMPLATES: Record<GoalType, { label: string; areas: string[] }> = {
  * in it is just a heading the user has agreed to.
  */
 export function templateNodes(type: GoalType): GoalNode[] {
-  return TEMPLATES[type].areas.map((title) => ({ id: uid(), title }));
+  const t = TEMPLATES[type];
+  return t.areas.map((title, i) => ({ id: uid(), title, ...(t.flags[i]?.topics ? { topics: true as const } : {}) }));
 }

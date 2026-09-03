@@ -14,6 +14,7 @@ import {
 } from '../../../components/Icons';
 import { containerDragAttributes } from '../../../lib/dragAttributes';
 import { sectionLabel } from '../../../components/sectionLabel';
+import { ConfidenceMark } from '../../../components/StatusMark';
 import { projectSpineClass } from '../../../lib/projectColour';
 
 /**
@@ -132,19 +133,28 @@ function BacklogRow({
           else actions.setNodeEstimate(item.id, minutes);
         }}
       />
-      <button
-        type="button"
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (item.kind === 'task') actions.toggleTask(item.id);
-          else actions.toggleLeaf(item.id);
-        }}
-        aria-label={`Complete "${item.title}"`}
-        className="quiet-control flex-none text-muted hover:text-ink rounded-[4px] hover:bg-hover"
-      >
-        <IconCheck size={13} />
-      </button>
+      {/* A topic is rated, never completed: its mark stands where the tick
+          would, as a readout and not a control — `toggleLeaf` would refuse
+          the press anyway, and a button that does nothing is worse than none. */}
+      {item.topic ? (
+        <span className="flex-none">
+          <ConfidenceMark confidence={item.confidence ?? null} />
+        </span>
+      ) : (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (item.kind === 'task') actions.toggleTask(item.id);
+            else actions.toggleLeaf(item.id);
+          }}
+          aria-label={`Complete "${item.title}"`}
+          className="quiet-control flex-none text-muted hover:text-ink rounded-[4px] hover:bg-hover"
+        >
+          <IconCheck size={13} />
+        </button>
+      )}
       {/*
         Steps only: a loose Task has no status to park.
 

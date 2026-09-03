@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { insideTopicsArea } from '../../lib/confidence';
 import type { Goal, GoalNode } from '../../db/types';
 import { useAppStore, type AreaTab } from '../../state/store';
 import { GoalTree } from '../../components/GoalTree';
@@ -213,7 +214,7 @@ export function AreaPage({ goal: g, node }: { goal: Goal; node: GoalNode }) {
           // level they are read at.
           <div className={openNode ? (wide ? 'flex items-start' : 'flex flex-col') : undefined}>
             <div className="min-w-0 flex-1">
-              <GoalTree nodes={children} />
+              <GoalTree nodes={children} inTopics={insideTopicsArea(g, node.id)} />
             </div>
             {openNode && (
               <div className={wide ? 'w-[340px] flex-none border-l border-line' : 'w-full border-t border-line'}>

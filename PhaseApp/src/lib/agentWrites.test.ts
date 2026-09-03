@@ -899,3 +899,42 @@ describe('apply_replan', () => {
     expect(res).toEqual({ ok: false, error: 'Nothing was moved.' });
   });
 });
+
+describe('topics', () => {
+  const subject: Goal = {
+    id: 'g1', title: 'Algorithms', type: 'study',
+    nodes: [{ id: 'area', title: 'Topics', topics: true, children: [{ id: 'graphs', title: 'Graphs' }] }],
+  };
+  it('rate_topic reaches rateTopic and reports the rating', () => {
+    const h = harness({ goals: [subject], actions: { rateTopic: vi.fn(() => true) } });
+    const res = handleAgentWrite({ tool: 'rate_topic', nodeId: 'graphs', confidence: 'okay' }, h.deps);
+    expect(h.spies.rateTopic).toHaveBeenCalledWith('graphs', 'okay', todayStr());
+    expect(res).toEqual({ ok: true, data: { nodeId: 'graphs', confidence: 'okay' } });
+  });
+  it('rate_topic reports a refusal instead of claiming success', () => {
+    const h = harness({ goals: [subject], actions: { rateTopic: vi.fn(() => false) } });
+    const res = handleAgentWrite({ tool: 'rate_topic', nodeId: 'graphs', confidence: null }, h.deps);
+    expect(res).toEqual({ ok: false, error: 'That rating did not apply.' });
+  });
+  it('rate_topic on a step, a group or a missing id is refused in words', () => {
+    const h = harness({ goals: [GOAL(), { ...subject, id: 'g2' }], actions: { rateTopic: vi.fn(() => true) } });
+    expect(handleAgentWrite({ tool: 'rate_topic', nodeId: 'n1', confidence: 'okay' }, h.deps))
+      .toEqual({ ok: false, error: '"Draft outline" is a step, not a topic — only a step under a Topics area takes a rating.' });
+    expect(handleAgentWrite({ tool: 'rate_topic', nodeId: 'area', confidence: 'okay' }, h.deps))
+      .toEqual({ ok: false, error: '"Topics" is a group — only a step under a Topics area takes a rating.' });
+    expect(handleAgentWrite({ tool: 'rate_topic', nodeId: 'nope', confidence: 'okay' }, h.deps))
+      .toEqual({ ok: false, error: 'No task with id "nope".' });
+    expect(h.spies.rateTopic).not.toHaveBeenCalled();
+  });
+  it('complete_task and set_status done refuse a topic', () => {
+    const h = harness({ goals: [subject] });
+    expect(handleAgentWrite({ tool: 'complete_task', ref: { kind: 'step', id: 'graphs', goalId: 'g1' } }, h.deps))
+      .toEqual({ ok: false, error: '"Graphs" is a topic — rate it instead of completing it.' });
+    expect(handleAgentWrite({ tool: 'set_status', nodeId: 'graphs', status: 'done' }, h.deps))
+      .toEqual({ ok: false, error: '"Graphs" is a topic — rate it instead of completing it.' });
+    expect(h.spies.toggleLeaf).not.toHaveBeenCalled();
+    // Every other status still moves attention on a topic.
+    expect(handleAgentWrite({ tool: 'set_status', nodeId: 'graphs', status: 'doing' }, h.deps).ok).toBe(true);
+    expect(h.spies.setNodeStatus).toHaveBeenCalledWith('graphs', 'doing', undefined, todayStr());
+  });
+});

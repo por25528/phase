@@ -6364,3 +6364,170 @@ describe('autoBackupFailed', () => {
     expect(vi.mocked(persist)).not.toHaveBeenCalled();
   });
 });
+
+describe('rating a topic after a sitting', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const MIN = 60_000;
+  const t0 = 1_700_000_000_000;
+  const ref = { kind: 'step' as const, id: 'n1', goalId: 'g1' };
+  const starter = { kind: 'starter' as const, minutes: 30 as const };
+  const subject: Goal = {
+    id: 'g1', title: 'Algorithms', type: 'study',
+    nodes: [{ id: 'area', title: 'Topics', topics: true, children: [{ id: 'n1', title: 'Graphs' }] }],
+  };
+  const plain: Goal = { id: 'g1', title: 'Algorithms', nodes: [{ id: 'n1', title: 'Problem set 4' }] };
+  async function storeWith(goal: Goal) {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({ goals: [goal], habits: [], tasks: [], sessions: [], lives: [] });
+    const store = await freshStore();
+    await store.initStore();
+    return store;
+  }
+  const topic = (s: { getState: () => { goals: Goal[] } }) => s.getState().goals[0].nodes[0].children![0];
+
+  it('completing a sitting on a topic logs, then asks', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    expect(actions.completeFocus(t0 + 25 * MIN)).toBe('logged');
+    expect(getState().sessions).toHaveLength(1);
+    expect(getState().activeFocusSession).toMatchObject({ phase: 'rating', activeSinceMs: null, accumulatedMs: 25 * MIN });
+    expect(actions.rateFocus('okay')).toBe(true);
+    expect(topic({ getState }).confidence).toBe('okay');
+    expect(getState().pendingUndo?.label).toBe('Rated "Graphs" okay');
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('skip clears the draft and writes nothing', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(actions.rateFocus(null)).toBe(true);
+    expect(topic({ getState }).confidence).toBeUndefined();
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('a confirmed stale sitting asks too; "didn\'t happen" does not', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    expect(actions.completeFocus(t0 + 200 * MIN)).toBe('needs-confirmation');
+    expect(actions.confirmFocus(200)).toBe(true);
+    expect(getState().activeFocusSession?.phase).toBe('rating');
+    actions.rateFocus(null);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 200 * MIN);
+    expect(actions.confirmFocus(null)).toBe(true);
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('a sitting on an ordinary step never asks', async () => {
+    const { actions, getState } = await storeWith(plain);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(getState().activeFocusSession).toBeNull();
+    expect(actions.rateFocus('okay')).toBe(false);
+  });
+  it('while rating, pause, resume, complete, start and finishWork are refused', async () => {
+    const { actions } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(actions.pauseFocus(t0 + 26 * MIN)).toBe(false);
+    expect(actions.resumeFocus(t0 + 26 * MIN)).toBe(false);
+    expect(actions.completeFocus(t0 + 26 * MIN)).toBe('refused');
+    expect(actions.startFocus(ref, starter, t0 + 26 * MIN)).toBe(false);
+    expect(actions.confirmFocus(10)).toBe(false);
+    expect(actions.finishWork(ref, t0 + 26 * MIN)).toEqual({ outcome: 'refused' });
+  });
+  it('the rating is refused once the goal is frozen, and the draft is still spent', async () => {
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    actions.completeGoal('g1');
+    expect(actions.rateFocus('solid')).toBe(true);
+    expect(topic({ getState }).confidence).toBeUndefined();
+    expect(getState().activeFocusSession).toBeNull();
+  });
+  it('a rating draft is published as not running', async () => {
+    const { focusStatusOf } = await import('../lib/focusStatus');
+    const { actions, getState } = await storeWith(subject);
+    actions.startFocus(ref, starter, t0);
+    actions.completeFocus(t0 + 25 * MIN);
+    expect(focusStatusOf(getState().activeFocusSession)).toMatchObject({ phase: 'rating', activeSinceMs: null });
+  });
+});
+
+describe('topics', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const TODAY = '2026-09-03';
+  const subject: Goal = {
+    id: 'g1', title: 'Algorithms', type: 'study',
+    nodes: [
+      { id: 'area', title: 'Topics', topics: true, children: [{ id: 'graphs', title: 'Graphs' }] },
+      { id: 'ps', title: 'Problem set' },
+    ],
+  };
+  async function topicStore() {
+    const { loadState } = await import('../db/db');
+    vi.mocked(loadState).mockResolvedValueOnce({ goals: [subject], habits: [], tasks: [], sessions: [], lives: [] });
+    const store = await freshStore();
+    await store.initStore();
+    return store;
+  }
+  const topic = (s: { getState: () => { goals: Goal[] } }) => s.getState().goals[0].nodes[0].children![0];
+
+  it('rateTopic writes both fields, arms an undo, and clears both on null', async () => {
+    const { actions, getState } = await topicStore();
+    expect(actions.rateTopic('graphs', 'okay', TODAY)).toBe(true);
+    expect(topic({ getState })).toMatchObject({ confidence: 'okay', confidenceAt: TODAY });
+    expect(getState().pendingUndo?.label).toBe('Rated "Graphs" okay');
+    expect(actions.rateTopic('graphs', null, TODAY)).toBe(true);
+    expect(topic({ getState }).confidence).toBeUndefined();
+    expect(topic({ getState }).confidenceAt).toBeUndefined();
+    expect(getState().pendingUndo?.label).toBe('Cleared rating on "Graphs"');
+  });
+  it('rateTopic refuses a step, a container and a frozen goal', async () => {
+    const { actions } = await topicStore();
+    expect(actions.rateTopic('ps', 'okay', TODAY)).toBe(false);
+    expect(actions.rateTopic('area', 'okay', TODAY)).toBe(false);
+    actions.completeGoal('g1');
+    expect(actions.rateTopic('graphs', 'okay', TODAY)).toBe(false);
+  });
+  it('a topic cannot be completed by any route', async () => {
+    const { actions, getState } = await topicStore();
+    actions.toggleLeaf('graphs');
+    expect(topic({ getState }).status).toBeUndefined();
+    expect(actions.setNodeStatus('graphs', 'done')).toBe(false);
+    expect(actions.setNodeStatus('graphs', 'doing')).toBe(true);
+    expect(actions.finishWork({ kind: 'step', id: 'graphs', goalId: 'g1' })).toEqual({ outcome: 'refused' });
+  });
+  it('the bulk completes and status writes leave a topic alone and take the steps', async () => {
+    const { actions, getState } = await topicStore();
+    expect(actions.setNodesStatus(['graphs', 'ps'], 'done')).toBe(true);
+    expect(topic({ getState }).status).toBeUndefined();
+    expect(getState().goals[0].nodes[1].status).toBe('done');
+    actions.undoLastDelete();
+    expect(actions.completeNodes(['area', 'ps'])).toBe(true);
+    expect(topic({ getState }).status).toBeUndefined();
+    expect(getState().goals[0].nodes[1].status).toBe('done');
+    expect(getState().pendingUndo?.label).toBe('Completed 1 task');
+    // A selection that is nothing but topics has nothing to complete.
+    actions.undoLastDelete();
+    expect(actions.completeNodes(['graphs'])).toBe(false);
+    expect(actions.setNodesStatus(['graphs'], 'done')).toBe(false);
+  });
+  it('setTopicsArea toggles the flag on a container', async () => {
+    const { actions, getState } = await topicStore();
+    expect(actions.setTopicsArea('area', false)).toBe(true);
+    expect(getState().goals[0].nodes[0].topics).toBeUndefined();
+    expect(actions.setTopicsArea('area', true)).toBe(true);
+    expect(getState().goals[0].nodes[0].topics).toBe(true);
+    expect(actions.setTopicsArea('area', true)).toBe(false);
+  });
+  it('addRootNodes carries a topics flag per title', async () => {
+    const { actions, getState } = await topicStore();
+    actions.addRootNodes('g1', ['Topics', '  ', 'Practice'], [{ topics: true }, undefined, undefined]);
+    const added = getState().goals[0].nodes.slice(-2);
+    expect(added[0]).toMatchObject({ title: 'Topics', topics: true });
+    expect(added[1].title).toBe('Practice');
+    expect(added[1].topics).toBeUndefined();
+  });
+});

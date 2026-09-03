@@ -57,8 +57,14 @@ function validExpected(expected) {
 
 const REASONS = new Set([
   'scheduled-now', 'scheduled-next', 'due', 'committed-today',
-  'committed-week', 'carried-over', 'free-time',
+  'committed-week', 'carried-over', 'free-time', 'review',
 ]);
+
+// A topic's two fields, both optional and both hand-kept against
+// `src/lib/confidence.ts`: the flag is `true` or absent, never `false`.
+const CONFIDENCES = new Set(['shaky', 'okay', 'solid']);
+function optionalTopic(value) { return value === undefined || value === true; }
+function optionalConfidence(value) { return value === undefined || CONFIDENCES.has(value); }
 
 function validWork(work) {
   return !!work
@@ -69,7 +75,9 @@ function validWork(work) {
     && optionalShortString(work.goalTitle)
     && optionalShortString(work.lifeId)
     && REASONS.has(work.reason)
-    && validExpected(work.expected);
+    && validExpected(work.expected)
+    && optionalTopic(work.topic)
+    && optionalConfidence(work.confidence);
 }
 
 function validAdvice(advice) {
@@ -101,11 +109,14 @@ function validFocus(focus) {
     && validRef(focus.ref)
     && shortString(focus.title)
     && optionalShortString(focus.goalTitle)
-    && (focus.phase === 'active' || focus.phase === 'break' || focus.phase === 'confirming')
+    && (focus.phase === 'active' || focus.phase === 'break' || focus.phase === 'confirming'
+      || focus.phase === 'rating')
     && boundedMinutes(focus.elapsedMin)
     && validExpected(focus.expected)
     && (focus.proposedMinutes === undefined || boundedMinutes(focus.proposedMinutes))
-    && validFocusCycle(focus.cycle);
+    && validFocusCycle(focus.cycle)
+    && optionalTopic(focus.topic)
+    && optionalConfidence(focus.confidence);
 }
 
 /**
@@ -198,6 +209,9 @@ function validAction(action) {
       return true;
     case 'confirm-focus':
       return action.minutes === null || (boundedMinutes(action.minutes) && action.minutes > 0);
+    // The rating answer: one of the three words, or null for Skip.
+    case 'rate-focus':
+      return action.confidence === null || CONFIDENCES.has(action.confidence);
     case 'set-time-level':
     case 'set-focus-level':
       return validLevel(action.level);

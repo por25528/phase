@@ -5,7 +5,7 @@
 
 /** Structurally FocusStatusSnapshot from src/lib/focusStatus.ts — mirrored, never imported (see menuBar.d.cts). */
 export interface OverlayFocusStatus {
-  phase: 'active' | 'break' | 'confirming';
+  phase: 'active' | 'break' | 'confirming' | 'rating';
   activeSinceMs: number | null;
   accumulatedMs: number;
   title: string;

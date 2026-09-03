@@ -8,7 +8,7 @@ import { IconCircle, IconDiamond, IconWarning } from '../../components/Icons';
 import { goalOverview, overviewIsEmpty, goalWeekLoad } from '../../lib/overview';
 import { describeVelocity, projectVelocity } from '../../lib/velocity';
 import { weekOf } from '../../lib/plan';
-import { fmtMinutes } from '../../lib/effort';
+import { effortCount, fmtMinutes } from '../../lib/effort';
 import { formatEstimateValue } from '../../lib/estimateInput';
 import { fmtD, todayStr } from '../../lib/dates';
 import { goalPct } from '../../lib/pct';
@@ -128,8 +128,11 @@ export function OverviewTab({ goal: g }: { goal: Goal }) {
         <h3 className={`m-0 mb-[6px] ${sectionLabel}`}>Progress</h3>
         <div className="flex items-center gap-[10px] px-[6px]">
           <ProgressBar pct={pct} />
+          {/* `effortCount` is readiness-aware: a subject reads `3 of 8 topics
+              solid`, and `pct` — `goalPct` — is that same readiness, so the
+              bar and the count still say one thing. */}
           <span className="flex-none text-ui text-ink-soft tabular-nums">
-            {o.effort.done} / {o.effort.total}
+            {effortCount(o.effort)}
           </span>
         </div>
         {/* Remaining effort, with its own caveat attached. A floor stated as a

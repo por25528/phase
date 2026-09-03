@@ -173,9 +173,10 @@ function createIdleWatch(deps) {
         armPoll();
         return;
       }
-      if (status === null || status.phase === 'confirming') {
-        // Gone, or a question the shelf already owns. Either way there is no
-        // running session for an absence to be about.
+      if (status === null || status.phase === 'confirming' || status.phase === 'rating') {
+        // Gone, or a question the shelf already owns — the confirming
+        // minutes, or the rating a sitting on a topic ends in. Either way
+        // there is no running session for an absence to be about.
         awayFromMs = null;
         cancelPoll();
         return;

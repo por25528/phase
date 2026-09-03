@@ -339,3 +339,36 @@ describe('pct survives the status migration unchanged', () => {
     });
   }
 });
+
+describe('topics', () => {
+  const topics = (kids: GoalNode[]): Goal => ({
+    id: 'g', title: 'Algorithms', nodes: [{ id: 'area', title: 'Topics', topics: true, children: kids }],
+  });
+  it('an unrated topic is 0, shaky a third, okay two thirds, solid whole', () => {
+    expect(goalPct(topics([{ id: 'a', title: 'A' }]))).toBe(0);
+    expect(goalPct(topics([{ id: 'a', title: 'A', confidence: 'shaky', confidenceAt: '2026-09-01' }]))).toBeCloseTo(100 / 3);
+    expect(goalPct(topics([{ id: 'a', title: 'A', confidence: 'okay', confidenceAt: '2026-09-01' }]))).toBeCloseTo(200 / 3);
+    expect(goalPct(topics([{ id: 'a', title: 'A', confidence: 'solid', confidenceAt: '2026-09-01' }]))).toBe(100);
+  });
+  it('a topic ticked done by legacy data still reads its confidence, not the tick', () => {
+    expect(goalPct(topics([{ id: 'a', title: 'A', status: 'done' }]))).toBe(0);
+  });
+  it('estimate weighting applies to topics like any leaf', () => {
+    const g = topics([
+      { id: 'a', title: 'A', estimateMin: 90, confidence: 'solid', confidenceAt: '2026-09-01' },
+      { id: 'b', title: 'B', estimateMin: 30 },
+    ]);
+    expect(goalPct(g)).toBeCloseTo(75);
+  });
+  it('a mixed subject averages topics and steps by the same rules', () => {
+    const g: Goal = {
+      id: 'g', title: 'Algorithms', nodes: [
+        { id: 'area', title: 'Topics', topics: true, children: [
+          { id: 'a', title: 'A', confidence: 'solid', confidenceAt: '2026-09-01' },
+        ] },
+        { id: 'ps', title: 'Problem set' },
+      ],
+    };
+    expect(goalPct(g)).toBe(50);
+  });
+});

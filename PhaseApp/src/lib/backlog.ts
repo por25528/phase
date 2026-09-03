@@ -1,4 +1,4 @@
-import type { Goal, Task } from '../db/types';
+import type { Goal, GoalNode, Task } from '../db/types';
 import { normalizeEstimate } from './capacity';
 import { addDays, fmtD } from './dates';
 import { isPlanningHorizon } from './horizons';
@@ -6,6 +6,7 @@ import { goalPct } from './pct';
 import { attentionRank, walkLeaves } from './plan';
 import { isDone, stepStatus } from './status';
 import { isPlaced } from './blocks';
+import { sortForReview, topicIds, topicConfidence, type Confidence } from './confidence';
 
 /** One draggable row in the backlog rail. */
 export interface BacklogItem {
@@ -33,6 +34,14 @@ export interface BacklogItem {
    * — this is the only surface that step is still on.
    */
   parked?: true;
+  /**
+   * A topic — a leaf under a study goal's topics area. Never completed; its
+   * `confidence` is what the row draws where a step draws its status, and
+   * its `due` is the EXAM date, so `sortByDue` puts the nearest exam's
+   * weakest topic at the head of every surface that reads this list.
+   */
+  topic?: true;
+  confidence?: Confidence;
 }
 
 /**
@@ -154,7 +163,12 @@ export function backlogGroups(
   const parked = new Set(ranked.filter((g) => !isPlanningHorizon(g.column)).map((g) => g.id));
 
   for (const g of ranked) {
-    const items: BacklogItem[] = [];
+    const topics = topicIds(g);
+    // The exam date is a due only once it is CONFIRMED — the same gate
+    // `projectAttention` applies before a date may reorder anything.
+    const exam = g.datesConfirmed === true && g.deadline ? g.deadline : undefined;
+    const topicNodes: GoalNode[] = [];
+    const steps: BacklogItem[] = [];
     walkLeaves(g, (n) => {
       if (isDone(n)) return;
       // Placed anywhere at all, not just inside `week`: a sitting is a sitting,
@@ -167,13 +181,29 @@ export function backlogGroups(
       // parked PROJECT gets, just above.
       const s = stepStatus(n);
       if ((s === 'blocked' || s === 'parked') && n.plannedWeek === undefined) return;
-      items.push({
+      if (topics.has(n.id)) { topicNodes.push(n); return; }
+      steps.push({
         kind: 'step', id: n.id, goalId: g.id, title: n.title,
         ...withEstimate(n.estimateMin),
         ...(n.deadline ? { due: n.deadline } : {}),
         ...(s === 'parked' ? { parked: true as const } : {}),
       });
     });
+    // Topics first, in review order; then the ordinary steps in tree order.
+    // `sortByDue` below still runs over the whole group, so a step dated
+    // inside the week jumps the topics — and the topics themselves carry the
+    // exam as their date, so once the exam is that near they lead anyway.
+    const items: BacklogItem[] = sortForReview(topicNodes).map((n) => {
+      const c = topicConfidence(n);
+      return {
+        kind: 'step', id: n.id, goalId: g.id, title: n.title, topic: true as const,
+        ...withEstimate(n.estimateMin),
+        ...(exam ? { due: exam } : {}),
+        ...(c === null ? {} : { confidence: c }),
+        ...(stepStatus(n) === 'parked' ? { parked: true as const } : {}),
+      };
+    });
+    items.push(...steps);
     byGoal.set(g.id, items);
   }
 

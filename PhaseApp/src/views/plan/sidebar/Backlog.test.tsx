@@ -167,6 +167,20 @@ describe('the backlog rail', () => {
     expect(store.getState().goals[0].nodes[0].status).toBeUndefined();
   });
 
+  it('a topic row draws its confidence and offers no Complete', async () => {
+    const subject: Goal = {
+      id: 'g2', title: 'Algorithms', type: 'study', column: 0,
+      nodes: [{ id: 'area', title: 'Topics', topics: true, children: [
+        { id: 'weak', title: 'Graphs', confidence: 'shaky', confidenceAt: '2026-08-10' },
+      ] }],
+    };
+    await mountRail({ goals: [PROJECT, subject], tasks: [] });
+    expect(screen.getByRole('img', { name: 'Shaky' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Complete "Graphs"' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Park "Graphs"' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Complete "Break each topic into daily study goals"' })).toBeTruthy();
+  });
+
   it('marks exactly one head row per group', async () => {
     await mountRail({ goals: [PROJECT], tasks: [LOOSE] });
     const heads = document.querySelectorAll('[data-backlog-head]');

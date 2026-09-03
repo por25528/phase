@@ -15,6 +15,7 @@ const active = (over: Partial<NonNullable<FocusStatus>> = {}): NonNullable<Focus
 });
 const paused: NonNullable<FocusStatus> = { ...active(), phase: 'break', activeSinceMs: null };
 const confirming: NonNullable<FocusStatus> = { ...active(), phase: 'confirming', activeSinceMs: null };
+const rating: NonNullable<FocusStatus> = { ...active(), phase: 'rating', activeSinceMs: null };
 
 /**
  * A hand-driven watcher. The module re-arms its own one-shot timer, so `poll()`
@@ -98,6 +99,8 @@ describe('when it watches at all', () => {
     w.watch.setFocusStatus(paused);
     expect(w.polling()).toBe(false);
     w.watch.setFocusStatus(confirming);
+    expect(w.polling()).toBe(false);
+    w.watch.setFocusStatus(rating);
     expect(w.polling()).toBe(false);
   });
 
@@ -270,8 +273,8 @@ describe('coming back', () => {
     expect(w.requests().filter((r) => r.type === 'auto-break')).toHaveLength(2);
   });
 
-  it('drops it when the session ends or lands in confirming while away', () => {
-    for (const settled of [null, confirming]) {
+  it('drops it when the session ends or lands in confirming or rating while away', () => {
+    for (const settled of [null, confirming, rating]) {
       const w = watcher();
       w.watch.setFocusStatus(active());
       w.setIdle(IDLE_BREAK_SEC);

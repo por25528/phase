@@ -1,16 +1,24 @@
 import type { Goal, GoalNode } from '../db/types';
 import { isDone, stepStatus } from './status';
 
-export function leafCount(nodes: GoalNode[]): { total: number; done: number } {
+/**
+ * `inTopics` follows a `topics: true` node down. A topic is counted in
+ * `total` and NEVER in `done`: a subject is not finished the day every topic
+ * reads solid — that is the night before the exam, which is work to keep
+ * warm — so `paceStatus` must never answer `'complete'` for it, and the rail
+ * must never drop it as ready-to-complete.
+ */
+export function leafCount(nodes: GoalNode[], inTopics = false): { total: number; done: number } {
   let total = 0, done = 0;
   for (const n of nodes) {
+    const here = inTopics || n.topics === true;
     if (n.children && n.children.length > 0) {
-      const sub = leafCount(n.children);
+      const sub = leafCount(n.children, here);
       total += sub.total;
       done += sub.done;
     } else {
       total++;
-      if (isDone(n)) done++;
+      if (!here && isDone(n)) done++;
     }
   }
   return { total, done };

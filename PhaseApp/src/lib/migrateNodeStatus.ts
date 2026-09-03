@@ -1,7 +1,7 @@
 import type { Goal, GoalNode } from '../db/types';
 
 /**
- * Rewrite the legacy `done` boolean as a `status`.
+ * Rewrite the legacy `done` boolean as a `status`, and drop half a rating.
  *
  * Total and unambiguous — `true` is 'done', anything else is 'todo', which is
  * stored as an absent field. So unlike migrateSlots and migrateCheckpoints this
@@ -30,8 +30,13 @@ export function migrateNodeStatus(goals: Goal[]): Goal[] {
     // contract the type declares.
     const hasLegacy = !isContainer && Object.prototype.hasOwnProperty.call(n, 'done');
     const hasLegacyOnContainer = isContainer && Object.prototype.hasOwnProperty.call(n, 'done');
+    // Half a rating is not a rating: `confidence` and `confidenceAt` are
+    // written together by `rateTopic`, so one without the other is a file
+    // edited by hand or a write that was cut short, and both go.
+    const halfRating = !isContainer
+      && ((n.confidence !== undefined) !== (n.confidenceAt !== undefined));
 
-    if (!hasLegacy && !hasLegacyOnContainer && !kidsChanged) return n;
+    if (!hasLegacy && !hasLegacyOnContainer && !halfRating && !kidsChanged) return n;
 
     changed = true;
     const out = { ...n, ...(kids ? { children: kids } : {}) } as GoalNode & { done?: boolean };
@@ -43,6 +48,10 @@ export function migrateNodeStatus(goals: Goal[]): Goal[] {
       delete out.done;
     } else if (hasLegacyOnContainer) {
       delete out.done;
+    }
+    if (halfRating) {
+      delete out.confidence;
+      delete out.confidenceAt;
     }
     return out;
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Goal, PlanReview, Session } from '../db/types';
+import type { Confidence, Goal, PlanReview, Session } from '../db/types';
 import {
   weekOf, plannedLeaves, paceStatus, attentionRank,
   weekRecap, planOpeningStep, PACE_THRESHOLD_PTS,
@@ -1008,5 +1008,22 @@ describe('focusSummary limit', () => {
 
   it('reports the scoped cap it is given', () => {
     expect(focusSummary([now('a')], '2026-08-13', 6).slots.limit).toBe(6);
+  });
+});
+
+describe('paceStatus and a subject', () => {
+  const subject = (confidence?: Confidence): Goal => ({
+    id: 'g', title: 'Algorithms', start: '2026-08-01', deadline: '2026-09-30', datesConfirmed: true,
+    nodes: [{ id: 'area', title: 'Topics', topics: true, children: [
+      { id: 'a', title: 'A', ...(confidence ? { confidence, confidenceAt: '2026-09-01' } : {}) },
+    ] }],
+  });
+  it('never reads complete, even with every topic solid', () => {
+    expect(paceStatus(subject('solid'), '2026-09-03')).not.toBe('complete');
+    expect(projectAttention(subject('solid'), '2026-09-03')).not.toBe('ready-to-complete');
+  });
+  it('reads behind when confidence lags the calendar', () => {
+    // 33 of 60 days elapsed (~55%) against 0% confidence.
+    expect(paceStatus(subject(), '2026-09-03')).toBe('behind');
   });
 });

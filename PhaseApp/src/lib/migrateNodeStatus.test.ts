@@ -72,3 +72,20 @@ describe('migrateNodeStatus', () => {
     expect(g.nodes[0].blockedOn).toBe('grader');
   });
 });
+
+describe('half a rating', () => {
+  it('drops a confidence without its day, and a day without its confidence', () => {
+    const [g] = migrateNodeStatus([goal([
+      { id: 'a', title: 'A', confidence: 'okay' } as GoalNode,
+      { id: 'b', title: 'B', confidenceAt: '2026-09-01' } as GoalNode,
+      { id: 'c', title: 'C', confidence: 'solid', confidenceAt: '2026-09-01' },
+    ])]);
+    expect(g.nodes[0]).toEqual({ id: 'a', title: 'A' });
+    expect(g.nodes[1]).toEqual({ id: 'b', title: 'B' });
+    expect(g.nodes[2]).toMatchObject({ confidence: 'solid', confidenceAt: '2026-09-01' });
+  });
+  it('a whole rating leaves the goal untouched, by identity', () => {
+    const goals = [goal([{ id: 'c', title: 'C', confidence: 'solid', confidenceAt: '2026-09-01' }])];
+    expect(migrateNodeStatus(goals)).toBe(goals);
+  });
+});

@@ -6,6 +6,7 @@ const ctx = (over: Partial<RowActionContext> = {}): RowActionContext => ({
   isDone: false,
   isMilestone: false,
   isParked: false,
+  isTopicsArea: false,
   canIndent: true,
   canOutdent: true,
   ...over,
@@ -57,6 +58,14 @@ describe('rowActions', () => {
     expect(off?.label).toBe('Park');
     expect(on?.label).toBe('Unpark');
     expect(off?.hint).toBe('P');
+  });
+
+  it('offers the topics toggle on a container only, worded by its current state', () => {
+    expect(ids(ctx())).not.toContain('topics');
+    const plain = rowActions(ctx({ isContainer: true })).find((a) => a.id === 'topics');
+    expect(plain?.label).toBe('Treat as topics');
+    const area = rowActions(ctx({ isContainer: true, isTopicsArea: true })).find((a) => a.id === 'topics');
+    expect(area?.label).toBe('Treat as steps');
   });
 
   it('drops Indent for a first child and Outdent at the root', () => {
@@ -145,7 +154,7 @@ describe('rowActionGroups', () => {
 describe('the focus-needed verb', () => {
   const ctx = (over: Partial<RowActionContext> = {}): RowActionContext =>
     ({
-      isContainer: false, isDone: false, isMilestone: false, isParked: false,
+      isContainer: false, isDone: false, isMilestone: false, isParked: false, isTopicsArea: false,
       canIndent: false, canOutdent: false, ...over,
     });
 
@@ -179,7 +188,7 @@ describe('taskPageActions', () => {
    */
   it('keeps breakdown off the tree row, where the panel cannot open', () => {
     const ctx: RowActionContext = {
-      isContainer: false, isDone: false, isMilestone: false, isParked: false,
+      isContainer: false, isDone: false, isMilestone: false, isParked: false, isTopicsArea: false,
       canIndent: true, canOutdent: true,
     };
     expect(rowActions(ctx).map((a) => a.id)).not.toContain('breakdown');

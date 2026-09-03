@@ -3,6 +3,14 @@ import type { Demand } from '../lib/demand';
 export type StepStatus = 'todo' | 'doing' | 'blocked' | 'parked' | 'done';
 
 /**
+ * How ready a TOPIC is to be examined on. Stored on a leaf beneath a topics
+ * area, with the day it was rated; absent means not yet studied, and absent
+ * is never written as a fourth word — the same rule `status` follows for
+ * `'todo'`. Read through `src/lib/confidence.ts`, never directly.
+ */
+export type Confidence = 'shaky' | 'okay' | 'solid';
+
+/**
  * One sitting: a span of calendar time allocated to a task.
  *
  * This is what makes a four-hour task two two-hour sittings without duplicating
@@ -96,6 +104,24 @@ export interface GoalNode {
    */
   checkpoint?: boolean;
   notes?: string; // free-form step notes — never affects the pct roll-up
+  /**
+   * A topics area: every LEAF beneath this node, at any depth, is a topic —
+   * a thing you are studying for an exam rather than a thing you tick. A
+   * topic carries `confidence` instead of ever reaching `status: 'done'`.
+   * Set on a container, or on a leaf about to become one (the study template
+   * creates the area empty). Where a leaf lives says what it is: drag a row
+   * out and it is a step again.
+   */
+  topics?: true;
+  /**
+   * A topic's confidence and the day it was rated. Both present or both
+   * absent, written together by `rateTopic` and nothing else. Never affects
+   * scheduling metadata; it is what a study goal's roll-up reads instead of
+   * `status`. A leaf dragged out of a topics area keeps a stale pair —
+   * nothing reads it there, and it comes back with the row.
+   */
+  confidence?: Confidence;
+  confidenceAt?: string; // 'YYYY-MM-DD' local
 }
 
 // One immutable snapshot of the PREVIOUS week's commitments, taken at week

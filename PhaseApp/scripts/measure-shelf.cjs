@@ -99,6 +99,13 @@ const STATES = {
     ...base,
     activeFocus: focus({ phase: 'break', elapsedMin: 12, autoBreak: true, awayMin: 12 }),
   },
+  // The rating question a logged sitting on a topic ends in: no ring, no
+  // elapsed line, one sentence and the widest action row the card has had
+  // (Skip · Shaky · Okay · Solid).
+  rating: {
+    ...base,
+    activeFocus: focus({ phase: 'rating', elapsedMin: 25, topic: true, confidence: 'shaky' }),
+  },
   sidecar: base,
   // beyondWindow always slices visible to one item, so alternatives is empty
   // whenever it fires — the fifth combination cannot occur.
