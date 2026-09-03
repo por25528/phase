@@ -49,7 +49,7 @@ export function StepsTab({
           </p>
           <button
             type="button"
-            onClick={() => actions.addRootNodes(g.id, TEMPLATES[goalType].areas)}
+            onClick={() => actions.addRootNodes(g.id, TEMPLATES[goalType].areas, TEMPLATES[goalType].flags)}
             title={TEMPLATES[goalType].areas.join(' · ')}
             className="text-ui font-semibold text-accent-deep px-[9px] py-[4px] rounded-field hover:bg-accent-tint"
           >

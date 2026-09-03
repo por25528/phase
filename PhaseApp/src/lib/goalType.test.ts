@@ -28,6 +28,20 @@ describe('inferGoalType', () => {
   });
 });
 
+describe('the study template', () => {
+  it('names a Topics area and flags it; the other templates flag nothing', () => {
+    expect(TEMPLATES.study.areas).toEqual(['Topics', 'Practice', 'Mock exam']);
+    expect(TEMPLATES.study.flags).toEqual([{ topics: true }, undefined, undefined]);
+    expect(templateNodes('study')[0]).toMatchObject({ title: 'Topics', topics: true });
+    expect(templateNodes('study').slice(1).every((n) => n.topics === undefined)).toBe(true);
+    expect(templateNodes('project').every((n) => n.topics === undefined)).toBe(true);
+    expect(templateNodes('general').every((n) => n.topics === undefined)).toBe(true);
+  });
+  it('keeps one flag slot per area, so the two lists cannot drift', () => {
+    for (const t of Object.values(TEMPLATES)) expect(t.flags).toHaveLength(t.areas.length);
+  });
+});
+
 describe('templateNodes', () => {
   it('creates one node per area, and no tasks inside them', () => {
     const nodes = templateNodes('project');
